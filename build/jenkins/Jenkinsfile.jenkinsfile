@@ -8,6 +8,7 @@ def applicationName = 'avuruops'
 def chartDir = 'deploy/helm'
 def chartName = 'avuruops'
 def hubRepo = 'avuruops/hub'
+def uiRepo = 'avuruops/ui'
 def gatewayImage = 'otel/opentelemetry-collector-contrib:0.154.0'
 def clickhouseImage = 'clickhouse/clickhouse-server:26.3'
 def githubUrl = 'git@github.com:avuruvision/avuru-obs.git'
@@ -74,6 +75,21 @@ pipeline {
                         echo \$HARBOR_TOKEN | docker login -u \$HARBOR_USER --password-stdin \$HARBOR_URL
                         docker build -f hub/Dockerfile --build-arg VERSION=${appVersion} -t \$HARBOR_URL/${hubRepo}:${appVersion} .
                         docker push \$HARBOR_URL/${hubRepo}:${appVersion}
+                    """
+                }
+            }
+        }
+
+        stage('Build & push ui image') {
+            steps {
+                withCredentials([
+                    usernamePassword(credentialsId: 'harbor-registry', usernameVariable: 'HARBOR_USER', passwordVariable: 'HARBOR_TOKEN'),
+                    string(credentialsId: 'harborUrl', variable: 'HARBOR_URL')
+                ]) {
+                    sh """
+                        echo \$HARBOR_TOKEN | docker login -u \$HARBOR_USER --password-stdin \$HARBOR_URL
+                        docker build -f ui/Dockerfile -t \$HARBOR_URL/${uiRepo}:${appVersion} .
+                        docker push \$HARBOR_URL/${uiRepo}:${appVersion}
                     """
                 }
             }

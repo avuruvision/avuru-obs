@@ -27,6 +27,15 @@ hub:
     limits:
       memory: 512Mi
 
+ui:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
 gateway:
   replicas: 2
 

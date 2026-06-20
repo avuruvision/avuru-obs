@@ -26,6 +26,14 @@ hub:
     limits:
       memory: 384Mi
 
+ui:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      memory: 96Mi
+
 ingress:
   enabled: true
   className: nginx

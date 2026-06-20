@@ -88,10 +88,12 @@ pipeline {
                                   --namespace ${env.KUBE_NAMESPACE} --create-namespace \
                                   --set image.registry=\$HARBOR_URL \
                                   --set hub.tag=${appVersion} \
+                                  --set ui.tag=${appVersion} \
                                   ${valuesArg} \
                                   --wait --timeout 6m
                             """
                             sh "kubectl -n ${env.KUBE_NAMESPACE} rollout status deploy/${HELM_RELEASE_NAME}-hub --timeout=180s"
+                            sh "kubectl -n ${env.KUBE_NAMESPACE} rollout status deploy/${HELM_RELEASE_NAME}-ui --timeout=180s"
                         }
                     }
                 }

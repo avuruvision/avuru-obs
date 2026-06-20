@@ -5,12 +5,13 @@ Point your OTLP exporters at the gateway (the ONLY change to migrate off Jaeger)
   OTEL_EXPORTER_OTLP_ENDPOINT = http://{{ include "avuruops.fullname" . }}-gateway:4318   # HTTP
   (or {{ include "avuruops.fullname" . }}-gateway:4317 for gRPC)
 
-Open the UI:
+Open the UI (separate static deployable; single-origin /api -> hub via ingress):
 {{- if .Values.ingress.enabled }}
   http://{{ .Values.ingress.host }}/
 {{- else }}
-  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "avuruops.fullname" . }}-hub 8080:80
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "avuruops.fullname" . }}-ui 8080:80
   http://localhost:8080/
+  (port-forward svc/{{ include "avuruops.fullname" . }}-hub for the raw API)
 {{- end }}
 
 Schema migrations run automatically via the `{{ include "avuruops.fullname" . }}-migrate`

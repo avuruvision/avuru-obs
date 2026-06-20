@@ -21,11 +21,27 @@ spec:
     - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
-          - path: /
+          # Single-origin split: API + health to the hub, everything else to
+          # the UI (most-specific paths first).
+          - path: /api
             pathType: Prefix
             backend:
               service:
                 name: {{ include "avuruops.fullname" . }}-hub
+                port:
+                  number: 80
+          - path: /healthz
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "avuruops.fullname" . }}-hub
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "avuruops.fullname" . }}-ui
                 port:
                   number: 80
 {{- end }}

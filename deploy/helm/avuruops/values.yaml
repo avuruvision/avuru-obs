@@ -12,7 +12,8 @@ image:
   pullPolicy: IfNotPresent
   pullSecrets: []
 
-# Hub: REST API + embedded UI, and the `migrate` subcommand for the schema hook.
+# Hub: REST API only (the `migrate` subcommand runs the schema hook). The UI is
+# a separate deployable; the hub API is the client-agnostic contract.
 hub:
   repository: avuruops/hub
   tag: "" # defaults to .Chart.AppVersion
@@ -23,6 +24,19 @@ hub:
       memory: 128Mi
     limits:
       memory: 512Mi
+
+# UI: static SPA served by nginx, its own pod (separate resources/scaling).
+# Single-origin: the ingress routes `/`→ui and `/api`→hub (no CORS).
+ui:
+  repository: avuruops/ui
+  tag: "" # defaults to .Chart.AppVersion
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
 
 # Gateway: OTLP receiver → ClickHouse exporter (stock contrib collector + config).
 gateway:

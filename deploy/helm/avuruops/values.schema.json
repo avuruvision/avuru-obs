@@ -19,6 +19,14 @@
         "replicas": { "type": "integer", "minimum": 1 }
       }
     },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" },
+        "replicas": { "type": "integer", "minimum": 1 }
+      }
+    },
     "gateway": {
       "type": "object",
       "properties": {
