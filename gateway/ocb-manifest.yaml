@@ -1,0 +1,29 @@
+# OpenTelemetry Collector Builder (OCB) manifest for the Avuru gateway —
+# a MINIMAL distro: only the components we actually use. Versions are pinned
+# together with agent_docs/tech_stack.md; finalized in M1 when the ClickHouse
+# exporter pipeline is proven end-to-end.
+dist:
+  name: avuru-gateway
+  description: Avuru Obs minimal OTel Collector gateway
+  output_path: ./build
+  # otelcol_version: PIN-IN-M1
+
+receivers:
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver vPIN-IN-M1
+  # Drop-in Jaeger replacement is a product requirement (see
+  # agent_docs/architecture.md): OTLP senders migrate by changing only the
+  # endpoint address. If legacy Jaeger-protocol (thrift/gRPC) senders show up,
+  # add the contrib jaegerreceiver here as a transition aid:
+  # - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/jaegerreceiver vPIN-IN-M1
+
+processors:
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor vPIN-IN-M1
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/k8sattributesprocessor vPIN-IN-M1
+  # tailsamplingprocessor added when the sampling knob ships (post-v0.1 default is 100% ingest)
+
+exporters:
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/clickhouseexporter vPIN-IN-M1
+
+extensions:
+  - gomod: go.opentelemetry.io/collector/extension/healthcheckextension vPIN-IN-M1
+  # opampextension added in M5 (hub-managed config)

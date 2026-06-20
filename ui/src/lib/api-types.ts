@@ -1,0 +1,112 @@
+// Hand-written M1 mirror of the hub API DTOs (hub/internal/api/dto.go).
+// Replaced by proto/buf codegen in a follow-up — keep field names in sync.
+
+export interface ServiceStats {
+  name: string;
+  spanCount: number;
+  ratePerSec: number;
+  errorRate: number;
+  p50Ms: number;
+  p95Ms: number;
+  p99Ms: number;
+}
+
+export interface ServicesResponse {
+  services: ServiceStats[];
+}
+
+export interface OperationStats {
+  service: string;
+  operation: string;
+  count: number;
+  errorCount: number;
+  errorRate: number;
+  p50Ms: number;
+  p95Ms: number;
+  p99Ms: number;
+}
+
+export interface OverviewResponse {
+  operations: OperationStats[];
+}
+
+export interface TraceSummary {
+  traceId: string;
+  rootService: string;
+  rootOperation: string;
+  startTime: string;
+  durationMs: number;
+  spanCount: number;
+  errorCount: number;
+  statusCode: string;
+}
+
+export interface TracesResponse {
+  traces: TraceSummary[];
+  nextCursor?: string;
+}
+
+export interface SpanEvent {
+  time: string;
+  name: string;
+  attributes?: Record<string, string>;
+}
+
+export interface Span {
+  spanId: string;
+  parentSpanId: string;
+  service: string;
+  operation: string;
+  kind: string;
+  startTime: string;
+  durationMs: number;
+  statusCode: string;
+  statusMessage?: string;
+  attributes?: Record<string, string>;
+  resourceAttributes?: Record<string, string>;
+  events?: SpanEvent[];
+}
+
+export interface TraceResponse {
+  traceId: string;
+  startTime: string;
+  durationMs: number;
+  spans: Span[];
+}
+
+export interface HeatmapCell {
+  t: number;
+  d: number;
+  count: number;
+  errorCount: number;
+}
+
+export interface HeatmapResponse {
+  startTime: string;
+  endTime: string;
+  timeBucketSec: number;
+  durationBoundsMs: number[];
+  cells: HeatmapCell[];
+}
+
+export interface StatusResponse {
+  service: string;
+  version: string;
+  status: string;
+  clickhouse: string;
+}
+
+export interface LogRecord {
+  timestamp: string;
+  severity: string;
+  service: string;
+  body: string;
+  traceId?: string;
+  spanId?: string;
+  attributes?: Record<string, string>;
+}
+
+export interface LogsResponse {
+  logs: LogRecord[];
+  nextCursor?: string;
+}

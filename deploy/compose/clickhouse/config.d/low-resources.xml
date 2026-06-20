@@ -1,0 +1,21 @@
+<!-- Laptop-friendly ClickHouse tuning for the compose sandbox.
+     Production sizing guidance lives in deploy/helm (8 GB recommended). -->
+<clickhouse>
+    <max_server_memory_usage>1500000000</max_server_memory_usage>
+    <mark_cache_size>268435456</mark_cache_size>
+    <index_mark_cache_size>67108864</index_mark_cache_size>
+    <uncompressed_cache_size>134217728</uncompressed_cache_size>
+    <max_concurrent_queries>20</max_concurrent_queries>
+
+    <!-- Disable heavyweight system log tables the sandbox doesn't need. -->
+    <query_log remove="1"/>
+    <query_thread_log remove="1"/>
+    <query_views_log remove="1"/>
+    <metric_log remove="1"/>
+    <asynchronous_metric_log remove="1"/>
+    <trace_log remove="1"/>
+    <part_log remove="1"/>
+    <text_log remove="1"/>
+    <latency_log remove="1"/>
+    <processors_profile_log remove="1"/>
+</clickhouse>

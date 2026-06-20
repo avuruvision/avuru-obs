@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "avuruops.fullname" . }}-gateway
+  labels:
+    {{- include "avuruops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    processors:
+      batch:
+        send_batch_size: 4096
+        timeout: 2s
+    exporters:
+      clickhouse:
+        endpoint: tcp://{{ include "avuruops.clickhouseAddr" . }}
+        username: {{ include "avuruops.clickhouseUser" . }}
+        password: ${env:CLICKHOUSE_PASSWORD}
+        database: {{ include "avuruops.clickhouseDatabase" . }}
+        # Schema is owned by `hub migrate`; the exporter never creates tables.
+        create_schema: false
+        timeout: 10s
+        retry_on_failure:
+          enabled: true
+          initial_interval: 2s
+          max_elapsed_time: 60s
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [clickhouse]
+        logs:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [clickhouse]

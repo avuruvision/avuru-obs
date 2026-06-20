@@ -1,0 +1,21 @@
+{{- if not .Values.clickhouse.external.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "avuruops.fullname" . }}-clickhouse
+  labels:
+    {{- include "avuruops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse
+spec:
+  clusterIP: None
+  selector:
+    {{- include "avuruops.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse
+  ports:
+    - name: native
+      port: 9000
+      targetPort: native
+    - name: http
+      port: 8123
+      targetPort: http
+{{- end }}

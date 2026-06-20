@@ -1,0 +1,84 @@
+# Avuru Obs — default values.
+# Downstream overlays (e.g. a Harbor/Kustomize project) override image.registry,
+# ingress.host, persistence, retention, and clickhouse.external without forking.
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  # Registry prefixed to every component repository (e.g. "harbor.devops.lab").
+  # Empty = pull from the repository as-is (Docker Hub / GHCR style).
+  registry: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# Hub: REST API + embedded UI, and the `migrate` subcommand for the schema hook.
+hub:
+  repository: avuruops/hub
+  tag: "" # defaults to .Chart.AppVersion
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+# Gateway: OTLP receiver → ClickHouse exporter (stock contrib collector + config).
+gateway:
+  image:
+    repository: otel/opentelemetry-collector-contrib
+    tag: "0.154.0"
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      memory: 512Mi
+
+# ClickHouse: single-node StatefulSet by default; flip external.enabled to BYO.
+clickhouse:
+  external:
+    enabled: false
+    address: "" # host:9000 (native protocol) when external.enabled
+    database: otel
+    username: avuru
+    existingSecret: "" # Secret with key `clickhouse-password`; overrides auth.password
+  image:
+    repository: clickhouse/clickhouse-server
+    tag: "26.3"
+  auth:
+    username: avuru
+    password: avuru # in-chart default — override or use existingSecret in prod
+    existingSecret: ""
+  persistence:
+    enabled: true
+    storageClassName: "" # "" = cluster default StorageClass
+    size: 50Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      memory: 4Gi
+
+# Per-signal retention in DAYS, applied as ClickHouse TTL by `hub migrate`.
+retention:
+  traces: 7
+  logs: 3
+
+ingress:
+  enabled: false
+  className: ""
+  host: avuruops.local
+  annotations: {}
+  tls: []
+
+# Auth is a forward placeholder: the UI ships open in v0.1; OIDC is v0.2.
+# Enforce auth at your ingress (oauth2-proxy / Keycloak) downstream.
+auth:
+  enabled: false
+
+service:
+  type: ClusterIP

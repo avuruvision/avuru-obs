@@ -1,0 +1,60 @@
+# ── Secrets & env ─────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ── Go (hub) ──────────────────────────────────────────────────
+hub/bin/
+*.test
+coverage.out
+coverage.html
+
+# UI export embedded into the hub binary — built by `make ui`, never committed
+hub/internal/ui/dist/*
+!hub/internal/ui/dist/.gitkeep
+
+# ── Rust (agent) ──────────────────────────────────────────────
+agent/target/
+*.profraw
+
+# ── Node / Next.js (ui) ───────────────────────────────────────
+ui/node_modules/
+ui/.next/
+ui/out/
+ui/next-env.d.ts
+ui/*.tsbuildinfo
+ui/coverage/
+
+# Playwright artifacts
+ui/test-results/
+ui/playwright-report/
+ui/blob-report/
+
+# ── Gateway / deploy ──────────────────────────────────────────
+gateway/build/
+deploy/helm/**/charts/
+deploy/helm/**/*.tgz
+
+# ── Logs & temp ───────────────────────────────────────────────
+*.log
+logs/
+tmp/
+*.tmp
+
+# ── OS / editors ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+!.vscode/extensions.json
+
+# ── Machine-local Claude Code permissions ─────────────────────
+.claude/settings.json
+
+# Visual brainstorm sessions (superpowers companion)
+.superpowers/

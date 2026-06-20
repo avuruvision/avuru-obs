@@ -1,0 +1,29 @@
+Avuru Obs is installed.
+
+Point your OTLP exporters at the gateway (the ONLY change to migrate off Jaeger):
+
+  OTEL_EXPORTER_OTLP_ENDPOINT = http://{{ include "avuruops.fullname" . }}-gateway:4318   # HTTP
+  (or {{ include "avuruops.fullname" . }}-gateway:4317 for gRPC)
+
+Open the UI:
+{{- if .Values.ingress.enabled }}
+  http://{{ .Values.ingress.host }}/
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "avuruops.fullname" . }}-hub 8080:80
+  http://localhost:8080/
+{{- end }}
+
+Schema migrations run automatically via the `{{ include "avuruops.fullname" . }}-migrate`
+hook (post-install / pre-upgrade). Retention: traces {{ .Values.retention.traces }}d, logs {{ .Values.retention.logs }}d.
+{{- if .Values.clickhouse.external.enabled }}
+
+ClickHouse: EXTERNAL ({{ .Values.clickhouse.external.address }}).
+{{- else }}
+
+ClickHouse: in-chart single-node StatefulSet (persistence {{ if .Values.clickhouse.persistence.enabled }}{{ .Values.clickhouse.persistence.size }}{{ else }}DISABLED (ephemeral){{ end }}).
+{{- end }}
+{{- if not .Values.auth.enabled }}
+
+NOTE: the UI ships open (no auth). Enforce authentication at your ingress
+(oauth2-proxy / Keycloak) before exposing it beyond a trusted network.
+{{- end }}

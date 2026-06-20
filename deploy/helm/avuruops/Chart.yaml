@@ -1,0 +1,16 @@
+apiVersion: v2
+name: avuruops
+description: Avuru Obs — deployable OTLP backend (traces + logs), a Jaeger replacement.
+type: application
+# Chart version (SemVer); appVersion tracks the hub/gateway image generation.
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/avuruvision/avuru-obs
+sources:
+  - https://github.com/avuruvision/avuru-obs
+keywords:
+  - observability
+  - opentelemetry
+  - tracing
+  - logs
+  - clickhouse

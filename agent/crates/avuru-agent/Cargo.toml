@@ -1,0 +1,15 @@
+[package]
+name = "avuru-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Avuru node agent: eBPF L4 flow tracer feeding the service map, OTLP export."
+
+[dependencies]
+flow-core = { path = "../flow-core" }
+anyhow.workspace = true
+
+# eBPF loading is Linux-only; cargo check stays green on macOS.
+# aya + opentelemetry-rust land here in M2 with the real tracer:
+# [target.'cfg(target_os = "linux")'.dependencies]
+# aya = "..."  (pin in agent_docs/tech_stack.md)

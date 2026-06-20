@@ -1,0 +1,88 @@
+{{- if not .Values.clickhouse.external.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "avuruops.fullname" . }}-clickhouse
+  labels:
+    {{- include "avuruops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse
+spec:
+  serviceName: {{ include "avuruops.fullname" . }}-clickhouse
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "avuruops.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: clickhouse
+  template:
+    metadata:
+      labels:
+        {{- include "avuruops.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: clickhouse
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        fsGroup: 101
+      containers:
+        - name: clickhouse
+          image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.clickhouse.image.repository "tag" .Values.clickhouse.image.tag) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: CLICKHOUSE_USER
+              value: {{ .Values.clickhouse.auth.username | quote }}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "avuruops.clickhouseSecretName" . }}
+                  key: clickhouse-password
+            - name: CLICKHOUSE_DB
+              value: otel
+          ports:
+            - name: native
+              containerPort: 9000
+            - name: http
+              containerPort: 8123
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+            - name: config
+              mountPath: /etc/clickhouse-server/config.d/low-resources.xml
+              subPath: low-resources.xml
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.clickhouse.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "avuruops.fullname" . }}-clickhouse
+        {{- if not .Values.clickhouse.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+  {{- if .Values.clickhouse.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.clickhouse.persistence.storageClassName }}
+        storageClassName: {{ .Values.clickhouse.persistence.storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.clickhouse.persistence.size | quote }}
+  {{- end }}
+{{- end }}

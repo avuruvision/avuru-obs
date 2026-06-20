@@ -1,0 +1,9 @@
+[package]
+name = "flow-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Pure flow aggregation logic for avuru-agent. No eBPF, no async — testable on any OS."
+
+[dependencies]
+thiserror.workspace = true

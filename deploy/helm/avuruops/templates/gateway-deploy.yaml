@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "avuruops.fullname" . }}-gateway
+  labels:
+    {{- include "avuruops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: {{ .Values.gateway.replicas }}
+  selector:
+    matchLabels:
+      {{- include "avuruops.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: gateway
+  template:
+    metadata:
+      labels:
+        {{- include "avuruops.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: gateway
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/gateway-config.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: gateway
+          image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.gateway.image.repository "tag" .Values.gateway.image.tag) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["--config=/etc/avuru/config.yaml"]
+          env:
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "avuruops.clickhouseSecretName" . }}
+                  key: clickhouse-password
+          volumeMounts:
+            - name: config
+              mountPath: /etc/avuru
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+            - name: otlp-http
+              containerPort: 4318
+            - name: health
+              containerPort: 13133
+          livenessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "avuruops.fullname" . }}-gateway

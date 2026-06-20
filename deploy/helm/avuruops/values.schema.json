@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Avuru Obs chart values",
+  "type": "object",
+  "properties": {
+    "image": {
+      "type": "object",
+      "properties": {
+        "registry": { "type": "string" },
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
+        "pullSecrets": { "type": "array" }
+      }
+    },
+    "hub": {
+      "type": "object",
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" },
+        "replicas": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "properties": {
+        "replicas": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "clickhouse": {
+      "type": "object",
+      "properties": {
+        "external": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "address": { "type": "string" },
+            "database": { "type": "string" },
+            "username": { "type": "string" },
+            "existingSecret": { "type": "string" }
+          },
+          "required": ["enabled"]
+        },
+        "persistence": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "storageClassName": { "type": "string" },
+            "size": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "properties": {
+        "traces": { "type": "integer", "minimum": 0 },
+        "logs": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["traces", "logs"]
+    },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "host": { "type": "string" }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    }
+  }
+}

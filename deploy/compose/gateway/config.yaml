@@ -1,0 +1,44 @@
+# Gateway collector config for the compose sandbox.
+# M1 uses the stock contrib image (pinned); the minimal OCB distro lands in M5.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    send_batch_size: 4096
+    timeout: 2s
+
+exporters:
+  clickhouse:
+    endpoint: tcp://clickhouse:9000
+    username: avuru
+    password: avuru
+    database: otel
+    # Schema is OWNED by gateway/schemas/ migrations (see schemas/README.md).
+    create_schema: false
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 2s
+      max_elapsed_time: 60s
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [clickhouse]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [clickhouse]

@@ -1,0 +1,30 @@
+// Shared contract: flow records emitted by avuru-agent beyond standard OTLP.
+// Single source of truth — codegen to Rust/Go/TS via `make proto` (wired in
+// M1 with buf). Field numbers are append-only; see agent_docs/proto_contracts.md.
+syntax = "proto3";
+
+package avuru.v1;
+
+// Direction of an observed TCP flow relative to the reporting node.
+enum Direction {
+  DIRECTION_UNSPECIFIED = 0;
+  DIRECTION_OUTBOUND = 1;
+  DIRECTION_INBOUND = 2;
+}
+
+// One aggregated flow edge for a reporting window. Attribute names follow
+// OTel semantic conventions where one exists.
+message FlowRecord {
+  string src_address = 1;          // network.peer.address (source)
+  string dst_address = 2;          // network.peer.address (destination)
+  uint32 dst_port = 3;             // network.peer.port
+  Direction direction = 4;
+  uint64 connections = 5;          // connections opened in the window
+  uint64 failures = 6;             // failed connections (RST/timeout)
+  uint64 bytes = 7;                // bytes transferred
+  fixed64 window_start_unix_nano = 8;
+  fixed64 window_end_unix_nano = 9;
+  string k8s_pod_name = 10;        // k8s.pod.name (filled by enrichment)
+  string k8s_namespace_name = 11;  // k8s.namespace.name
+  string node_name = 12;           // k8s.node.name
+}

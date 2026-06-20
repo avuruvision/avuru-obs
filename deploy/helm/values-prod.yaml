@@ -1,0 +1,38 @@
+# Production overrides for the avuruops chart. The chart stays agnostic; this file
+# carries the environment. image.registry is injected by deploy.jenkinsfile
+# (--set image.registry=$HARBOR_URL), so it is NOT set here.
+
+clickhouse:
+  persistence:
+    # Pin your production block-storage StorageClass.
+    storageClassName: ""
+    size: 100Gi
+  resources:
+    requests:
+      cpu: "1"
+      memory: 4Gi
+    limits:
+      memory: 8Gi
+
+retention:
+  traces: 14
+  logs: 7
+
+hub:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+gateway:
+  replicas: 2
+
+ingress:
+  enabled: true
+  className: nginx
+  host: avuruops.devops.lab
+  # Auth is enforced at the ingress (oauth2-proxy / Keycloak), not in the chart.
+  annotations: {}

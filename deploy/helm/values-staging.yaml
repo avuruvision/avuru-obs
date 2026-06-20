@@ -1,0 +1,34 @@
+# Staging overrides for the avuruops chart. The chart stays agnostic; this file
+# carries the environment. image.registry is injected by deploy.jenkinsfile
+# (--set image.registry=$HARBOR_URL), so it is NOT set here.
+
+clickhouse:
+  persistence:
+    # Pin your cluster's StorageClass (e.g. ceph-rbd / longhorn / local-path).
+    storageClassName: ""
+    size: 20Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+
+retention:
+  traces: 3
+  logs: 2
+
+hub:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 96Mi
+    limits:
+      memory: 384Mi
+
+ingress:
+  enabled: true
+  className: nginx
+  host: avuruops-staging.devops.lab
+  # Auth is enforced at the ingress (oauth2-proxy / Keycloak), not in the chart.
+  annotations: {}

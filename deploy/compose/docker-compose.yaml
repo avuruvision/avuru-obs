@@ -1,0 +1,93 @@
+# Avuru Obs sandbox: ClickHouse + gateway collector + hub + HotROD demo.
+# Run from repo root: `make dev` (or `docker compose -f deploy/compose/docker-compose.yaml up`).
+name: avuru-obs
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.3
+    environment:
+      CLICKHOUSE_USER: avuru
+      CLICKHOUSE_PASSWORD: avuru
+      CLICKHOUSE_DB: otel
+    volumes:
+      # Schema is applied by the `migrate` service (hub migrate), not initdb.d —
+      # the single migration mechanism shared with k8s (Helm hook).
+      - ./clickhouse/config.d/low-resources.xml:/etc/clickhouse-server/config.d/low-resources.xml:ro
+      - clickhouse-data:/var/lib/clickhouse
+    ports:
+      - "127.0.0.1:8123:8123" # HTTP (queries, debugging)
+      - "127.0.0.1:9000:9000" # native (hub, exporter)
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8123/ping"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+
+  # One-shot schema migrator (mirrors the k8s Helm pre-install/pre-upgrade
+  # hook). gateway + hub wait for it to complete before starting.
+  migrate:
+    image: avuru-obs-hub:local
+    build:
+      context: ../..
+      dockerfile: hub/Dockerfile
+    command: ["migrate"]
+    environment:
+      AVURUOPS_CLICKHOUSE_ADDR: clickhouse:9000
+      AVURUOPS_CLICKHOUSE_USER: avuru
+      AVURUOPS_CLICKHOUSE_PASSWORD: avuru
+      AVURUOPS_RETENTION_TRACES_DAYS: "7"
+      AVURUOPS_RETENTION_LOGS_DAYS: "3"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    restart: "no"
+
+  gateway:
+    image: otel/opentelemetry-collector-contrib:0.154.0
+    command: ["--config=/etc/avuru/config.yaml"]
+    volumes:
+      - ./gateway/config.yaml:/etc/avuru/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC — the ONLY address apps need to change (Jaeger drop-in)
+      - "4318:4318"   # OTLP HTTP
+      - "127.0.0.1:13133:13133" # health_check extension
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    # No container healthcheck: the contrib image is distroless (no shell).
+
+  hub:
+    image: avuru-obs-hub:local
+    build:
+      context: ../..
+      dockerfile: hub/Dockerfile
+    environment:
+      AVURUOPS_CLICKHOUSE_ADDR: clickhouse:9000
+      AVURUOPS_CLICKHOUSE_USER: avuru
+      AVURUOPS_CLICKHOUSE_PASSWORD: avuru
+    ports:
+      - "8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/hub", "-healthcheck"]
+      interval: 5s
+      timeout: 2s
+      retries: 12
+
+  # Jaeger's own demo app, repointed to Avuru by env var alone — the drop-in
+  # migration story (agent_docs/architecture.md) demonstrated live.
+  demo:
+    image: jaegertracing/example-hotrod:2.19.0
+    command: ["all"]
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://gateway:4318
+    ports:
+      - "8088:8080" # HotROD UI
+    depends_on:
+      - gateway
+
+volumes:
+  clickhouse-data:

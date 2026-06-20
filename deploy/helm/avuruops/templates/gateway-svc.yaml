@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "avuruops.fullname" . }}-gateway
+  labels:
+    {{- include "avuruops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "avuruops.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+  ports:
+    # The ONLY address instrumented apps point at (Jaeger drop-in).
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http

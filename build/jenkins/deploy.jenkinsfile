@@ -1,0 +1,117 @@
+// Avuru Obs — CD: pull the chart from the Nexus helm-hosted repo and deploy it
+// per environment, pointing every image at Harbor. The chart published by
+// Jenkinsfile.jenkinsfile is the only artifact consumed here. Modeled on the
+// avuru deploy convention (kiwi-tcms/build/jenkins/deploy.jenkinsfile).
+
+def applicationName = 'avuruops'
+def chartDir = 'deploy/helm'
+def chartName = 'avuruops'
+def HELM_RELEASE_NAME = 'avuruops'
+def githubUrl = 'git@github.com:avuruvision/avuru-obs.git'
+def helmHostedUrl = 'http://192.168.40.65:4071/repository/helm-hosted/'
+def manualApproveUser = 'egilberny@lab.luxavuru.com'
+def failure_notification_recipients = 'egilberny@lab.luxavuru.com'
+def success_notification_recipients = 'egilberny@lab.luxavuru.com'
+
+def appVersion = 'latest'
+def helmVersion = '0.1.0'
+
+pipeline {
+    agent any
+
+    options {
+        gitLabConnection('gitlab_jenkins')
+    }
+    parameters {
+        choice(name: 'ENVIRONMENT', choices: ['staging', 'prod'], description: 'Target environment')
+        string(name: 'GIT_BRANCH', defaultValue: 'develop', description: 'GitHub branch (for chart version + env values)')
+        booleanParam(name: 'SEND_SUCCESS_MAIL', defaultValue: false, description: 'Send notification mail on success.')
+    }
+
+    environment {
+        KUBE_NAMESPACE = "${params.ENVIRONMENT == 'prod' ? 'avuru-services' : 'avuru-services-staging'}"
+    }
+
+    stages {
+        stage('Checkout (GitHub)') {
+            steps {
+                git url: "${githubUrl}", branch: "${params.GIT_BRANCH}", credentialsId: 'github-avuruvision'
+            }
+        }
+
+        stage('Extract chart version') {
+            steps {
+                script {
+                    dir("${chartDir}") {
+                        appVersion = sh(script: "helm show chart ${chartName} | grep '^appVersion' | cut -d: -f2 | tr -d ' \"'", returnStdout: true).trim()
+                        helmVersion = sh(script: "helm show chart ${chartName} | grep '^version' | cut -d: -f2 | tr -d ' '", returnStdout: true).trim()
+                        if (!appVersion) { appVersion = 'latest' }
+                        if (!helmVersion) { helmVersion = '0.1.0' }
+                        echo "Deploying ${chartName}-${helmVersion} (image tag ${appVersion}) to ${env.KUBE_NAMESPACE}"
+                    }
+                }
+            }
+        }
+
+        stage('Manual approval') {
+            when {
+                expression { params.ENVIRONMENT == 'prod' }
+            }
+            steps {
+                script {
+                    timeout(10) {
+                        emailext body: "<br>Project: ${env.JOB_NAME} <br>Build: ${env.BUILD_NUMBER} <br>Approve the PROD deployment: ${env.BUILD_URL}", mimeType: 'text/html', subject: "Deploy Approval Needed - ${applicationName} (prod)", to: "${manualApproveUser}"
+                        input(id: 'Deploy Gate', message: "Deploy ${applicationName} to PROD?", ok: 'Deploy')
+                    }
+                }
+            }
+        }
+
+        stage('Deploy on k8s') {
+            steps {
+                script {
+                    withKubeCredentials(kubectlCredentials: [[credentialsId: 'k8s-token-dev', clusterName: 'kubernetes', serverUrl: 'https://192.168.40.56:9443', namespace: "${env.KUBE_NAMESPACE}"]]) {
+                        withCredentials([
+                            usernamePassword(credentialsId: 'docker-hosted', usernameVariable: 'dockerHostUser', passwordVariable: 'dockerHostPassword'),
+                            string(credentialsId: 'harborUrl', variable: 'HARBOR_URL')
+                        ]) {
+                            // Env-specific overrides (storageClass, ingress, resources)
+                            // live in deploy/helm/values-<env>.yaml — the chart stays
+                            // agnostic; the values file carries the environment.
+                            def valuesFile = "${chartDir}/values-${params.ENVIRONMENT}.yaml"
+                            def valuesArg = fileExists(valuesFile) ? "-f ${valuesFile}" : ""
+                            sh "helm repo add helm-hosted ${helmHostedUrl} --username \$dockerHostUser --password \$dockerHostPassword"
+                            sh "helm repo update"
+                            sh """
+                                helm upgrade --install ${HELM_RELEASE_NAME} helm-hosted/${chartName} \
+                                  --version ${helmVersion} \
+                                  --namespace ${env.KUBE_NAMESPACE} --create-namespace \
+                                  --set image.registry=\$HARBOR_URL \
+                                  --set hub.tag=${appVersion} \
+                                  ${valuesArg} \
+                                  --wait --timeout 6m
+                            """
+                            sh "kubectl -n ${env.KUBE_NAMESPACE} rollout status deploy/${HELM_RELEASE_NAME}-hub --timeout=180s"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+        success {
+            script {
+                if (params.SEND_SUCCESS_MAIL) {
+                    emailext body: "<br>Project: ${env.JOB_NAME} <br>Env: ${params.ENVIRONMENT} <br>Build: ${env.BUILD_NUMBER} <br>URL: ${env.BUILD_URL}", mimeType: 'text/html', subject: "[SUCCESS] Deploy: ${applicationName} (${params.ENVIRONMENT})", to: "${success_notification_recipients}"
+                }
+            }
+        }
+        failure {
+            emailext body: "<br>Project: ${env.JOB_NAME} <br>Env: ${params.ENVIRONMENT} <br>Build: ${env.BUILD_NUMBER} <br>URL: ${env.BUILD_URL}", mimeType: 'text/html', subject: "[FAILURE] Deploy: ${applicationName} (${params.ENVIRONMENT})", to: "${failure_notification_recipients}"
+        }
+    }
+}
