@@ -20,9 +20,9 @@ for data flow and decision rationale.
 | Path | Language | Purpose |
 |---|---|---|
 | `agent/` | **Rust** (aya eBPF) | `avuru-agent`: L4 flow tracer feeding the service map; OTLP export |
-| `hub/` | **Go** | Single binary: REST/WS API, OpAMP server, alerting, `go:embed`-ed UI, storage interface (ClickHouse impl) |
+| `hub/` | **Go** | API-only single binary: REST/WS API, OpAMP server, alerting, storage interface (ClickHouse impl). The UI is a separate deployable. |
 | `gateway/` | OCB manifest | Minimal OTel Collector distro + ClickHouse schemas/migrations |
-| `ui/` | **Next.js/TS** | Static-export SPA (`output: 'export'`), embedded into the hub binary |
+| `ui/` | **Next.js/TS** | Static-export SPA (`output: 'export'`) served by its own nginx image (separate pod), single-origin with the hub |
 | `proto/` | protobuf | Shared Rust↔Go↔TS contracts — single source of truth, codegen only |
 | `sensor/` | YAML | DaemonSet pod assembly: avuru-agent + OBI + OTel Collector + eBPF profiler |
 | `deploy/` | Helm/compose | `helm/` flagship chart + operator; `compose/` all-in-one demo |

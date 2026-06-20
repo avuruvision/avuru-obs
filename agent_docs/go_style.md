@@ -11,7 +11,7 @@ Go) enforced by `golangci-lint` — this file only lists project-specific rules.
   (`clickhouse/`, fakes in `storagetest/`)
 - `hub/internal/opamp/` — OpAMP server
 - `hub/internal/auth/` — `Provider` interface + implementations
-- `hub/internal/ui/` — `go:embed` of the built UI export
+  (the hub is API-only; the UI is a separate nginx deployable, not embedded)
 
 ## Rules
 

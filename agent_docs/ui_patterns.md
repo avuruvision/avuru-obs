@@ -4,8 +4,10 @@ Read when actively writing UI code.
 
 ## The one hard constraint
 
-`next.config.ts` has `output: 'export'`. The UI is a **static SPA** embedded
-into the hub Go binary. Therefore **forbidden**: SSR, React Server Components
+`next.config.ts` has `output: 'export'`. The UI is a **static SPA** served by
+its own nginx image (separate deployable), single-origin with the hub. The
+export constraint stays (a thin static client — no server-side treatment).
+Therefore **forbidden**: SSR, React Server Components
 with server data, server actions, API routes (`app/api/`), middleware,
 `next/image` optimization (use `unoptimized`), runtime env vars. CI enforces
 this — `npm run build` fails if violated. All data comes from the Hub REST/WS

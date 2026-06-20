@@ -77,6 +77,18 @@ services:
       timeout: 2s
       retries: 12
 
+  # Static UI (own nginx pod, separate deployable). Single-origin: serves the
+  # SPA at / and reverse-proxies /api -> hub. Open http://localhost:3001.
+  ui:
+    image: avuru-obs-ui:local
+    build:
+      context: ../..
+      dockerfile: ui/Dockerfile
+    ports:
+      - "3001:80"
+    depends_on:
+      - hub
+
   # Jaeger's own demo app, repointed to Avuru by env var alone — the drop-in
   # migration story (agent_docs/architecture.md) demonstrated live.
   demo:

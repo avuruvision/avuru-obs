@@ -20,11 +20,15 @@ via Hub API). See `agent_docs/testing.md`.
 │        ▼                               │                       │
 │ Gateway: minimal OTel Collector distro─┘   ┌────────────────┐  │
 │        │ batched inserts                   │ HUB (1 Go bin) │  │
-│        ▼                                   │ API+UI(embed)  │  │
+│        ▼                                   │ API only       │  │
 │ ClickHouse (traces·logs·metrics·profiles·flows) ◄─SQL─┘+OpAMP  │
 │   single-node default (8 GB rec / 4 GB floor) | external = scale│
 └────────────────────────────────────────────────────────────────┘
 ```
+
+The **UI is a separate static SPA** (its own nginx pod), served single-origin
+with the hub (`/`→UI, `/api`→hub). The hub API is the client-agnostic contract
+— the SPA is one thin client; **Grafana and a CLI** are planned future clients.
 
 ## Data flow
 
@@ -48,8 +52,8 @@ via Hub API). See `agent_docs/testing.md`.
 | Zero-code traces/RED | OBI (OTel eBPF Instrumentation, ex-Beyla) reused as-is, sibling container | Apache 2.0/CNCF; HTTP/2, gRPC, SQL, Redis, Kafka coverage; OTLP-native; pre-1.0 so versions are pinned |
 | Service map | Own Rust eBPF L4 flow tracer | Coroot's proven <5-min mechanic; de-risks the wedge from OBI's pre-1.0 trace-stitching limits |
 | Profiling | OTel eBPF profiler as Collector receiver | OTLP Profiles signal is **alpha** → profile ingestion isolated behind an adapter so wire-format breaks don't ripple into storage |
-| Hub | Single Go binary: API + OpAMP + alerting + embedded UI; SQLite app-state, Postgres for HA | SigNoz retreated from microservices to exactly this; Coroot/Grafana same pattern. No second datastore |
-| UI packaging | Next.js `output: 'export'` → `go:embed` in hub | Unanimous winner pattern (Coroot/SigNoz/Grafana); HyperDX's static-export mode proves Next.js feasibility |
+| Hub | **API-only** single Go binary: API + OpAMP + alerting; SQLite app-state, Postgres for HA | SigNoz retreated from microservices to exactly this. The API is the **client-agnostic contract** for all clients (SPA, Grafana, CLI). |
+| UI packaging | Next.js `output: 'export'` static SPA in its **own nginx pod** (separate deployable), single-origin with the hub (`/`→UI, `/api`→hub). UI is one thin client among several (Grafana/CLI later) | Decouples UI from backend so any client plugs into the same API; lets the UI scale/resource independently |
 | Sampling | 100% ingestion default; tail sampling = first opt-in knob | Missing traces destroy first-touch trust; ClickHouse compression makes full fidelity cheap at eval scale |
 | Pipeline | DaemonSet sensor + singleton cluster-agent + OCB gateway | Cluster-agent avoids N-nodes-duplicate cluster metrics; gateway owns batching/sampling |
 

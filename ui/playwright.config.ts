@@ -10,7 +10,7 @@ export default defineConfig({
   reporter: process.env.CI ? "line" : "list",
   timeout: 30_000,
   use: {
-    baseURL: process.env.AVURUOPS_BASE_URL ?? "http://localhost:8080",
+    baseURL: process.env.AVURUOPS_BASE_URL ?? "http://localhost:3001",
     trace: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],

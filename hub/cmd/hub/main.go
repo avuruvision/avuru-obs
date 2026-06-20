@@ -17,7 +17,6 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/api"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 	ch "github.com/avuru/avuru-obs/hub/internal/storage/clickhouse"
-	"github.com/avuru/avuru-obs/hub/internal/ui"
 )
 
 func main() {
@@ -112,9 +111,10 @@ func run() error {
 
 	provider := connectStore(ctx, clickhouseConfig())
 
+	// Hub is API-only: the UI is a separate deployable (its own nginx pod),
+	// reached single-origin via the gateway/ingress. See agent_docs/architecture.md.
 	mux := http.NewServeMux()
 	api.Register(mux, provider)
-	mux.Handle("/", ui.Handler())
 
 	srv := &http.Server{
 		Addr:              addr,

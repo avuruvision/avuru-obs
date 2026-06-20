@@ -12,9 +12,8 @@ hub/bin/
 coverage.out
 coverage.html
 
-# UI export embedded into the hub binary — built by `make ui`, never committed
-hub/internal/ui/dist/*
-!hub/internal/ui/dist/.gitkeep
+# UI static export — built by `make ui`, served by the UI nginx image
+ui/out/
 
 # ── Rust (agent) ──────────────────────────────────────────────
 agent/target/

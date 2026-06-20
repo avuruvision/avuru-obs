@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 	"testing"
 	"time"
 )
@@ -225,21 +224,5 @@ func TestSeededLogs(t *testing.T) {
 	}
 }
 
-// TestHubServesUI: the embedded SPA answers on app routes (SPA fallback).
-func TestHubServesUI(t *testing.T) {
-	for _, path := range []string{"/", "/traces", "/services"} {
-		resp, err := http.Get(hubURL + path)
-		if err != nil {
-			t.Fatalf("GET %s: %v", path, err)
-		}
-		body := make([]byte, 1024)
-		n, _ := resp.Body.Read(body)
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			t.Errorf("%s: status %d", path, resp.StatusCode)
-		}
-		if !strings.Contains(string(body[:n]), "<html") {
-			t.Errorf("%s: not HTML", path)
-		}
-	}
-}
+// (UI serving moved out of the hub — the SPA is a separate nginx deployable,
+// covered by `make e2e-ui` / the single-origin compose smoke.)

@@ -1,5 +1,22 @@
-// Typed fetch wrapper for the hub API. Production is same-origin (embedded
-// SPA); dev proxies /api to the hub (next.config.ts rewrites).
+// Typed fetch wrapper for the hub API. The UI is a separate static SPA served
+// SINGLE-ORIGIN with the hub (UI at `/`, `/api/*` proxied to the hub by the
+// ingress/nginx). The API base is therefore same-origin by default, and
+// overridable per-deployment via a window config injected by `/config.js`
+// (static export forbids runtime env vars — see agent_docs/ui_patterns.md).
+
+declare global {
+  interface Window {
+    __AVURU_OBS_CONFIG__?: { apiBase?: string };
+  }
+}
+
+// apiBase is a prefix joined before the `/api/...` path. "" = same-origin.
+function apiBase(): string {
+  if (typeof window !== "undefined" && window.__AVURU_OBS_CONFIG__?.apiBase) {
+    return window.__AVURU_OBS_CONFIG__.apiBase;
+  }
+  return "";
+}
 
 export class ApiError extends Error {
   constructor(
@@ -14,7 +31,8 @@ export async function apiGet<T>(
   path: string,
   params?: Record<string, string | number | undefined>,
 ): Promise<T> {
-  const url = new URL(path, window.location.origin);
+  // path is already "/api/v1/..."; an absolute apiBase wins, "" stays same-origin.
+  const url = new URL(apiBase() + path, window.location.origin);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined && v !== "") url.searchParams.set(k, String(v));

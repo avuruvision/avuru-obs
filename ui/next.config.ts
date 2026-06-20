@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
-// Static export is a hard constraint: the UI is embedded into the hub Go
-// binary (go:embed). See agent_docs/ui_patterns.md before changing anything.
+// Static export: the UI ships as static assets served by its own nginx image
+// (separate deployable), single-origin with the hub. See agent_docs/ui_patterns.md.
 const isDev = process.env.NODE_ENV === "development";
 
 const nextConfig: NextConfig = {
