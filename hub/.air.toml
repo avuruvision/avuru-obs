@@ -1,0 +1,13 @@
+# Hot-reload the hub API server during development: `air` from the hub/ dir.
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/hub ./cmd/hub"
+  bin = "./tmp/hub"
+  exclude_dir = ["tmp", "bin"]
+  exclude_regex = ["_test.go"]
+  delay = 500
+
+[misc]
+  clean_on_exit = true

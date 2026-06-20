@@ -1,0 +1,30 @@
+# golangci-lint config for the hub Go module. Run: `golangci-lint run` (from
+# hub/, or `make -C hub lint`). Validated in CI (.github/workflows/ci.yml).
+version: "2"
+run:
+  timeout: 5m
+  tests: true
+  relative-path-mode: gomod
+  modules-download-mode: readonly
+linters:
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - .*\.pb\.go$
+      - third_party$
+formatters:
+  enable:
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/avuru/avuru-obs
+  exclusions:
+    generated: lax
+    paths:
+      - .*\.pb\.go$

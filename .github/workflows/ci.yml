@@ -1,0 +1,62 @@
+name: ci
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+
+# Mirrors `make check` (per-component) + helm validation. Author-fresh — not a
+# port of Kiali's Istio-heavy matrix.
+jobs:
+  hub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - name: build + test
+        working-directory: hub
+        run: go build ./... && go test -race ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: hub
+          version: latest
+
+  agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: rust check/test/clippy
+        working-directory: agent
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy
+          cargo check
+          cargo test
+          cargo clippy -- -D warnings
+
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: lint + static-export build
+        working-directory: ui
+        run: |
+          npm ci --no-audit --no-fund
+          npm run lint
+          npm run build
+
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: lint + template
+        run: |
+          helm lint deploy/helm/avuruops
+          helm template avuruops deploy/helm/avuruops > /dev/null
+          helm template avuruops deploy/helm/avuruops --set clickhouse.external.enabled=true --set clickhouse.external.address=ch:9000 --set clickhouse.external.existingSecret=ch > /dev/null

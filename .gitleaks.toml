@@ -1,0 +1,18 @@
+title = "avuru-obs gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Local/dev default credentials and test fixtures — not real secrets"
+paths = [
+  '''deploy/compose/.*''',
+  '''deploy/helm/avuruops/values.*\.yaml''',
+  '''.*_test\.go$''',
+  '''e2e/.*''',
+  '''tools/seed/.*''',
+]
+regexes = [
+  '''avuru:avuru''',     # compose ClickHouse default creds (sandbox only)
+  '''password: avuru''',
+]

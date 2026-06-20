@@ -47,6 +47,11 @@ doesn't exist: the Rust flow tracer, the Hub, and the UI.
 - `agent_docs/proto_contracts.md` — shared-contract rules (read before touching `proto/`)
 - `agent_docs/go_style.md` / `agent_docs/rust_style.md` / `agent_docs/ui_patterns.md` — read only when actively coding in that language
 
+**Governance & meta** (repo root): `CONTRIBUTING.md` (workflow), `AI_POLICY.md`
+(AI use — note: **no AI commit trailers**, this guide is the source of truth),
+`SECURITY.md`, `STYLE_GUIDE.md` (→ `agent_docs/*_style.md`), `design/` (specs/
+RFCs). CI: `.github/workflows/ci.yml` mirrors `make check` + helm lint.
+
 ## Generated files — NEVER hand-edit
 
 - Anything under `*/generated/` or marked `// Code generated` — regenerate via `make proto` *[M1+ — echoes until buf is wired]*
