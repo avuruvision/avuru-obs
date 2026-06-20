@@ -5,7 +5,7 @@ import { ComingSoon } from "@/components/ui/coming-soon";
 export default function NodesPage() {
   return (
     <>
-      <Topbar title="Nodes" />
+      <Topbar />
       <main className="flex-1 overflow-y-auto p-5">
         <ComingSoon icon={Server} title="Node & pod health" milestone="M3">
           CPU, memory, and network per node and pod (kubeletstats) — answer

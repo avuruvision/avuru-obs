@@ -1,17 +1,17 @@
-import { Map as MapIcon } from "lucide-react";
+import { Suspense } from "react";
 import { Topbar } from "@/components/layout/topbar";
-import { ComingSoon } from "@/components/ui/coming-soon";
+import { CenteredSpinner } from "@/components/ui/spinner";
+import { ServiceMapScreen } from "@/components/service-map/service-map-screen";
 
 export default function ServiceMapPage() {
   return (
     <>
-      <Topbar title="Service Map" />
+      <Topbar />
       <main className="flex-1 overflow-y-auto p-5">
-        <ComingSoon icon={MapIcon} title="Live service map" milestone="M2">
-          The wedge: a live topology built from eBPF TCP flow tracing — no SDK,
-          no sidecars, no YAML. Install the sensor and watch your architecture
-          draw itself in under five minutes.
-        </ComingSoon>
+        {/* useTimeRange (useSearchParams) consumer — Suspense for static export */}
+        <Suspense fallback={<CenteredSpinner />}>
+          <ServiceMapScreen />
+        </Suspense>
       </main>
     </>
   );

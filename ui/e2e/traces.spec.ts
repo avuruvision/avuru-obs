@@ -22,10 +22,25 @@ test.describe("shell", () => {
     await expect(html).toHaveAttribute("data-theme", "dark");
   });
 
-  test("non-M1 routes teach what arrives when", async ({ page }) => {
+  test("not-yet-built routes teach what arrives when", async ({ page }) => {
+    await page.goto("/nodes");
+    await expect(page.getByText("Node & pod health")).toBeVisible();
+    await expect(page.getByText(/arrives in M\d/)).toBeVisible();
+  });
+
+  test("sidebar groups nav into sections", async ({ page }) => {
+    await page.goto("/traces");
+    for (const section of ["Observe", "Infrastructure", "System"]) {
+      await expect(page.getByText(section, { exact: true })).toBeVisible();
+    }
+    // Masthead shows a breadcrumb derived from the route.
+    await expect(page.getByLabel("Breadcrumb")).toContainText("Traces");
+  });
+
+  test("service map renders the seeded service graph", async ({ page }) => {
     await page.goto("/service-map");
-    await expect(page.getByText("Live service map")).toBeVisible();
-    await expect(page.getByText("arrives in M2")).toBeVisible();
+    // Seeded data → not the empty state; the screen summarises the nodes.
+    await expect(page.getByText(/click a node for its traces/)).toBeVisible();
   });
 });
 

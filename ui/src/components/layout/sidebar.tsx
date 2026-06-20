@@ -2,31 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Activity,
-  Boxes,
-  ChevronsLeft,
-  ChevronsRight,
-  Flame,
-  Hexagon,
-  ListTree,
-  Map as MapIcon,
-  ScrollText,
-  Server,
-  Settings,
-} from "lucide-react";
+import { Activity, ChevronsLeft, ChevronsRight, Hexagon } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useLocalStorageFlag } from "@/hooks/use-local-storage-flag";
-
-const NAV = [
-  { href: "/services", label: "Services", icon: Boxes },
-  { href: "/service-map", label: "Service Map", icon: MapIcon },
-  { href: "/traces", label: "Traces", icon: ListTree },
-  { href: "/logs", label: "Logs", icon: ScrollText },
-  { href: "/profiling", label: "Profiling", icon: Flame },
-  { href: "/nodes", label: "Nodes", icon: Server },
-  { href: "/settings", label: "Settings", icon: Settings },
-] as const;
+import { NAV_SECTIONS } from "./nav-config";
 
 const COLLAPSE_KEY = "avuru-sidebar-collapsed";
 
@@ -54,26 +33,37 @@ export function Sidebar() {
         )}
       </Link>
 
-      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
-        {NAV.map(({ href, label, icon: Icon }) => {
-          const active = pathname.startsWith(href);
-          return (
-            <Link
-              key={href}
-              href={href}
-              title={collapsed ? label : undefined}
-              className={cn(
-                "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
-                active
-                  ? "bg-primary/10 font-semibold text-primary"
-                  : "text-base-content/65 hover:bg-base-300 hover:text-base-content",
-              )}
-            >
-              <Icon className="h-4 w-4 shrink-0" aria-hidden />
-              {!collapsed && <span className="truncate">{label}</span>}
-            </Link>
-          );
-        })}
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
+        {NAV_SECTIONS.map((section) => (
+          <div key={section.title} className="flex flex-col gap-0.5">
+            {collapsed ? (
+              <div className="mx-2 my-1 border-t border-neutral/60" />
+            ) : (
+              <p className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-base-content/40">
+                {section.title}
+              </p>
+            )}
+            {section.items.map(({ href, label, icon: Icon }) => {
+              const active = pathname === href || pathname.startsWith(href + "/");
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  title={collapsed ? label : undefined}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
+                    active
+                      ? "bg-primary/10 font-semibold text-primary"
+                      : "text-base-content/65 hover:bg-base-300 hover:text-base-content",
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                  {!collapsed && <span className="truncate">{label}</span>}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       <div className="border-t border-neutral p-2">

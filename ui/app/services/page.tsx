@@ -5,7 +5,7 @@ import { ComingSoon } from "@/components/ui/coming-soon";
 export default function ServicesPage() {
   return (
     <>
-      <Topbar title="Services" />
+      <Topbar />
       <main className="flex-1 overflow-y-auto p-5">
         <ComingSoon icon={Boxes} title="Service inventory" milestone="M2">
           Every service in your cluster, auto-discovered by eBPF with zero code

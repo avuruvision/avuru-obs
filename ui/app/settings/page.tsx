@@ -5,7 +5,7 @@ import { ComingSoon } from "@/components/ui/coming-soon";
 export default function SettingsPage() {
   return (
     <>
-      <Topbar title="Settings" />
+      <Topbar />
       <main className="flex-1 overflow-y-auto p-5">
         <ComingSoon icon={Settings} title="Settings" milestone="M5">
           Authentication, retention policies, agent configuration (OpAMP) —
