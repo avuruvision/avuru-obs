@@ -19,7 +19,7 @@ jobs:
         working-directory: hub
         run: go build ./... && go test -race ./...
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8   # v8 targets golangci-lint v2 (matches hub/.golangci.yml `version: "2"`)
         with:
           working-directory: hub
           version: latest
