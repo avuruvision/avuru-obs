@@ -6,7 +6,7 @@ nameOverride: ""
 fullnameOverride: ""
 
 image:
-  # Registry prefixed to every component repository (e.g. "harbor.devops.lab").
+  # Registry prefixed to every component repository (e.g. "harbor.example.com").
   # Empty = pull from the repository as-is (Docker Hub / GHCR style).
   registry: ""
   pullPolicy: IfNotPresent

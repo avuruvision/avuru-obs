@@ -28,7 +28,7 @@ No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale
 
 | Value | Default | Purpose |
 |---|---|---|
-| `image.registry` | `""` | Prefix every image (e.g. `harbor.devops.lab`) for a private registry |
+| `image.registry` | `""` | Prefix every image (e.g. `harbor.example.com`) for a private registry |
 | `clickhouse.external.enabled` | `false` | BYO ClickHouse — set `.address` + `.existingSecret` |
 | `clickhouse.persistence.storageClassName` | `""` | `""` = cluster default StorageClass |
 | `clickhouse.persistence.size` | `50Gi` | PVC size |

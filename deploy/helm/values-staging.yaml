@@ -37,6 +37,6 @@ ui:
 ingress:
   enabled: true
   className: nginx
-  host: avuruops-staging.devops.lab
+  host: avuruops-staging.example.com
   # Auth is enforced at the ingress (oauth2-proxy / Keycloak), not in the chart.
   annotations: {}
