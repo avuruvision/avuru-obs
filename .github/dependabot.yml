@@ -1,26 +1,56 @@
 version: 2
+# One grouped PR per ecosystem per week (instead of one PR per dependency) to
+# keep the noise down on a small team. Majors are bundled too — review the group
+# PR and split out a breaking bump manually if needed.
 updates:
   - package-ecosystem: gomod
     directory: /hub
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      hub-go:
+        patterns: ["*"]
+
   - package-ecosystem: npm
     directory: /ui
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      ui-npm:
+        patterns: ["*"]
+
   - package-ecosystem: cargo
     directory: /agent
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      agent-cargo:
+        patterns: ["*"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns: ["*"]
+
   - package-ecosystem: docker
     directory: /hub
     schedule:
       interval: weekly
+    groups:
+      hub-docker:
+        patterns: ["*"]
+
   - package-ecosystem: docker
     directory: /ui
     schedule:
       interval: weekly
+    groups:
+      ui-docker:
+        patterns: ["*"]
