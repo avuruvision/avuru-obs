@@ -8,7 +8,7 @@ RUN npm ci --no-audit --no-fund
 COPY ui/ ./
 RUN npm run build
 
-FROM nginx:1.27-alpine
+FROM nginx:1.31-alpine
 COPY ui/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /src/ui/out/ /usr/share/nginx/html/
 EXPOSE 80
