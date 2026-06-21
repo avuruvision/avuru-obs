@@ -1,0 +1,32 @@
+# Code owners — auto-requested for review on matching paths.
+# Mirror of MAINTAINERS.md; keep the two in sync. Owners must be org members
+# for GitHub to route reviews. Later-matching lines win, so the default is first.
+#
+# Docs: https://docs.github.com/articles/about-code-owners
+
+# Default owner for everything not matched below.
+*                       @egilberny
+
+# Components
+/agent/                 @egilberny
+/hub/                   @egilberny
+/ui/                    @egilberny
+/gateway/               @egilberny
+/proto/                 @egilberny
+/sensor/                @egilberny
+/deploy/                @egilberny
+/tools/                 @egilberny
+/e2e/                   @egilberny
+
+# Docs, governance, and release — extra scrutiny.
+/agent_docs/            @egilberny
+/design/                @egilberny
+/.github/               @egilberny
+/GOVERNANCE.md          @egilberny
+/MAINTAINERS.md         @egilberny
+/CODE_OF_CONDUCT.md     @egilberny
+/SECURITY.md            @egilberny
+/RELEASING.md           @egilberny
+/RELEASE-CHECKLIST.md   @egilberny
+/AGENTS.md              @egilberny
+/AI_POLICY.md           @egilberny

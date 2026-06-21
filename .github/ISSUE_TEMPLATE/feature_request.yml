@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest an improvement or new capability
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a **significant** design (new locked decision, enterprise seam, or
+        anything reshaping a component), consider opening an
+        [Avuru Enhancement Proposal](https://github.com/avuruvision/avuru-obs/blob/main/design/README.md) instead.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: textarea
+    id: wedge
+    attributes:
+      label: Impact on the wedge
+      description: Does this affect time-to-value (fresh cluster → service map in <5 min, zero app changes)? How?
+    validations:
+      required: false

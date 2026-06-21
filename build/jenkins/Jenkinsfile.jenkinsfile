@@ -26,7 +26,7 @@ pipeline {
         gitLabConnection('gitlab_jenkins')
     }
     parameters {
-        string(name: 'GIT_BRANCH', defaultValue: 'develop', description: 'GitHub branch to build')
+        string(name: 'GIT_BRANCH', defaultValue: 'main', description: 'GitHub branch to build')
         booleanParam(name: 'SEND_SUCCESS_MAIL', defaultValue: false, description: 'Send notification mail on success.')
     }
 

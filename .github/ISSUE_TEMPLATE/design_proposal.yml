@@ -1,0 +1,39 @@
+name: Design proposal (AEP)
+description: Float a significant design before writing the full proposal
+labels: ["design", "aep"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this to float a **significant** design and gather early feedback. The
+        full, durable design lands as an **Avuru Enhancement Proposal** PR under
+        [`design/`](https://github.com/avuruvision/avuru-obs/blob/main/design/README.md) using
+        [`design/TEMPLATE.md`](https://github.com/avuruvision/avuru-obs/blob/main/design/TEMPLATE.md).
+        This issue is the informal first step.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One paragraph — what are you proposing?
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why now? What problem does it solve, and who feels it?
+    validations:
+      required: true
+  - type: textarea
+    id: decisions
+    attributes:
+      label: Affected decisions
+      description: Which locked decisions, the enterprise seam, or the wedge does this touch?
+    validations:
+      required: false
+  - type: checkboxes
+    id: next
+    attributes:
+      label: Next step
+      options:
+        - label: I intend to open a full AEP PR under `design/` if there's interest

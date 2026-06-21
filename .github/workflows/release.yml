@@ -1,0 +1,155 @@
+name: release
+
+# Cuts a release when a vX.Y.Z tag is pushed (see RELEASING.md). Can also be run
+# manually with a tag input, and supports a dry-run that builds without pushing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to release, e.g. v0.1.0"
+        required: true
+        type: string
+      dry_run:
+        description: "Build only; do not push images or publish the release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write   # create the GitHub Release
+  packages: write   # push images to GHCR
+
+env:
+  REGISTRY: ghcr.io
+  # Images publish as <IMAGE_PREFIX>-hub / -ui. Override the registry/owner here
+  # when a canonical registry is wired (see RELEASING.md).
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/avuru-obs
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      version: ${{ steps.v.outputs.version }}
+      minor: ${{ steps.v.outputs.minor }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+      dry_run: ${{ steps.v.outputs.dry_run }}
+    steps:
+      - id: v
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          version="${tag#v}"                       # strip leading v
+          minor="v$(echo "$version" | cut -d. -f1,2)"   # vX.Y
+          case "$version" in *-*) pre=true ;; *) pre=false ;; esac   # pre-release if it has a suffix
+          dry="${{ github.event.inputs.dry_run || 'false' }}"
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "minor=$minor"
+            echo "prerelease=$pre"
+            echo "dry_run=$dry"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing tag=$tag version=$version minor=$minor prerelease=$pre dry_run=$dry"
+
+  images:
+    needs: meta
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - component: hub
+            dockerfile: hub/Dockerfile
+          - component: ui
+            dockerfile: ui/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to registry
+        if: needs.meta.outputs.dry_run != 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push ${{ matrix.component }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: ${{ needs.meta.outputs.dry_run != 'true' }}
+          build-args: |
+            VERSION=${{ needs.meta.outputs.tag }}
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.component }}:${{ needs.meta.outputs.tag }}
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.component }}:${{ needs.meta.outputs.minor }}
+
+  chart:
+    needs: meta
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Package Helm chart
+        run: |
+          helm lint deploy/helm/avuruops
+          helm package deploy/helm/avuruops \
+            --version "${{ needs.meta.outputs.version }}" \
+            --app-version "${{ needs.meta.outputs.version }}" \
+            --destination dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: dist/*.tgz
+          if-no-files-found: error
+
+  # Best-effort: the agent is not containerized yet (no agent/Dockerfile), and
+  # the full eBPF build needs extra tooling. Don't block the release on it.
+  agent-binary:
+    needs: meta
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build agent (release)
+        working-directory: agent
+        run: cargo build --release || echo "agent build skipped/failed (non-blocking)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-binary
+          path: agent/target/release/avuru-agent
+          if-no-files-found: ignore
+
+  release:
+    needs: [meta, images, chart]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Extract changelog notes
+        id: notes
+        run: |
+          ver="${{ needs.meta.outputs.version }}"
+          # Pull the section for this version from CHANGELOG.md, if present.
+          awk -v v="$ver" '
+            $0 ~ "^## \\[" v "\\]" {grab=1; next}
+            grab && /^## \[/ {exit}
+            grab {print}
+          ' CHANGELOG.md > notes.md || true
+          if [ ! -s notes.md ]; then echo "See CHANGELOG.md for details." > notes.md; fi
+      - name: Create GitHub Release
+        if: needs.meta.outputs.dry_run != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.meta.outputs.tag }}
+          name: ${{ needs.meta.outputs.tag }}
+          body_path: notes.md
+          prerelease: ${{ needs.meta.outputs.prerelease == 'true' }}
+          files: |
+            artifacts/helm-chart/*.tgz
+            artifacts/agent-binary/*
+      - name: Dry-run summary
+        if: needs.meta.outputs.dry_run == 'true'
+        run: echo "Dry run — built images and chart, skipped push and release for ${{ needs.meta.outputs.tag }}"

@@ -13,4 +13,6 @@ Please verify findings (e.g. confirm scanner results reproduce) before reporting
 
 ## Supported versions
 
-Pre-1.0: only the latest `develop` is supported. Security fixes land there first.
+Pre-1.0: the latest `main` and the most recent `vX.Y` release branch are
+supported. Security fixes land on `main` first, then are backported to the
+supported release branch (see [RELEASING.md](RELEASING.md)).

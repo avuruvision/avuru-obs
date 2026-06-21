@@ -1,0 +1,59 @@
+name: Bug report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please don't report **security** issues here —
+        see [SECURITY.md](https://github.com/avuruvision/avuru-obs/blob/main/SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear, concise description of the bug. Screenshots welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+        3. …
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - agent (Rust / eBPF)
+        - hub (Go API)
+        - ui (Next.js)
+        - gateway (collector / schemas)
+        - deploy (Helm / compose)
+        - proto / sensor
+        - docs
+        - unsure
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Version (`make version` / image tag), how deployed (Helm/compose), Kubernetes distro & version, kernel version (for eBPF).
+      value: |
+        - avuru-obs version:
+        - Deployed via: (Helm / compose / source)
+        - Kubernetes:
+        - Kernel:
+    validations:
+      required: true

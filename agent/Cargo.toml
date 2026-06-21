@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/flow-core", "crates/avuru-agent"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.0-SNAPSHOT"
 edition = "2021"
 license = "Apache-2.0"
 

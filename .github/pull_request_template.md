@@ -14,5 +14,6 @@
 
 - [ ] `make check` is green
 - [ ] Tests land with the change (agent_docs/testing.md)
-- [ ] Branch is `feature/<milestone>` or `ai/<topic>`; conventional commits
+- [ ] Branch is `feature/<topic>` or `ai/<topic>` off `main`; conventional commits
+- [ ] Commits are signed (COMMIT-SIGNING-SETUP.md)
 - [ ] No AI co-author trailers (see AI_POLICY.md)

@@ -47,10 +47,13 @@ doesn't exist: the Rust flow tracer, the Hub, and the UI.
 - `agent_docs/proto_contracts.md` — shared-contract rules (read before touching `proto/`)
 - `agent_docs/go_style.md` / `agent_docs/rust_style.md` / `agent_docs/ui_patterns.md` — read only when actively coding in that language
 
-**Governance & meta** (repo root): `CONTRIBUTING.md` (workflow), `AI_POLICY.md`
-(AI use — note: **no AI commit trailers**, this guide is the source of truth),
-`SECURITY.md`, `STYLE_GUIDE.md` (→ `agent_docs/*_style.md`), `design/` (specs/
-RFCs). CI: `.github/workflows/ci.yml` mirrors `make check` + helm lint.
+**Governance & meta** (repo root): `CONTRIBUTING.md` (workflow), `GOVERNANCE.md`
+(decisions, maintainers), `MAINTAINERS.md`, `AI_POLICY.md` (AI use — note: **no
+AI commit trailers**, this guide is the source of truth), `SECURITY.md`,
+`STYLE_GUIDE.md` (→ `agent_docs/*_style.md`), `RELEASING.md` + `ROADMAP.md` +
+`CHANGELOG.md` (release/direction), `design/` (Avuru Enhancement Proposals). CI:
+`.github/workflows/ci.yml` mirrors `make check` + helm lint; `release.yml` cuts
+releases on `vX.Y.Z` tags.
 
 ## Generated files — NEVER hand-edit
 
@@ -105,34 +108,38 @@ RFCs). CI: `.github/workflows/ci.yml` mirrors `make check` + helm lint.
 
 ## Git commits
 
-- Branch from `develop`; conventional commits (`feat:`, `fix:`, `docs:`,
+- Branch from `main`; conventional commits (`feat:`, `fix:`, `docs:`,
   `chore:`...), scope = component (`feat(hub): ...`)
+- **Sign your commits** — signing is required (`COMMIT-SIGNING-SETUP.md`);
+  `main` and `vX.Y` branches enforce it via branch protection
 - Commit as the configured git author only — **never add `Co-Authored-By`
   trailers** (no AI co-author attribution in history)
 - Run the validation commands above for every component you touched before
   committing; never bypass or skip failing checks
 
-### Branch & push hygiene (a feature branch NEVER tracks `develop`)
+### Branch & push hygiene (a feature branch NEVER tracks `main`)
 
+`main` is the single development **trunk** (Kiali-style, see `RELEASING.md`).
 Two remotes exist: `github` (avuruvision, where AI dev happens) and `origin`
-(GitLab, the company repo). Keep `develop` clean — it is the integration
-branch, fed only through reviewed PRs, never by a stray push.
+(GitLab, the company repo). Keep `main` clean — it is fed only through reviewed
+PRs, never by a stray push.
 
 Branch naming: milestone branches use `feature/<milestone>` (e.g.
 `feature/m2-deployable-otlp-backend`); smaller ad-hoc agent tasks use
-`ai/<topic>`. Both branch from `develop` and follow the same push hygiene.
+`ai/<topic>`. Both branch from `main` and follow the same push hygiene.
 
-1. **Create branches with `git switch -c <feature/…|ai/…> develop`.** Don't
+1. **Create branches with `git switch -c <feature/…|ai/…> main`.** Don't
    `git branch` off a detached/ambiguous base.
 2. **First push sets the branch's OWN upstream: `git push -u github
-   <branch>`.** Never let a branch track `github/develop` — a misconfigured
-   upstream is how a bare `git push` silently lands work on `develop`
+   <branch>`.** Never let a branch track `github/main` — a misconfigured
+   upstream is how a bare `git push` silently lands work on `main`
    (post-mortem: M1, 2026-06). Verify with `git branch -vv`: the `[github/...]`
-   in brackets must match the branch name, not `develop`.
-3. **Never `git push` to `develop` directly** (no `git push github
-   HEAD:develop`, no bare `git push` while tracking develop). Integrate via a
-   GitHub PR `<branch> → develop`.
-4. **`main` is release-only** — never push feature work to it.
+   in brackets must match the branch name, not `main`.
+3. **Never `git push` to `main` directly** (no `git push github HEAD:main`, no
+   bare `git push` while tracking main). Integrate via a GitHub PR
+   `<branch> → main`.
+4. **`vX.Y` release branches are release-only** — patch backports land there via
+   PR (see `RELEASING.md`), never day-to-day feature work.
 
 ## Merge conflict resolution
 

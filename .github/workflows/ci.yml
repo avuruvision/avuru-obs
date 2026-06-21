@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [develop, main]
+    branches: [main, "v*"]
   pull_request:
 
 # Mirrors `make check` (per-component) + helm validation. Author-fresh — not a

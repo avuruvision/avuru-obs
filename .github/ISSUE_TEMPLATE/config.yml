@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/avuruvision/avuru-obs/blob/main/SECURITY.md
+    about: Do not file security issues publicly — report them privately per SECURITY.md.
+  - name: Question or discussion
+    url: https://github.com/avuruvision/avuru-obs/discussions
+    about: Ask questions and discuss ideas in Discussions.
