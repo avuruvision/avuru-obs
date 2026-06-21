@@ -1,7 +1,7 @@
 # UI image: Next.js static export served by nginx. The UI is its own deployable
 # (separate pod), single-origin with the hub. Build context = repo root.
 
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /src/ui
 COPY ui/package.json ui/package-lock.json ./
 RUN npm ci --no-audit --no-fund
