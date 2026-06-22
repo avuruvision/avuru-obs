@@ -96,6 +96,45 @@ export interface StatusResponse {
   clickhouse: string;
 }
 
+export type HealthStatus =
+  | "healthy"
+  | "degraded"
+  | "down"
+  | "idle"
+  | "unknown";
+
+export interface ComponentHealth {
+  name: string;
+  status: HealthStatus;
+  detail?: string;
+}
+
+export interface SignalStats {
+  signal: string;
+  rows: number;
+  bytes: number;
+  compressedBytes: number;
+  compression: number;
+  oldest?: string;
+  newest?: string;
+  retentionDays: number;
+}
+
+export interface DiskStats {
+  name: string;
+  freeBytes: number;
+  totalBytes: number;
+}
+
+export interface SystemStatusResponse {
+  version: string;
+  overall: "healthy" | "degraded" | "down";
+  checkedAt: string;
+  components: ComponentHealth[];
+  signals: SignalStats[];
+  disks: DiskStats[];
+}
+
 export interface LogRecord {
   timestamp: string;
   severity: string;

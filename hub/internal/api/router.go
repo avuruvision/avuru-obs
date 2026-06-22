@@ -19,9 +19,16 @@ var Version = "dev"
 // 200 so the pod isn't killed for a ClickHouse outage).
 type StoreProvider func() storage.Store
 
+// Config holds non-store handler settings (e.g. reported retention).
+type Config struct {
+	RetentionTracesDays int
+	RetentionLogsDays   int
+}
+
 // API holds handler dependencies.
 type API struct {
 	provider StoreProvider
+	cfg      Config
 }
 
 // store resolves the current backend or fails with 503.
@@ -33,11 +40,12 @@ func (a *API) store() (storage.Store, error) {
 }
 
 // Register mounts all API routes on mux.
-func Register(mux *http.ServeMux, provider StoreProvider) {
-	a := &API{provider: provider}
+func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
+	a := &API{provider: provider, cfg: cfg}
 
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.Handle("GET /api/v1/status", handle(a.handleStatus))
+	mux.Handle("GET /api/v1/system/status", handle(a.handleSystemStatus))
 	mux.Handle("GET /api/v1/services", handle(a.handleServices))
 	mux.Handle("GET /api/v1/traces", handle(a.handleSearchTraces))
 	mux.Handle("GET /api/v1/traces/overview", handle(a.handleTraceOverview))

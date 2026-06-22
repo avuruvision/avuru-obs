@@ -185,9 +185,33 @@ type LogPage struct {
 	NextCursor *LogCursor
 }
 
+// SignalStats summarizes one telemetry signal's stored data.
+type SignalStats struct {
+	Signal          string // "traces" | "logs"
+	Rows            uint64
+	Bytes           uint64 // uncompressed
+	CompressedBytes uint64
+	Oldest          *time.Time // nil when the signal has no data
+	Newest          *time.Time
+}
+
+// DiskStats is one ClickHouse storage disk's capacity.
+type DiskStats struct {
+	Name       string
+	FreeBytes  uint64
+	TotalBytes uint64
+}
+
+// SystemStats is backend storage health for the System Status view.
+type SystemStats struct {
+	Signals []SignalStats
+	Disks   []DiskStats
+}
+
 // Store is the telemetry query seam implemented by storage backends.
 type Store interface {
 	Ping(ctx context.Context) error
+	SystemStats(ctx context.Context) (SystemStats, error)
 	ListServices(ctx context.Context, q ServiceQuery) ([]ServiceStats, error)
 	TraceOverview(ctx context.Context, q OverviewQuery) ([]OperationStats, error)
 	SearchTraces(ctx context.Context, q TraceQuery) (TracePage, error)

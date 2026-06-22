@@ -18,6 +18,8 @@ type Fake struct {
 	Heat      storage.Heatmap
 	LogPage   storage.LogPage
 	TraceLogs map[string][]storage.LogRecord
+	Stats     storage.SystemStats
+	StatsErr  error
 
 	// LastTraceQuery / LastLogQuery record the most recent inputs for
 	// asserting parameter parsing.
@@ -28,6 +30,10 @@ type Fake struct {
 var _ storage.Store = (*Fake)(nil)
 
 func (f *Fake) Ping(context.Context) error { return f.PingErr }
+
+func (f *Fake) SystemStats(context.Context) (storage.SystemStats, error) {
+	return f.Stats, f.StatsErr
+}
 
 func (f *Fake) ListServices(_ context.Context, _ storage.ServiceQuery) ([]storage.ServiceStats, error) {
 	return f.Services, nil

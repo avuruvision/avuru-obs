@@ -19,7 +19,7 @@ func newMux(fake *storagetest.Fake) *http.ServeMux {
 		}
 		return fake
 	}
-	Register(mux, provider)
+	Register(mux, provider, Config{RetentionTracesDays: 7, RetentionLogsDays: 3})
 	return mux
 }
 
@@ -45,6 +45,7 @@ func TestRoutes(t *testing.T) {
 	}{
 		{"healthz ok", http.MethodGet, "/healthz", http.StatusOK},
 		{"status ok", http.MethodGet, "/api/v1/status", http.StatusOK},
+		{"system status ok", http.MethodGet, "/api/v1/system/status", http.StatusOK},
 		{"services ok", http.MethodGet, "/api/v1/services", http.StatusOK},
 		{"traces ok", http.MethodGet, "/api/v1/traces", http.StatusOK},
 		{"overview ok", http.MethodGet, "/api/v1/traces/overview", http.StatusOK},
@@ -166,4 +167,61 @@ func TestCursorRoundTrip(t *testing.T) {
 	if out.TraceID != in.TraceID || !out.Timestamp.Equal(in.Timestamp) {
 		t.Errorf("round trip mismatch: %+v vs %+v", out, in)
 	}
+}
+
+func TestSystemStatus(t *testing.T) {
+	now := time.Now().UTC()
+	fake := &storagetest.Fake{Stats: storage.SystemStats{
+		Signals: []storage.SignalStats{
+			{Signal: "traces", Rows: 100, Bytes: 1000, CompressedBytes: 200, Oldest: &now, Newest: &now},
+			{Signal: "logs"},
+		},
+		Disks: []storage.DiskStats{{Name: "default", FreeBytes: 50, TotalBytes: 100}},
+	}}
+
+	rec := get(t, newMux(fake), "/api/v1/system/status")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp systemStatusResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Overall != "healthy" {
+		t.Errorf("overall = %q, want healthy", resp.Overall)
+	}
+	if !hasComponent(resp.Components, "ClickHouse", "healthy") || !hasComponent(resp.Components, "Ingestion", "healthy") {
+		t.Errorf("components: %+v", resp.Components)
+	}
+	var traces *signalStatsDTO
+	for i := range resp.Signals {
+		if resp.Signals[i].Signal == "traces" {
+			traces = &resp.Signals[i]
+		}
+	}
+	if traces == nil || traces.RetentionDays != 7 || traces.Compression != 5 {
+		t.Errorf("traces signal wrong: %+v", traces)
+	}
+
+	// Store down: still 200, but overall down and ClickHouse down.
+	down := get(t, newMux(nil), "/api/v1/system/status")
+	if down.Code != http.StatusOK {
+		t.Fatalf("down code %d, want 200", down.Code)
+	}
+	var dresp systemStatusResponse
+	if err := json.NewDecoder(down.Body).Decode(&dresp); err != nil {
+		t.Fatalf("decode down: %v", err)
+	}
+	if dresp.Overall != "down" || !hasComponent(dresp.Components, "ClickHouse", "down") {
+		t.Errorf("down response wrong: %+v", dresp)
+	}
+}
+
+func hasComponent(cs []componentHealth, name, status string) bool {
+	for _, c := range cs {
+		if c.Name == name && c.Status == status {
+			return true
+		}
+	}
+	return false
 }

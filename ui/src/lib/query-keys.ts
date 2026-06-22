@@ -7,6 +7,7 @@ export interface TimeParams {
 
 export const queryKeys = {
   status: ["status"] as const,
+  systemStatus: ["system", "status"] as const,
   services: (t: TimeParams) => ["services", "list", t] as const,
   traceOverview: (t: TimeParams, service?: string) =>
     ["traces", "overview", { ...t, service }] as const,

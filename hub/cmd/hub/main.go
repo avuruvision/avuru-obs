@@ -114,7 +114,10 @@ func run() error {
 	// Hub is API-only: the UI is a separate deployable (its own nginx pod),
 	// reached single-origin via the gateway/ingress. See agent_docs/architecture.md.
 	mux := http.NewServeMux()
-	api.Register(mux, provider)
+	api.Register(mux, provider, api.Config{
+		RetentionTracesDays: envIntOr("AVURUOPS_RETENTION_TRACES_DAYS", 7),
+		RetentionLogsDays:   envIntOr("AVURUOPS_RETENTION_LOGS_DAYS", 3),
+	})
 
 	srv := &http.Server{
 		Addr:              addr,

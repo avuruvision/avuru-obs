@@ -387,4 +387,23 @@ func TestStoreIntegration(t *testing.T) {
 			t.Errorf("tenant isolation broken: %+v", got)
 		}
 	})
+
+	t.Run("SystemStats", func(t *testing.T) {
+		st, err := store.SystemStats(ctx)
+		if err != nil {
+			t.Fatalf("SystemStats: %v", err)
+		}
+		var traces *storage.SignalStats
+		for i := range st.Signals {
+			if st.Signals[i].Signal == "traces" {
+				traces = &st.Signals[i]
+			}
+		}
+		if traces == nil || traces.Rows < 4 || traces.Bytes == 0 || traces.Newest == nil {
+			t.Fatalf("traces stats wrong: %+v", traces)
+		}
+		if len(st.Disks) == 0 || st.Disks[0].TotalBytes == 0 {
+			t.Errorf("disks wrong: %+v", st.Disks)
+		}
+	})
 }
