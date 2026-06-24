@@ -1,0 +1,32 @@
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Next.js static export: extensionless routes resolve to "<route>.html"
+    # (e.g. /traces -> traces.html), with SPA fallback to index.html for
+    # client-side routes.
+    location / {
+        try_files $uri $uri.html $uri/ /index.html;
+    }
+
+    # Single-origin API proxy → hub. ${HUB_UPSTREAM} is set per environment
+    # (compose: hub:8080; k8s: <release>-hub:8080) and ${NGINX_RESOLVER} is
+    # derived from /etc/resolv.conf at start (Docker DNS in compose, CoreDNS in
+    # k8s) — both substituted by the nginx image's envsubst. The variable
+    # upstream + resolver lets nginx start even when the hub isn't yet
+    # resolvable and re-resolve as the Service IP changes.
+    location /api/ {
+        resolver ${NGINX_RESOLVER} ipv6=off valid=10s;
+        set $hub_upstream "${HUB_UPSTREAM}";
+        proxy_pass http://$hub_upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+    location = /healthz {
+        resolver ${NGINX_RESOLVER} ipv6=off valid=10s;
+        set $hub_upstream "${HUB_UPSTREAM}";
+        proxy_pass http://$hub_upstream;
+    }
+}

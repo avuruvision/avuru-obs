@@ -25,6 +25,10 @@ spec:
         - name: ui
           image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.ui.repository "tag" (.Values.ui.tag | default .Chart.AppVersion)) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            # nginx proxies /api → hub (single-origin). In-cluster Service name.
+            - name: HUB_UPSTREAM
+              value: {{ printf "%s-hub:8080" (include "avuruops.fullname" .) | quote }}
           ports:
             - name: http
               containerPort: 80
