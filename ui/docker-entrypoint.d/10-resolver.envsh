@@ -1,7 +1,0 @@
-# Derive the DNS resolver from the container's /etc/resolv.conf so the /api
-# proxy works in BOTH docker-compose (Docker DNS 127.0.0.11) and Kubernetes
-# (CoreDNS). Sourced by the nginx image entrypoint before envsubst runs, so
-# ${NGINX_RESOLVER} is available when default.conf.template is rendered.
-NGINX_RESOLVER="$(awk '/^nameserver/ { print $2; exit }' /etc/resolv.conf 2>/dev/null)"
-export NGINX_RESOLVER="${NGINX_RESOLVER:-127.0.0.11}"
-echo "10-resolver.envsh: NGINX_RESOLVER=${NGINX_RESOLVER}"
