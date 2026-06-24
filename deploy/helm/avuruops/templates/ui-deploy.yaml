@@ -28,8 +28,11 @@ spec:
           env:
             # nginx proxies /api → hub (single-origin). FQDN so the literal
             # upstream resolves at startup regardless of resolv.conf search/ndots.
+            # Port 80 is the hub *Service* port (targetPort 8080); the container's
+            # 8080 is not exposed on the Service, so :8080 here would never route
+            # (and an ambient mesh resets it). Matches the ingress /api backend.
             - name: HUB_UPSTREAM
-              value: {{ printf "%s-hub.%s.svc.cluster.local:8080" (include "avuruops.fullname" .) .Release.Namespace | quote }}
+              value: {{ printf "%s-hub.%s.svc.cluster.local:80" (include "avuruops.fullname" .) .Release.Namespace | quote }}
           ports:
             - name: http
               containerPort: 80
