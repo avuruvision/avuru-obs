@@ -12,21 +12,16 @@ server {
     }
 
     # Single-origin API proxy → hub. ${HUB_UPSTREAM} is set per environment
-    # (compose: hub:8080; k8s: <release>-hub:8080). ${NGINX_LOCAL_RESOLVERS} is
-    # provided by the nginx image's built-in 15-local-resolvers.envsh (from
-    # /etc/resolv.conf — Docker DNS in compose, CoreDNS in k8s); both are
-    # substituted by the image's envsubst. The variable upstream + resolver lets
-    # nginx start even when the hub isn't yet resolvable and re-resolve later.
+    # (compose: hub:8080; k8s: <release>-hub:8080) and filled by the nginx
+    # image's envsubst. A literal upstream (no nginx variable, so no `resolver`
+    # directive) is resolved at startup via the container's /etc/resolv.conf —
+    # Docker DNS in compose, CoreDNS in k8s — which works in both.
     location /api/ {
-        resolver ${NGINX_LOCAL_RESOLVERS} ipv6=off valid=10s;
-        set $hub_upstream "${HUB_UPSTREAM}";
-        proxy_pass http://$hub_upstream;
+        proxy_pass http://${HUB_UPSTREAM};
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
     location = /healthz {
-        resolver ${NGINX_LOCAL_RESOLVERS} ipv6=off valid=10s;
-        set $hub_upstream "${HUB_UPSTREAM}";
-        proxy_pass http://$hub_upstream;
+        proxy_pass http://${HUB_UPSTREAM};
     }
 }
