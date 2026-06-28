@@ -11,15 +11,15 @@ jobs:
   hub:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.26"
       - name: build + test
         working-directory: hub
         run: go build ./... && go test -race ./...
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v8   # v8 targets golangci-lint v2 (matches hub/.golangci.yml `version: "2"`)
+        uses: golangci/golangci-lint-action@v9   # v8 targets golangci-lint v2 (matches hub/.golangci.yml `version: "2"`)
         with:
           working-directory: hub
           version: latest
@@ -27,7 +27,7 @@ jobs:
   agent:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: rust check/test/clippy
         working-directory: agent
         run: |
@@ -39,8 +39,8 @@ jobs:
   ui:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: "24"
       - name: lint + static-export build
@@ -53,8 +53,8 @@ jobs:
   helm:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
       - name: lint + template
         run: |
           helm lint deploy/helm/avuruops
