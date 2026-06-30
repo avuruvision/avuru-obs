@@ -3,6 +3,7 @@
 import { FilterX } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import type { TraceFilters } from "@/hooks/use-traces-data";
 
 const INPUT =
@@ -90,29 +91,29 @@ export function TraceFilterPanel({
         </Field>
 
         <Field label="Status">
-          <select
+          <Select
+            ariaLabel="Filter by status"
             value={filters.status ?? ""}
-            aria-label="Filter by status"
-            onChange={(e) => set({ status: e.target.value || undefined })}
-            className={INPUT}
-          >
-            <option value="">All</option>
-            <option value="ok">OK</option>
-            <option value="error">Error</option>
-          </select>
+            onChange={(v) => set({ status: v || undefined })}
+            options={[
+              { value: "", label: "All" },
+              { value: "ok", label: "OK" },
+              { value: "error", label: "Error" },
+            ]}
+          />
         </Field>
 
         <Field label="Order">
-          <select
+          <Select
+            ariaLabel="Result order"
             value={filters.order ?? ""}
-            aria-label="Result order"
-            onChange={(e) => set({ order: e.target.value || undefined })}
-            className={INPUT}
-          >
-            <option value="">Newest</option>
-            <option value="oldest">Oldest</option>
-            <option value="slowest">Slowest</option>
-          </select>
+            onChange={(v) => set({ order: v || undefined })}
+            options={[
+              { value: "", label: "Newest" },
+              { value: "oldest", label: "Oldest" },
+              { value: "slowest", label: "Slowest" },
+            ]}
+          />
         </Field>
 
         <Field label="Duration (ms)">

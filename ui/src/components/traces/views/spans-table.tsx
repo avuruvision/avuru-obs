@@ -1,11 +1,10 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/cn";
 import { formatMs } from "@/lib/format";
 import { childrenByParent, selfTimeMs, serviceColor } from "@/lib/trace";
-import { SpanDetail } from "../span-detail";
 import type { Span, TraceResponse } from "@/lib/api-types";
 
 type SortKey = "service" | "operation" | "start" | "duration" | "self";
@@ -21,9 +20,17 @@ interface RowData {
 const defaultDesc = (key: SortKey) =>
   key === "duration" || key === "self" || key === "start";
 
-// Flat, sortable span list — Jaeger's "Trace Spans Table".
-export function SpansTable({ trace }: { trace: TraceResponse }) {
-  const [openSpanId, setOpenSpanId] = useState<string | null>(null);
+// Flat, sortable span list — Jaeger's "Trace Spans Table". Selection is lifted
+// so the detail renders in the side panel (split).
+export function SpansTable({
+  trace,
+  selectedSpanId,
+  onSelectSpan,
+}: {
+  trace: TraceResponse;
+  selectedSpanId?: string | null;
+  onSelectSpan?: (span: Span) => void;
+}) {
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({
     key: "start",
     desc: false,
@@ -89,55 +96,47 @@ export function SpansTable({ trace }: { trace: TraceResponse }) {
       </thead>
       <tbody>
         {sorted.map(({ span, startOffsetMs, selfMs }) => {
-          const isOpen = openSpanId === span.spanId;
+          const isSelected = selectedSpanId === span.spanId;
           const isError = span.statusCode === "Error";
           return (
-            <Fragment key={span.spanId}>
-              <tr
-                onClick={() => setOpenSpanId(isOpen ? null : span.spanId)}
+            <tr
+              key={span.spanId}
+              onClick={() => onSelectSpan?.(span)}
+              className={cn(
+                "cursor-pointer border-b border-neutral/40",
+                isSelected ? "bg-base-300/50" : "hover:bg-base-300/40",
+              )}
+            >
+              <td>
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                    style={{ backgroundColor: serviceColor(span.service) }}
+                    aria-hidden
+                  />
+                  <span className="truncate font-medium">{span.service}</span>
+                </span>
+              </td>
+              <td className="max-w-72 truncate font-mono text-xs">{span.operation}</td>
+              <td className="text-xs text-base-content/60">{span.kind}</td>
+              <td className="text-right font-mono text-xs text-base-content/60">
+                {formatMs(startOffsetMs)}
+              </td>
+              <td
                 className={cn(
-                  "cursor-pointer border-b border-neutral/40",
-                  isOpen ? "bg-base-300/50" : "hover:bg-base-300/40",
+                  "text-right font-mono text-xs",
+                  isError && "font-semibold text-error",
                 )}
               >
-                <td>
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                      style={{ backgroundColor: serviceColor(span.service) }}
-                      aria-hidden
-                    />
-                    <span className="truncate font-medium">{span.service}</span>
-                  </span>
-                </td>
-                <td className="max-w-72 truncate font-mono text-xs">{span.operation}</td>
-                <td className="text-xs text-base-content/60">{span.kind}</td>
-                <td className="text-right font-mono text-xs text-base-content/60">
-                  {formatMs(startOffsetMs)}
-                </td>
-                <td
-                  className={cn(
-                    "text-right font-mono text-xs",
-                    isError && "font-semibold text-error",
-                  )}
-                >
-                  {formatMs(span.durationMs)}
-                </td>
-                <td className="text-right font-mono text-xs text-base-content/60">
-                  {formatMs(selfMs)}
-                </td>
-                <td>
-                  <Badge tone={isError ? "error" : "neutral"}>{span.statusCode}</Badge>
-                </td>
-              </tr>
-              {isOpen && (
-                <tr>
-                  <td colSpan={7} className="p-0">
-                    <SpanDetail span={span} />
-                  </td>
-                </tr>
-              )}
-            </Fragment>
+                {formatMs(span.durationMs)}
+              </td>
+              <td className="text-right font-mono text-xs text-base-content/60">
+                {formatMs(selfMs)}
+              </td>
+              <td>
+                <Badge tone={isError ? "error" : "neutral"}>{span.statusCode}</Badge>
+              </td>
+            </tr>
           );
         })}
       </tbody>

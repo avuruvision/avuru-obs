@@ -14,7 +14,7 @@ import { Heatmap } from "./heatmap";
 import { OverviewTable } from "./overview-table";
 import { TraceList } from "./trace-list";
 import { TraceFilterPanel } from "./trace-filters";
-import { TraceViewer } from "./trace-viewer";
+import { TraceWorkspace } from "./trace-workspace";
 
 type Tab = "overview" | "traces";
 
@@ -26,6 +26,7 @@ export function TracesScreen() {
 
   const tab: Tab = get("tab") === "traces" ? "traces" : "overview";
   const selectedTrace = get("trace") ?? null;
+  const compareTrace = get("compare") ?? null;
   const filters: TraceFilters = useMemo(
     () => ({
       service: get("service"),
@@ -91,7 +92,17 @@ export function TracesScreen() {
         onChange={(t) => setMany({ tab: t })}
       />
 
-      {tab === "overview" ? (
+      {selectedTrace ? (
+        <TraceWorkspace
+          traceId={selectedTrace}
+          compareId={compareTrace}
+          pages={search.data?.pages.map((p) => p.traces)}
+          isLoading={search.isLoading}
+          hasNextPage={Boolean(search.hasNextPage)}
+          isFetchingNextPage={search.isFetchingNextPage}
+          fetchNextPage={() => search.fetchNextPage()}
+        />
+      ) : tab === "overview" ? (
         <OverviewTable
           operations={overview.data?.operations}
           isLoading={overview.isLoading}
@@ -111,10 +122,6 @@ export function TracesScreen() {
           onSelect={(traceId) => setMany({ trace: traceId })}
           selectedTraceId={selectedTrace ?? undefined}
         />
-      )}
-
-      {selectedTrace && (
-        <TraceViewer traceId={selectedTrace} onClose={() => setMany({ trace: undefined, view: undefined })} />
       )}
     </div>
   );
