@@ -47,6 +47,7 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 	mux.Handle("GET /api/v1/status", handle(a.handleStatus))
 	mux.Handle("GET /api/v1/system/status", handle(a.handleSystemStatus))
 	mux.Handle("GET /api/v1/services", handle(a.handleServices))
+	mux.Handle("GET /api/v1/service-map", handle(a.handleServiceMap))
 	mux.Handle("GET /api/v1/traces", handle(a.handleSearchTraces))
 	mux.Handle("GET /api/v1/traces/overview", handle(a.handleTraceOverview))
 	mux.Handle("GET /api/v1/traces/heatmap", handle(a.handleHeatmap))

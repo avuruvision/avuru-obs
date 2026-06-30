@@ -4,44 +4,9 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { formatMs } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { buildRows, serviceColor } from "@/lib/trace";
 import { SpanDetail } from "./span-detail";
-import type { Span, TraceResponse } from "@/lib/api-types";
-
-interface Row {
-  span: Span;
-  depth: number;
-}
-
-// Stable service hue from a name hash (consistent colors across screens).
-function serviceHue(name: string): number {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
-  return h;
-}
-
-function buildRows(spans: Span[]): Row[] {
-  const byParent = new Map<string, Span[]>();
-  const ids = new Set(spans.map((s) => s.spanId));
-  for (const s of spans) {
-    // Treat spans with missing parents as roots (partial traces happen).
-    const parent = ids.has(s.parentSpanId) ? s.parentSpanId : "";
-    const list = byParent.get(parent) ?? [];
-    list.push(s);
-    byParent.set(parent, list);
-  }
-  for (const list of byParent.values()) {
-    list.sort((a, b) => a.startTime.localeCompare(b.startTime));
-  }
-  const rows: Row[] = [];
-  const walk = (parent: string, depth: number) => {
-    for (const s of byParent.get(parent) ?? []) {
-      rows.push({ span: s, depth });
-      walk(s.spanId, depth + 1);
-    }
-  };
-  walk("", 0);
-  return rows;
-}
+import type { TraceResponse } from "@/lib/api-types";
 
 export function Waterfall({ trace }: { trace: TraceResponse }) {
   const [openSpanId, setOpenSpanId] = useState<string | null>(null);
@@ -77,7 +42,7 @@ export function Waterfall({ trace }: { trace: TraceResponse }) {
                 )}
                 <span
                   className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                  style={{ backgroundColor: `oklch(0.65 0.13 ${serviceHue(span.service)})` }}
+                  style={{ backgroundColor: serviceColor(span.service) }}
                   aria-hidden
                 />
                 <span className="truncate font-medium">{span.service}</span>
@@ -91,9 +56,7 @@ export function Waterfall({ trace }: { trace: TraceResponse }) {
                   style={{
                     left: `${left}%`,
                     width: `${width}%`,
-                    backgroundColor: isError
-                      ? undefined
-                      : `oklch(0.65 0.13 ${serviceHue(span.service)})`,
+                    backgroundColor: isError ? undefined : serviceColor(span.service),
                   }}
                 />
               </span>

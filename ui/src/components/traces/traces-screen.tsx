@@ -1,10 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { FilterX } from "lucide-react";
 import { Tabs } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useTimeRange } from "@/hooks/use-time-range";
 import { useURLState } from "@/hooks/use-url-state";
 import {
@@ -13,16 +10,16 @@ import {
   useTraceSearch,
   type TraceFilters,
 } from "@/hooks/use-traces-data";
-import { formatMs } from "@/lib/format";
 import { Heatmap } from "./heatmap";
 import { OverviewTable } from "./overview-table";
 import { TraceList } from "./trace-list";
-import { TraceDetail } from "./trace-detail";
+import { TraceFilterPanel } from "./trace-filters";
+import { TraceViewer } from "./trace-viewer";
 
 type Tab = "overview" | "traces";
 
-// Coroot flow: heatmap on top, tabs below; every filter and the selected
-// trace live in the URL.
+// Coroot flow: filter panel + heatmap on top, tabs below; every filter and the
+// selected trace live in the URL. The selected trace opens a full-window viewer.
 export function TracesScreen() {
   const { time, windowMs } = useTimeRange();
   const { get, setMany } = useURLState();
@@ -34,21 +31,49 @@ export function TracesScreen() {
       service: get("service"),
       operation: get("operation"),
       status: get("status"),
+      order: get("order"),
+      tags: get("tags"),
       minDurationMs: get("minMs") ? Number(get("minMs")) : undefined,
       maxDurationMs: get("maxMs") ? Number(get("maxMs")) : undefined,
+      includeAux: get("includeAux") === "true",
     }),
     [get],
   );
   const hasFilters = Boolean(
-    filters.service || filters.operation || filters.status || filters.minDurationMs || filters.maxDurationMs,
+    filters.service ||
+      filters.operation ||
+      filters.status ||
+      filters.order ||
+      filters.tags ||
+      filters.minDurationMs ||
+      filters.maxDurationMs ||
+      filters.includeAux,
   );
 
-  const overview = useTraceOverview(time, filters.service);
+  const overview = useTraceOverview(time, filters.service, filters.includeAux);
   const heatmap = useHeatmap(time, filters);
   const search = useTraceSearch(time, filters);
 
   return (
     <div className="flex flex-col gap-4">
+      <TraceFilterPanel
+        filters={filters}
+        set={setMany}
+        hasFilters={hasFilters}
+        onClear={() =>
+          setMany({
+            service: undefined,
+            operation: undefined,
+            status: undefined,
+            order: undefined,
+            tags: undefined,
+            minMs: undefined,
+            maxMs: undefined,
+            includeAux: undefined,
+          })
+        }
+      />
+
       <Heatmap
         data={heatmap.data}
         isLoading={heatmap.isLoading}
@@ -57,41 +82,14 @@ export function TracesScreen() {
         }
       />
 
-      {selectedTrace && (
-        <TraceDetail traceId={selectedTrace} onClose={() => setMany({ trace: undefined })} />
-      )}
-
-      <div className="flex items-center justify-between">
-        <Tabs<Tab>
-          items={[
-            { value: "overview", label: "Overview" },
-            { value: "traces", label: "Traces" },
-          ]}
-          value={tab}
-          onChange={(t) => setMany({ tab: t })}
-        />
-        {hasFilters && (
-          <div className="flex items-center gap-1.5">
-            {filters.service && <Badge tone="primary">{filters.service}</Badge>}
-            {filters.operation && <Badge tone="neutral">{filters.operation}</Badge>}
-            {filters.status && <Badge tone={filters.status === "error" ? "error" : "success"}>{filters.status}</Badge>}
-            {filters.minDurationMs !== undefined && (
-              <Badge tone="warning">
-                {formatMs(filters.minDurationMs)}–{formatMs(filters.maxDurationMs ?? Infinity)}
-              </Badge>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                setMany({ service: undefined, operation: undefined, status: undefined, minMs: undefined, maxMs: undefined })
-              }
-            >
-              <FilterX className="h-3.5 w-3.5" /> Clear
-            </Button>
-          </div>
-        )}
-      </div>
+      <Tabs<Tab>
+        items={[
+          { value: "overview", label: "Overview" },
+          { value: "traces", label: "Traces" },
+        ]}
+        value={tab}
+        onChange={(t) => setMany({ tab: t })}
+      />
 
       {tab === "overview" ? (
         <OverviewTable
@@ -113,6 +111,10 @@ export function TracesScreen() {
           onSelect={(traceId) => setMany({ trace: traceId })}
           selectedTraceId={selectedTrace ?? undefined}
         />
+      )}
+
+      {selectedTrace && (
+        <TraceViewer traceId={selectedTrace} onClose={() => setMany({ trace: undefined, view: undefined })} />
       )}
     </div>
   );

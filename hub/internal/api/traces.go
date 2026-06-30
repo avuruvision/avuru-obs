@@ -15,13 +15,56 @@ func (a *API) handleServices(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	services, err := store.ListServices(r.Context(), storage.ServiceQuery{Tenant: tenant(r), Range: tr})
+	services, err := store.ListServices(r.Context(), storage.ServiceQuery{
+		Tenant:     tenant(r),
+		Range:      tr,
+		ExcludeAux: !parseBool(r, "includeAux", false),
+	})
 	if err != nil {
 		return err
 	}
 	resp := servicesResponse{Services: make([]serviceDTO, 0, len(services))}
 	for _, s := range services {
 		resp.Services = append(resp.Services, toServiceDTO(s, tr.End.Sub(tr.Start)))
+	}
+	writeJSON(w, http.StatusOK, resp)
+	return nil
+}
+
+// handleServiceMap returns service nodes (RED metrics) plus derived call edges
+// for the topology graph. Auxiliary traffic is excluded by default.
+func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
+	store, err := a.store()
+	if err != nil {
+		return err
+	}
+	tr, err := parseTimeRange(r)
+	if err != nil {
+		return err
+	}
+	q := storage.ServiceQuery{
+		Tenant:     tenant(r),
+		Range:      tr,
+		ExcludeAux: !parseBool(r, "includeAux", false),
+	}
+	services, err := store.ListServices(r.Context(), q)
+	if err != nil {
+		return err
+	}
+	edges, err := store.ServiceEdges(r.Context(), q)
+	if err != nil {
+		return err
+	}
+	resp := serviceMapResponse{
+		Services: make([]serviceDTO, 0, len(services)),
+		Edges:    make([]serviceEdgeDTO, 0, len(edges)),
+	}
+	window := tr.End.Sub(tr.Start)
+	for _, s := range services {
+		resp.Services = append(resp.Services, toServiceDTO(s, window))
+	}
+	for _, e := range edges {
+		resp.Edges = append(resp.Edges, toServiceEdgeDTO(e))
 	}
 	writeJSON(w, http.StatusOK, resp)
 	return nil
@@ -37,9 +80,10 @@ func (a *API) handleTraceOverview(w http.ResponseWriter, r *http.Request) error 
 		return err
 	}
 	ops, err := store.TraceOverview(r.Context(), storage.OverviewQuery{
-		Tenant:  tenant(r),
-		Range:   tr,
-		Service: r.URL.Query().Get("service"),
+		Tenant:     tenant(r),
+		Range:      tr,
+		Service:    r.URL.Query().Get("service"),
+		ExcludeAux: !parseBool(r, "includeAux", false),
 	})
 	if err != nil {
 		return err
@@ -81,6 +125,12 @@ func (a *API) handleSearchTraces(w http.ResponseWriter, r *http.Request) error {
 	if status != "" && status != "ok" && status != "error" {
 		return badRequest("invalid status: must be ok or error")
 	}
+	order := r.URL.Query().Get("order")
+	switch order {
+	case "", "newest", "oldest", "slowest":
+	default:
+		return badRequest("invalid order: must be newest, oldest or slowest")
+	}
 
 	page, err := store.SearchTraces(r.Context(), storage.TraceQuery{
 		Tenant:      tenant(r),
@@ -88,8 +138,11 @@ func (a *API) handleSearchTraces(w http.ResponseWriter, r *http.Request) error {
 		Service:     r.URL.Query().Get("service"),
 		Operation:   r.URL.Query().Get("operation"),
 		Status:      status,
+		Tags:        parseTags(r),
+		Order:       order,
 		MinDuration: minDur,
 		MaxDuration: maxDur,
+		ExcludeAux:  !parseBool(r, "includeAux", false),
 		Limit:       limit,
 		Cursor:      cursor,
 	})
@@ -143,6 +196,8 @@ func (a *API) handleHeatmap(w http.ResponseWriter, r *http.Request) error {
 		Range:           tr,
 		Service:         r.URL.Query().Get("service"),
 		Operation:       r.URL.Query().Get("operation"),
+		Tags:            parseTags(r),
+		ExcludeAux:      !parseBool(r, "includeAux", false),
 		TimeBuckets:     timeBuckets,
 		DurationBuckets: durBuckets,
 	})

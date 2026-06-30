@@ -15,6 +15,19 @@ export interface ServicesResponse {
   services: ServiceStats[];
 }
 
+export interface ServiceEdge {
+  source: string;
+  target: string;
+  calls: number;
+  errorCount: number;
+  errorRate: number;
+}
+
+export interface ServiceMapResponse {
+  services: ServiceStats[];
+  edges: ServiceEdge[];
+}
+
 export interface OperationStats {
   service: string;
   operation: string;
