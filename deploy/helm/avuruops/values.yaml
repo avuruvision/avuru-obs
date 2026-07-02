@@ -127,6 +127,7 @@ retention:
   traces: 7
   logs: 3
   metrics: 7
+  profiles: 3
 
 ingress:
   enabled: false

@@ -21,9 +21,10 @@ type StoreProvider func() storage.Store
 
 // Config holds non-store handler settings (e.g. reported retention).
 type Config struct {
-	RetentionTracesDays  int
-	RetentionLogsDays    int
-	RetentionMetricsDays int
+	RetentionTracesDays   int
+	RetentionLogsDays     int
+	RetentionMetricsDays  int
+	RetentionProfilesDays int
 }
 
 // API holds handler dependencies.
@@ -55,6 +56,9 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 	mux.Handle("GET /api/v1/traces/{traceId}", handle(a.handleGetTrace))
 	mux.Handle("GET /api/v1/traces/{traceId}/logs", handle(a.handleLogsForTrace))
 	mux.Handle("GET /api/v1/logs", handle(a.handleSearchLogs))
+	// OTLP profiles ingest (alpha signal) — deliberately NOT under /api/v1;
+	// this is the otlphttp exporter's default profiles path.
+	mux.Handle("POST /v1development/profiles", handle(a.handleProfilesIngest))
 	mux.Handle("GET /api/v1/metrics/red", handle(a.handleREDSeries))
 	mux.Handle("GET /api/v1/infra/nodes", handle(a.handleInfraNodes))
 	mux.Handle("GET /api/v1/infra/pods", handle(a.handleInfraPods))

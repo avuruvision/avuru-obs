@@ -24,6 +24,7 @@ type Fake struct {
 	Nodes     []storage.NodeStat
 	Pods      []storage.PodStat
 	RED       []storage.REDSeries
+	Written   []storage.ProfileSample
 
 	// Last*Query record the most recent inputs for asserting parameter parsing.
 	LastTraceQuery   storage.TraceQuery
@@ -36,6 +37,11 @@ type Fake struct {
 func (f *Fake) REDSeries(_ context.Context, q storage.REDQuery) ([]storage.REDSeries, error) {
 	f.LastREDQuery = q
 	return f.RED, nil
+}
+
+func (f *Fake) WriteProfileSamples(_ context.Context, samples []storage.ProfileSample) error {
+	f.Written = append(f.Written, samples...)
+	return nil
 }
 
 func (f *Fake) ListNodeStats(_ context.Context, q storage.InfraQuery) ([]storage.NodeStat, error) {
