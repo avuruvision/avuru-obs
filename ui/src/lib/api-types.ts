@@ -162,3 +162,37 @@ export interface LogsResponse {
   logs: LogRecord[];
   nextCursor?: string;
 }
+
+export interface MetricPoint {
+  time: string;
+  value: number;
+}
+
+export interface NodeStats {
+  name: string;
+  cpuUsageCores: number;
+  memoryUsageBytes: number;
+  memoryAvailableBytes: number;
+  networkRxBytesPerSec: number;
+  networkTxBytesPerSec: number;
+  podCount: number;
+  cpuSeries: MetricPoint[];
+  memorySeries: MetricPoint[];
+}
+
+export interface NodesResponse {
+  nodes: NodeStats[];
+}
+
+export interface PodStats {
+  name: string;
+  namespace: string;
+  node: string;
+  workload?: string;
+  cpuUsageCores: number;
+  memoryUsageBytes: number;
+}
+
+export interface PodsResponse {
+  pods: PodStats[];
+}

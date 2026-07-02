@@ -18,6 +18,8 @@ export const queryKeys = {
   trace: (traceId: string) => ["traces", "detail", traceId] as const,
   heatmap: (t: TimeParams, filters: Record<string, string | number | boolean | undefined>) =>
     ["traces", "heatmap", { ...t, ...filters }] as const,
+  infraNodes: (t: TimeParams) => ["infra", "nodes", t] as const,
+  infraPods: (t: TimeParams, node?: string) => ["infra", "pods", { ...t, node }] as const,
   logs: (t: TimeParams, filters: Record<string, string | number | undefined>) =>
     ["logs", "search", { ...t, ...filters }] as const,
   traceLogs: (traceId: string) => ["logs", "trace", traceId] as const,
