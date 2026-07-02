@@ -1,17 +1,17 @@
-import { Boxes } from "lucide-react";
+import { Suspense } from "react";
 import { Topbar } from "@/components/layout/topbar";
-import { ComingSoon } from "@/components/ui/coming-soon";
+import { CenteredSpinner } from "@/components/ui/spinner";
+import { ServicesScreen } from "@/components/services/services-screen";
 
 export default function ServicesPage() {
   return (
     <>
       <Topbar />
       <main className="flex-1 overflow-y-auto p-5">
-        <ComingSoon icon={Boxes} title="Service inventory" milestone="M2">
-          Every service in your cluster, auto-discovered by eBPF with zero code
-          changes — RED metrics, dependencies, and health at a glance. Until
-          then, the Traces screen already shows services sending OTLP.
-        </ComingSoon>
+        {/* useSearchParams consumers must sit under Suspense (static export) */}
+        <Suspense fallback={<CenteredSpinner />}>
+          <ServicesScreen />
+        </Suspense>
       </main>
     </>
   );

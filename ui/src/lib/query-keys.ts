@@ -8,7 +8,8 @@ export interface TimeParams {
 export const queryKeys = {
   status: ["status"] as const,
   systemStatus: ["system", "status"] as const,
-  services: (t: TimeParams) => ["services", "list", t] as const,
+  services: (t: TimeParams, includeAux?: boolean) =>
+    ["services", "list", { ...t, includeAux }] as const,
   serviceMap: (t: TimeParams, includeAux?: boolean) =>
     ["service-map", { ...t, includeAux }] as const,
   traceOverview: (t: TimeParams, service?: string, includeAux?: boolean) =>
