@@ -60,6 +60,9 @@ func TestRoutes(t *testing.T) {
 		{"logs for trace ok", http.MethodGet, "/api/v1/traces/abc/logs", http.StatusOK},
 		{"infra nodes ok", http.MethodGet, "/api/v1/infra/nodes", http.StatusOK},
 		{"red ok", http.MethodGet, "/api/v1/metrics/red", http.StatusOK},
+		{"profiled services ok", http.MethodGet, "/api/v1/profiles/services", http.StatusOK},
+		{"flamegraph needs service", http.MethodGet, "/api/v1/profiles/flamegraph", http.StatusBadRequest},
+		{"flamegraph ok", http.MethodGet, "/api/v1/profiles/flamegraph?service=checkout", http.StatusOK},
 		{"infra pods ok", http.MethodGet, "/api/v1/infra/pods", http.StatusOK},
 		{"infra nodes bad start", http.MethodGet, "/api/v1/infra/nodes?start=garbage", http.StatusBadRequest},
 		{"trace not found", http.MethodGet, "/api/v1/traces/nope", http.StatusNotFound},
@@ -416,5 +419,36 @@ func TestProfilesIngest(t *testing.T) {
 	}
 	if rec := post([]byte("garbage-not-proto!!!"), "application/x-protobuf"); rec.Code != http.StatusBadRequest {
 		t.Errorf("garbage body: got %d, want 400", rec.Code)
+	}
+}
+
+func TestFlamegraphEndpoint(t *testing.T) {
+	fake := &storagetest.Fake{
+		Flame: storage.FlameNode{
+			Name: "root", Value: 8,
+			Children: []*storage.FlameNode{
+				{Name: "main", Value: 8, Children: []*storage.FlameNode{
+					{Name: "handler", Value: 5, Self: 5},
+					{Name: "loop", Value: 3, Self: 3},
+				}},
+			},
+		},
+	}
+	mux := newMux(fake)
+
+	var resp flamegraphResponse
+	rec := get(t, mux, "/api/v1/profiles/flamegraph?service=checkout")
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decoding flamegraph: %v", err)
+	}
+	if fake.LastProfileQuery.Service != "checkout" {
+		t.Errorf("service not parsed: %+v", fake.LastProfileQuery)
+	}
+	if resp.Root.Value != 8 || len(resp.Root.Children) != 1 {
+		t.Fatalf("root wrong: %+v", resp.Root)
+	}
+	kids := resp.Root.Children[0].Children
+	if len(kids) != 2 || kids[0].Name != "handler" || kids[0].Self != 5 {
+		t.Errorf("children wrong: %+v", kids)
 	}
 }

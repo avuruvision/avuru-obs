@@ -284,6 +284,29 @@ type ProfileSample struct {
 	Container  string
 }
 
+// ProfileQuery filters ProfileFlamegraph / ListProfiledServices.
+type ProfileQuery struct {
+	Tenant  string
+	Range   TimeRange
+	Service string // required for ProfileFlamegraph
+}
+
+// ProfiledService is one service with profiling data in the range.
+type ProfiledService struct {
+	Name    string
+	Samples uint64 // total sample value
+}
+
+// FlameNode is one frame in an aggregated flame graph. Value is inclusive
+// (self + children); Self is the value sampled exactly at this frame.
+// Children are ordered by Value descending.
+type FlameNode struct {
+	Name     string
+	Value    uint64
+	Self     uint64
+	Children []*FlameNode
+}
+
 // SignalStats summarizes one telemetry signal's stored data.
 type SignalStats struct {
 	Signal          string // "traces" | "logs"
@@ -323,4 +346,6 @@ type Store interface {
 	ListPodStats(ctx context.Context, q InfraQuery) ([]PodStat, error)
 	REDSeries(ctx context.Context, q REDQuery) ([]REDSeries, error)
 	WriteProfileSamples(ctx context.Context, samples []ProfileSample) error
+	ListProfiledServices(ctx context.Context, q ProfileQuery) ([]ProfiledService, error)
+	ProfileFlamegraph(ctx context.Context, q ProfileQuery) (FlameNode, error)
 }

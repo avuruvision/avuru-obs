@@ -25,6 +25,8 @@ type Fake struct {
 	Pods      []storage.PodStat
 	RED       []storage.REDSeries
 	Written   []storage.ProfileSample
+	Profiled  []storage.ProfiledService
+	Flame     storage.FlameNode
 
 	// Last*Query record the most recent inputs for asserting parameter parsing.
 	LastTraceQuery   storage.TraceQuery
@@ -32,6 +34,7 @@ type Fake struct {
 	LastLogQuery     storage.LogQuery
 	LastInfraQuery   storage.InfraQuery
 	LastREDQuery     storage.REDQuery
+	LastProfileQuery storage.ProfileQuery
 }
 
 func (f *Fake) REDSeries(_ context.Context, q storage.REDQuery) ([]storage.REDSeries, error) {
@@ -42,6 +45,16 @@ func (f *Fake) REDSeries(_ context.Context, q storage.REDQuery) ([]storage.REDSe
 func (f *Fake) WriteProfileSamples(_ context.Context, samples []storage.ProfileSample) error {
 	f.Written = append(f.Written, samples...)
 	return nil
+}
+
+func (f *Fake) ListProfiledServices(_ context.Context, q storage.ProfileQuery) ([]storage.ProfiledService, error) {
+	f.LastProfileQuery = q
+	return f.Profiled, nil
+}
+
+func (f *Fake) ProfileFlamegraph(_ context.Context, q storage.ProfileQuery) (storage.FlameNode, error) {
+	f.LastProfileQuery = q
+	return f.Flame, nil
 }
 
 func (f *Fake) ListNodeStats(_ context.Context, q storage.InfraQuery) ([]storage.NodeStat, error) {
