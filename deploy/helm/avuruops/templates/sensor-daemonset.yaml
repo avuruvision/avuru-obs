@@ -1,6 +1,6 @@
 {{- /* A DaemonSet with zero containers is invalid — render only when at
        least one sensor container is active. */}}
-{{- $agentActive := and .Values.sensor.agent.enabled .Values.sensor.agent.logs.enabled }}
+{{- $agentActive := and .Values.sensor.agent.enabled (or .Values.sensor.agent.logs.enabled .Values.sensor.agent.kubeletstats.enabled) }}
 {{- if and .Values.sensor.enabled (or .Values.sensor.obi.enabled $agentActive) }}
 apiVersion: apps/v1
 kind: DaemonSet

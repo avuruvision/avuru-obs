@@ -24,6 +24,10 @@ rules:
   - apiGroups: ["apps"]
     resources: ["replicasets", "deployments"]
     verbs: ["get", "list", "watch"]
+  # kubeletstats: read-only node/pod stats via this node's kubelet API.
+  - apiGroups: [""]
+    resources: ["nodes/stats", "nodes/proxy"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

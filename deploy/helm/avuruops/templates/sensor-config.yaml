@@ -24,9 +24,8 @@ data:
       # explicit because RED metric cardinality is a product concern.
       unmatched: heuristic
 {{- end }}
-{{- /* The agent needs >=1 active pipeline or the collector crash-loops;
-       kubeletstats joins this condition in M3. */}}
-{{- $agentActive := and .Values.sensor.enabled .Values.sensor.agent.enabled .Values.sensor.agent.logs.enabled }}
+{{- /* The agent needs >=1 active pipeline or the collector crash-loops. */}}
+{{- $agentActive := and .Values.sensor.enabled .Values.sensor.agent.enabled (or .Values.sensor.agent.logs.enabled .Values.sensor.agent.kubeletstats.enabled) }}
 {{- if $agentActive }}
 ---
 apiVersion: v1
@@ -55,6 +54,17 @@ data:
           # k8s.namespace.name, k8s.container.name, k8s.pod.uid from the file
           # path to resource attributes.
           - type: container
+    {{- end }}
+    {{- if .Values.sensor.agent.kubeletstats.enabled }}
+      # Node/pod CPU, memory, network from this node's kubelet (Supporting
+      # signal tier). Read-only stats API via the pod ServiceAccount.
+      kubeletstats:
+        auth_type: serviceAccount
+        endpoint: https://${env:K8S_NODE_NAME}:10250
+        # kubelet serving certs are typically self-signed per node
+        insecure_skip_verify: true
+        collection_interval: {{ .Values.sensor.agent.kubeletstats.interval }}
+        metric_groups: [node, pod]
     {{- end }}
     processors:
       memory_limiter:
@@ -105,6 +115,14 @@ data:
         logs:
           receivers: [filelog]
           processors: [memory_limiter, k8sattributes, transform/service_name, batch]
+          exporters: [otlphttp]
+    {{- end }}
+    {{- if .Values.sensor.agent.kubeletstats.enabled }}
+        metrics:
+          # k8sattributes adds workload names (deployment/statefulset) to pod
+          # metrics via k8s.pod.uid, for the pods panel.
+          receivers: [kubeletstats]
+          processors: [memory_limiter, k8sattributes, batch]
           exporters: [otlphttp]
     {{- end }}
 {{- end }}
