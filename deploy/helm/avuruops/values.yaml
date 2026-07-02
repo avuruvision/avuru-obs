@@ -60,6 +60,21 @@ sensor:
   enabled: true
   nodeSelector: {}
   tolerations: []
+  # Node collector: tails container stdout/stderr (zero-config logs). Infra
+  # metrics (kubeletstats) join this container in M3.
+  agent:
+    enabled: true
+    image:
+      repository: otel/opentelemetry-collector-contrib
+      tag: "0.154.0" # keep in lockstep with the gateway pin (tech_stack.md)
+    logs:
+      enabled: true
+    resources:
+      requests:
+        cpu: 50m
+        memory: 96Mi
+      limits:
+        memory: 256Mi
   obi:
     enabled: true
     image:
