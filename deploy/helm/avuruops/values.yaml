@@ -79,6 +79,22 @@ sensor:
         memory: 96Mi
       limits:
         memory: 256Mi
+  # Continuous CPU profiling (OTel eBPF profiler collector distro). Ships
+  # OTLP Profiles (ALPHA) directly to the hub's profiles-ingest seam — the
+  # gateway's ClickHouse exporter has no profiles support yet.
+  profiler:
+    enabled: true
+    image:
+      repository: otel/opentelemetry-collector-ebpf-profiler
+      tag: "0.155.0" # pin exact; hub's profilesadapter is pinned to the same line
+    # 19-29 Hz is the sane production band; higher = more detail, more CPU.
+    samplesPerSecond: 20
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
   obi:
     enabled: true
     image:

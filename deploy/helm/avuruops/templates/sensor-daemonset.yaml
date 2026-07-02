@@ -1,7 +1,7 @@
 {{- /* A DaemonSet with zero containers is invalid — render only when at
        least one sensor container is active. */}}
 {{- $agentActive := and .Values.sensor.agent.enabled (or .Values.sensor.agent.logs.enabled .Values.sensor.agent.kubeletstats.enabled) }}
-{{- if and .Values.sensor.enabled (or .Values.sensor.obi.enabled $agentActive) }}
+{{- if and .Values.sensor.enabled (or .Values.sensor.obi.enabled $agentActive .Values.sensor.profiler.enabled) }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -151,6 +151,43 @@ spec:
           resources:
             {{- toYaml .Values.sensor.agent.resources | nindent 12 }}
         {{- end }}
+        {{- if .Values.sensor.profiler.enabled }}
+        # Continuous CPU profiling (OTel eBPF profiler distro). Profiles are
+        # ALPHA: the feature gate is required, and export goes straight to the
+        # hub's ingest seam.
+        - name: profiler
+          image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.profiler.image.repository "tag" .Values.sensor.profiler.image.tag) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --config=/etc/avuru/config.yaml
+            - --feature-gates=+service.profilesSupport
+          securityContext:
+            privileged: true
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: profiler-config
+              mountPath: /etc/avuru
+              readOnly: true
+            - name: kernel-debug
+              mountPath: /sys/kernel/debug
+          ports:
+            - name: prof-health
+              containerPort: 13135
+          livenessProbe:
+            httpGet:
+              path: /
+              port: prof-health
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: prof-health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.sensor.profiler.resources | nindent 12 }}
+        {{- end }}
       volumes:
         {{- if .Values.sensor.obi.enabled }}
         - name: obi-config
@@ -161,6 +198,14 @@ spec:
         - name: cgroup
           hostPath:
             path: /sys/fs/cgroup
+        {{- end }}
+        {{- if .Values.sensor.profiler.enabled }}
+        - name: profiler-config
+          configMap:
+            name: {{ include "avuruops.fullname" . }}-sensor-profiler
+        - name: kernel-debug
+          hostPath:
+            path: /sys/kernel/debug
         {{- end }}
         {{- if $agentActive }}
         - name: agent-config
