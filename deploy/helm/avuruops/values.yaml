@@ -122,6 +122,7 @@ clickhouse:
 retention:
   traces: 7
   logs: 3
+  metrics: 7
 
 ingress:
   enabled: false

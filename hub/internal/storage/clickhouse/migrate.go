@@ -50,26 +50,51 @@ func (s *Store) Migrate(ctx context.Context) error {
 	return nil
 }
 
-// ApplyRetention sets per-signal TTL via `ALTER ... MODIFY TTL`. A non-positive
-// day count is a no-op for that signal. Retention lives outside the embedded
-// `.sql` so it stays a per-deployment Helm value, not a schema edit.
-func (s *Store) ApplyRetention(ctx context.Context, tracesDays, logsDays int) error {
-	if tracesDays > 0 {
+// metricsTables are the five exporter metric-type tables (0003_metrics.sql).
+var metricsTables = []string{
+	"otel_metrics_gauge",
+	"otel_metrics_sum",
+	"otel_metrics_histogram",
+	"otel_metrics_exponential_histogram",
+	"otel_metrics_summary",
+}
+
+// Retention groups per-signal TTL day counts. A non-positive count is a
+// no-op for that signal (the TTL is left unchanged).
+type Retention struct {
+	TracesDays  int
+	LogsDays    int
+	MetricsDays int
+}
+
+// ApplyRetention sets per-signal TTL via `ALTER ... MODIFY TTL`. Retention
+// lives outside the embedded `.sql` so it stays a per-deployment Helm value,
+// not a schema edit.
+func (s *Store) ApplyRetention(ctx context.Context, r Retention) error {
+	if r.TracesDays > 0 {
 		traceTables := []struct{ table, col string }{
 			{"otel_traces", "Timestamp"},
 			{"otel_traces_trace_id_ts", "Start"},
 		}
 		for _, t := range traceTables {
-			q := fmt.Sprintf("ALTER TABLE %s.%s MODIFY TTL toDateTime(%s) + toIntervalDay(%d)", s.db, t.table, t.col, tracesDays)
+			q := fmt.Sprintf("ALTER TABLE %s.%s MODIFY TTL toDateTime(%s) + toIntervalDay(%d)", s.db, t.table, t.col, r.TracesDays)
 			if err := s.conn.Exec(ctx, q); err != nil {
 				return fmt.Errorf("retention on %s: %w", t.table, err)
 			}
 		}
 	}
-	if logsDays > 0 {
-		q := fmt.Sprintf("ALTER TABLE %s.otel_logs MODIFY TTL toDateTime(Timestamp) + toIntervalDay(%d)", s.db, logsDays)
+	if r.LogsDays > 0 {
+		q := fmt.Sprintf("ALTER TABLE %s.otel_logs MODIFY TTL toDateTime(Timestamp) + toIntervalDay(%d)", s.db, r.LogsDays)
 		if err := s.conn.Exec(ctx, q); err != nil {
 			return fmt.Errorf("retention on otel_logs: %w", err)
+		}
+	}
+	if r.MetricsDays > 0 {
+		for _, table := range metricsTables {
+			q := fmt.Sprintf("ALTER TABLE %s.%s MODIFY TTL toDateTime(TimeUnix) + toIntervalDay(%d)", s.db, table, r.MetricsDays)
+			if err := s.conn.Exec(ctx, q); err != nil {
+				return fmt.Errorf("retention on %s: %w", table, err)
+			}
 		}
 	}
 	return nil

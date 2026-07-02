@@ -16,4 +16,5 @@ var FS embed.FS
 var Ordered = []string{
 	"0001_traces.sql",
 	"0002_logs.sql",
+	"0003_metrics.sql",
 }

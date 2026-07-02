@@ -45,3 +45,7 @@ data:
           receivers: [otlp]
           processors: [batch]
           exporters: [clickhouse]
+        metrics:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [clickhouse]

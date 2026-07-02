@@ -72,11 +72,12 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	if err := store.conn.QueryRow(ctx, "SELECT count() FROM otel.schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("counting schema_migrations: %v", err)
 	}
-	if count != 2 {
-		t.Fatalf("schema_migrations has %d rows, want 2", count)
+	if count != 3 {
+		t.Fatalf("schema_migrations has %d rows, want 3", count)
 	}
 
-	for _, tbl := range []string{"otel_traces", "otel_logs", "otel_traces_trace_id_ts"} {
+	tables := append([]string{"otel_traces", "otel_logs", "otel_traces_trace_id_ts"}, metricsTables...)
+	for _, tbl := range tables {
 		var n uint64
 		if err := store.conn.QueryRow(ctx, "SELECT count() FROM system.tables WHERE database='otel' AND name=?", tbl).Scan(&n); err != nil {
 			t.Fatalf("checking table %s: %v", tbl, err)
@@ -86,7 +87,7 @@ func TestMigrateIsIdempotent(t *testing.T) {
 		}
 	}
 
-	if err := store.ApplyRetention(ctx, 7, 3); err != nil {
+	if err := store.ApplyRetention(ctx, Retention{TracesDays: 7, LogsDays: 3, MetricsDays: 5}); err != nil {
 		t.Fatalf("ApplyRetention: %v", err)
 	}
 	var ddl string
@@ -95,6 +96,51 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	}
 	if !strings.Contains(ddl, "toIntervalDay(3)") {
 		t.Errorf("logs TTL not applied; DDL:\n%s", ddl)
+	}
+	if err := store.conn.QueryRow(ctx, "SHOW CREATE TABLE otel.otel_metrics_gauge").Scan(&ddl); err != nil {
+		t.Fatalf("SHOW CREATE otel_metrics_gauge: %v", err)
+	}
+	if !strings.Contains(ddl, "toIntervalDay(5)") {
+		t.Errorf("metrics TTL not applied; DDL:\n%s", ddl)
+	}
+}
+
+// TestMetricsSchemaAcceptsExporterShape guards the frozen 0003 contract: an
+// INSERT with the exporter's explicit column list (create_schema:false path)
+// must succeed, and the Avuru Tenant DEFAULT must materialize.
+func TestMetricsSchemaAcceptsExporterShape(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	batch, err := store.conn.PrepareBatch(ctx, `INSERT INTO otel_metrics_gauge
+		(ResourceAttributes, ResourceSchemaUrl, ScopeName, ScopeVersion, ScopeAttributes,
+		 ScopeDroppedAttrCount, ScopeSchemaUrl, ServiceName, MetricName, MetricDescription,
+		 MetricUnit, Attributes, StartTimeUnix, TimeUnix, Value, Flags)`)
+	if err != nil {
+		t.Fatalf("preparing gauge batch: %v", err)
+	}
+	err = batch.Append(
+		map[string]string{"k8s.node.name": "node-a"}, "", "kubeletstats", "1", map[string]string{},
+		uint32(0), "", "node-a", "k8s.node.cpu.usage", "", "1",
+		map[string]string{}, now, now, 0.42, uint32(0),
+	)
+	if err != nil {
+		t.Fatalf("appending gauge point: %v", err)
+	}
+	if err := batch.Send(); err != nil {
+		t.Fatalf("sending gauge batch: %v", err)
+	}
+
+	var tenant string
+	var value float64
+	if err := store.conn.QueryRow(ctx,
+		"SELECT Tenant, Value FROM otel.otel_metrics_gauge WHERE MetricName = 'k8s.node.cpu.usage'",
+	).Scan(&tenant, &value); err != nil {
+		t.Fatalf("reading gauge row: %v", err)
+	}
+	if tenant != "default" || value != 0.42 {
+		t.Errorf("gauge row wrong: tenant=%q value=%v", tenant, value)
 	}
 }
 

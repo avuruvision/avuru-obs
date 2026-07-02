@@ -94,12 +94,18 @@ func runMigrate() error {
 	if err := store.Migrate(ctx); err != nil {
 		return fmt.Errorf("applying migrations: %w", err)
 	}
-	tracesDays := envIntOr("AVURUOPS_RETENTION_TRACES_DAYS", 7)
-	logsDays := envIntOr("AVURUOPS_RETENTION_LOGS_DAYS", 3)
-	if err := store.ApplyRetention(ctx, tracesDays, logsDays); err != nil {
+	retention := ch.Retention{
+		TracesDays:  envIntOr("AVURUOPS_RETENTION_TRACES_DAYS", 7),
+		LogsDays:    envIntOr("AVURUOPS_RETENTION_LOGS_DAYS", 3),
+		MetricsDays: envIntOr("AVURUOPS_RETENTION_METRICS_DAYS", 7),
+	}
+	if err := store.ApplyRetention(ctx, retention); err != nil {
 		return fmt.Errorf("applying retention: %w", err)
 	}
-	slog.Info("migration complete", "tracesRetentionDays", tracesDays, "logsRetentionDays", logsDays)
+	slog.Info("migration complete",
+		"tracesRetentionDays", retention.TracesDays,
+		"logsRetentionDays", retention.LogsDays,
+		"metricsRetentionDays", retention.MetricsDays)
 	return nil
 }
 
