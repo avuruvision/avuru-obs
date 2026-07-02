@@ -95,9 +95,10 @@ func runMigrate() error {
 		return fmt.Errorf("applying migrations: %w", err)
 	}
 	retention := ch.Retention{
-		TracesDays:  envIntOr("AVURUOPS_RETENTION_TRACES_DAYS", 7),
-		LogsDays:    envIntOr("AVURUOPS_RETENTION_LOGS_DAYS", 3),
-		MetricsDays: envIntOr("AVURUOPS_RETENTION_METRICS_DAYS", 7),
+		TracesDays:   envIntOr("AVURUOPS_RETENTION_TRACES_DAYS", 7),
+		LogsDays:     envIntOr("AVURUOPS_RETENTION_LOGS_DAYS", 3),
+		MetricsDays:  envIntOr("AVURUOPS_RETENTION_METRICS_DAYS", 7),
+		ProfilesDays: envIntOr("AVURUOPS_RETENTION_PROFILES_DAYS", 3),
 	}
 	if err := store.ApplyRetention(ctx, retention); err != nil {
 		return fmt.Errorf("applying retention: %w", err)
@@ -105,7 +106,8 @@ func runMigrate() error {
 	slog.Info("migration complete",
 		"tracesRetentionDays", retention.TracesDays,
 		"logsRetentionDays", retention.LogsDays,
-		"metricsRetentionDays", retention.MetricsDays)
+		"metricsRetentionDays", retention.MetricsDays,
+		"profilesRetentionDays", retention.ProfilesDays)
 	return nil
 }
 
@@ -121,9 +123,10 @@ func run() error {
 	// reached single-origin via the gateway/ingress. See agent_docs/architecture.md.
 	mux := http.NewServeMux()
 	api.Register(mux, provider, api.Config{
-		RetentionTracesDays:  envIntOr("AVURUOPS_RETENTION_TRACES_DAYS", 7),
-		RetentionLogsDays:    envIntOr("AVURUOPS_RETENTION_LOGS_DAYS", 3),
-		RetentionMetricsDays: envIntOr("AVURUOPS_RETENTION_METRICS_DAYS", 7),
+		RetentionTracesDays:   envIntOr("AVURUOPS_RETENTION_TRACES_DAYS", 7),
+		RetentionLogsDays:     envIntOr("AVURUOPS_RETENTION_LOGS_DAYS", 3),
+		RetentionMetricsDays:  envIntOr("AVURUOPS_RETENTION_METRICS_DAYS", 7),
+		RetentionProfilesDays: envIntOr("AVURUOPS_RETENTION_PROFILES_DAYS", 3),
 	})
 
 	srv := &http.Server{

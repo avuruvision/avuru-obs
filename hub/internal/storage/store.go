@@ -268,6 +268,22 @@ type PodStat struct {
 	MemoryUsage uint64  // bytes
 }
 
+// ProfileSample is one ingested profiling sample: a stack (leaf-first
+// frames) observed for a service with an aggregate value. The backend
+// deduplicates stacks by hash.
+type ProfileSample struct {
+	Tenant    string
+	Timestamp time.Time
+	Service   string
+	// SampleType is "<type>:<unit>" from the profile (e.g. "samples:count").
+	SampleType string
+	Frames     []string // leaf-first
+	Value      uint64
+	Node       string
+	Pod        string
+	Container  string
+}
+
 // SignalStats summarizes one telemetry signal's stored data.
 type SignalStats struct {
 	Signal          string // "traces" | "logs"
@@ -306,4 +322,5 @@ type Store interface {
 	ListNodeStats(ctx context.Context, q InfraQuery) ([]NodeStat, error)
 	ListPodStats(ctx context.Context, q InfraQuery) ([]PodStat, error)
 	REDSeries(ctx context.Context, q REDQuery) ([]REDSeries, error)
+	WriteProfileSamples(ctx context.Context, samples []ProfileSample) error
 }

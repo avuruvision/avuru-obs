@@ -110,9 +110,10 @@
       "properties": {
         "traces": { "type": "integer", "minimum": 0 },
         "logs": { "type": "integer", "minimum": 0 },
-        "metrics": { "type": "integer", "minimum": 0 }
+        "metrics": { "type": "integer", "minimum": 0 },
+        "profiles": { "type": "integer", "minimum": 0 }
       },
-      "required": ["traces", "logs", "metrics"]
+      "required": ["traces", "logs", "metrics", "profiles"]
     },
     "ingress": {
       "type": "object",
