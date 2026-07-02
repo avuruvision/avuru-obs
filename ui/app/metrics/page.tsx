@@ -1,16 +1,17 @@
-import { Gauge } from "lucide-react";
+import { Suspense } from "react";
 import { Topbar } from "@/components/layout/topbar";
-import { ComingSoon } from "@/components/ui/coming-soon";
+import { CenteredSpinner } from "@/components/ui/spinner";
+import { RedDashboard } from "@/components/metrics/red-dashboard";
 
 export default function MetricsPage() {
   return (
     <>
       <Topbar />
       <main className="flex-1 overflow-y-auto p-5">
-        <ComingSoon icon={Gauge} title="Metrics" milestone="M3">
-          RED metrics and resource usage per service and workload, derived from
-          the same OTLP/eBPF signals — no separate Prometheus to operate.
-        </ComingSoon>
+        {/* useSearchParams consumers must sit under Suspense (static export) */}
+        <Suspense fallback={<CenteredSpinner />}>
+          <RedDashboard />
+        </Suspense>
       </main>
     </>
   );
