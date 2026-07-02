@@ -60,3 +60,10 @@ jobs:
           helm lint deploy/helm/avuruops
           helm template avuruops deploy/helm/avuruops > /dev/null
           helm template avuruops deploy/helm/avuruops --set clickhouse.external.enabled=true --set clickhouse.external.address=ch:9000 --set clickhouse.external.existingSecret=ch > /dev/null
+
+  gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: OCB distro builds
+        run: docker build -f gateway/Dockerfile .

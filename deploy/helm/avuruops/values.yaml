@@ -38,11 +38,14 @@ ui:
     limits:
       memory: 128Mi
 
-# Gateway: OTLP receiver → ClickHouse exporter (stock contrib collector + config).
+# Gateway: OTLP receiver → ClickHouse exporter. Default = the Avuru minimal
+# OCB distro (gateway/ocb-manifest.yaml). The stock contrib image works with
+# the same config — override repository/tag to fall back:
+#   otel/opentelemetry-collector-contrib : 0.154.0
 gateway:
   image:
-    repository: otel/opentelemetry-collector-contrib
-    tag: "0.154.0"
+    repository: avuruops/gateway
+    tag: "" # defaults to .Chart.AppVersion
   replicas: 1
   resources:
     requests:
