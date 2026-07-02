@@ -1,0 +1,43 @@
+{{- if .Values.sensor.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "avuruops.fullname" . }}-sensor
+  labels:
+    {{- include "avuruops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sensor
+---
+# Kubernetes metadata decoration (k8s.namespace.name, k8s.deployment.name, …)
+# for the sensor containers: OBI resolves pod -> replicaset -> deployment via
+# an informer over these resources.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "avuruops.fullname" . }}-{{ .Release.Namespace }}-sensor
+  labels:
+    {{- include "avuruops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sensor
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "deployments"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "avuruops.fullname" . }}-{{ .Release.Namespace }}-sensor
+  labels:
+    {{- include "avuruops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sensor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "avuruops.fullname" . }}-{{ .Release.Namespace }}-sensor
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "avuruops.fullname" . }}-sensor
+    namespace: {{ .Release.Namespace }}
+{{- end }}

@@ -1,0 +1,26 @@
+{{- if and .Values.sensor.enabled .Values.sensor.obi.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "avuruops.fullname" . }}-sensor-obi
+  labels:
+    {{- include "avuruops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sensor
+data:
+  obi-config.yml: |
+    # Zero-code instrumentation of everything on the node, EXCEPT this
+    # release's own namespace (the platform must not trace itself — OBI's
+    # built-in defaults already skip kube-system, otelcol binaries, and OBI).
+    discovery:
+      instrument:
+        - k8s_namespace: '*'
+      exclude_instrument:
+        - k8s_namespace: {{ .Release.Namespace | quote }}
+    attributes:
+      kubernetes:
+        enable: true
+    routes:
+      # heuristic keeps http.route cardinality bounded (ids -> wildcards);
+      # explicit because RED metric cardinality is a product concern.
+      unmatched: heuristic
+{{- end }}

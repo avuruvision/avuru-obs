@@ -16,6 +16,15 @@ Open the UI (separate static deployable; single-origin /api -> hub via ingress):
 
 Schema migrations run automatically via the `{{ include "avuruops.fullname" . }}-migrate`
 hook (post-install / pre-upgrade). Retention: traces {{ .Values.retention.traces }}d, logs {{ .Values.retention.logs }}d.
+{{- if .Values.sensor.enabled }}
+
+Sensor DaemonSet: ENABLED — zero-code eBPF instrumentation (OBI) traces every
+service on the cluster with no app changes (kernel >=5.8 + BTF per node; the
+platform's own namespace is excluded). Disable with --set sensor.enabled=false.
+{{- else }}
+
+Sensor DaemonSet: disabled — only apps exporting OTLP themselves are observed.
+{{- end }}
 {{- if .Values.clickhouse.external.enabled }}
 
 ClickHouse: EXTERNAL ({{ .Values.clickhouse.external.address }}).
