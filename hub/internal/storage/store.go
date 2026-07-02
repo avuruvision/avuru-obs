@@ -204,6 +204,32 @@ type LogPage struct {
 	NextCursor *LogCursor
 }
 
+// REDQuery filters REDSeries. Empty Service means the busiest TopN services.
+type REDQuery struct {
+	Tenant     string
+	Range      TimeRange
+	Service    string
+	Points     int // series buckets (<=0 → backend default)
+	TopN       int // services when Service == "" (<=0 → backend default)
+	ExcludeAux bool
+}
+
+// REDPoint is one time bucket of a service's RED series.
+type REDPoint struct {
+	Time       time.Time
+	Count      uint64
+	ErrorCount uint64
+	P50        time.Duration
+	P95        time.Duration
+	P99        time.Duration
+}
+
+// REDSeries is one service's rate/errors/duration over time (entry spans).
+type REDSeries struct {
+	Service string
+	Points  []REDPoint
+}
+
 // InfraQuery filters ListNodeStats / ListPodStats (kubeletstats metrics).
 type InfraQuery struct {
 	Tenant string
@@ -279,4 +305,5 @@ type Store interface {
 	LogsForTrace(ctx context.Context, tenant, traceID string) ([]LogRecord, error)
 	ListNodeStats(ctx context.Context, q InfraQuery) ([]NodeStat, error)
 	ListPodStats(ctx context.Context, q InfraQuery) ([]PodStat, error)
+	REDSeries(ctx context.Context, q REDQuery) ([]REDSeries, error)
 }

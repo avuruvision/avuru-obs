@@ -554,3 +554,51 @@ func TestInfraMetricsIntegration(t *testing.T) {
 		t.Errorf("node filter leaked: %+v", none)
 	}
 }
+
+func TestREDSeriesIntegration(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	base := time.Now().UTC().Truncate(time.Minute).Add(-10 * time.Minute)
+	spans := []testSpan{
+		{base.Add(1 * time.Minute), "aaaa0001", "s1", "", "GET /x", "Server", "frontend", 100 * time.Millisecond, "Unset"},
+		{base.Add(1*time.Minute + time.Second), "aaaa0002", "s2", "", "GET /x", "Server", "frontend", 200 * time.Millisecond, "Error"},
+		{base.Add(4 * time.Minute), "aaaa0003", "s3", "", "GET /x", "Server", "frontend", 50 * time.Millisecond, "Unset"},
+		{base.Add(4 * time.Minute), "aaaa0004", "s4", "", "Find", "Server", "driver", 20 * time.Millisecond, "Unset"},
+	}
+	insertSpans(t, store, spans)
+	tr := storage.TimeRange{Start: base, End: base.Add(6 * time.Minute)}
+
+	// One service, 6 one-minute buckets.
+	series, err := store.REDSeries(ctx, storage.REDQuery{Tenant: "default", Range: tr, Service: "frontend", Points: 6})
+	if err != nil {
+		t.Fatalf("REDSeries: %v", err)
+	}
+	if len(series) != 1 || series[0].Service != "frontend" {
+		t.Fatalf("series wrong: %+v", series)
+	}
+	if len(series[0].Points) != 2 { // minutes 1 and 4 have data
+		t.Fatalf("got %d points, want 2 (%+v)", len(series[0].Points), series[0].Points)
+	}
+	first := series[0].Points[0]
+	if first.Count != 2 || first.ErrorCount != 1 {
+		t.Errorf("bucket 1 wrong: %+v", first)
+	}
+
+	// Top-N across services: both services present.
+	all, err := store.REDSeries(ctx, storage.REDQuery{Tenant: "default", Range: tr, Points: 6, TopN: 5})
+	if err != nil {
+		t.Fatalf("REDSeries topN: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("topN got %d series, want 2 (%+v)", len(all), all)
+	}
+	// TopN = 1 keeps only the busiest (frontend, 3 spans).
+	top1, err := store.REDSeries(ctx, storage.REDQuery{Tenant: "default", Range: tr, Points: 6, TopN: 1})
+	if err != nil {
+		t.Fatalf("REDSeries top1: %v", err)
+	}
+	if len(top1) != 1 || top1[0].Service != "frontend" {
+		t.Fatalf("top1 wrong: %+v", top1)
+	}
+}

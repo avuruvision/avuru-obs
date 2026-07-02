@@ -55,6 +55,7 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 	mux.Handle("GET /api/v1/traces/{traceId}", handle(a.handleGetTrace))
 	mux.Handle("GET /api/v1/traces/{traceId}/logs", handle(a.handleLogsForTrace))
 	mux.Handle("GET /api/v1/logs", handle(a.handleSearchLogs))
+	mux.Handle("GET /api/v1/metrics/red", handle(a.handleREDSeries))
 	mux.Handle("GET /api/v1/infra/nodes", handle(a.handleInfraNodes))
 	mux.Handle("GET /api/v1/infra/pods", handle(a.handleInfraPods))
 }

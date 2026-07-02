@@ -55,6 +55,7 @@ func TestRoutes(t *testing.T) {
 		{"logs ok", http.MethodGet, "/api/v1/logs", http.StatusOK},
 		{"logs for trace ok", http.MethodGet, "/api/v1/traces/abc/logs", http.StatusOK},
 		{"infra nodes ok", http.MethodGet, "/api/v1/infra/nodes", http.StatusOK},
+		{"red ok", http.MethodGet, "/api/v1/metrics/red", http.StatusOK},
 		{"infra pods ok", http.MethodGet, "/api/v1/infra/pods", http.StatusOK},
 		{"infra nodes bad start", http.MethodGet, "/api/v1/infra/nodes?start=garbage", http.StatusBadRequest},
 		{"trace not found", http.MethodGet, "/api/v1/traces/nope", http.StatusNotFound},
@@ -313,5 +314,40 @@ func TestInfraEndpoints(t *testing.T) {
 	}
 	if len(pods.Pods) != 1 || pods.Pods[0].Workload != "web" {
 		t.Fatalf("pods payload wrong: %+v", pods)
+	}
+}
+
+func TestREDSeriesEndpoint(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Minute)
+	fake := &storagetest.Fake{
+		RED: []storage.REDSeries{{
+			Service: "checkout",
+			Points: []storage.REDPoint{{
+				Time: now, Count: 60, ErrorCount: 6,
+				P50: 10 * time.Millisecond, P95: 40 * time.Millisecond, P99: 90 * time.Millisecond,
+			}},
+		}},
+	}
+	mux := newMux(fake)
+
+	var resp redResponse
+	rec := get(t, mux, "/api/v1/metrics/red?service=checkout&points=30&top=3")
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decoding red: %v", err)
+	}
+	q := fake.LastREDQuery
+	if q.Service != "checkout" || q.Points != 30 || q.TopN != 3 || !q.ExcludeAux {
+		t.Errorf("query not parsed: %+v", q)
+	}
+	if len(resp.Series) != 1 || len(resp.Series[0].Points) != 1 {
+		t.Fatalf("payload wrong: %+v", resp)
+	}
+	p := resp.Series[0].Points[0]
+	if p.ErrorRate != 0.1 || p.P95Ms != 40 {
+		t.Errorf("point conversion wrong: %+v", p)
+	}
+	// 15m default window / 30 points = 30s buckets -> 60 reqs = 2/s.
+	if resp.BucketSeconds != 30 || p.RatePerSec != 2 {
+		t.Errorf("rate wrong: bucket=%v rate=%v", resp.BucketSeconds, p.RatePerSec)
 	}
 }
