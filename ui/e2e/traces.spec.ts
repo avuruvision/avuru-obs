@@ -22,12 +22,6 @@ test.describe("shell", () => {
     await expect(html).toHaveAttribute("data-theme", "dark");
   });
 
-  test("not-yet-built routes teach what arrives when", async ({ page }) => {
-    await page.goto("/profiling");
-    await expect(page.getByText(/profiling/i).first()).toBeVisible();
-    await expect(page.getByText(/arrives in M\d/)).toBeVisible();
-  });
-
   test("sidebar groups nav into sections", async ({ page }) => {
     await page.goto("/traces");
     // Scoped to the sidebar: the breadcrumb repeats the section name.

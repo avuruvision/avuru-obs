@@ -215,3 +215,23 @@ export interface RedResponse {
   bucketSeconds: number;
   series: RedSeries[];
 }
+
+export interface ProfiledService {
+  name: string;
+  samples: number;
+}
+
+export interface ProfiledServicesResponse {
+  services: ProfiledService[];
+}
+
+export interface FlameNode {
+  name: string;
+  value: number;
+  self?: number;
+  children?: FlameNode[];
+}
+
+export interface FlamegraphResponse {
+  root: FlameNode;
+}
