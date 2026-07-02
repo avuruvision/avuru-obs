@@ -121,8 +121,9 @@ func run() error {
 	// reached single-origin via the gateway/ingress. See agent_docs/architecture.md.
 	mux := http.NewServeMux()
 	api.Register(mux, provider, api.Config{
-		RetentionTracesDays: envIntOr("AVURUOPS_RETENTION_TRACES_DAYS", 7),
-		RetentionLogsDays:   envIntOr("AVURUOPS_RETENTION_LOGS_DAYS", 3),
+		RetentionTracesDays:  envIntOr("AVURUOPS_RETENTION_TRACES_DAYS", 7),
+		RetentionLogsDays:    envIntOr("AVURUOPS_RETENTION_LOGS_DAYS", 3),
+		RetentionMetricsDays: envIntOr("AVURUOPS_RETENTION_METRICS_DAYS", 7),
 	})
 
 	srv := &http.Server{

@@ -54,6 +54,9 @@ func TestRoutes(t *testing.T) {
 		{"trace by id ok", http.MethodGet, "/api/v1/traces/abc", http.StatusOK},
 		{"logs ok", http.MethodGet, "/api/v1/logs", http.StatusOK},
 		{"logs for trace ok", http.MethodGet, "/api/v1/traces/abc/logs", http.StatusOK},
+		{"infra nodes ok", http.MethodGet, "/api/v1/infra/nodes", http.StatusOK},
+		{"infra pods ok", http.MethodGet, "/api/v1/infra/pods", http.StatusOK},
+		{"infra nodes bad start", http.MethodGet, "/api/v1/infra/nodes?start=garbage", http.StatusBadRequest},
 		{"trace not found", http.MethodGet, "/api/v1/traces/nope", http.StatusNotFound},
 		{"bad start", http.MethodGet, "/api/v1/traces?start=garbage", http.StatusBadRequest},
 		{"bad status filter", http.MethodGet, "/api/v1/traces?status=weird", http.StatusBadRequest},
@@ -76,7 +79,7 @@ func TestRoutes(t *testing.T) {
 func TestStoreUnavailable(t *testing.T) {
 	mux := newMux(nil)
 
-	for _, path := range []string{"/api/v1/services", "/api/v1/traces", "/api/v1/traces/abc", "/api/v1/logs", "/api/v1/traces/abc/logs"} {
+	for _, path := range []string{"/api/v1/services", "/api/v1/traces", "/api/v1/traces/abc", "/api/v1/logs", "/api/v1/traces/abc/logs", "/api/v1/infra/nodes", "/api/v1/infra/pods"} {
 		if rec := get(t, mux, path); rec.Code != http.StatusServiceUnavailable {
 			t.Errorf("%s: got %d, want 503", path, rec.Code)
 		}
@@ -272,4 +275,43 @@ func hasComponent(cs []componentHealth, name, status string) bool {
 		}
 	}
 	return false
+}
+
+func TestInfraEndpoints(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	fake := &storagetest.Fake{
+		Nodes: []storage.NodeStat{{
+			Name: "node-a", CPUUsage: 1.5, MemoryUsage: 2048, MemoryAvailable: 4096,
+			NetworkRxRate: 100, NetworkTxRate: 50, PodCount: 7,
+			CPUSeries: []storage.MetricPoint{{Time: now, Value: 1.5}},
+		}},
+		Pods: []storage.PodStat{{
+			Name: "web-1", Namespace: "shop", Node: "node-a", Workload: "web", CPUUsage: 0.2, MemoryUsage: 512,
+		}},
+	}
+	mux := newMux(fake)
+
+	var nodes nodesResponse
+	rec := get(t, mux, "/api/v1/infra/nodes?points=12")
+	if err := json.NewDecoder(rec.Body).Decode(&nodes); err != nil {
+		t.Fatalf("decoding nodes: %v", err)
+	}
+	if fake.LastInfraQuery.Points != 12 {
+		t.Errorf("points not parsed: %+v", fake.LastInfraQuery)
+	}
+	if len(nodes.Nodes) != 1 || nodes.Nodes[0].PodCount != 7 || len(nodes.Nodes[0].CPUSeries) != 1 {
+		t.Fatalf("nodes payload wrong: %+v", nodes)
+	}
+
+	var pods podsResponse
+	rec = get(t, mux, "/api/v1/infra/pods?node=node-a&limit=5")
+	if err := json.NewDecoder(rec.Body).Decode(&pods); err != nil {
+		t.Fatalf("decoding pods: %v", err)
+	}
+	if fake.LastInfraQuery.Node != "node-a" || fake.LastInfraQuery.Limit != 5 {
+		t.Errorf("pod filters not parsed: %+v", fake.LastInfraQuery)
+	}
+	if len(pods.Pods) != 1 || pods.Pods[0].Workload != "web" {
+		t.Fatalf("pods payload wrong: %+v", pods)
+	}
 }

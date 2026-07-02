@@ -204,6 +204,44 @@ type LogPage struct {
 	NextCursor *LogCursor
 }
 
+// InfraQuery filters ListNodeStats / ListPodStats (kubeletstats metrics).
+type InfraQuery struct {
+	Tenant string
+	Range  TimeRange
+	Node   string // optional: only pods scheduled on this node
+	Points int    // series buckets over Range (<=0 → backend default)
+	Limit  int    // pods only: max rows (<=0 → backend default)
+}
+
+// MetricPoint is one time-bucketed sample of a series.
+type MetricPoint struct {
+	Time  time.Time
+	Value float64
+}
+
+// NodeStat is one node's latest utilization plus short usage series.
+type NodeStat struct {
+	Name            string
+	CPUUsage        float64 // cores
+	MemoryUsage     uint64  // bytes
+	MemoryAvailable uint64  // bytes
+	NetworkRxRate   float64 // bytes/s averaged over Range
+	NetworkTxRate   float64 // bytes/s averaged over Range
+	PodCount        uint64
+	CPUSeries       []MetricPoint
+	MemorySeries    []MetricPoint
+}
+
+// PodStat is one pod's latest utilization.
+type PodStat struct {
+	Name        string
+	Namespace   string
+	Node        string
+	Workload    string // deployment/statefulset/daemonset when known
+	CPUUsage    float64 // cores
+	MemoryUsage uint64  // bytes
+}
+
 // SignalStats summarizes one telemetry signal's stored data.
 type SignalStats struct {
 	Signal          string // "traces" | "logs"
@@ -239,4 +277,6 @@ type Store interface {
 	TraceHeatmap(ctx context.Context, q HeatmapQuery) (Heatmap, error)
 	SearchLogs(ctx context.Context, q LogQuery) (LogPage, error)
 	LogsForTrace(ctx context.Context, tenant, traceID string) ([]LogRecord, error)
+	ListNodeStats(ctx context.Context, q InfraQuery) ([]NodeStat, error)
+	ListPodStats(ctx context.Context, q InfraQuery) ([]PodStat, error)
 }
