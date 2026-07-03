@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Helm install smoke + the TTV WEDGE GATE: kind up → build+load images →
-# helm install (T0) → uninstrumented demo app → assert the zero-code service
-# map lights up in <5 min, plus seeded traces/logs and infra metrics, via the
-# hub API. Reduced footprint (ephemeral CH) for a laptop VM. Demo images are
-# pre-loaded so pull time stays out of the wedge clock (documented in
-# ROADMAP.md: the promise is about the platform, not registry bandwidth).
+# Helm install smoke + the TTV WEDGE GATE. The promise: point avuru at a
+# cluster ALREADY RUNNING apps → live zero-code service map in <5 minutes.
+# So: kind up → build/load images → deploy the uninstrumented demo → T0 at
+# helm install (NO --wait: a user opens the UI while pods roll) → poll the
+# hub API until the map lights up, <300s asserted. Then the classic seeded
+# assertions. Toolchain time (docker builds, image pulls, go compiles) is
+# excluded from the clock — the promise is about the platform, not the
+# harness. Reduced footprint (ephemeral CH) for a laptop VM.
 set -euo pipefail
 
 CLUSTER="${KIND_CLUSTER:-avuruops-e2e}"
@@ -26,6 +28,12 @@ echo "==> building hub + ui + gateway images"
 docker build -t "$HUB_IMG" -f hub/Dockerfile .
 docker build -t "$UI_IMG" -f ui/Dockerfile .
 docker build -t "$GW_IMG" -f gateway/Dockerfile .
+
+echo "==> pre-building test + seed binaries (toolchain time is not the product's clock)"
+E2E_BIN="$(mktemp -t avuru-e2e.XXXXXX)"
+SEED_BIN="$(mktemp -t avuru-seed.XXXXXX)"
+( cd e2e && go test -tags=e2ehelm -c -o "$E2E_BIN" . )
+( cd tools/seed && go build -o "$SEED_BIN" . )
 
 echo "==> pre-pulling wedge demo + sensor images (pull time is not the product's clock)"
 # Keep in sync with deploy/demo/wedge/wedge.yaml and values.yaml sensor pins.
@@ -63,17 +71,16 @@ for img in "${DEMO_IMGS[@]}" "${SENSOR_IMGS[@]}"; do
 done
 
 # The wedge promise is about a cluster ALREADY RUNNING apps: the demo goes
-# in first (it needs nothing from the platform), then the clock starts at
-# helm install — measuring install + sensor attach + ingest + query.
+# in first (it needs nothing from the platform).
 echo "==> deploying the UNINSTRUMENTED wedge demo (zero OTel anywhere)"
 kubectl apply -f deploy/demo/wedge/wedge.yaml
 kubectl -n wedge-demo wait --for=condition=Available deploy --all --timeout=180s
 
-echo "==> helm install (T0 for the wedge clock)"
+echo "==> helm install (T0 for the wedge clock — no --wait, users don't wait either)"
 WEDGE_T0_UNIX=$(date +%s)
 export WEDGE_T0_UNIX
 # pullPolicy stays IfNotPresent (default): the loaded hub/ui images are present,
-# so they are never pulled; ClickHouse + gateway images pull from registries.
+# so they are never pulled; ClickHouse image pulls from the registry.
 helm install avuruops deploy/helm/avuruops -n "$NS" --create-namespace \
   --set hub.repository=avuru-obs-hub --set hub.tag=local \
   --set ui.repository=avuru-obs-ui --set ui.tag=local \
@@ -83,20 +90,28 @@ helm install avuruops deploy/helm/avuruops -n "$NS" --create-namespace \
   --set clickhouse.resources.requests.memory=512Mi \
   --set clickhouse.resources.limits.memory=1536Mi \
   --set gateway.resources.requests.memory=128Mi \
-  --set hub.resources.requests.memory=64Mi \
-  --wait --timeout 6m
+  --set hub.resources.requests.memory=64Mi
 
-echo "==> port-forwarding gateway + hub + ui"
-kubectl -n "$NS" port-forward svc/avuruops-gateway 4318:4318 >/dev/null 2>&1 &
-PF_PIDS="$PF_PIDS $!"
+echo "==> waiting for the hub to answer (inside the wedge clock)"
+kubectl -n "$NS" wait --for=condition=Available deploy/avuruops-hub --timeout=240s
 kubectl -n "$NS" port-forward svc/avuruops-hub 8080:80 >/dev/null 2>&1 &
+PF_PIDS="$PF_PIDS $!"
+sleep 2
+
+echo "==> asserting the <5-min zero-code wedge via the hub API"
+( cd e2e && "$E2E_BIN" -test.v -test.timeout 15m -test.run 'TestWedge' )
+
+echo "==> waiting for the remaining deployables + migrate hook"
+kubectl -n "$NS" rollout status deploy/avuruops-ui --timeout=180s
+kubectl -n "$NS" rollout status deploy/avuruops-gateway --timeout=180s
+kubectl -n "$NS" port-forward svc/avuruops-gateway 4318:4318 >/dev/null 2>&1 &
 PF_PIDS="$PF_PIDS $!"
 kubectl -n "$NS" port-forward svc/avuruops-ui 8081:80 >/dev/null 2>&1 &
 PF_PIDS="$PF_PIDS $!"
 sleep 4
 
 echo "==> seeding deterministic OTLP fixtures"
-( cd tools/seed && go run . -endpoint http://localhost:4318 -fixtures ../../deploy/compose/seed/fixtures )
+"$SEED_BIN" -endpoint http://localhost:4318 -fixtures deploy/compose/seed/fixtures
 sleep 4
 
 echo "==> asserting the UI deployable serves"
@@ -104,5 +119,7 @@ code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8081/)
 [ "$code" = "200" ] || { echo "UI pod not serving (HTTP $code)"; exit 1; }
 echo "    ui / -> 200"
 
-echo "==> asserting traces + logs + the <5-min zero-code wedge via the hub API"
-cd e2e && go test -tags=e2ehelm -count=1 -timeout 20m -v ./...
+echo "==> asserting seeded traces + correlated logs via the hub API"
+( cd e2e && "$E2E_BIN" -test.v -test.timeout 5m -test.run 'TestSeededViaHelm' )
+
+rm -f "$E2E_BIN" "$SEED_BIN"
