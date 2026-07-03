@@ -3,12 +3,19 @@ server {
     server_name _;
     root /usr/share/nginx/html;
     index index.html;
+    # Relative Location headers: this pod sits behind ingresses/port-forwards
+    # whose external host:port nginx cannot know.
+    absolute_redirect off;
 
     # Next.js static export: extensionless routes resolve to "<route>.html"
     # (e.g. /traces -> traces.html), with SPA fallback to index.html for
-    # client-side routes.
+    # client-side routes. Trailing slashes are canonicalized away: the export
+    # also emits an ASSETS directory per route (settings/ next to
+    # settings.html), so "/settings/" would otherwise hit directory handling
+    # and 403.
+    rewrite ^/(.+)/$ /$1 permanent;
     location / {
-        try_files $uri $uri.html $uri/ /index.html;
+        try_files $uri $uri.html /index.html;
     }
 
     # Single-origin API proxy → hub. ${HUB_UPSTREAM} is set per environment
