@@ -46,13 +46,39 @@ WHERE Tenant = ?
 		query += ` AND Duration <= ?`
 		args = append(args, uint64(q.MaxDuration.Nanoseconds()))
 	}
-	if q.Cursor != nil {
-		query += ` AND (Timestamp, TraceId) < (?, ?)`
-		args = append(args, q.Cursor.Timestamp, q.Cursor.TraceID)
+	query, args = tagFilters(query, q.Tags, args)
+	if q.ExcludeAux {
+		query += auxExclusion("")
 	}
-	query += `
+
+	// Order and the keyset cursor must agree on the sort key: Duration for
+	// "slowest", Timestamp otherwise. The unused cursor field is simply ignored.
+	switch q.Order {
+	case "oldest":
+		if q.Cursor != nil {
+			query += ` AND (Timestamp, TraceId) > (?, ?)`
+			args = append(args, q.Cursor.Timestamp, q.Cursor.TraceID)
+		}
+		query += `
+ORDER BY Timestamp ASC, TraceId ASC
+LIMIT ?`
+	case "slowest":
+		if q.Cursor != nil {
+			query += ` AND (Duration, TraceId) < (?, ?)`
+			args = append(args, uint64(q.Cursor.Duration.Nanoseconds()), q.Cursor.TraceID)
+		}
+		query += `
+ORDER BY Duration DESC, TraceId DESC
+LIMIT ?`
+	default: // newest
+		if q.Cursor != nil {
+			query += ` AND (Timestamp, TraceId) < (?, ?)`
+			args = append(args, q.Cursor.Timestamp, q.Cursor.TraceID)
+		}
+		query += `
 ORDER BY Timestamp DESC, TraceId DESC
 LIMIT ?`
+	}
 	args = append(args, limit+1) // one extra row to detect the next page
 
 	rows, err := s.conn.Query(ctx, query, args...)
@@ -80,7 +106,7 @@ LIMIT ?`
 	if len(page.Traces) > limit {
 		page.Traces = page.Traces[:limit]
 		last := page.Traces[limit-1]
-		page.NextCursor = &storage.TraceCursor{Timestamp: last.StartTime, TraceID: last.TraceID}
+		page.NextCursor = &storage.TraceCursor{Timestamp: last.StartTime, Duration: last.Duration, TraceID: last.TraceID}
 	}
 	if err := s.fillTraceAggregates(ctx, q.Tenant, q.Range, page.Traces); err != nil {
 		return storage.TracePage{}, err

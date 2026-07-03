@@ -50,6 +50,40 @@ func parseInt(r *http.Request, name string, def int) (int, error) {
 	return n, nil
 }
 
+// parseBool reads a "true"/"1" flag; anything else (incl. absent) is def.
+func parseBool(r *http.Request, name string, def bool) bool {
+	switch r.URL.Query().Get(name) {
+	case "":
+		return def
+	case "true", "1":
+		return true
+	default:
+		return false
+	}
+}
+
+// parseTags reads `tags=key=value,key2=value2` into a map of span-attribute
+// equality filters. Blank or malformed pairs (missing '=') are skipped.
+func parseTags(r *http.Request) map[string]string {
+	v := r.URL.Query().Get("tags")
+	if v == "" {
+		return nil
+	}
+	out := map[string]string{}
+	for _, pair := range strings.Split(v, ",") {
+		k, val, ok := strings.Cut(strings.TrimSpace(pair), "=")
+		k = strings.TrimSpace(k)
+		if !ok || k == "" {
+			continue
+		}
+		out[k] = strings.TrimSpace(val)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 func parseDurationMs(r *http.Request, name string) (time.Duration, error) {
 	v := r.URL.Query().Get(name)
 	if v == "" {
@@ -62,13 +96,14 @@ func parseDurationMs(r *http.Request, name string) (time.Duration, error) {
 	return time.Duration(ms * float64(time.Millisecond)), nil
 }
 
-// Cursor wire format: base64("<unix nanos>,<traceId>"). Nanosecond precision
-// plus the TraceId tiebreaker are both required for gapless keyset paging.
+// Cursor wire format: base64("<unix nanos>,<duration nanos>,<traceId>"). Both
+// sort keys are carried (timestamp and root-span duration) so the cursor works
+// for any Order; the TraceId tiebreaker is last so commas in it survive.
 func encodeCursor(c *storage.TraceCursor) string {
 	if c == nil {
 		return ""
 	}
-	raw := fmt.Sprintf("%d,%s", c.Timestamp.UnixNano(), c.TraceID)
+	raw := fmt.Sprintf("%d,%d,%s", c.Timestamp.UnixNano(), c.Duration.Nanoseconds(), c.TraceID)
 	return base64.RawURLEncoding.EncodeToString([]byte(raw))
 }
 
@@ -81,15 +116,23 @@ func parseCursor(r *http.Request) (*storage.TraceCursor, error) {
 	if err != nil {
 		return nil, badRequest("invalid cursor")
 	}
-	parts := strings.SplitN(string(raw), ",", 2)
-	if len(parts) != 2 {
+	parts := strings.SplitN(string(raw), ",", 3)
+	if len(parts) != 3 {
 		return nil, badRequest("invalid cursor")
 	}
 	ns, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
 		return nil, badRequest("invalid cursor")
 	}
-	return &storage.TraceCursor{Timestamp: time.Unix(0, ns).UTC(), TraceID: parts[1]}, nil
+	dur, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return nil, badRequest("invalid cursor")
+	}
+	return &storage.TraceCursor{
+		Timestamp: time.Unix(0, ns).UTC(),
+		Duration:  time.Duration(dur),
+		TraceID:   parts[2],
+	}, nil
 }
 
 // tenant resolves the request tenant (single-tenant in OSS; header is the

@@ -22,6 +22,19 @@ type servicesResponse struct {
 	Services []serviceDTO `json:"services"`
 }
 
+type serviceEdgeDTO struct {
+	Source     string  `json:"source"`
+	Target     string  `json:"target"`
+	Calls      uint64  `json:"calls"`
+	ErrorCount uint64  `json:"errorCount"`
+	ErrorRate  float64 `json:"errorRate"`
+}
+
+type serviceMapResponse struct {
+	Services []serviceDTO     `json:"services"`
+	Edges    []serviceEdgeDTO `json:"edges"`
+}
+
 type operationDTO struct {
 	Service    string  `json:"service"`
 	Operation  string  `json:"operation"`
@@ -118,6 +131,16 @@ func toServiceDTO(s storage.ServiceStats, window time.Duration) serviceDTO {
 		P50Ms:      ms(s.P50),
 		P95Ms:      ms(s.P95),
 		P99Ms:      ms(s.P99),
+	}
+}
+
+func toServiceEdgeDTO(e storage.ServiceEdge) serviceEdgeDTO {
+	return serviceEdgeDTO{
+		Source:     e.Source,
+		Target:     e.Target,
+		Calls:      e.Count,
+		ErrorCount: e.ErrorCount,
+		ErrorRate:  ratio(e.ErrorCount, e.Count),
 	}
 }
 

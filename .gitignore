@@ -40,6 +40,10 @@ deploy/helm/**/*.tgz
 # ── Logs & temp ───────────────────────────────────────────────
 *.log
 logs/
+# …but logs/ must not swallow the UI Logs feature source (route + components).
+# (ui/out/logs stays ignored via ui/out/ above — it's build output.)
+!ui/app/logs/
+!ui/src/components/logs/
 tmp/
 *.tmp
 

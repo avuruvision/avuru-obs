@@ -20,10 +20,11 @@ type TimeRange struct {
 	End   time.Time
 }
 
-// ServiceQuery filters ListServices.
+// ServiceQuery filters ListServices and ServiceEdges.
 type ServiceQuery struct {
-	Tenant string
-	Range  TimeRange
+	Tenant     string
+	Range      TimeRange
+	ExcludeAux bool // drop health-check/metrics/control-plane traffic
 }
 
 // ServiceStats aggregates RED metrics for one service over entry spans.
@@ -36,11 +37,21 @@ type ServiceStats struct {
 	P99        time.Duration
 }
 
+// ServiceEdge is a caller→callee call edge derived from trace spans (a Client
+// span and the cross-service Server span it spawned), with call volume.
+type ServiceEdge struct {
+	Source     string
+	Target     string
+	Count      uint64
+	ErrorCount uint64
+}
+
 // OverviewQuery filters TraceOverview.
 type OverviewQuery struct {
-	Tenant  string
-	Range   TimeRange
-	Service string // optional
+	Tenant     string
+	Range      TimeRange
+	Service    string // optional
+	ExcludeAux bool   // drop health-check/metrics/control-plane traffic
 }
 
 // OperationStats aggregates RED metrics for one (service, operation) pair
@@ -55,10 +66,13 @@ type OperationStats struct {
 	P99        time.Duration
 }
 
-// TraceCursor is a keyset-pagination cursor: full-precision timestamp plus
-// TraceID tiebreaker (both required to avoid skips/duplicates).
+// TraceCursor is a keyset-pagination cursor. It carries both the timestamp and
+// the root-span duration so it works whichever sort key is active (Duration for
+// "slowest", Timestamp otherwise); TraceID is the tiebreaker. Both fields are
+// always encoded; only the one matching Order is compared.
 type TraceCursor struct {
 	Timestamp time.Time
+	Duration  time.Duration
 	TraceID   string
 }
 
@@ -68,9 +82,12 @@ type TraceQuery struct {
 	Range       TimeRange
 	Service     string
 	Operation   string
-	Status      string // "", "ok", "error"
+	Status      string            // "", "ok", "error"
+	Tags        map[string]string // span-attribute equality filters
+	Order       string            // "", "newest" (default), "oldest", "slowest"
 	MinDuration time.Duration
 	MaxDuration time.Duration
+	ExcludeAux  bool // drop health-check/metrics/control-plane traffic
 	Limit       int
 	Cursor      *TraceCursor
 }
@@ -130,6 +147,8 @@ type HeatmapQuery struct {
 	Range           TimeRange
 	Service         string
 	Operation       string
+	Tags            map[string]string // span-attribute equality filters
+	ExcludeAux      bool              // drop health-check/metrics/control-plane traffic
 	TimeBuckets     int
 	DurationBuckets int
 }
@@ -213,6 +232,7 @@ type Store interface {
 	Ping(ctx context.Context) error
 	SystemStats(ctx context.Context) (SystemStats, error)
 	ListServices(ctx context.Context, q ServiceQuery) ([]ServiceStats, error)
+	ServiceEdges(ctx context.Context, q ServiceQuery) ([]ServiceEdge, error)
 	TraceOverview(ctx context.Context, q OverviewQuery) ([]OperationStats, error)
 	SearchTraces(ctx context.Context, q TraceQuery) (TracePage, error)
 	GetTrace(ctx context.Context, tenant, traceID string) (Trace, error)

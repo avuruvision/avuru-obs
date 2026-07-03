@@ -47,6 +47,7 @@ func TestRoutes(t *testing.T) {
 		{"status ok", http.MethodGet, "/api/v1/status", http.StatusOK},
 		{"system status ok", http.MethodGet, "/api/v1/system/status", http.StatusOK},
 		{"services ok", http.MethodGet, "/api/v1/services", http.StatusOK},
+		{"service map ok", http.MethodGet, "/api/v1/service-map", http.StatusOK},
 		{"traces ok", http.MethodGet, "/api/v1/traces", http.StatusOK},
 		{"overview ok", http.MethodGet, "/api/v1/traces/overview", http.StatusOK},
 		{"heatmap ok", http.MethodGet, "/api/v1/traces/heatmap", http.StatusOK},
@@ -56,6 +57,7 @@ func TestRoutes(t *testing.T) {
 		{"trace not found", http.MethodGet, "/api/v1/traces/nope", http.StatusNotFound},
 		{"bad start", http.MethodGet, "/api/v1/traces?start=garbage", http.StatusBadRequest},
 		{"bad status filter", http.MethodGet, "/api/v1/traces?status=weird", http.StatusBadRequest},
+		{"bad order filter", http.MethodGet, "/api/v1/traces?order=sideways", http.StatusBadRequest},
 		{"bad cursor", http.MethodGet, "/api/v1/traces?cursor=!!!", http.StatusBadRequest},
 		{"healthz wrong method", http.MethodPost, "/healthz", http.StatusMethodNotAllowed},
 	}
@@ -115,6 +117,52 @@ func TestSearchTracesParamParsing(t *testing.T) {
 	}
 	if q.Tenant != storage.DefaultTenant {
 		t.Errorf("tenant = %q, want default", q.Tenant)
+	}
+	// Auxiliary traffic is excluded by default (no includeAux param).
+	if !q.ExcludeAux {
+		t.Errorf("ExcludeAux should default to true")
+	}
+
+	// Order, tags and includeAux opt-in.
+	rec2 := get(t, mux, "/api/v1/traces?order=slowest&tags=http.status_code=500,http.method=GET&includeAux=true")
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec2.Code, rec2.Body.String())
+	}
+	q2 := fake.LastTraceQuery
+	if q2.Order != "slowest" {
+		t.Errorf("order = %q, want slowest", q2.Order)
+	}
+	if q2.ExcludeAux {
+		t.Errorf("ExcludeAux should be false with includeAux=true")
+	}
+	if q2.Tags["http.status_code"] != "500" || q2.Tags["http.method"] != "GET" {
+		t.Errorf("tags not parsed: %+v", q2.Tags)
+	}
+}
+
+func TestServiceMapDefaults(t *testing.T) {
+	fake := &storagetest.Fake{
+		Services: []storage.ServiceStats{{Name: "frontend", SpanCount: 3}},
+		Edges:    []storage.ServiceEdge{{Source: "frontend", Target: "api", Count: 2}},
+	}
+	mux := newMux(fake)
+
+	rec := get(t, mux, "/api/v1/service-map")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if !fake.LastServiceQuery.ExcludeAux {
+		t.Errorf("service-map ExcludeAux should default to true")
+	}
+	var resp struct {
+		Services []serviceDTO     `json:"services"`
+		Edges    []serviceEdgeDTO `json:"edges"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Services) != 1 || len(resp.Edges) != 1 || resp.Edges[0].Source != "frontend" {
+		t.Errorf("service-map response wrong: %+v", resp)
 	}
 }
 

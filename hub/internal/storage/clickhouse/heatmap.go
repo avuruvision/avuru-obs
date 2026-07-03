@@ -43,6 +43,10 @@ WHERE Tenant = ?
 		query += ` AND SpanName = ?`
 		args = append(args, q.Operation)
 	}
+	query, args = tagFilters(query, q.Tags, args)
+	if q.ExcludeAux {
+		query += auxExclusion("")
+	}
 	query += `
 GROUP BY t, d
 ORDER BY t, d`

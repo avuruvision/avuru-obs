@@ -30,8 +30,10 @@ test.describe("shell", () => {
 
   test("sidebar groups nav into sections", async ({ page }) => {
     await page.goto("/traces");
+    // Scoped to the sidebar: the breadcrumb repeats the section name.
+    const sidebar = page.getByRole("navigation", { name: "Primary" });
     for (const section of ["Observe", "Infrastructure", "System"]) {
-      await expect(page.getByText(section, { exact: true })).toBeVisible();
+      await expect(sidebar.getByText(section, { exact: true })).toBeVisible();
     }
     // Masthead shows a breadcrumb derived from the route.
     await expect(page.getByLabel("Breadcrumb")).toContainText("Traces");

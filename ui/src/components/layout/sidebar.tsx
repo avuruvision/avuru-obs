@@ -33,7 +33,7 @@ export function Sidebar() {
         )}
       </Link>
 
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
+      <nav aria-label="Primary" className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
         {NAV_SECTIONS.map((section) => (
           <div key={section.title} className="flex flex-col gap-0.5">
             {collapsed ? (

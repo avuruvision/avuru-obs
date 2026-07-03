@@ -11,7 +11,7 @@ import (
 // ListServices aggregates RED stats per service over entry spans
 // (SpanKind Server/Consumer — the request-handling side).
 func (s *Store) ListServices(ctx context.Context, q storage.ServiceQuery) ([]storage.ServiceStats, error) {
-	const query = `
+	query := `
 SELECT
     ServiceName,
     count()                                         AS spans,
@@ -20,11 +20,16 @@ SELECT
 FROM otel_traces
 WHERE Tenant = ?
   AND Timestamp >= ? AND Timestamp < ?
-  AND SpanKind IN ('Server', 'Consumer')
+  AND SpanKind IN ('Server', 'Consumer')`
+	args := []any{q.Tenant, q.Range.Start, q.Range.End}
+	if q.ExcludeAux {
+		query += auxExclusion("")
+	}
+	query += `
 GROUP BY ServiceName
 ORDER BY spans DESC`
 
-	rows, err := s.conn.Query(ctx, query, q.Tenant, q.Range.Start, q.Range.End)
+	rows, err := s.conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("listing services: %w", err)
 	}
@@ -41,6 +46,51 @@ ORDER BY spans DESC`
 		}
 		st.P50, st.P95, st.P99 = nsQuantiles(quant)
 		out = append(out, st)
+	}
+	return out, rows.Err()
+}
+
+// ServiceEdges derives caller→callee call edges from trace spans: a Server span
+// whose parent is a Client span in a different service. It self-joins otel_traces
+// on (TraceId, ParentSpanId=SpanId). Acceptable at staging volumes; revisit with
+// a materialized rollup if otel_traces grows large.
+func (s *Store) ServiceEdges(ctx context.Context, q storage.ServiceQuery) ([]storage.ServiceEdge, error) {
+	query := `
+SELECT
+    client.ServiceName                   AS src,
+    server.ServiceName                   AS dst,
+    count()                              AS calls,
+    countIf(server.StatusCode = 'Error') AS errors
+FROM otel_traces AS server
+INNER JOIN otel_traces AS client
+    ON server.TraceId = client.TraceId AND server.ParentSpanId = client.SpanId
+WHERE server.Tenant = ?
+  AND server.Timestamp >= ? AND server.Timestamp < ?
+  AND client.Tenant = ?
+  AND client.Timestamp >= ? AND client.Timestamp < ?
+  AND server.SpanKind = 'Server' AND client.SpanKind = 'Client'
+  AND server.ServiceName != client.ServiceName`
+	args := []any{q.Tenant, q.Range.Start, q.Range.End, q.Tenant, q.Range.Start, q.Range.End}
+	if q.ExcludeAux {
+		query += auxExclusion("server.")
+	}
+	query += `
+GROUP BY src, dst
+ORDER BY calls DESC`
+
+	rows, err := s.conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("service edges: %w", err)
+	}
+	defer rows.Close()
+
+	var out []storage.ServiceEdge
+	for rows.Next() {
+		var e storage.ServiceEdge
+		if err := rows.Scan(&e.Source, &e.Target, &e.Count, &e.ErrorCount); err != nil {
+			return nil, fmt.Errorf("scanning edge row: %w", err)
+		}
+		out = append(out, e)
 	}
 	return out, rows.Err()
 }
@@ -62,6 +112,9 @@ WHERE Tenant = ?
 	if q.Service != "" {
 		query += ` AND ServiceName = ?`
 		args = append(args, q.Service)
+	}
+	if q.ExcludeAux {
+		query += auxExclusion("")
 	}
 	query += `
 GROUP BY ServiceName, SpanName

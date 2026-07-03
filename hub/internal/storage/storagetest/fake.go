@@ -12,6 +12,7 @@ import (
 type Fake struct {
 	PingErr   error
 	Services  []storage.ServiceStats
+	Edges     []storage.ServiceEdge
 	Ops       []storage.OperationStats
 	Page      storage.TracePage
 	Traces    map[string]storage.Trace
@@ -21,10 +22,10 @@ type Fake struct {
 	Stats     storage.SystemStats
 	StatsErr  error
 
-	// LastTraceQuery / LastLogQuery record the most recent inputs for
-	// asserting parameter parsing.
-	LastTraceQuery storage.TraceQuery
-	LastLogQuery   storage.LogQuery
+	// Last*Query record the most recent inputs for asserting parameter parsing.
+	LastTraceQuery   storage.TraceQuery
+	LastServiceQuery storage.ServiceQuery
+	LastLogQuery     storage.LogQuery
 }
 
 var _ storage.Store = (*Fake)(nil)
@@ -35,8 +36,14 @@ func (f *Fake) SystemStats(context.Context) (storage.SystemStats, error) {
 	return f.Stats, f.StatsErr
 }
 
-func (f *Fake) ListServices(_ context.Context, _ storage.ServiceQuery) ([]storage.ServiceStats, error) {
+func (f *Fake) ListServices(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceStats, error) {
+	f.LastServiceQuery = q
 	return f.Services, nil
+}
+
+func (f *Fake) ServiceEdges(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceEdge, error) {
+	f.LastServiceQuery = q
+	return f.Edges, nil
 }
 
 func (f *Fake) TraceOverview(_ context.Context, _ storage.OverviewQuery) ([]storage.OperationStats, error) {
