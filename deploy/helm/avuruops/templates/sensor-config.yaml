@@ -141,12 +141,13 @@ data:
       profiling:
         samples_per_second: {{ .Values.sensor.profiler.samplesPerSecond }}
     processors:
+      # NO batch here: the batch processor does not support the profiles
+      # signal in this collector line ("telemetry type is not supported" at
+      # startup); the profiling receiver already reports in batches.
       memory_limiter:
         check_interval: 1s
         limit_percentage: 80
         spike_limit_percentage: 25
-      batch:
-        timeout: 5s
     exporters:
       # Straight to the hub's profiles-ingest seam (OTLP/HTTP appends the
       # /v1development/profiles path) — documented profiles-only exception to
@@ -161,6 +162,6 @@ data:
       pipelines:
         profiles:
           receivers: [profiling]
-          processors: [memory_limiter, batch]
+          processors: [memory_limiter]
           exporters: [otlphttp]
 {{- end }}
