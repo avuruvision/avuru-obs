@@ -453,3 +453,104 @@ func TestStoreIntegration(t *testing.T) {
 		}
 	})
 }
+
+// insertGauge writes one exporter-shaped gauge point.
+func insertGauge(t *testing.T, s *Store, ts time.Time, metric string, res map[string]string, value float64) {
+	t.Helper()
+	batch, err := s.conn.PrepareBatch(context.Background(), `INSERT INTO otel_metrics_gauge
+		(ResourceAttributes, ScopeName, ServiceName, MetricName, MetricUnit, Attributes, StartTimeUnix, TimeUnix, Value, Flags)`)
+	if err != nil {
+		t.Fatalf("preparing gauge insert: %v", err)
+	}
+	if err := batch.Append(res, "kubeletstats", "", metric, "1", map[string]string{}, ts, ts, value, uint32(0)); err != nil {
+		t.Fatalf("appending gauge: %v", err)
+	}
+	if err := batch.Send(); err != nil {
+		t.Fatalf("sending gauge: %v", err)
+	}
+}
+
+// insertSum writes one exporter-shaped cumulative-sum point.
+func insertSum(t *testing.T, s *Store, ts time.Time, metric string, res, attrs map[string]string, value float64) {
+	t.Helper()
+	batch, err := s.conn.PrepareBatch(context.Background(), `INSERT INTO otel_metrics_sum
+		(ResourceAttributes, ScopeName, ServiceName, MetricName, MetricUnit, Attributes, StartTimeUnix, TimeUnix, Value, Flags, AggregationTemporality, IsMonotonic)`)
+	if err != nil {
+		t.Fatalf("preparing sum insert: %v", err)
+	}
+	if err := batch.Append(res, "kubeletstats", "", metric, "By", attrs, ts, ts, value, uint32(0), int32(2), true); err != nil {
+		t.Fatalf("appending sum: %v", err)
+	}
+	if err := batch.Send(); err != nil {
+		t.Fatalf("sending sum: %v", err)
+	}
+}
+
+func TestInfraMetricsIntegration(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	base := time.Now().UTC().Truncate(time.Minute).Add(-10 * time.Minute)
+	nodeRes := map[string]string{"k8s.node.name": "node-a"}
+	podRes := map[string]string{
+		"k8s.node.name": "node-a", "k8s.pod.name": "web-1",
+		"k8s.namespace.name": "shop", "k8s.deployment.name": "web",
+	}
+
+	// Two samples so latest-wins and the series has >1 bucket.
+	insertGauge(t, store, base.Add(1*time.Minute), "k8s.node.cpu.usage", nodeRes, 1.0)
+	insertGauge(t, store, base.Add(5*time.Minute), "k8s.node.cpu.usage", nodeRes, 2.0)
+	insertGauge(t, store, base.Add(5*time.Minute), "k8s.node.memory.usage", nodeRes, 2048)
+	insertGauge(t, store, base.Add(5*time.Minute), "k8s.node.memory.available", nodeRes, 4096)
+	// Cumulative network counter: 1000 -> 7000 over the window (receive).
+	insertSum(t, store, base.Add(1*time.Minute), "k8s.node.network.io", nodeRes, map[string]string{"direction": "receive", "interface": "eth0"}, 1000)
+	insertSum(t, store, base.Add(5*time.Minute), "k8s.node.network.io", nodeRes, map[string]string{"direction": "receive", "interface": "eth0"}, 7000)
+	// Pod gauges.
+	insertGauge(t, store, base.Add(5*time.Minute), "k8s.pod.cpu.usage", podRes, 0.25)
+	insertGauge(t, store, base.Add(5*time.Minute), "k8s.pod.memory.usage", podRes, 512)
+
+	tr := storage.TimeRange{Start: base, End: base.Add(6 * time.Minute)}
+
+	nodes, err := store.ListNodeStats(ctx, storage.InfraQuery{Tenant: "default", Range: tr, Points: 6})
+	if err != nil {
+		t.Fatalf("ListNodeStats: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("got %d nodes, want 1 (%+v)", len(nodes), nodes)
+	}
+	n := nodes[0]
+	if n.Name != "node-a" || n.CPUUsage != 2.0 || n.MemoryUsage != 2048 || n.MemoryAvailable != 4096 {
+		t.Errorf("node latest wrong: %+v", n)
+	}
+	wantRate := 6000.0 / tr.End.Sub(tr.Start).Seconds()
+	if n.NetworkRxRate < wantRate*0.99 || n.NetworkRxRate > wantRate*1.01 {
+		t.Errorf("rx rate = %v, want ~%v", n.NetworkRxRate, wantRate)
+	}
+	if n.PodCount != 1 {
+		t.Errorf("pod count = %d, want 1", n.PodCount)
+	}
+	if len(n.CPUSeries) < 2 {
+		t.Errorf("cpu series too short: %+v", n.CPUSeries)
+	}
+
+	pods, err := store.ListPodStats(ctx, storage.InfraQuery{Tenant: "default", Range: tr, Node: "node-a"})
+	if err != nil {
+		t.Fatalf("ListPodStats: %v", err)
+	}
+	if len(pods) != 1 {
+		t.Fatalf("got %d pods, want 1 (%+v)", len(pods), pods)
+	}
+	p := pods[0]
+	if p.Name != "web-1" || p.Namespace != "shop" || p.Node != "node-a" || p.Workload != "web" || p.CPUUsage != 0.25 || p.MemoryUsage != 512 {
+		t.Errorf("pod stats wrong: %+v", p)
+	}
+
+	// Node filter that matches nothing.
+	none, err := store.ListPodStats(ctx, storage.InfraQuery{Tenant: "default", Range: tr, Node: "node-b"})
+	if err != nil {
+		t.Fatalf("ListPodStats node-b: %v", err)
+	}
+	if len(none) != 0 {
+		t.Errorf("node filter leaked: %+v", none)
+	}
+}

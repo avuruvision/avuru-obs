@@ -21,8 +21,9 @@ type StoreProvider func() storage.Store
 
 // Config holds non-store handler settings (e.g. reported retention).
 type Config struct {
-	RetentionTracesDays int
-	RetentionLogsDays   int
+	RetentionTracesDays  int
+	RetentionLogsDays    int
+	RetentionMetricsDays int
 }
 
 // API holds handler dependencies.
@@ -54,6 +55,8 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 	mux.Handle("GET /api/v1/traces/{traceId}", handle(a.handleGetTrace))
 	mux.Handle("GET /api/v1/traces/{traceId}/logs", handle(a.handleLogsForTrace))
 	mux.Handle("GET /api/v1/logs", handle(a.handleSearchLogs))
+	mux.Handle("GET /api/v1/infra/nodes", handle(a.handleInfraNodes))
+	mux.Handle("GET /api/v1/infra/pods", handle(a.handleInfraPods))
 }
 
 func handleHealthz(w http.ResponseWriter, _ *http.Request) {

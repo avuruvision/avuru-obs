@@ -21,11 +21,24 @@ type Fake struct {
 	TraceLogs map[string][]storage.LogRecord
 	Stats     storage.SystemStats
 	StatsErr  error
+	Nodes     []storage.NodeStat
+	Pods      []storage.PodStat
 
 	// Last*Query record the most recent inputs for asserting parameter parsing.
 	LastTraceQuery   storage.TraceQuery
 	LastServiceQuery storage.ServiceQuery
 	LastLogQuery     storage.LogQuery
+	LastInfraQuery   storage.InfraQuery
+}
+
+func (f *Fake) ListNodeStats(_ context.Context, q storage.InfraQuery) ([]storage.NodeStat, error) {
+	f.LastInfraQuery = q
+	return f.Nodes, nil
+}
+
+func (f *Fake) ListPodStats(_ context.Context, q storage.InfraQuery) ([]storage.PodStat, error) {
+	f.LastInfraQuery = q
+	return f.Pods, nil
 }
 
 var _ storage.Store = (*Fake)(nil)

@@ -8,10 +8,16 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
-// signalTables maps a public signal name to its main ClickHouse table.
-var signalTables = []struct{ signal, table string }{
-	{"traces", "otel_traces"},
-	{"logs", "otel_logs"},
+// signalTables maps a public signal name to its ClickHouse tables and their
+// event-time column (metrics tables use TimeUnix, not Timestamp).
+var signalTables = []struct {
+	signal  string
+	tables  []string
+	timeCol string
+}{
+	{"traces", []string{"otel_traces"}, "Timestamp"},
+	{"logs", []string{"otel_logs"}, "Timestamp"},
+	{"metrics", metricsTables, "TimeUnix"},
 }
 
 // SystemStats reports per-signal storage usage (system.parts), data freshness
@@ -24,13 +30,24 @@ func (s *Store) SystemStats(ctx context.Context) (storage.SystemStats, error) {
 		return out, err
 	}
 	for _, sig := range signalTables {
-		st := sizes[sig.table] // zero value when the table has no parts yet
+		var st storage.SignalStats
 		st.Signal = sig.signal
-		oldest, newest, err := s.signalRange(ctx, sig.table)
-		if err != nil {
-			return out, err
+		for _, table := range sig.tables {
+			sz := sizes[table] // zero value when the table has no parts yet
+			st.Rows += sz.Rows
+			st.Bytes += sz.Bytes
+			st.CompressedBytes += sz.CompressedBytes
+			oldest, newest, err := s.signalRange(ctx, table, sig.timeCol)
+			if err != nil {
+				return out, err
+			}
+			if oldest != nil && (st.Oldest == nil || oldest.Before(*st.Oldest)) {
+				st.Oldest = oldest
+			}
+			if newest != nil && (st.Newest == nil || newest.After(*st.Newest)) {
+				st.Newest = newest
+			}
 		}
-		st.Oldest, st.Newest = oldest, newest
 		out.Signals = append(out.Signals, st)
 	}
 
@@ -72,10 +89,10 @@ GROUP BY table`
 	return out, rows.Err()
 }
 
-// signalRange returns the oldest/newest Timestamp in a table, or nil/nil when
+// signalRange returns the oldest/newest event time in a table, or nil/nil when
 // it is empty (min/max over no rows would otherwise yield the zero time).
-func (s *Store) signalRange(ctx context.Context, table string) (oldest, newest *time.Time, err error) {
-	q := fmt.Sprintf("SELECT count(), min(Timestamp), max(Timestamp) FROM %s.%s", s.db, table)
+func (s *Store) signalRange(ctx context.Context, table, timeCol string) (oldest, newest *time.Time, err error) {
+	q := fmt.Sprintf("SELECT count(), min(%s), max(%s) FROM %s.%s", timeCol, timeCol, s.db, table)
 	var (
 		cnt    uint64
 		mn, mx time.Time
