@@ -105,23 +105,7 @@ jobs:
           path: dist/*.tgz
           if-no-files-found: error
 
-  # Best-effort: the agent is not containerized yet (no agent/Dockerfile), and
-  # the full eBPF build needs extra tooling. Don't block the release on it.
-  agent-binary:
-    needs: meta
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build agent (release)
-        working-directory: agent
-        run: cargo build --release || echo "agent build skipped/failed (non-blocking)"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: agent-binary
-          path: agent/target/release/avuru-agent
-          if-no-files-found: ignore
-
+  # The Rust flow tracer ships in v0.2 — no agent artifact until then.
   release:
     needs: [meta, images, chart]
     runs-on: ubuntu-latest
@@ -151,7 +135,6 @@ jobs:
           prerelease: ${{ needs.meta.outputs.prerelease == 'true' }}
           files: |
             artifacts/helm-chart/*.tgz
-            artifacts/agent-binary/*
       - name: Dry-run summary
         if: needs.meta.outputs.dry_run == 'true'
         run: echo "Dry run — built images and chart, skipped push and release for ${{ needs.meta.outputs.tag }}"

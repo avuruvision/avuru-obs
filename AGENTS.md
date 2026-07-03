@@ -57,7 +57,7 @@ releases on `vX.Y.Z` tags.
 
 ## Generated files — NEVER hand-edit
 
-- Anything under `*/generated/` or marked `// Code generated` — regenerate via `make proto` *[M1+ — echoes until buf is wired]*
+- Anything under `*/generated/` or marked `// Code generated` — regenerate via `make proto` *[v0.2 — echoes until buf is wired with the flow tracer]*
 - `hub/internal/ui/dist/` — produced by `make ui` (Next.js static export)
 - `gateway/` collector binary — built from the OCB manifest, never patched
 
@@ -68,7 +68,7 @@ releases on `vX.Y.Z` tags.
 | hub | `cd hub && go build ./... && go test -race ./... && golangci-lint run` |
 | agent | `cd agent && cargo check && cargo test && cargo clippy -- -D warnings` |
 | ui | `cd ui && npm run lint && npm run build` (build MUST succeed — static export fails on server-only features) |
-| proto | `make proto && git diff --exit-code` (codegen must be committed) *[M1+]* |
+| proto | `make proto && git diff --exit-code` (codegen must be committed) *[v0.2]* |
 | all | `make check` |
 
 `make check` mirrors CI but does **not** run `golangci-lint` — run it via
@@ -168,8 +168,7 @@ Branch naming: milestone branches use `feature/<milestone>` (e.g.
 - **UI iteration**: `cd ui && npm run dev` (HMR, proxies `/api` to the hub on
   8080). The hub serves the *last built* export — UI changes don't appear in
   the hub binary until `make ui`.
-- **Full stack**: `make dev` (compose: ClickHouse + collector + demo app)
-  *[M1+]*.
+- **Full stack**: `make dev` (compose: ClickHouse + collector + demo app).
 
 ---
 

@@ -31,26 +31,32 @@ Plus the hard product promise: **OTLP drop-in replacement** for Jaeger/OTLP
 backends — already-instrumented apps migrate by changing only the exporter
 endpoint, no SDK or code changes.
 
-## Milestones toward v0.1
+## Milestones toward v0.1 — ALL SHIPPED (v0.1.0)
 
 These milestone tags (`M1`–`M5`) are referenced throughout the codebase and
-`agent_docs/`. Order is roughly sequential; details are directional.
+`agent_docs/`. All five shipped in v0.1.0:
 
-| Milestone | Theme | Notable work |
+| Milestone | Theme | Shipped |
 |---|---|---|
-| **M1** | Local stack & ingestion | `make dev` compose stack (ClickHouse + collector + demo app); OTLP ingest end-to-end; `proto/` codegen wired (buf); first e2e drop-in test |
-| **M2** | Deployable OTLP backend | Helm install path; gateway → ClickHouse → Hub API working in-cluster |
-| **M3** | Signal depth & correlation | Logs + trace correlation, infra metrics, query paths hardened _(directional)_ |
-| **M4** | UI depth | Trace waterfall, flame-graph/chart library chosen, service-map polish |
-| **M5** | Gateway build & TTV gate | OCB-built minimal collector distro; kind-based time-to-value gate (astronomy-shop profile) enforcing the <5-min wedge |
+| **M1** | Local stack & ingestion | `make dev` compose stack; OTLP ingest end-to-end; first e2e drop-in test (`proto/` buf codegen moved to v0.2 with the flow tracer) |
+| **M2** | Deployable OTLP backend | Helm install path; gateway → ClickHouse → Hub API in-cluster; sensor DaemonSet (OBI zero-code traces + zero-config logs); services inventory UI |
+| **M3** | Signal depth & correlation | Logs + trace correlation; kubeletstats infra metrics (schema → hub API → Nodes UI); RED dashboard |
+| **M4** | UI depth | Trace waterfall/flamegraph/diff, split workspace; continuous profiling (ingest seam → flame-graph API → icicle UI) |
+| **M5** | Gateway build & TTV gate | OCB-built minimal collector distro; kind-based time-to-value gate (uninstrumented wedge demo, <300 s service-map assertion) in CI |
 
-## Beyond v0.1 (directional)
+## v0.2 (directional)
 
-- **v0.2 — auth:** OIDC behind the existing `hub/internal/auth.Provider`
-  interface (v0.1 ships a local admin password). The
+- **Kernel flow topology:** the custom Rust eBPF L4 flow tracer (`agent/`,
+  aya) and its flows schema (migration `0005`), enriching the service map
+  beyond the protocols zero-code instrumentation parses; `proto/` buf codegen
+  ships with it (flow.proto is the first cross-language contract).
+- **Auth:** OIDC behind the existing `hub/internal/auth.Provider`
+  interface. The
   [enterprise seam](agent_docs/architecture.md#enterprise-seam-do-not-bypass)
   — auth provider, `tenant` column, retention policy objects — is built in from
   v0.1 so this lands without a rewrite.
+- **Remote configuration:** the hub's OpAMP server and a configuration UI
+  (day-2 config is Helm-driven in v0.1).
 - **More clients:** the Hub API is the client-agnostic contract; the SPA is one
   thin client. A **Grafana** data source and a **CLI** are planned.
 - **Storage re-evaluation:** ClickHouse stays behind `storage.Store`; GreptimeDB
