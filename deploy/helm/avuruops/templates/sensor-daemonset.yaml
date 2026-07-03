@@ -1,6 +1,7 @@
-{{- /* obi is the only container until the otel-agent lands (next PR) — a
-       DaemonSet with zero containers is invalid, so gate on both flags. */}}
-{{- if and .Values.sensor.enabled .Values.sensor.obi.enabled }}
+{{- /* A DaemonSet with zero containers is invalid — render only when at
+       least one sensor container is active. */}}
+{{- $agentActive := and .Values.sensor.agent.enabled .Values.sensor.agent.logs.enabled }}
+{{- if and .Values.sensor.enabled (or .Values.sensor.obi.enabled $agentActive) }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -104,15 +105,77 @@ spec:
           resources:
             {{- toYaml .Values.sensor.obi.resources | nindent 12 }}
         {{- end }}
+        {{- if $agentActive }}
+        # Node collector — tails container stdout/stderr into the gateway
+        # (zero-config logs tier). Runs as root: /var/log/pods is root-owned.
+        - name: otel-agent
+          image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.agent.image.repository "tag" .Values.sensor.agent.image.tag) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["--config=/etc/avuru/config.yaml"]
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            readOnlyRootFilesystem: true
+          env:
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: agent-config
+              mountPath: /etc/avuru
+              readOnly: true
+            - name: varlogpods
+              mountPath: /var/log/pods
+              readOnly: true
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+            - name: agent-storage
+              mountPath: /var/lib/otel-agent
+          ports:
+            - name: agent-health
+              containerPort: 13134
+          livenessProbe:
+            httpGet:
+              path: /
+              port: agent-health
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: agent-health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.sensor.agent.resources | nindent 12 }}
+        {{- end }}
       volumes:
         {{- if .Values.sensor.obi.enabled }}
         - name: obi-config
           configMap:
             name: {{ include "avuruops.fullname" . }}-sensor-obi
-        {{- end }}
         - name: var-run-obi
           emptyDir: {}
         - name: cgroup
           hostPath:
             path: /sys/fs/cgroup
+        {{- end }}
+        {{- if $agentActive }}
+        - name: agent-config
+          configMap:
+            name: {{ include "avuruops.fullname" . }}-sensor-agent
+        - name: varlogpods
+          hostPath:
+            path: /var/log/pods
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers
+            type: DirectoryOrCreate
+        - name: agent-storage
+          hostPath:
+            path: /var/lib/avuruops/otel-agent
+            type: DirectoryOrCreate
+        {{- end }}
 {{- end }}
