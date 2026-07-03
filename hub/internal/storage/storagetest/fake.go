@@ -23,12 +23,19 @@ type Fake struct {
 	StatsErr  error
 	Nodes     []storage.NodeStat
 	Pods      []storage.PodStat
+	RED       []storage.REDSeries
 
 	// Last*Query record the most recent inputs for asserting parameter parsing.
 	LastTraceQuery   storage.TraceQuery
 	LastServiceQuery storage.ServiceQuery
 	LastLogQuery     storage.LogQuery
 	LastInfraQuery   storage.InfraQuery
+	LastREDQuery     storage.REDQuery
+}
+
+func (f *Fake) REDSeries(_ context.Context, q storage.REDQuery) ([]storage.REDSeries, error) {
+	f.LastREDQuery = q
+	return f.RED, nil
 }
 
 func (f *Fake) ListNodeStats(_ context.Context, q storage.InfraQuery) ([]storage.NodeStat, error) {

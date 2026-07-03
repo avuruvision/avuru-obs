@@ -196,3 +196,22 @@ export interface PodStats {
 export interface PodsResponse {
   pods: PodStats[];
 }
+
+export interface RedPoint {
+  time: string;
+  ratePerSec: number;
+  errorRate: number;
+  p50Ms: number;
+  p95Ms: number;
+  p99Ms: number;
+}
+
+export interface RedSeries {
+  service: string;
+  points: RedPoint[];
+}
+
+export interface RedResponse {
+  bucketSeconds: number;
+  series: RedSeries[];
+}
