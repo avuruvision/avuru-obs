@@ -62,6 +62,13 @@ for img in "${DEMO_IMGS[@]}" "${SENSOR_IMGS[@]}"; do
   rm -f "$tar"
 done
 
+# The wedge promise is about a cluster ALREADY RUNNING apps: the demo goes
+# in first (it needs nothing from the platform), then the clock starts at
+# helm install — measuring install + sensor attach + ingest + query.
+echo "==> deploying the UNINSTRUMENTED wedge demo (zero OTel anywhere)"
+kubectl apply -f deploy/demo/wedge/wedge.yaml
+kubectl -n wedge-demo wait --for=condition=Available deploy --all --timeout=180s
+
 echo "==> helm install (T0 for the wedge clock)"
 WEDGE_T0_UNIX=$(date +%s)
 export WEDGE_T0_UNIX
@@ -78,9 +85,6 @@ helm install avuruops deploy/helm/avuruops -n "$NS" --create-namespace \
   --set gateway.resources.requests.memory=128Mi \
   --set hub.resources.requests.memory=64Mi \
   --wait --timeout 6m
-
-echo "==> deploying the UNINSTRUMENTED wedge demo (zero OTel anywhere)"
-kubectl apply -f deploy/demo/wedge/wedge.yaml
 
 echo "==> port-forwarding gateway + hub + ui"
 kubectl -n "$NS" port-forward svc/avuruops-gateway 4318:4318 >/dev/null 2>&1 &
