@@ -51,6 +51,32 @@ gateway:
     limits:
       memory: 512Mi
 
+# Sensor: per-node DaemonSet for zero-code signal collection (eBPF). v0.1
+# wires OBI (zero-code traces + RED); the otel-agent (logs, kubeletstats) and
+# profiler containers join in later milestones, the Rust flow tracer in v0.2.
+# Kernel ≥5.8 with BTF is required for eBPF; a preflight initContainer warns
+# loudly (but never blocks) when the node can't support it.
+sensor:
+  enabled: true
+  nodeSelector: {}
+  tolerations: []
+  obi:
+    enabled: true
+    image:
+      repository: otel/ebpf-instrument
+      tag: "v0.9.0" # pre-1.0 — pin exact, never float (agent_docs/tech_stack.md)
+    # privileged=true is the reliable default across container runtimes and
+    # kernels. Set false to run with the least-privilege capability set
+    # (BPF/PERFMON/SYS_PTRACE/NET_RAW/CHECKPOINT_RESTORE/DAC_READ_SEARCH/
+    # SYS_RESOURCE) instead — needs kernel ≥5.11.
+    privileged: true
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+
 # ClickHouse: single-node StatefulSet by default; flip external.enabled to BYO.
 clickhouse:
   external:

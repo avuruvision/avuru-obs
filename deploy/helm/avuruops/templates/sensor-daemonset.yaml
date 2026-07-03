@@ -1,0 +1,118 @@
+{{- /* obi is the only container until the otel-agent lands (next PR) — a
+       DaemonSet with zero containers is invalid, so gate on both flags. */}}
+{{- if and .Values.sensor.enabled .Values.sensor.obi.enabled }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "avuruops.fullname" . }}-sensor
+  labels:
+    {{- include "avuruops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sensor
+spec:
+  selector:
+    matchLabels:
+      {{- include "avuruops.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: sensor
+  template:
+    metadata:
+      labels:
+        {{- include "avuruops.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: sensor
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/sensor-config.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "avuruops.fullname" . }}-sensor
+      # eBPF containers discover and inspect host processes.
+      hostPID: true
+      {{- with .Values.sensor.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sensor.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        # Kernel preflight: eBPF needs >=5.8 with BTF. Warn loudly, NEVER
+        # block — on unsupported nodes the pod stays up for the non-eBPF
+        # containers (logs/metrics) while OBI alone may fail.
+        - name: kernel-preflight
+          image: busybox:1.37
+          command:
+            - /bin/sh
+            - -c
+            - |
+              KVER="$(uname -r)"
+              MAJ="${KVER%%.*}"; REST="${KVER#*.}"; MIN="${REST%%.*}"
+              OK=1
+              if [ "$MAJ" -lt 5 ] || { [ "$MAJ" -eq 5 ] && [ "$MIN" -lt 8 ]; }; then OK=0; fi
+              [ -f /sys/kernel/btf/vmlinux ] || OK=0
+              if [ "$OK" = "1" ]; then
+                echo "sensor preflight: kernel $KVER with BTF — eBPF supported"
+              else
+                echo "**********************************************************"
+                echo "sensor preflight WARNING: kernel $KVER, BTF $( [ -f /sys/kernel/btf/vmlinux ] && echo present || echo MISSING )"
+                echo "eBPF zero-code instrumentation needs kernel >=5.8 with BTF."
+                echo "OBI will likely fail on this node; logs/metrics collection"
+                echo "is unaffected. Set sensor.obi.enabled=false to silence."
+                echo "**********************************************************"
+              fi
+              exit 0
+      containers:
+        {{- if .Values.sensor.obi.enabled }}
+        # OBI — zero-code traces + RED metrics via eBPF (upstream, pinned).
+        - name: obi
+          image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.obi.image.repository "tag" .Values.sensor.obi.image.tag) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            {{- if .Values.sensor.obi.privileged }}
+            privileged: true
+            {{- else }}
+            capabilities:
+              add:
+                - BPF
+                - PERFMON
+                - SYS_PTRACE
+                - NET_RAW
+                - CHECKPOINT_RESTORE
+                - DAC_READ_SEARCH
+                - SYS_RESOURCE
+              drop:
+                - ALL
+            {{- end }}
+          env:
+            - name: OTEL_EBPF_CONFIG_PATH
+              value: /config/obi-config.yml
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://{{ include "avuruops.fullname" . }}-gateway:4318
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: http/protobuf
+          volumeMounts:
+            - name: obi-config
+              mountPath: /config
+              readOnly: true
+            - name: var-run-obi
+              mountPath: /var/run/obi
+            - name: cgroup
+              mountPath: /sys/fs/cgroup
+              readOnly: true
+          resources:
+            {{- toYaml .Values.sensor.obi.resources | nindent 12 }}
+        {{- end }}
+      volumes:
+        {{- if .Values.sensor.obi.enabled }}
+        - name: obi-config
+          configMap:
+            name: {{ include "avuruops.fullname" . }}-sensor-obi
+        {{- end }}
+        - name: var-run-obi
+          emptyDir: {}
+        - name: cgroup
+          hostPath:
+            path: /sys/fs/cgroup
+{{- end }}
