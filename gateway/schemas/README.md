@@ -9,8 +9,9 @@ See the M2 design spec: `docs/superpowers/specs/2026-06-15-m2-deployable-otlp-ba
 |---|---|
 | `0001_traces.sql` | `otel_traces` + `otel_traces_trace_id_ts` (+MV) |
 | `0002_logs.sql` | `otel_logs` |
-| `0003` | **reserved**: flows (M3, service map) |
+| `0003_metrics.sql` | the five `otel_metrics_*` tables (gauge/sum/histogram/exp_histogram/summary) |
 | `0004` | **reserved**: profiles (M4, Coroot stack-dedup pattern) |
+| `0005` | **reserved**: flows (v0.2, custom L4 tracer — was 0003 pre-release; safe to renumber, the ledger records filenames) |
 
 ## Rules (unchanged — now enforced by the hub migrator)
 
