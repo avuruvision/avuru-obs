@@ -62,9 +62,10 @@ var metricsTables = []string{
 // Retention groups per-signal TTL day counts. A non-positive count is a
 // no-op for that signal (the TTL is left unchanged).
 type Retention struct {
-	TracesDays  int
-	LogsDays    int
-	MetricsDays int
+	TracesDays   int
+	LogsDays     int
+	MetricsDays  int
+	ProfilesDays int
 }
 
 // ApplyRetention sets per-signal TTL via `ALTER ... MODIFY TTL`. Retention
@@ -95,6 +96,13 @@ func (s *Store) ApplyRetention(ctx context.Context, r Retention) error {
 			if err := s.conn.Exec(ctx, q); err != nil {
 				return fmt.Errorf("retention on %s: %w", table, err)
 			}
+		}
+	}
+	if r.ProfilesDays > 0 {
+		// Samples only: profiling_stacks is small and self-deduplicating.
+		q := fmt.Sprintf("ALTER TABLE %s.profiling_samples MODIFY TTL toDateTime(Timestamp) + toIntervalDay(%d)", s.db, r.ProfilesDays)
+		if err := s.conn.Exec(ctx, q); err != nil {
+			return fmt.Errorf("retention on profiling_samples: %w", err)
 		}
 	}
 	return nil

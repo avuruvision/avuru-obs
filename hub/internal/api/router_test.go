@@ -1,11 +1,15 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"go.opentelemetry.io/collector/pdata/pprofile"
+	"go.opentelemetry.io/collector/pdata/pprofile/pprofileotlp"
 
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 	"github.com/avuru/avuru-obs/hub/internal/storage/storagetest"
@@ -56,6 +60,9 @@ func TestRoutes(t *testing.T) {
 		{"logs for trace ok", http.MethodGet, "/api/v1/traces/abc/logs", http.StatusOK},
 		{"infra nodes ok", http.MethodGet, "/api/v1/infra/nodes", http.StatusOK},
 		{"red ok", http.MethodGet, "/api/v1/metrics/red", http.StatusOK},
+		{"profiled services ok", http.MethodGet, "/api/v1/profiles/services", http.StatusOK},
+		{"flamegraph needs service", http.MethodGet, "/api/v1/profiles/flamegraph", http.StatusBadRequest},
+		{"flamegraph ok", http.MethodGet, "/api/v1/profiles/flamegraph?service=checkout", http.StatusOK},
 		{"infra pods ok", http.MethodGet, "/api/v1/infra/pods", http.StatusOK},
 		{"infra nodes bad start", http.MethodGet, "/api/v1/infra/nodes?start=garbage", http.StatusBadRequest},
 		{"trace not found", http.MethodGet, "/api/v1/traces/nope", http.StatusNotFound},
@@ -349,5 +356,99 @@ func TestREDSeriesEndpoint(t *testing.T) {
 	// 15m default window / 30 points = 30s buckets -> 60 reqs = 2/s.
 	if resp.BucketSeconds != 30 || p.RatePerSec != 2 {
 		t.Errorf("rate wrong: bucket=%v rate=%v", resp.BucketSeconds, p.RatePerSec)
+	}
+}
+
+// buildProfilesBody marshals a minimal OTLP profiles request. Test-only
+// pprofile usage: production code goes through storage/profilesadapter.
+func buildProfilesBody(t *testing.T) []byte {
+	t.Helper()
+	profiles := pprofile.NewProfiles()
+	dic := profiles.Dictionary()
+	_, _ = pprofile.SetString(dic.StringTable(), "")
+	nameIdx, _ := pprofile.SetString(dic.StringTable(), "work")
+	fn := pprofile.NewFunction()
+	fn.SetNameStrindex(nameIdx)
+	fnIdx, _ := pprofile.SetFunction(dic.FunctionTable(), fn)
+	loc := pprofile.NewLocation()
+	loc.Lines().AppendEmpty().SetFunctionIndex(fnIdx)
+	locIdx, _ := pprofile.SetLocation(dic.LocationTable(), loc)
+	st := pprofile.NewStack()
+	st.LocationIndices().Append(locIdx)
+	stIdx, _ := pprofile.SetStack(dic.StackTable(), st)
+
+	rp := profiles.ResourceProfiles().AppendEmpty()
+	rp.Resource().Attributes().PutStr("service.name", "checkout")
+	prof := rp.ScopeProfiles().AppendEmpty().Profiles().AppendEmpty()
+	sample := prof.Samples().AppendEmpty()
+	sample.SetStackIndex(stIdx)
+	sample.Values().Append(3)
+
+	body, err := pprofileotlp.NewExportRequestFromProfiles(profiles).MarshalProto()
+	if err != nil {
+		t.Fatalf("marshal profiles: %v", err)
+	}
+	return body
+}
+
+func TestProfilesIngest(t *testing.T) {
+	fake := &storagetest.Fake{}
+	mux := newMux(fake)
+
+	post := func(body []byte, contentType string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/v1development/profiles", bytes.NewReader(body))
+		req.Header.Set("Content-Type", contentType)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec
+	}
+
+	rec := post(buildProfilesBody(t), "application/x-protobuf")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ingest: got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if len(fake.Written) != 1 || fake.Written[0].Service != "checkout" || fake.Written[0].Value != 3 {
+		t.Fatalf("samples not written: %+v", fake.Written)
+	}
+	if fake.Written[0].Frames[0] != "work" {
+		t.Errorf("frames wrong: %v", fake.Written[0].Frames)
+	}
+
+	if rec := post([]byte("{}"), "application/json"); rec.Code != http.StatusBadRequest {
+		t.Errorf("json content type: got %d, want 400", rec.Code)
+	}
+	if rec := post([]byte("garbage-not-proto!!!"), "application/x-protobuf"); rec.Code != http.StatusBadRequest {
+		t.Errorf("garbage body: got %d, want 400", rec.Code)
+	}
+}
+
+func TestFlamegraphEndpoint(t *testing.T) {
+	fake := &storagetest.Fake{
+		Flame: storage.FlameNode{
+			Name: "root", Value: 8,
+			Children: []*storage.FlameNode{
+				{Name: "main", Value: 8, Children: []*storage.FlameNode{
+					{Name: "handler", Value: 5, Self: 5},
+					{Name: "loop", Value: 3, Self: 3},
+				}},
+			},
+		},
+	}
+	mux := newMux(fake)
+
+	var resp flamegraphResponse
+	rec := get(t, mux, "/api/v1/profiles/flamegraph?service=checkout")
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decoding flamegraph: %v", err)
+	}
+	if fake.LastProfileQuery.Service != "checkout" {
+		t.Errorf("service not parsed: %+v", fake.LastProfileQuery)
+	}
+	if resp.Root.Value != 8 || len(resp.Root.Children) != 1 {
+		t.Fatalf("root wrong: %+v", resp.Root)
+	}
+	kids := resp.Root.Children[0].Children
+	if len(kids) != 2 || kids[0].Name != "handler" || kids[0].Self != 5 {
+		t.Errorf("children wrong: %+v", kids)
 	}
 }

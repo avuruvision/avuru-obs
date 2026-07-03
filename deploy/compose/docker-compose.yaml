@@ -39,6 +39,7 @@ services:
       AVURUOPS_RETENTION_TRACES_DAYS: "7"
       AVURUOPS_RETENTION_LOGS_DAYS: "3"
       AVURUOPS_RETENTION_METRICS_DAYS: "7"
+      AVURUOPS_RETENTION_PROFILES_DAYS: "3"
     depends_on:
       clickhouse:
         condition: service_healthy

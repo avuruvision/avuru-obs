@@ -72,11 +72,11 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	if err := store.conn.QueryRow(ctx, "SELECT count() FROM otel.schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("counting schema_migrations: %v", err)
 	}
-	if count != 3 {
-		t.Fatalf("schema_migrations has %d rows, want 3", count)
+	if count != 4 {
+		t.Fatalf("schema_migrations has %d rows, want 4", count)
 	}
 
-	tables := append([]string{"otel_traces", "otel_logs", "otel_traces_trace_id_ts"}, metricsTables...)
+	tables := append([]string{"otel_traces", "otel_logs", "otel_traces_trace_id_ts", "profiling_stacks", "profiling_samples"}, metricsTables...)
 	for _, tbl := range tables {
 		var n uint64
 		if err := store.conn.QueryRow(ctx, "SELECT count() FROM system.tables WHERE database='otel' AND name=?", tbl).Scan(&n); err != nil {
@@ -87,7 +87,7 @@ func TestMigrateIsIdempotent(t *testing.T) {
 		}
 	}
 
-	if err := store.ApplyRetention(ctx, Retention{TracesDays: 7, LogsDays: 3, MetricsDays: 5}); err != nil {
+	if err := store.ApplyRetention(ctx, Retention{TracesDays: 7, LogsDays: 3, MetricsDays: 5, ProfilesDays: 2}); err != nil {
 		t.Fatalf("ApplyRetention: %v", err)
 	}
 	var ddl string
@@ -102,6 +102,12 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	}
 	if !strings.Contains(ddl, "toIntervalDay(5)") {
 		t.Errorf("metrics TTL not applied; DDL:\n%s", ddl)
+	}
+	if err := store.conn.QueryRow(ctx, "SHOW CREATE TABLE otel.profiling_samples").Scan(&ddl); err != nil {
+		t.Fatalf("SHOW CREATE profiling_samples: %v", err)
+	}
+	if !strings.Contains(ddl, "toIntervalDay(2)") {
+		t.Errorf("profiles TTL not applied; DDL:\n%s", ddl)
 	}
 }
 
@@ -600,5 +606,111 @@ func TestREDSeriesIntegration(t *testing.T) {
 	}
 	if len(top1) != 1 || top1[0].Service != "frontend" {
 		t.Fatalf("top1 wrong: %+v", top1)
+	}
+}
+
+func TestProfilesWriteIntegration(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	frames := []string{"handler", "main"}
+	samples := []storage.ProfileSample{
+		{Tenant: "default", Timestamp: now, Service: "checkout", SampleType: "samples:count", Frames: frames, Value: 5, Node: "node-a", Pod: "web-1", Container: "app"},
+		{Tenant: "default", Timestamp: now.Add(time.Second), Service: "checkout", SampleType: "samples:count", Frames: frames, Value: 3, Node: "node-a", Pod: "web-1", Container: "app"},
+		{Tenant: "default", Timestamp: now, Service: "driver", SampleType: "samples:count", Frames: []string{"loop", "main"}, Value: 1},
+	}
+	if err := store.WriteProfileSamples(ctx, samples); err != nil {
+		t.Fatalf("WriteProfileSamples: %v", err)
+	}
+
+	var stackCount uint64
+	if err := store.conn.QueryRow(ctx, "SELECT uniqExact(StackHash) FROM otel.profiling_stacks").Scan(&stackCount); err != nil {
+		t.Fatalf("counting stacks: %v", err)
+	}
+	if stackCount != 2 { // two distinct stacks across three samples
+		t.Errorf("got %d unique stacks, want 2", stackCount)
+	}
+
+	var total uint64
+	if err := store.conn.QueryRow(ctx,
+		"SELECT sum(Value) FROM otel.profiling_samples WHERE ServiceName = 'checkout'",
+	).Scan(&total); err != nil {
+		t.Fatalf("summing samples: %v", err)
+	}
+	if total != 8 {
+		t.Errorf("checkout sample sum = %d, want 8", total)
+	}
+
+	// Samples join back to their frames via the hash.
+	var frameCheck []string
+	if err := store.conn.QueryRow(ctx, `
+SELECT st.Frames FROM otel.profiling_samples AS sm
+INNER JOIN otel.profiling_stacks AS st ON sm.StackHash = st.StackHash AND sm.Tenant = st.Tenant
+WHERE sm.ServiceName = 'driver' LIMIT 1`).Scan(&frameCheck); err != nil {
+		t.Fatalf("joining stack: %v", err)
+	}
+	if len(frameCheck) != 2 || frameCheck[0] != "loop" {
+		t.Errorf("frames round-trip wrong: %v", frameCheck)
+	}
+
+	if err := store.WriteProfileSamples(ctx, nil); err != nil {
+		t.Errorf("empty write must be a no-op: %v", err)
+	}
+}
+
+func TestFlamegraphIntegration(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	// checkout: two stacks sharing the root frame "main" (leaf-first frames).
+	samples := []storage.ProfileSample{
+		{Tenant: "default", Timestamp: now, Service: "checkout", SampleType: "samples:count", Frames: []string{"handler", "main"}, Value: 5},
+		{Tenant: "default", Timestamp: now, Service: "checkout", SampleType: "samples:count", Frames: []string{"encode", "handler", "main"}, Value: 3},
+		{Tenant: "default", Timestamp: now, Service: "driver", SampleType: "samples:count", Frames: []string{"loop"}, Value: 2},
+	}
+	if err := store.WriteProfileSamples(ctx, samples); err != nil {
+		t.Fatalf("WriteProfileSamples: %v", err)
+	}
+	tr := storage.TimeRange{Start: now.Add(-time.Minute), End: now.Add(time.Minute)}
+
+	services, err := store.ListProfiledServices(ctx, storage.ProfileQuery{Tenant: "default", Range: tr})
+	if err != nil {
+		t.Fatalf("ListProfiledServices: %v", err)
+	}
+	if len(services) != 2 || services[0].Name != "checkout" || services[0].Samples != 8 {
+		t.Fatalf("profiled services wrong: %+v", services)
+	}
+
+	root, err := store.ProfileFlamegraph(ctx, storage.ProfileQuery{Tenant: "default", Range: tr, Service: "checkout"})
+	if err != nil {
+		t.Fatalf("ProfileFlamegraph: %v", err)
+	}
+	if root.Value != 8 || len(root.Children) != 1 {
+		t.Fatalf("root wrong: %+v", root)
+	}
+	main := root.Children[0]
+	if main.Name != "main" || main.Value != 8 || main.Self != 0 {
+		t.Fatalf("main frame wrong: %+v", main)
+	}
+	if len(main.Children) != 1 || main.Children[0].Name != "handler" {
+		t.Fatalf("handler frame missing: %+v", main.Children)
+	}
+	handler := main.Children[0]
+	if handler.Value != 8 || handler.Self != 5 {
+		t.Errorf("handler value/self wrong: %+v", handler)
+	}
+	if len(handler.Children) != 1 || handler.Children[0].Name != "encode" || handler.Children[0].Value != 3 || handler.Children[0].Self != 3 {
+		t.Errorf("encode frame wrong: %+v", handler.Children)
+	}
+
+	// Tenant isolation.
+	other, err := store.ProfileFlamegraph(ctx, storage.ProfileQuery{Tenant: "other", Range: tr, Service: "checkout"})
+	if err != nil {
+		t.Fatalf("other tenant: %v", err)
+	}
+	if other.Value != 0 || len(other.Children) != 0 {
+		t.Errorf("tenant isolation broken: %+v", other)
 	}
 }

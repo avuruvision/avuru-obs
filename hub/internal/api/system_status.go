@@ -74,7 +74,7 @@ func (a *API) handleSystemStatus(w http.ResponseWriter, r *http.Request) error {
 		return nil
 	}
 
-	retention := map[string]int{"traces": a.cfg.RetentionTracesDays, "logs": a.cfg.RetentionLogsDays, "metrics": a.cfg.RetentionMetricsDays}
+	retention := map[string]int{"traces": a.cfg.RetentionTracesDays, "logs": a.cfg.RetentionLogsDays, "metrics": a.cfg.RetentionMetricsDays, "profiles": a.cfg.RetentionProfilesDays}
 	var newest *time.Time
 	for _, sig := range stats.Signals {
 		d := signalStatsDTO{

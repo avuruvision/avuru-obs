@@ -268,6 +268,45 @@ type PodStat struct {
 	MemoryUsage uint64  // bytes
 }
 
+// ProfileSample is one ingested profiling sample: a stack (leaf-first
+// frames) observed for a service with an aggregate value. The backend
+// deduplicates stacks by hash.
+type ProfileSample struct {
+	Tenant    string
+	Timestamp time.Time
+	Service   string
+	// SampleType is "<type>:<unit>" from the profile (e.g. "samples:count").
+	SampleType string
+	Frames     []string // leaf-first
+	Value      uint64
+	Node       string
+	Pod        string
+	Container  string
+}
+
+// ProfileQuery filters ProfileFlamegraph / ListProfiledServices.
+type ProfileQuery struct {
+	Tenant  string
+	Range   TimeRange
+	Service string // required for ProfileFlamegraph
+}
+
+// ProfiledService is one service with profiling data in the range.
+type ProfiledService struct {
+	Name    string
+	Samples uint64 // total sample value
+}
+
+// FlameNode is one frame in an aggregated flame graph. Value is inclusive
+// (self + children); Self is the value sampled exactly at this frame.
+// Children are ordered by Value descending.
+type FlameNode struct {
+	Name     string
+	Value    uint64
+	Self     uint64
+	Children []*FlameNode
+}
+
 // SignalStats summarizes one telemetry signal's stored data.
 type SignalStats struct {
 	Signal          string // "traces" | "logs"
@@ -306,4 +345,7 @@ type Store interface {
 	ListNodeStats(ctx context.Context, q InfraQuery) ([]NodeStat, error)
 	ListPodStats(ctx context.Context, q InfraQuery) ([]PodStat, error)
 	REDSeries(ctx context.Context, q REDQuery) ([]REDSeries, error)
+	WriteProfileSamples(ctx context.Context, samples []ProfileSample) error
+	ListProfiledServices(ctx context.Context, q ProfileQuery) ([]ProfiledService, error)
+	ProfileFlamegraph(ctx context.Context, q ProfileQuery) (FlameNode, error)
 }

@@ -126,3 +126,48 @@ data:
           exporters: [otlphttp]
     {{- end }}
 {{- end }}
+{{- if and .Values.sensor.enabled .Values.sensor.profiler.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "avuruops.fullname" . }}-sensor-profiler
+  labels:
+    {{- include "avuruops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sensor
+data:
+  config.yaml: |
+    receivers:
+      profiling:
+        samples_per_second: {{ .Values.sensor.profiler.samplesPerSecond }}
+    processors:
+      # NO batch here: the batch processor does not support the profiles
+      # signal in this collector line ("telemetry type is not supported" at
+      # startup); the profiling receiver already reports in batches.
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+    exporters:
+      # Straight to the hub's profiles-ingest seam (OTLP/HTTP appends the
+      # /v1development/profiles path) — documented profiles-only exception to
+      # "the hub is never in the telemetry byte-path".
+      otlphttp:
+        endpoint: http://{{ include "avuruops.fullname" . }}-hub:80
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13135
+    service:
+      extensions: [health_check]
+      # The otel-agent collector in the SAME pod already binds the default
+      # internal-telemetry port (127.0.0.1:8888); a second listener crashes.
+      # v0.1 doesn't scrape collector self-metrics — disable them here.
+      telemetry:
+        metrics:
+          level: none
+      pipelines:
+        profiles:
+          receivers: [profiling]
+          processors: [memory_limiter]
+          exporters: [otlphttp]
+{{- end }}

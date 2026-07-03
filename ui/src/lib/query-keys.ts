@@ -21,6 +21,9 @@ export const queryKeys = {
     ["traces", "heatmap", { ...t, ...filters }] as const,
   red: (t: TimeParams, service?: string, includeAux?: boolean) =>
     ["metrics", "red", { ...t, service, includeAux }] as const,
+  profiledServices: (t: TimeParams) => ["profiles", "services", t] as const,
+  flamegraph: (t: TimeParams, service: string) =>
+    ["profiles", "flamegraph", { ...t, service }] as const,
   infraNodes: (t: TimeParams) => ["infra", "nodes", t] as const,
   infraPods: (t: TimeParams, node?: string) => ["infra", "pods", { ...t, node }] as const,
   logs: (t: TimeParams, filters: Record<string, string | number | undefined>) =>
