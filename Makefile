@@ -1,6 +1,6 @@
 # Thin root dispatcher ONLY — build logic lives in each component
 # (agent_docs/development.md). Keep it that way.
-.PHONY: hub agent ui ui-image proto check e2e e2e-helm e2e-ui dev dev-clean version version-set
+.PHONY: hub agent ui ui-image gateway-image proto check e2e e2e-helm e2e-ui dev dev-clean version version-set
 
 COMPOSE := docker compose -f deploy/compose/docker-compose.yaml
 
@@ -31,6 +31,9 @@ ui:
 
 ui-image:
 	docker build -f ui/Dockerfile -t avuru-obs-ui:local .
+
+gateway-image:
+	docker build -f gateway/Dockerfile -t avuru-obs-gateway:local .
 
 proto:
 	@echo "proto codegen (buf) is wired in M1 — proto/ is the source of truth"

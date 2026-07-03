@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import type { TimeParams } from "@/lib/query-keys";
 
 export const RANGE_PRESETS = {
@@ -23,20 +23,20 @@ function isPreset(v: string | null): v is RangePreset {
 // start/end are computed at render; TanStack Query's staleTime debounces the
 // "now" drift between refetches.
 export function useTimeRange() {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const raw = searchParams.get("range");
   const preset: RangePreset = isPreset(raw) ? raw : DEFAULT_PRESET;
 
+  // Native replaceState, not router.replace — see useURLState for why.
   const setPreset = useCallback(
     (p: RangePreset) => {
-      const params = new URLSearchParams(searchParams);
+      const params = new URLSearchParams(window.location.search);
       params.set("range", p);
-      router.replace(`${pathname}?${params.toString()}`);
+      window.history.replaceState(null, "", `${pathname}?${params.toString()}`);
     },
-    [router, pathname, searchParams],
+    [pathname],
   );
 
   const time: TimeParams = useMemo(() => {

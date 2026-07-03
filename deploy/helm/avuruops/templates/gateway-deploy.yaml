@@ -25,7 +25,7 @@ spec:
       {{- end }}
       containers:
         - name: gateway
-          image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.gateway.image.repository "tag" .Values.gateway.image.tag) }}
+          image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.gateway.image.repository "tag" (.Values.gateway.image.tag | default .Chart.AppVersion)) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["--config=/etc/avuru/config.yaml"]
           env:

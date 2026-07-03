@@ -8,6 +8,7 @@ CLUSTER="${KIND_CLUSTER:-avuruops-e2e}"
 NS=avuruops
 HUB_IMG=avuru-obs-hub:local
 UI_IMG=avuru-obs-ui:local
+GW_IMG=avuru-obs-gateway:local
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
@@ -18,14 +19,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "==> building hub + ui images"
+echo "==> building hub + ui + gateway images"
 docker build -t "$HUB_IMG" -f hub/Dockerfile .
 docker build -t "$UI_IMG" -f ui/Dockerfile .
+docker build -t "$GW_IMG" -f gateway/Dockerfile .
 
 echo "==> creating kind cluster '$CLUSTER'"
 kind create cluster --name "$CLUSTER" --wait 120s
 kind load docker-image "$HUB_IMG" --name "$CLUSTER"
 kind load docker-image "$UI_IMG" --name "$CLUSTER"
+kind load docker-image "$GW_IMG" --name "$CLUSTER"
 
 echo "==> helm install"
 # pullPolicy stays IfNotPresent (default): the loaded hub/ui images are present,
@@ -33,6 +36,7 @@ echo "==> helm install"
 helm install avuruops deploy/helm/avuruops -n "$NS" --create-namespace \
   --set hub.repository=avuru-obs-hub --set hub.tag=local \
   --set ui.repository=avuru-obs-ui --set ui.tag=local \
+  --set gateway.image.repository=avuru-obs-gateway --set gateway.image.tag=local \
   --set clickhouse.persistence.enabled=false \
   --set clickhouse.resources.requests.cpu=200m \
   --set clickhouse.resources.requests.memory=512Mi \

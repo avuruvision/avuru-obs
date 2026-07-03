@@ -88,6 +88,21 @@ test.describe("traces screen (seeded data)", () => {
     await expect(page.getByRole("button", { name: /GET cache/ })).toBeVisible();
   });
 
+  test("clicking a tab closes an open trace and shows the tab content", async ({ page }) => {
+    await page.goto(`/traces?trace=${SEED_TRACE_ID}&tab=traces`);
+    await expect(page.getByText("3 spans")).toBeVisible();
+
+    await page.getByRole("tab", { name: "Overview" }).click();
+
+    // The workspace closes; the overview table takes its place.
+    await expect(page).toHaveURL(/tab=overview/);
+    await expect(page).not.toHaveURL(/[?&]trace=/);
+    await expect(page.getByText("3 spans")).not.toBeVisible();
+    await expect(
+      page.getByRole("row").filter({ hasText: SEED_SERVICE }),
+    ).toBeVisible();
+  });
+
   test("heatmap renders cells and filters by duration band on click", async ({ page }) => {
     await page.goto("/traces");
 
