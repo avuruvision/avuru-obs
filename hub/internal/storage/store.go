@@ -237,7 +237,7 @@ type PodStat struct {
 	Name        string
 	Namespace   string
 	Node        string
-	Workload    string // deployment/statefulset/daemonset when known
+	Workload    string  // deployment/statefulset/daemonset when known
 	CPUUsage    float64 // cores
 	MemoryUsage uint64  // bytes
 }
