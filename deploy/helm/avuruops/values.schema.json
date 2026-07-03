@@ -69,6 +69,13 @@
               "properties": {
                 "enabled": { "type": "boolean" }
               }
+            },
+            "kubeletstats": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "interval": { "type": "string", "minLength": 2 }
+              }
             }
           }
         }

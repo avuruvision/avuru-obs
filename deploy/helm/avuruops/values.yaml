@@ -69,6 +69,10 @@ sensor:
       tag: "0.154.0" # keep in lockstep with the gateway pin (tech_stack.md)
     logs:
       enabled: true
+    # Node/pod CPU, memory, network from the kubelet (Supporting signal tier).
+    kubeletstats:
+      enabled: true
+      interval: 30s
     resources:
       requests:
         cpu: 50m
