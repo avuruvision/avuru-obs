@@ -99,8 +99,12 @@ func TestWedgeInfraMetrics(t *testing.T) {
 	}
 }
 
-// Profiles are alpha — soft assertion (warn, don't fail) during burn-in.
+// Profiles are alpha AND opt-in (sensor.profiler.enabled=false by default) —
+// only checked when the harness enables the profiler, and then only softly.
 func TestWedgeProfilesSoft(t *testing.T) {
+	if os.Getenv("WEDGE_PROFILES") == "" {
+		t.Skip("profiler not enabled for this run (WEDGE_PROFILES unset)")
+	}
 	t0 := wedgeT0(t)
 	deadline := t0.Add(wedgeBudget)
 
