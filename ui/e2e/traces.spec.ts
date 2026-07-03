@@ -23,8 +23,8 @@ test.describe("shell", () => {
   });
 
   test("not-yet-built routes teach what arrives when", async ({ page }) => {
-    await page.goto("/nodes");
-    await expect(page.getByText("Node & pod health")).toBeVisible();
+    await page.goto("/profiling");
+    await expect(page.getByText(/profiling/i).first()).toBeVisible();
     await expect(page.getByText(/arrives in M\d/)).toBeVisible();
   });
 

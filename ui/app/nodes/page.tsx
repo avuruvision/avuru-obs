@@ -1,16 +1,17 @@
-import { Server } from "lucide-react";
+import { Suspense } from "react";
 import { Topbar } from "@/components/layout/topbar";
-import { ComingSoon } from "@/components/ui/coming-soon";
+import { CenteredSpinner } from "@/components/ui/spinner";
+import { NodesScreen } from "@/components/infra/nodes-screen";
 
 export default function NodesPage() {
   return (
     <>
       <Topbar />
       <main className="flex-1 overflow-y-auto p-5">
-        <ComingSoon icon={Server} title="Node & pod health" milestone="M3">
-          CPU, memory, and network per node and pod (kubeletstats) — answer
-          “is it the app or the node?” without leaving the incident.
-        </ComingSoon>
+        {/* useSearchParams consumers must sit under Suspense (static export) */}
+        <Suspense fallback={<CenteredSpinner />}>
+          <NodesScreen />
+        </Suspense>
       </main>
     </>
   );
