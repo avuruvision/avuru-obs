@@ -159,6 +159,12 @@ data:
         endpoint: 0.0.0.0:13135
     service:
       extensions: [health_check]
+      # The otel-agent collector in the SAME pod already binds the default
+      # internal-telemetry port (127.0.0.1:8888); a second listener crashes.
+      # v0.1 doesn't scrape collector self-metrics — disable them here.
+      telemetry:
+        metrics:
+          level: none
       pipelines:
         profiles:
           receivers: [profiling]
