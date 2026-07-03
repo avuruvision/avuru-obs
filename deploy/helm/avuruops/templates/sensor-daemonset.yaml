@@ -170,6 +170,8 @@ spec:
               readOnly: true
             - name: kernel-debug
               mountPath: /sys/kernel/debug
+            - name: kernel-tracing
+              mountPath: /sys/kernel/tracing
           ports:
             - name: prof-health
               containerPort: 13135
@@ -206,6 +208,9 @@ spec:
         - name: kernel-debug
           hostPath:
             path: /sys/kernel/debug
+        - name: kernel-tracing
+          hostPath:
+            path: /sys/kernel/tracing
         {{- end }}
         {{- if $agentActive }}
         - name: agent-config
