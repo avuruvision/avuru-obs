@@ -89,7 +89,18 @@ export function TracesScreen() {
           { value: "traces", label: "Traces" },
         ]}
         value={tab}
-        onChange={(t) => setMany({ tab: t })}
+        // Tabs double as the escape hatch from the trace workspace: selecting
+        // one closes the open trace (same params the panel's close button clears).
+        onChange={(t) =>
+          setMany({
+            tab: t,
+            trace: undefined,
+            view: undefined,
+            span: undefined,
+            compare: undefined,
+            full: undefined,
+          })
+        }
       />
 
       {selectedTrace ? (
