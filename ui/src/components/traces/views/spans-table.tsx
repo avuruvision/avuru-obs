@@ -5,14 +5,18 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/cn";
 import { formatMs } from "@/lib/format";
 import { childrenByParent, selfTimeMs, serviceColor } from "@/lib/trace";
+import { kindIcon, spanComponent, spanPeer, type SpanComponent } from "@/lib/component";
+import { spanStatus } from "@/lib/span-status";
 import type { Span, TraceResponse } from "@/lib/api-types";
 
-type SortKey = "service" | "operation" | "start" | "duration" | "self";
+type SortKey = "service" | "operation" | "component" | "start" | "duration" | "self";
 
 interface RowData {
   span: Span;
   startOffsetMs: number;
   selfMs: number;
+  component: SpanComponent;
+  peer: string | null;
 }
 
 // Numeric columns default to descending (slowest/latest first); text columns
@@ -43,6 +47,8 @@ export function SpansTable({
       span,
       startOffsetMs: new Date(span.startTime).getTime() - t0,
       selfMs: selfTimeMs(span, byParent.get(span.spanId) ?? []),
+      component: spanComponent(span),
+      peer: spanPeer(span),
     }));
   }, [trace]);
 
@@ -58,6 +64,8 @@ export function SpansTable({
           return a.span.service.localeCompare(b.span.service) * dir;
         case "operation":
           return a.span.operation.localeCompare(b.span.operation) * dir;
+        case "component":
+          return a.component.name.localeCompare(b.component.name) * dir;
         default:
           return (a.startOffsetMs - b.startOffsetMs) * dir;
       }
@@ -88,6 +96,7 @@ export function SpansTable({
           {th("service", "Service")}
           {th("operation", "Operation")}
           <th>Kind</th>
+          {th("component", "Component")}
           {th("start", "Start", true)}
           {th("duration", "Duration", true)}
           {th("self", "Self", true)}
@@ -95,9 +104,11 @@ export function SpansTable({
         </tr>
       </thead>
       <tbody>
-        {sorted.map(({ span, startOffsetMs, selfMs }) => {
+        {sorted.map(({ span, startOffsetMs, selfMs, component, peer }) => {
           const isSelected = selectedSpanId === span.spanId;
-          const isError = span.statusCode === "Error";
+          const status = spanStatus(span);
+          const isError = status.kind === "error";
+          const KindIcon = kindIcon(span.kind);
           return (
             <tr
               key={span.spanId}
@@ -117,8 +128,27 @@ export function SpansTable({
                   <span className="truncate font-medium">{span.service}</span>
                 </span>
               </td>
-              <td className="max-w-72 truncate font-mono text-xs">{span.operation}</td>
-              <td className="text-xs text-base-content/60">{span.kind}</td>
+              <td className="max-w-72 truncate font-mono text-xs">
+                {span.operation}
+                {peer && (
+                  <span className="ml-1.5 text-[10px] text-base-content/40">→ {peer}</span>
+                )}
+              </td>
+              <td className="text-xs text-base-content/60">
+                {KindIcon ? (
+                  <span className="inline-flex" title={span.kind}>
+                    <KindIcon className="h-3.5 w-3.5" />
+                  </span>
+                ) : (
+                  span.kind
+                )}
+              </td>
+              <td>
+                <span className="flex items-center gap-1 text-xs text-base-content/70">
+                  <component.Icon className="h-3 w-3 shrink-0 text-base-content/50" />
+                  {component.name}
+                </span>
+              </td>
               <td className="text-right font-mono text-xs text-base-content/60">
                 {formatMs(startOffsetMs)}
               </td>
@@ -134,7 +164,12 @@ export function SpansTable({
                 {formatMs(selfMs)}
               </td>
               <td>
-                <Badge tone={isError ? "error" : "neutral"}>{span.statusCode}</Badge>
+                <Badge
+                  tone={isError ? "error" : status.kind === "ok" ? "success" : "neutral"}
+                  title={`OTel status: ${span.statusCode}`}
+                >
+                  {status.label}
+                </Badge>
               </td>
             </tr>
           );

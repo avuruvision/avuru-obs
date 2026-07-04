@@ -1,39 +1,39 @@
 "use client";
 
-import { useMemo } from "react";
 import { GitCompare, Maximize2, Minimize2, X } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CenteredSpinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/cn";
-import { formatMs } from "@/lib/format";
-import { serviceColor } from "@/lib/trace";
 import { useTrace } from "@/hooks/use-traces-data";
 import { useURLState } from "@/hooks/use-url-state";
 import type { Span } from "@/lib/api-types";
 import { Waterfall } from "./waterfall";
 import { SpanDetail } from "./span-detail";
+import { TraceSummaryBar } from "./trace-summary-bar";
 import { SpansTable } from "./views/spans-table";
 import { Flamegraph } from "./views/flamegraph";
 import { TraceStats } from "./views/trace-stats";
-import { TraceGraph } from "./views/trace-graph";
+import { TraceTree } from "./views/trace-tree";
 import { TraceJson } from "./views/trace-json";
 import { TraceDiff } from "./views/trace-diff";
 
+// "Tree" replaced the aggregated graph but keeps the "graph" URL value so
+// shared links stay valid.
 const VIEWS = [
   { value: "timeline", label: "Timeline" },
   { value: "spans", label: "Spans" },
   { value: "flame", label: "Flamegraph" },
   { value: "stats", label: "Statistics" },
-  { value: "graph", label: "Graph" },
+  { value: "graph", label: "Tree" },
   { value: "json", label: "JSON" },
 ] as const;
 
 type View = (typeof VIEWS)[number]["value"];
 
 // The right side of the split workspace: header (view switcher / compare /
-// maximize / close), service-chip legend, and a body that is either the active
-// single-trace view + span drawer, or the comparison diff.
+// maximize / close), trace summary bar (stats + service legend), and a body
+// that is either the active single-trace view + span drawer, or the
+// comparison diff.
 export function TraceDetailPanel({
   traceId,
   compareId,
@@ -53,11 +53,6 @@ export function TraceDetailPanel({
 
   const trace = a.data;
   const selectedSpan = trace?.spans.find((s) => s.spanId === selectedSpanId) ?? null;
-  const errorCount = trace?.spans.filter((s) => s.statusCode === "Error").length ?? 0;
-  const services = useMemo(
-    () => (trace ? [...new Set(trace.spans.map((s) => s.service))] : []),
-    [trace],
-  );
 
   const close = () =>
     setMany({ trace: undefined, view: undefined, span: undefined, compare: undefined, full: undefined });
@@ -68,13 +63,6 @@ export function TraceDetailPanel({
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-neutral bg-base-200">
       <header className="flex flex-wrap items-center gap-2 border-b border-neutral px-3 py-2">
         <span className="truncate font-mono text-xs font-semibold">{traceId}</span>
-        {trace && (
-          <>
-            <Badge tone="primary">{trace.spans.length} spans</Badge>
-            <Badge tone="neutral">{formatMs(trace.durationMs)}</Badge>
-            {errorCount > 0 && <Badge tone="error">{errorCount} err</Badge>}
-          </>
-        )}
 
         <div className="ml-auto flex items-center gap-1.5">
           {!comparing && (
@@ -114,23 +102,7 @@ export function TraceDetailPanel({
         </div>
       </header>
 
-      {!comparing && services.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-neutral/60 px-3 py-1.5">
-          {services.map((s) => (
-            <span
-              key={s}
-              className="inline-flex items-center gap-1 rounded-md bg-base-300/60 px-1.5 py-0.5 text-[10px]"
-            >
-              <span
-                className="h-2 w-2 rounded-sm"
-                style={{ backgroundColor: serviceColor(s) }}
-                aria-hidden
-              />
-              {s}
-            </span>
-          ))}
-        </div>
-      )}
+      {!comparing && trace && <TraceSummaryBar trace={trace} />}
 
       <div className="flex min-h-0 flex-1">
         <div className="min-h-0 flex-1 overflow-auto p-3">
@@ -162,7 +134,14 @@ export function TraceDetailPanel({
                 <Flamegraph trace={trace} selectedSpanId={selectedSpanId} onSelectSpan={onSelectSpan} />
               )}
               {view === "stats" && <TraceStats trace={trace} />}
-              {view === "graph" && <TraceGraph trace={trace} />}
+              {view === "graph" && (
+                <TraceTree
+                  key={trace.traceId}
+                  trace={trace}
+                  selectedSpanId={selectedSpanId}
+                  onSelectSpan={onSelectSpan}
+                />
+              )}
               {view === "json" && <TraceJson trace={trace} />}
             </>
           )}
