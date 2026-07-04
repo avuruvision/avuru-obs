@@ -36,7 +36,8 @@
               "status": { "code": 2, "message": "connection refused" },
               "attributes": [
                 { "key": "db.system.name", "value": { "stringValue": "postgresql" } },
-                { "key": "db.query.text", "value": { "stringValue": "SELECT * FROM orders WHERE id = ?" } }
+                { "key": "db.query.text", "value": { "stringValue": "SELECT * FROM orders WHERE id = ?" } },
+                { "key": "db.client.connections.wait_time_before_timeout_ms", "value": { "intValue": "30000" } }
               ],
               "events": [
                 {
