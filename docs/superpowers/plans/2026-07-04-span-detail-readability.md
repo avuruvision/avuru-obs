@@ -52,7 +52,7 @@ Each code task ends with `npm run lint` and `npm run typecheck` (fast, no stack 
 - Modify: `deploy/compose/seed/fixtures/traces_checkout.json` (SELECT orders span attributes)
 - Modify: `ui/e2e/traces.spec.ts` (append describe block)
 
-- [ ] **Step 1: Add a long attribute key to the seeded SELECT orders span**
+- [x] **Step 1: Add a long attribute key to the seeded SELECT orders span**
 
 In `traces_checkout.json`, the `SELECT orders` span's `attributes` array becomes:
 
@@ -66,7 +66,7 @@ In `traces_checkout.json`, the `SELECT orders` span's `attributes` array becomes
 
 The 50-char key reproduces the bug pre-fix: with `minmax(140px,auto)` the key column grows to full no-wrap width and crushes the value column.
 
-- [ ] **Step 2: Append the new e2e describe block**
+- [x] **Step 2: Append the new e2e describe block**
 
 At the end of `ui/e2e/traces.spec.ts` (also change the first import line to `import { test, expect, type Page } from "@playwright/test";`):
 
@@ -148,14 +148,14 @@ test.describe("span detail panel (seeded data)", () => {
 
 Locator notes: `.first()` on `getByText(LONG_VALUE)` avoids a strict-mode violation (the `dd` and its inner `span` both match). The overlay assertions are scoped to `dialog` because the side panel behind it shows the same text.
 
-- [ ] **Step 3: Bring up the stack, seed, start the dev server** (commands in "Testing model" above)
+- [x] **Step 3: Bring up the stack, seed, start the dev server** (commands in "Testing model" above)
 
-- [ ] **Step 4: Run the new tests — expect all 4 to FAIL (red)**
+- [x] **Step 4: Run the new tests — expect all 4 to FAIL (red)**
 
 Run: `cd ui && AVURUOPS_BASE_URL=http://localhost:3000 npx playwright test -g "span detail panel"`
 Expected: readability test fails on `box.width` (crushed column); the other three fail because the separator, copy button, and expand button don't exist yet.
 
-- [ ] **Step 5: Commit the fixture + red tests**
+- [x] **Step 5: Commit the fixture + red tests**
 
 ```bash
 git add deploy/compose/seed/fixtures/traces_checkout.json ui/e2e/traces.spec.ts
@@ -169,7 +169,7 @@ git commit -m "test(e2e): span detail readability, resize, expand scenarios (red
 **Files:**
 - Modify: `ui/src/components/traces/span-detail.tsx`
 
-- [ ] **Step 1: Rewrite the attribute table with capped key column and copy affordance**
+- [x] **Step 1: Rewrite the attribute table with capped key column and copy affordance**
 
 Replace the imports and `AttrTable` in `span-detail.tsx` with:
 
@@ -233,21 +233,21 @@ function AttrTable({ title, attrs }: { title: string; attrs?: Record<string, str
 
 Key changes vs current: grid `minmax(140px,auto)` → `minmax(120px,45%)`; `dt` loses `truncate`, gains `break-all`; values move into `AttrValue` with the same Copy→Check flash pattern as `views/trace-json.tsx`.
 
-- [ ] **Step 2: Reduce the body padding**
+- [x] **Step 2: Reduce the body padding**
 
 In `SpanDetail`'s root div, change `px-9` to `px-4`.
 
-- [ ] **Step 3: Lint + typecheck**
+- [x] **Step 3: Lint + typecheck**
 
 Run: `cd ui && npm run lint && npm run typecheck`
 Expected: clean.
 
-- [ ] **Step 4: Run the two now-covered tests — expect green**
+- [x] **Step 4: Run the two now-covered tests — expect green**
 
 Run: `cd ui && AVURUOPS_BASE_URL=http://localhost:3000 npx playwright test -g "stay readable|copies to clipboard"`
 Expected: both PASS (dev server picks the change up on reload).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/src/components/traces/span-detail.tsx
@@ -262,7 +262,7 @@ git commit -m "fix(ui): span attribute values no longer crushed by long keys; ad
 - Create: `ui/src/hooks/use-local-storage-number.ts`
 - Modify: `ui/src/components/traces/trace-detail-panel.tsx`
 
-- [ ] **Step 1: Create the hook (mirrors `use-local-storage-flag.ts`)**
+- [x] **Step 1: Create the hook (mirrors `use-local-storage-flag.ts`)**
 
 ```tsx
 "use client";
@@ -307,7 +307,7 @@ export function useLocalStorageNumber(
 }
 ```
 
-- [ ] **Step 2: Add the resize handle and width state to `trace-detail-panel.tsx`**
+- [x] **Step 2: Add the resize handle and width state to `trace-detail-panel.tsx`**
 
 New imports (`useState` comes later in Task 4 — adding it now would fail lint as unused):
 
@@ -424,17 +424,17 @@ Replace the aside block (`{!comparing && selectedSpan && (...)}`) with:
 
 Notes: `w-96` is gone; `min-w-80 max-w-[70%]` also clamps stale stored values at render time (the JS clamp only runs on drag/nudge).
 
-- [ ] **Step 3: Lint + typecheck**
+- [x] **Step 3: Lint + typecheck**
 
 Run: `cd ui && npm run lint && npm run typecheck`
 Expected: clean.
 
-- [ ] **Step 4: Run the resize test — expect green**
+- [x] **Step 4: Run the resize test — expect green**
 
 Run: `cd ui && AVURUOPS_BASE_URL=http://localhost:3000 npx playwright test -g "resizes by drag"`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/src/hooks/use-local-storage-number.ts ui/src/components/traces/trace-detail-panel.tsx
@@ -449,7 +449,7 @@ git commit -m "feat(ui): span detail panel is drag-resizable with persisted widt
 - Create: `ui/src/components/traces/span-detail-overlay.tsx`
 - Modify: `ui/src/components/traces/trace-detail-panel.tsx`
 
-- [ ] **Step 1: Create the overlay component**
+- [x] **Step 1: Create the overlay component**
 
 ```tsx
 "use client";
@@ -511,7 +511,7 @@ export function SpanDetailOverlay({ span, onClose }: { span: Span; onClose: () =
 
 Check `Span` in `ui/src/lib/api-types.ts` for the operation-name field — if it is not `name` (e.g. `operationName`), use that field in the header instead.
 
-- [ ] **Step 2: Wire the expand button + overlay into `trace-detail-panel.tsx`**
+- [x] **Step 2: Wire the expand button + overlay into `trace-detail-panel.tsx`**
 
 Add imports `import { SpanDetailOverlay } from "./span-detail-overlay";` and `useState` (react import becomes `import { useMemo, useRef, useState } from "react";`), plus state `const [expanded, setExpanded] = useState(false);`.
 
@@ -546,17 +546,17 @@ After the `</aside>` closing tag, still inside the fragment:
 )}
 ```
 
-- [ ] **Step 3: Lint + typecheck**
+- [x] **Step 3: Lint + typecheck**
 
 Run: `cd ui && npm run lint && npm run typecheck`
 Expected: clean.
 
-- [ ] **Step 4: Run the overlay test — expect green**
+- [x] **Step 4: Run the overlay test — expect green**
 
 Run: `cd ui && AVURUOPS_BASE_URL=http://localhost:3000 npx playwright test -g "expand overlay"`
 Expected: PASS, including the Esc-does-not-exit-fullscreen assertions.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/src/components/traces/span-detail-overlay.tsx ui/src/components/traces/trace-detail-panel.tsx
@@ -567,11 +567,11 @@ git commit -m "feat(ui): expand span detail into a wide overlay"
 
 ### Task 5: Full verification
 
-- [ ] **Step 1: Run the entire e2e suite the official way**
+- [x] **Step 1: Run the entire e2e suite the official way**
 
 Run from repo root: `make e2e-ui`
 Expected: all tests pass (this rebuilds the UI image with the changes, reseeds from the updated fixture, runs the whole suite against :3001, and tears down). This is the success gate — do not claim completion without it.
 
-- [ ] **Step 2: Fix anything that fails, re-run, then stop the dev server**
+- [x] **Step 2: Fix anything that fails, re-run, then stop the dev server**
 
 If the dev server from Task 1 is still running, kill it. Working tree should be clean (`git status`).
