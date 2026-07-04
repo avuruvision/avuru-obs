@@ -29,7 +29,7 @@ SELECT
     toInt32(intDiv(toUnixTimestamp(Timestamp) - ?, ?))                                  AS t,
     toInt32(least(greatest(floor(log2(greatest(Duration / 1000000, 1))), 0), ? - 1))    AS d,
     count()                                                                              AS c,
-    countIf(StatusCode = 'Error')                                                        AS e
+    countIf(` + errorSpanExpr("") + `)                                                   AS e
 FROM otel_traces
 WHERE Tenant = ?
   AND Timestamp >= ? AND Timestamp < ?

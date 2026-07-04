@@ -400,6 +400,9 @@ func TestStoreIntegration(t *testing.T) {
 		if got.Spans[0].Attributes["k"] != "v" {
 			t.Errorf("span attributes not round-tripped: %+v", got.Spans[0].Attributes)
 		}
+		if got.Spans[0].ScopeName != "test" || got.Spans[0].ScopeVersion != "1" {
+			t.Errorf("instrumentation scope not round-tripped: %q@%q", got.Spans[0].ScopeName, got.Spans[0].ScopeVersion)
+		}
 	})
 
 	t.Run("GetTraceNotFound", func(t *testing.T) {

@@ -78,6 +78,8 @@ type spanDTO struct {
 	Service            string            `json:"service"`
 	Operation          string            `json:"operation"`
 	Kind               string            `json:"kind"`
+	ScopeName          string            `json:"scopeName,omitempty"`
+	ScopeVersion       string            `json:"scopeVersion,omitempty"`
 	StartTime          time.Time         `json:"startTime"`
 	DurationMs         float64           `json:"durationMs"`
 	StatusCode         string            `json:"statusCode"`
@@ -180,6 +182,8 @@ func toTraceResponse(t storage.Trace) traceResponse {
 			Service:            sp.Service,
 			Operation:          sp.Operation,
 			Kind:               sp.Kind,
+			ScopeName:          sp.ScopeName,
+			ScopeVersion:       sp.ScopeVersion,
 			StartTime:          sp.StartTime.UTC(),
 			DurationMs:         ms(sp.Duration),
 			StatusCode:         sp.StatusCode,
