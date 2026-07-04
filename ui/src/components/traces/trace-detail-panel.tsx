@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { GitCompare, Maximize2, Minimize2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { useURLState } from "@/hooks/use-url-state";
 import type { Span } from "@/lib/api-types";
 import { Waterfall } from "./waterfall";
 import { SpanDetail } from "./span-detail";
+import { SpanDetailOverlay } from "./span-detail-overlay";
 import { SpansTable } from "./views/spans-table";
 import { Flamegraph } from "./views/flamegraph";
 import { TraceStats } from "./views/trace-stats";
@@ -101,6 +102,7 @@ export function TraceDetailPanel({
     SPAN_PANEL_WIDTH_KEY,
     SPAN_PANEL_DEFAULT,
   );
+  const [expanded, setExpanded] = useState(false);
 
   // Clamp to [320px, 70% of the workspace body], measured live during drag.
   const clampWidth = (w: number) => {
@@ -249,16 +251,28 @@ export function TraceDetailPanel({
             >
               <div className="flex items-center justify-between border-b border-neutral px-3 py-2">
                 <span className="text-xs font-semibold">Span detail</span>
-                <button
-                  aria-label="Close span detail"
-                  onClick={() => setMany({ span: undefined })}
-                  className="text-base-content/50 hover:text-base-content"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    aria-label="Expand span detail"
+                    onClick={() => setExpanded(true)}
+                    className="text-base-content/50 hover:text-base-content"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    aria-label="Close span detail"
+                    onClick={() => setMany({ span: undefined })}
+                    className="text-base-content/50 hover:text-base-content"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
               <SpanDetail span={selectedSpan} />
             </aside>
+            {expanded && (
+              <SpanDetailOverlay span={selectedSpan} onClose={() => setExpanded(false)} />
+            )}
           </>
         )}
       </div>
