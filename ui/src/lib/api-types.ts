@@ -71,6 +71,8 @@ export interface Span {
   service: string;
   operation: string;
   kind: string;
+  scopeName?: string;
+  scopeVersion?: string;
   startTime: string;
   durationMs: number;
   statusCode: string;
