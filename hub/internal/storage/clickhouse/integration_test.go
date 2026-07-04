@@ -714,3 +714,56 @@ func TestFlamegraphIntegration(t *testing.T) {
 		t.Errorf("tenant isolation broken: %+v", other)
 	}
 }
+
+// TestAuxDBPingExclusion: parentless DB health pings (Lettuce INFO/PING,
+// actuator SQL probes) must not list as one-span traces by default, but stay
+// reachable via includeAux — and a DB span INSIDE a real trace is untouched.
+func TestAuxDBPingExclusion(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	base := time.Now().UTC().Truncate(time.Minute).Add(-10 * time.Minute)
+	batch, err := store.conn.PrepareBatch(ctx, `INSERT INTO otel_traces
+		(Timestamp, TraceId, SpanId, ParentSpanId, SpanName, SpanKind, ServiceName, SpanAttributes, Duration, StatusCode)`)
+	if err != nil {
+		t.Fatalf("preparing batch: %v", err)
+	}
+	rows := []struct {
+		trace, span, parent, name, kind string
+		attrs                           map[string]string
+	}{
+		// Orphan Redis health ping — aux noise.
+		{"ping0001", "p1", "", "info", "Client", map[string]string{"db.system": "redis", "db.operation": "INFO"}},
+		// Real request with a Redis INFO child — must stay fully visible.
+		{"real0001", "r1", "", "GET /checkout", "Server", map[string]string{}},
+		{"real0001", "r2", "r1", "info", "Client", map[string]string{"db.system": "redis", "db.operation": "INFO"}},
+	}
+	for i, r := range rows {
+		if err := batch.Append(base.Add(time.Duration(i)*time.Second), r.trace, r.span, r.parent, r.name, r.kind, "checkout", r.attrs, uint64(time.Millisecond), "Unset"); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+	if err := batch.Send(); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	tr := storage.TimeRange{Start: base.Add(-time.Minute), End: base.Add(9 * time.Minute)}
+
+	page, err := store.SearchTraces(ctx, storage.TraceQuery{Tenant: "default", Range: tr, ExcludeAux: true})
+	if err != nil {
+		t.Fatalf("SearchTraces: %v", err)
+	}
+	if len(page.Traces) != 1 || page.Traces[0].TraceID != "real0001" {
+		t.Fatalf("default list wrong (want only real0001): %+v", page.Traces)
+	}
+	if page.Traces[0].SpanCount != 2 {
+		t.Errorf("real trace should keep its DB child: %+v", page.Traces[0])
+	}
+
+	all, err := store.SearchTraces(ctx, storage.TraceQuery{Tenant: "default", Range: tr})
+	if err != nil {
+		t.Fatalf("SearchTraces includeAux: %v", err)
+	}
+	if len(all.Traces) != 2 {
+		t.Fatalf("includeAux should surface the ping too: %+v", all.Traces)
+	}
+}
