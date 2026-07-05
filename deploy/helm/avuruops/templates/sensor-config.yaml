@@ -8,14 +8,26 @@ metadata:
     app.kubernetes.io/component: sensor
 data:
   obi-config.yml: |
-    # Zero-code instrumentation of everything on the node, EXCEPT this
-    # release's own namespace (the platform must not trace itself — OBI's
-    # built-in defaults already skip kube-system, otelcol binaries, and OBI).
+    # Zero-code instrumentation scoped by sensor.collection / sensor.obi
+    # .discovery values. The release's own namespace is ALWAYS excluded (the
+    # platform must not trace itself); kube-system & co are excluded via
+    # sensor.collection.excludeNamespaces rather than trusting OBI's
+    # built-in defaults.
     discovery:
       instrument:
-        - k8s_namespace: '*'
+        {{- range .Values.sensor.obi.discovery.namespaces }}
+        - k8s_namespace: {{ . | quote }}
+        {{- end }}
       exclude_instrument:
         - k8s_namespace: {{ .Release.Namespace | quote }}
+        {{- range concat .Values.sensor.collection.excludeNamespaces .Values.sensor.obi.discovery.excludeNamespaces }}
+        - k8s_namespace: {{ . | quote }}
+        {{- end }}
+        {{- if .Values.sensor.collection.optOutLabel }}
+        # Per-pod escape hatch for probe-sensitive workloads.
+        - k8s_pod_labels:
+            {{ .Values.sensor.collection.optOutLabel | quote }}: "false"
+        {{- end }}
     attributes:
       kubernetes:
         enable: true

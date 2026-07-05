@@ -38,6 +38,12 @@ ui:
 
 gateway:
   replicas: 2
+  tenant: production
+
+sensor:
+  # In production the sensor must lose every scheduling fight with user apps.
+  priorityClass:
+    create: true
 
 ingress:
   enabled: true

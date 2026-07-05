@@ -25,9 +25,24 @@ spec:
       serviceAccountName: {{ include "avuruops.fullname" . }}-sensor
       # eBPF containers discover and inspect host processes.
       hostPID: true
+      {{- if or .Values.sensor.priorityClass.create .Values.sensor.priorityClass.name }}
+      priorityClassName: {{ .Values.sensor.priorityClass.name | default (printf "%s-sensor" (include "avuruops.fullname" .)) }}
+      {{- end }}
       {{- with .Values.sensor.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.sensor.collection.nodeOptOutLabel }}
+      # Per-node kill switch: `kubectl label node <n> {{ .Values.sensor.collection.nodeOptOutLabel }}=false`
+      # removes the sensor pod from that node — no helm upgrade needed.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: {{ .Values.sensor.collection.nodeOptOutLabel }}
+                    operator: NotIn
+                    values: ["false"]
       {{- end }}
       {{- with .Values.sensor.tolerations }}
       tolerations:
