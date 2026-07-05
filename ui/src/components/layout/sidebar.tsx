@@ -6,6 +6,7 @@ import { Activity, ChevronsLeft, ChevronsRight, Hexagon } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useLocalStorageFlag } from "@/hooks/use-local-storage-flag";
 import { NAV_SECTIONS } from "./nav-config";
+import { ProjectSwitcher } from "./project-switcher";
 
 const COLLAPSE_KEY = "avuru-sidebar-collapsed";
 
@@ -67,6 +68,7 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-neutral p-2">
+        <ProjectSwitcher collapsed={collapsed} />
         <button
           onClick={toggle}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
