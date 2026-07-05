@@ -64,6 +64,8 @@ func TestRoutes(t *testing.T) {
 		{"flamegraph needs service", http.MethodGet, "/api/v1/profiles/flamegraph", http.StatusBadRequest},
 		{"flamegraph ok", http.MethodGet, "/api/v1/profiles/flamegraph?service=checkout", http.StatusOK},
 		{"infra pods ok", http.MethodGet, "/api/v1/infra/pods", http.StatusOK},
+		{"agents ok", http.MethodGet, "/api/v1/agents", http.StatusOK},
+		{"agents bad window", http.MethodGet, "/api/v1/agents?windowSec=-5", http.StatusBadRequest},
 		{"infra nodes bad start", http.MethodGet, "/api/v1/infra/nodes?start=garbage", http.StatusBadRequest},
 		{"trace not found", http.MethodGet, "/api/v1/traces/nope", http.StatusNotFound},
 		{"bad start", http.MethodGet, "/api/v1/traces?start=garbage", http.StatusBadRequest},
@@ -87,7 +89,7 @@ func TestRoutes(t *testing.T) {
 func TestStoreUnavailable(t *testing.T) {
 	mux := newMux(nil)
 
-	for _, path := range []string{"/api/v1/services", "/api/v1/traces", "/api/v1/traces/abc", "/api/v1/logs", "/api/v1/traces/abc/logs", "/api/v1/infra/nodes", "/api/v1/infra/pods"} {
+	for _, path := range []string{"/api/v1/services", "/api/v1/traces", "/api/v1/traces/abc", "/api/v1/logs", "/api/v1/traces/abc/logs", "/api/v1/infra/nodes", "/api/v1/infra/pods", "/api/v1/agents"} {
 		if rec := get(t, mux, path); rec.Code != http.StatusServiceUnavailable {
 			t.Errorf("%s: got %d, want 503", path, rec.Code)
 		}
@@ -450,5 +452,53 @@ func TestFlamegraphEndpoint(t *testing.T) {
 	kids := resp.Root.Children[0].Children
 	if len(kids) != 2 || kids[0].Name != "handler" || kids[0].Self != 5 {
 		t.Errorf("children wrong: %+v", kids)
+	}
+}
+
+func TestAgentsEndpoint(t *testing.T) {
+	seen := time.Date(2026, 7, 5, 10, 0, 0, 0, time.UTC)
+	older := seen.Add(-2 * time.Minute)
+	fake := &storagetest.Fake{
+		Agents: []storage.AgentNode{
+			{Node: "worker-1", LastSeen: seen, Metrics: &seen, Logs: &older},
+		},
+	}
+	mux := newMux(fake)
+
+	var resp agentsResponse
+	rec := get(t, mux, "/api/v1/agents?windowSec=300")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decoding agents: %v", err)
+	}
+	if fake.LastAgentQuery.Tenant != storage.DefaultTenant {
+		t.Errorf("tenant = %q, want default", fake.LastAgentQuery.Tenant)
+	}
+	if fake.LastAgentQuery.Window != 5*time.Minute {
+		t.Errorf("window = %v, want 5m", fake.LastAgentQuery.Window)
+	}
+	if resp.WindowSeconds != 300 || len(resp.Sensors) != 1 {
+		t.Fatalf("response wrong: %+v", resp)
+	}
+	s := resp.Sensors[0]
+	if s.Node != "worker-1" || s.LastSeen != "2026-07-05T10:00:00Z" {
+		t.Errorf("sensor wrong: %+v", s)
+	}
+	if s.Signals.Metrics == nil || s.Signals.Logs == nil {
+		t.Errorf("expected metrics+logs freshness, got %+v", s.Signals)
+	}
+	if s.Signals.Traces != nil || s.Signals.Profiles != nil {
+		t.Errorf("expected nil traces/profiles freshness, got %+v", s.Signals)
+	}
+
+	// Tenant header is honored (the enterprise seam).
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil)
+	req.Header.Set("X-Avuru-Tenant", "staging")
+	rec2 := httptest.NewRecorder()
+	mux.ServeHTTP(rec2, req)
+	if fake.LastAgentQuery.Tenant != "staging" {
+		t.Errorf("tenant header not honored: %q", fake.LastAgentQuery.Tenant)
 	}
 }

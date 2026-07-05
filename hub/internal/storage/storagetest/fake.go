@@ -23,6 +23,7 @@ type Fake struct {
 	StatsErr  error
 	Nodes     []storage.NodeStat
 	Pods      []storage.PodStat
+	Agents    []storage.AgentNode
 	RED       []storage.REDSeries
 	Written   []storage.ProfileSample
 	Profiled  []storage.ProfiledService
@@ -33,6 +34,7 @@ type Fake struct {
 	LastServiceQuery storage.ServiceQuery
 	LastLogQuery     storage.LogQuery
 	LastInfraQuery   storage.InfraQuery
+	LastAgentQuery   storage.AgentQuery
 	LastREDQuery     storage.REDQuery
 	LastProfileQuery storage.ProfileQuery
 }
@@ -65,6 +67,11 @@ func (f *Fake) ListNodeStats(_ context.Context, q storage.InfraQuery) ([]storage
 func (f *Fake) ListPodStats(_ context.Context, q storage.InfraQuery) ([]storage.PodStat, error) {
 	f.LastInfraQuery = q
 	return f.Pods, nil
+}
+
+func (f *Fake) ListAgentNodes(_ context.Context, q storage.AgentQuery) ([]storage.AgentNode, error) {
+	f.LastAgentQuery = q
+	return f.Agents, nil
 }
 
 var _ storage.Store = (*Fake)(nil)

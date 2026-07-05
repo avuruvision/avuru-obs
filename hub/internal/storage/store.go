@@ -307,6 +307,26 @@ type FlameNode struct {
 	Children []*FlameNode
 }
 
+// AgentQuery filters ListAgentNodes. Window is the lookback within which a
+// node counts as "reporting".
+type AgentQuery struct {
+	Tenant string
+	Window time.Duration // <=0 → backend default
+}
+
+// AgentNode is one node with sensor data inside the window. Per-signal
+// freshness is nil when that signal has no data from the node — the agent
+// inventory is DERIVED from telemetry (no heartbeat protocol until OpAMP,
+// v0.2).
+type AgentNode struct {
+	Node     string
+	LastSeen time.Time // newest event across all signals
+	Traces   *time.Time
+	Logs     *time.Time
+	Metrics  *time.Time
+	Profiles *time.Time
+}
+
 // SignalStats summarizes one telemetry signal's stored data.
 type SignalStats struct {
 	Signal          string // "traces" | "logs"
@@ -344,6 +364,7 @@ type Store interface {
 	LogsForTrace(ctx context.Context, tenant, traceID string) ([]LogRecord, error)
 	ListNodeStats(ctx context.Context, q InfraQuery) ([]NodeStat, error)
 	ListPodStats(ctx context.Context, q InfraQuery) ([]PodStat, error)
+	ListAgentNodes(ctx context.Context, q AgentQuery) ([]AgentNode, error)
 	REDSeries(ctx context.Context, q REDQuery) ([]REDSeries, error)
 	WriteProfileSamples(ctx context.Context, samples []ProfileSample) error
 	ListProfiledServices(ctx context.Context, q ProfileQuery) ([]ProfiledService, error)
