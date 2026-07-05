@@ -365,6 +365,9 @@ type Store interface {
 	ListNodeStats(ctx context.Context, q InfraQuery) ([]NodeStat, error)
 	ListPodStats(ctx context.Context, q InfraQuery) ([]PodStat, error)
 	ListAgentNodes(ctx context.Context, q AgentQuery) ([]AgentNode, error)
+	// ListTenants returns tenants observed in recent data (projects
+	// auto-discovery; config-defined projects merge in at the API layer).
+	ListTenants(ctx context.Context) ([]string, error)
 	REDSeries(ctx context.Context, q REDQuery) ([]REDSeries, error)
 	WriteProfileSamples(ctx context.Context, samples []ProfileSample) error
 	ListProfiledServices(ctx context.Context, q ProfileQuery) ([]ProfiledService, error)

@@ -25,12 +25,16 @@ type Config struct {
 	RetentionLogsDays     int
 	RetentionMetricsDays  int
 	RetentionProfilesDays int
+	// Projects declared through deployment config (AVURUOPS_PROJECTS) —
+	// merged with data-observed tenants by GET /api/v1/projects.
+	Projects []string
 }
 
 // API holds handler dependencies.
 type API struct {
 	provider StoreProvider
 	cfg      Config
+	tenants  tenantCache
 }
 
 // store resolves the current backend or fails with 503.
@@ -47,6 +51,7 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.Handle("GET /api/v1/status", handle(a.handleStatus))
+	mux.Handle("GET /api/v1/projects", handle(a.handleProjects))
 	mux.Handle("GET /api/v1/system/status", handle(a.handleSystemStatus))
 	mux.Handle("GET /api/v1/services", handle(a.handleServices))
 	mux.Handle("GET /api/v1/service-map", handle(a.handleServiceMap))

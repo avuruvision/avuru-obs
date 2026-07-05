@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -500,5 +501,64 @@ func TestAgentsEndpoint(t *testing.T) {
 	mux.ServeHTTP(rec2, req)
 	if fake.LastAgentQuery.Tenant != "staging" {
 		t.Errorf("tenant header not honored: %q", fake.LastAgentQuery.Tenant)
+	}
+}
+
+func TestProjectsEndpoint(t *testing.T) {
+	fake := &storagetest.Fake{Tenants: []string{"default", "prod-eu"}}
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return fake }, Config{Projects: []string{"staging", "default"}})
+
+	var resp projectsResponse
+	rec := get(t, mux, "/api/v1/projects")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decoding projects: %v", err)
+	}
+	// Sorted union: default (always), prod-eu (data), staging (config).
+	want := []projectDTO{
+		{ID: "default", Source: "default"},
+		{ID: "prod-eu", Source: "data"},
+		{ID: "staging", Source: "config"},
+	}
+	if len(resp.Projects) != len(want) {
+		t.Fatalf("projects = %+v, want %+v", resp.Projects, want)
+	}
+	for i, p := range want {
+		if resp.Projects[i] != p {
+			t.Errorf("projects[%d] = %+v, want %+v", i, resp.Projects[i], p)
+		}
+	}
+}
+
+func TestProjectsEndpointStoreDown(t *testing.T) {
+	// The switcher must always render: store down -> config list, 200.
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return nil }, Config{Projects: []string{"staging"}})
+
+	var resp projectsResponse
+	rec := get(t, mux, "/api/v1/projects")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200 during store outage", rec.Code)
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decoding projects: %v", err)
+	}
+	if len(resp.Projects) != 2 || resp.Projects[0].ID != "default" || resp.Projects[1].ID != "staging" {
+		t.Errorf("projects during outage = %+v", resp.Projects)
+	}
+}
+
+func TestProjectsEndpointListTenantsError(t *testing.T) {
+	// A flaky store degrades to config-only, never 5xx.
+	fake := &storagetest.Fake{TenantsErr: errors.New("boom")}
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return fake }, Config{})
+
+	rec := get(t, mux, "/api/v1/projects")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200 when ListTenants fails", rec.Code)
 	}
 }

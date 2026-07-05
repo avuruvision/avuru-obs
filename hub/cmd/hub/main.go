@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -127,6 +128,7 @@ func run() error {
 		RetentionLogsDays:     envIntOr("AVURUOPS_RETENTION_LOGS_DAYS", 3),
 		RetentionMetricsDays:  envIntOr("AVURUOPS_RETENTION_METRICS_DAYS", 7),
 		RetentionProfilesDays: envIntOr("AVURUOPS_RETENTION_PROFILES_DAYS", 3),
+		Projects:              splitCSV(envOr("AVURUOPS_PROJECTS", "")),
 	})
 
 	srv := &http.Server{
@@ -202,4 +204,19 @@ func envIntOr(key string, def int) int {
 		slog.Warn("invalid int env, using default", "key", key, "value", v, "default", def)
 	}
 	return def
+}
+
+// splitCSV parses a comma-separated env value, trimming blanks (used for
+// AVURUOPS_PROJECTS, the config-defined project list).
+func splitCSV(v string) []string {
+	if v == "" {
+		return nil
+	}
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

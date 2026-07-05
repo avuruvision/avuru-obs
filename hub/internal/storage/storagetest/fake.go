@@ -21,9 +21,11 @@ type Fake struct {
 	TraceLogs map[string][]storage.LogRecord
 	Stats     storage.SystemStats
 	StatsErr  error
-	Nodes     []storage.NodeStat
-	Pods      []storage.PodStat
-	Agents    []storage.AgentNode
+	Nodes      []storage.NodeStat
+	Pods       []storage.PodStat
+	Agents     []storage.AgentNode
+	Tenants    []string
+	TenantsErr error
 	RED       []storage.REDSeries
 	Written   []storage.ProfileSample
 	Profiled  []storage.ProfiledService
@@ -72,6 +74,10 @@ func (f *Fake) ListPodStats(_ context.Context, q storage.InfraQuery) ([]storage.
 func (f *Fake) ListAgentNodes(_ context.Context, q storage.AgentQuery) ([]storage.AgentNode, error) {
 	f.LastAgentQuery = q
 	return f.Agents, nil
+}
+
+func (f *Fake) ListTenants(context.Context) ([]string, error) {
+	return f.Tenants, f.TenantsErr
 }
 
 var _ storage.Store = (*Fake)(nil)
