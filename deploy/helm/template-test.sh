@@ -69,6 +69,20 @@ grep -q 'filter/collection' <<<"$out" && fail "filter/collection rendered with n
 grep -q 'tag_name: avuru.obs.collect' <<<"$out" && fail "label extraction rendered with empty optOutLabel"
 ok "guardrail plumbing disappears when unset"
 
+echo "== project tagging (gateway.tenant + projects)"
+out="$(render)"
+grep -q 'resource/tenant' <<<"$out" && fail "resource/tenant rendered without gateway.tenant"
+grep -q 'AVURUOPS_PROJECTS' <<<"$out" && fail "AVURUOPS_PROJECTS rendered without projects"
+ok "default render carries no tenant plumbing"
+out="$(render --set gateway.tenant=staging --set 'projects={default,staging}' --set sensor.profiler.enabled=true)"
+grep -q 'value: "staging"' <<<"$out" || fail "resource/tenant value missing"
+grep -q 'action: upsert' <<<"$out" || fail "resource/tenant action missing"
+n=$(grep -c 'processors: \[resource/tenant, batch\]' <<<"$out")
+[ "$n" = "3" ] || fail "resource/tenant not in all 3 gateway pipelines (got $n)"
+grep -q 'X-Avuru-Tenant: "staging"' <<<"$out" || fail "profiler ingest header missing"
+grep -q 'value: "default,staging"' <<<"$out" || fail "AVURUOPS_PROJECTS env missing"
+ok "tenant stamped in gateway pipelines, profiler header, hub env"
+
 echo "== all sensor containers off -> no DaemonSet"
 out="$(render --set sensor.obi.enabled=false --set sensor.agent.enabled=false --set sensor.profiler.enabled=false)"
 grep -q 'kind: DaemonSet' <<<"$out" && fail "DaemonSet rendered with zero active containers"

@@ -202,6 +202,13 @@ data:
       # "the hub is never in the telemetry byte-path".
       otlphttp:
         endpoint: http://{{ include "avuruops.fullname" . }}-hub:80
+        {{- if .Values.gateway.tenant }}
+        # Profiles bypass the gateway, so the project tag rides the ingest
+        # header instead of the resource processor — same gateway.tenant
+        # value, or profiles would split-brain into 'default'.
+        headers:
+          X-Avuru-Tenant: {{ .Values.gateway.tenant | quote }}
+        {{- end }}
     extensions:
       health_check:
         endpoint: 0.0.0.0:13135

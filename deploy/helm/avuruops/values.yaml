@@ -47,6 +47,11 @@ gateway:
     repository: avuruops/gateway
     tag: "" # defaults to .Chart.AppVersion
   replicas: 1
+  # Project/environment this gateway feeds (Coroot-style project-per-cluster):
+  # stamps `avuru.tenant` on ALL telemetry passing through (and the profiler's
+  # ingest header). "" = everything lands in the `default` project. Senders
+  # never change — this is server-side tagging (drop-in OTLP stays true).
+  tenant: ""
   resources:
     requests:
       cpu: 100m
@@ -178,6 +183,12 @@ clickhouse:
       memory: 2Gi
     limits:
       memory: 4Gi
+
+# Projects the hub advertises to the UI switcher (Coroot's "defined through
+# the config" mode). Tenants observed in the data are auto-discovered and
+# merged; `default` always exists. Typically one entry per environment
+# (matching each cluster's gateway.tenant) on a shared-ClickHouse install.
+projects: []
 
 # Per-signal retention in DAYS, applied as ClickHouse TTL by `hub migrate`.
 retention:

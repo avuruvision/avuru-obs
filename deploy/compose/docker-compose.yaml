@@ -68,6 +68,9 @@ services:
       AVURUOPS_CLICKHOUSE_ADDR: clickhouse:9000
       AVURUOPS_CLICKHOUSE_USER: avuru
       AVURUOPS_CLICKHOUSE_PASSWORD: avuru
+      # Deterministic switcher list for e2e (staging fixtures are seeded
+      # under the `staging` tenant; discovery would also find it from data).
+      AVURUOPS_PROJECTS: default,staging
     ports:
       - "8080:8080"
     depends_on:
