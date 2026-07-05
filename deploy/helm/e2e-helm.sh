@@ -104,6 +104,8 @@ echo "==> asserting the <5-min zero-code wedge via the hub API"
 echo "==> waiting for the remaining deployables + migrate hook"
 kubectl -n "$NS" rollout status deploy/avuruops-ui --timeout=180s
 kubectl -n "$NS" rollout status deploy/avuruops-gateway --timeout=180s
+kubectl -n "$NS" rollout status ds/avuruops-sensor --timeout=180s
+SENSOR_READY_UNIX=$(date +%s)
 kubectl -n "$NS" port-forward svc/avuruops-gateway 4318:4318 >/dev/null 2>&1 &
 PF_PIDS="$PF_PIDS $!"
 kubectl -n "$NS" port-forward svc/avuruops-ui 8081:80 >/dev/null 2>&1 &
@@ -121,5 +123,26 @@ echo "    ui / -> 200"
 
 echo "==> asserting seeded traces + correlated logs via the hub API"
 ( cd e2e && "$E2E_BIN" -test.v -test.timeout 5m -test.run 'TestSeededViaHelm' )
+
+# REGRESSION GATE (docs/runbooks/app-probe-failures.md): installing avuru-obs
+# must not destabilize apps that were already running. The wedge demo predates
+# the install — after a soak with the sensor attached, every one of its pods
+# must still be Ready with zero restarts.
+SOAK=75
+elapsed=$(( $(date +%s) - SENSOR_READY_UNIX ))
+if [ "$elapsed" -lt "$SOAK" ]; then
+  echo "==> soaking pre-existing apps under the sensor ($((SOAK - elapsed))s remaining of ${SOAK}s)"
+  sleep $((SOAK - elapsed))
+fi
+echo "==> REGRESSION GATE: pre-existing wedge-demo pods after ${SOAK}s under the sensor"
+kubectl -n wedge-demo get pods
+UNHEALTHY=$(kubectl -n wedge-demo get pods --no-headers \
+  | awk '{ split($2, a, "/"); if (a[1] != a[2] || $4+0 > 0) print $1 " (" $2 " ready, " $4 " restarts)" }')
+if [ -n "$UNHEALTHY" ]; then
+  echo "REGRESSION: pre-existing app pods destabilized by the avuru-obs install:"
+  echo "$UNHEALTHY" | sed 's/^/    /'
+  exit 1
+fi
+echo "    all wedge-demo pods Ready with 0 restarts — install did no harm"
 
 rm -f "$E2E_BIN" "$SEED_BIN"
