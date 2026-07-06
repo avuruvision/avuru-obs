@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { CenteredSpinner, Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/cn";
 import { formatAgo, formatMs } from "@/lib/format";
+import { serviceColor } from "@/lib/trace";
 import { useURLState } from "@/hooks/use-url-state";
 import type { TraceSummary } from "@/lib/api-types";
 
@@ -106,7 +107,14 @@ export function TraceRail({
                   />
                 </div>
                 <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-base-content/50">
-                  <span className="truncate">{t.rootService}</span>
+                  <span className="flex min-w-0 items-center gap-1">
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-sm"
+                      style={{ backgroundColor: serviceColor(t.rootService) }}
+                      aria-hidden
+                    />
+                    <span className="truncate">{t.rootService}</span>
+                  </span>
                   <span className="shrink-0">
                     {formatMs(t.durationMs)} · {formatAgo(t.startTime)}
                   </span>

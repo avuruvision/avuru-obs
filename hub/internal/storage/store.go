@@ -126,6 +126,8 @@ type Span struct {
 	Service            string
 	Operation          string
 	Kind               string
+	ScopeName          string // instrumentation library, e.g. "@opentelemetry/instrumentation-http"
+	ScopeVersion       string
 	StartTime          time.Time
 	Duration           time.Duration
 	StatusCode         string

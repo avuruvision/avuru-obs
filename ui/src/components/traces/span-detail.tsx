@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatTime, utcTooltip } from "@/lib/format";
+import { spanComponent, spanPeer } from "@/lib/component";
+import { spanStatus } from "@/lib/span-status";
 import type { Span } from "@/lib/api-types";
 
 // One attribute value cell: wraps long values and reveals a copy affordance on
@@ -55,15 +57,32 @@ function AttrTable({ title, attrs }: { title: string; attrs?: Record<string, str
 }
 
 export function SpanDetail({ span }: { span: Span }) {
+  const status = spanStatus(span);
+  const component = spanComponent(span);
+  const peer = spanPeer(span);
   return (
     <div className="flex flex-col gap-3 border-b border-neutral/40 bg-base-100/60 px-4 py-3">
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <Badge tone={span.statusCode === "Error" ? "error" : "neutral"}>
-          {span.statusCode}
+        <Badge
+          tone={status.kind === "error" ? "error" : status.kind === "ok" ? "success" : "neutral"}
+          title={`OTel status: ${span.statusCode}`}
+        >
+          {status.label}
         </Badge>
         <Badge tone="neutral">{span.kind}</Badge>
+        <Badge tone="neutral">
+          <component.Icon className="mr-1 h-3 w-3" />
+          {component.name}
+        </Badge>
+        {peer && <span className="text-base-content/50">→ {peer}</span>}
         <span className="font-mono text-base-content/50">span {span.spanId}</span>
       </div>
+      {span.scopeName && (
+        <p className="font-mono text-[10px] text-base-content/45">
+          {span.scopeName}
+          {span.scopeVersion ? `@${span.scopeVersion}` : ""}
+        </p>
+      )}
       {span.statusMessage && (
         <p className="font-mono text-xs text-error">{span.statusMessage}</p>
       )}

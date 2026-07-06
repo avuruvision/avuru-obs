@@ -35,12 +35,12 @@ SELECT
     ServiceName,
     toStartOfInterval(Timestamp, INTERVAL %d SECOND)  AS t,
     count()                                           AS reqs,
-    countIf(StatusCode = 'Error')                     AS errors,
+    countIf(%s)                                       AS errors,
     quantiles(0.5, 0.95, 0.99)(toFloat64(Duration))   AS qs
 FROM otel_traces
 WHERE Tenant = ?
   AND Timestamp >= ? AND Timestamp < ?
-  AND SpanKind IN ('Server', 'Consumer')`, int(bucket.Seconds()))
+  AND SpanKind IN ('Server', 'Consumer')`, int(bucket.Seconds()), errorSpanExpr(""))
 	args := []any{q.Tenant, q.Range.Start, q.Range.End}
 
 	if q.Service != "" {

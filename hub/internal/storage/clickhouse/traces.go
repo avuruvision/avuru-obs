@@ -34,9 +34,9 @@ WHERE Tenant = ?
 	}
 	switch q.Status {
 	case "error":
-		query += ` AND StatusCode = 'Error'`
+		query += ` AND ` + errorSpanExpr("")
 	case "ok":
-		query += ` AND StatusCode != 'Error'`
+		query += ` AND NOT ` + errorSpanExpr("")
 	}
 	if q.MinDuration > 0 {
 		query += ` AND Duration >= ?`
@@ -128,8 +128,8 @@ func (s *Store) fillTraceAggregates(ctx context.Context, tenant string, r storag
 	}
 
 	// Widen the window: child spans can start after (or end before) the root.
-	const query = `
-SELECT TraceId, count() AS spans, countIf(StatusCode = 'Error') AS errors
+	query := `
+SELECT TraceId, count() AS spans, countIf(` + errorSpanExpr("") + `) AS errors
 FROM otel_traces
 WHERE Tenant = ? AND TraceId IN ? AND Timestamp >= ? - INTERVAL 1 HOUR AND Timestamp < ? + INTERVAL 1 HOUR
 GROUP BY TraceId`
@@ -164,6 +164,7 @@ func (s *Store) GetTrace(ctx context.Context, tenant, traceID string) (storage.T
 
 	const query = `
 SELECT TraceId, SpanId, ParentSpanId, ServiceName, SpanName, SpanKind,
+       ScopeName, ScopeVersion,
        Timestamp, Duration, StatusCode, StatusMessage,
        SpanAttributes, ResourceAttributes,
        Events.Timestamp, Events.Name, Events.Attributes
@@ -187,6 +188,7 @@ ORDER BY Timestamp ASC`
 			evAttrs []map[string]string
 		)
 		if err := rows.Scan(&sp.TraceID, &sp.SpanID, &sp.ParentSpanID, &sp.Service, &sp.Operation, &sp.Kind,
+			&sp.ScopeName, &sp.ScopeVersion,
 			&sp.StartTime, &dur, &sp.StatusCode, &sp.StatusMessage,
 			&sp.Attributes, &sp.ResourceAttributes,
 			&evTimes, &evNames, &evAttrs); err != nil {
