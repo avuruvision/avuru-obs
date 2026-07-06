@@ -1,14 +1,17 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { GitCompare, Maximize2, Minimize2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CenteredSpinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/cn";
+import { useLocalStorageNumber } from "@/hooks/use-local-storage-number";
 import { useTrace } from "@/hooks/use-traces-data";
 import { useURLState } from "@/hooks/use-url-state";
 import type { Span } from "@/lib/api-types";
 import { Waterfall } from "./waterfall";
 import { SpanDetail } from "./span-detail";
+import { SpanDetailOverlay } from "./span-detail-overlay";
 import { TraceSummaryBar } from "./trace-summary-bar";
 import { SpansTable } from "./views/spans-table";
 import { Flamegraph } from "./views/flamegraph";
@@ -30,6 +33,54 @@ const VIEWS = [
 
 type View = (typeof VIEWS)[number]["value"];
 
+const SPAN_PANEL_WIDTH_KEY = "avuru-span-detail-width";
+const SPAN_PANEL_DEFAULT = 384; // matches the old w-96
+const SPAN_PANEL_MIN = 320;
+
+// Draggable divider for the span-detail aside. Pointer capture keeps the drag
+// alive when the cursor leaves the 6px hit area.
+function ResizeHandle({
+  onDrag,
+  onNudge,
+  onReset,
+}: {
+  onDrag: (clientX: number) => void;
+  onNudge: (deltaPx: number) => void;
+  onReset: () => void;
+}) {
+  const dragging = useRef(false);
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize span detail"
+      tabIndex={0}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        dragging.current = true;
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }}
+      onPointerMove={(e) => dragging.current && onDrag(e.clientX)}
+      onPointerUp={(e) => {
+        dragging.current = false;
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }}
+      onDoubleClick={onReset}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          onNudge(16);
+        }
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          onNudge(-16);
+        }
+      }}
+      className="w-1.5 shrink-0 cursor-col-resize touch-none bg-transparent transition-colors hover:bg-primary/40 focus-visible:bg-primary/40"
+    />
+  );
+}
+
 // The right side of the split workspace: header (view switcher / compare /
 // maximize / close), trace summary bar (stats + service legend), and a body
 // that is either the active single-trace view + span drawer, or the
@@ -46,6 +97,22 @@ export function TraceDetailPanel({
   const { get, setMany } = useURLState();
   const a = useTrace(traceId);
   const b = useTrace(compareId ?? null);
+
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [panelWidth, setPanelWidth] = useLocalStorageNumber(
+    SPAN_PANEL_WIDTH_KEY,
+    SPAN_PANEL_DEFAULT,
+  );
+  const [expanded, setExpanded] = useState(false);
+
+  // Clamp to [320px, 70% of the workspace body], measured live during drag.
+  const clampWidth = (w: number) => {
+    const body = bodyRef.current;
+    const max = body
+      ? Math.max(SPAN_PANEL_MIN, Math.round(body.getBoundingClientRect().width * 0.7))
+      : SPAN_PANEL_DEFAULT;
+    return Math.min(Math.max(Math.round(w), SPAN_PANEL_MIN), max);
+  };
 
   const comparing = Boolean(compareId);
   const view = (VIEWS.find((v) => v.value === get("view"))?.value ?? "timeline") as View;
@@ -104,7 +171,7 @@ export function TraceDetailPanel({
 
       {!comparing && trace && <TraceSummaryBar trace={trace} />}
 
-      <div className="flex min-h-0 flex-1">
+      <div ref={bodyRef} className="flex min-h-0 flex-1">
         <div className="min-h-0 flex-1 overflow-auto p-3">
           {comparing ? (
             a.isLoading || b.isLoading ? (
@@ -148,19 +215,45 @@ export function TraceDetailPanel({
         </div>
 
         {!comparing && selectedSpan && (
-          <aside className="flex w-96 shrink-0 flex-col overflow-auto border-l border-neutral bg-base-100">
-            <div className="flex items-center justify-between border-b border-neutral px-3 py-2">
-              <span className="text-xs font-semibold">Span detail</span>
-              <button
-                aria-label="Close span detail"
-                onClick={() => setMany({ span: undefined })}
-                className="text-base-content/50 hover:text-base-content"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <SpanDetail span={selectedSpan} />
-          </aside>
+          <>
+            <ResizeHandle
+              onDrag={(clientX) => {
+                const body = bodyRef.current;
+                if (body)
+                  setPanelWidth(clampWidth(body.getBoundingClientRect().right - clientX));
+              }}
+              onNudge={(d) => setPanelWidth(clampWidth(panelWidth + d))}
+              onReset={() => setPanelWidth(SPAN_PANEL_DEFAULT)}
+            />
+            <aside
+              style={{ width: panelWidth }}
+              className="flex min-w-80 max-w-[70%] shrink-0 flex-col overflow-auto border-l border-neutral bg-base-100"
+            >
+              <div className="flex items-center justify-between border-b border-neutral px-3 py-2">
+                <span className="text-xs font-semibold">Span detail</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    aria-label="Expand span detail"
+                    onClick={() => setExpanded(true)}
+                    className="text-base-content/50 hover:text-base-content"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    aria-label="Close span detail"
+                    onClick={() => setMany({ span: undefined })}
+                    className="text-base-content/50 hover:text-base-content"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              <SpanDetail span={selectedSpan} />
+            </aside>
+            {expanded && (
+              <SpanDetailOverlay span={selectedSpan} onClose={() => setExpanded(false)} />
+            )}
+          </>
         )}
       </div>
     </div>

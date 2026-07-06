@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 // Seeded fixture (deploy/compose/seed/fixtures): one deterministic trace.
 const SEED_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
@@ -178,5 +178,79 @@ test.describe("trace inspect views (seeded data)", () => {
     await page.getByRole("button", { name: /SELECT orders/ }).click();
     await expect(page.getByText("Span detail", { exact: true })).toBeVisible();
     await expect(page.getByText("connection refused").first()).toBeVisible();
+  });
+});
+
+test.describe("span detail panel (seeded data)", () => {
+  const LONG_VALUE = "SELECT * FROM orders WHERE id = ?";
+
+  async function openSpanDetail(page: Page) {
+    await page.goto(`/traces?trace=${SEED_TRACE_ID}&tab=traces`);
+    await page.getByRole("button", { name: /SELECT orders/ }).click();
+    await expect(page.getByText("Span detail", { exact: true })).toBeVisible();
+  }
+
+  test("attribute values stay readable next to long keys", async ({ page }) => {
+    await openSpanDetail(page);
+    // The seeded span carries a 50-char key; pre-fix it crushed the value
+    // column to ~1 character per line.
+    await expect(
+      page.getByText("db.client.connections.wait_time_before_timeout_ms"),
+    ).toBeVisible();
+    const value = page.getByText(LONG_VALUE).first();
+    await expect(value).toBeVisible();
+    const box = (await value.boundingBox())!;
+    expect(box.width).toBeGreaterThan(120);
+    expect(box.height).toBeLessThan(60);
+  });
+
+  test("attribute value copies to clipboard", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await openSpanDetail(page);
+    await page.getByText(LONG_VALUE).first().hover();
+    await page.getByRole("button", { name: "Copy db.query.text" }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(LONG_VALUE);
+  });
+
+  test("panel resizes by drag, persists, and resets on double-click", async ({ page }) => {
+    await openSpanDetail(page);
+    const aside = page.locator("aside").filter({ hasText: "Span detail" });
+    const handle = page.getByRole("separator", { name: "Resize span detail" });
+
+    const before = (await aside.boundingBox())!;
+    const h = (await handle.boundingBox())!;
+    await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(h.x - 150, h.y + h.height / 2, { steps: 5 });
+    await page.mouse.up();
+    const after = (await aside.boundingBox())!;
+    expect(after.width).toBeGreaterThan(before.width + 100);
+
+    await page.reload();
+    await expect(page.getByText("Span detail", { exact: true })).toBeVisible();
+    const reloaded = (await aside.boundingBox())!;
+    expect(Math.abs(reloaded.width - after.width)).toBeLessThan(10);
+
+    await handle.dblclick();
+    await expect
+      .poll(async () => (await aside.boundingBox())!.width)
+      .toBeLessThan(after.width);
+  });
+
+  test("expand overlay opens; Esc closes it without leaving fullscreen", async ({ page }) => {
+    await openSpanDetail(page);
+    await page.getByRole("button", { name: "Full screen" }).click();
+    await page.getByRole("button", { name: "Expand span detail" }).click();
+
+    const dialog = page.getByRole("dialog", { name: "Span detail expanded" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText(LONG_VALUE)).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "Exit full screen" })).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Full screen" })).toBeVisible();
   });
 });
