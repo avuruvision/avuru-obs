@@ -99,6 +99,22 @@ func TestTenantIsolation(t *testing.T) {
 	}
 }
 
+// TestAgentsEndpointServes guards the /agents SQL against schema drift (its
+// probes touch all four signal tables). Compose has no k8s sensor, so an
+// empty inventory is the expected answer — a 500 means a broken query.
+func TestAgentsEndpointServes(t *testing.T) {
+	var resp struct {
+		Sensors       []any `json:"sensors"`
+		WindowSeconds int   `json:"windowSeconds"`
+	}
+	if _, err := getJSONTenant("/api/v1/agents", "", &resp); err != nil {
+		t.Fatalf("agents endpoint: %v", err)
+	}
+	if resp.WindowSeconds <= 0 {
+		t.Errorf("windowSeconds = %d, want > 0", resp.WindowSeconds)
+	}
+}
+
 func TestProjectsList(t *testing.T) {
 	var resp struct {
 		Projects []struct {

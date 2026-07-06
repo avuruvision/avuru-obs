@@ -64,9 +64,9 @@ GROUP BY node`,
 			assign: func(n *storage.AgentNode, t time.Time) { n.Traces = &t },
 		},
 		{
-			query: `SELECT Node AS node, max(Timestamp) AS newest
+			query: `SELECT NodeName AS node, max(Timestamp) AS newest
 FROM profiling_samples
-WHERE Tenant = ? AND Timestamp >= ? AND Node != ''
+WHERE Tenant = ? AND Timestamp >= ? AND NodeName != ''
 GROUP BY node`,
 			args:   []any{q.Tenant, since},
 			assign: func(n *storage.AgentNode, t time.Time) { n.Profiles = &t },
