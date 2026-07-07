@@ -14,6 +14,18 @@ server {
     # settings.html), so "/settings/" would otherwise hit directory handling
     # and 403.
     rewrite ^/(.+)/$ /$1 permanent;
+
+    # Hashed build assets are immutable and must NEVER fall back to index.html:
+    # a missing chunk has to 404 cleanly, not return HTML — otherwise the
+    # browser rejects the stylesheet ("non-CSS MIME type") and renders the page
+    # unstyled. A miss here means stale HTML or multi-replica image skew; fix by
+    # deploying one consistent image version, not by loosening this.
+    location /_next/static/ {
+        try_files $uri =404;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
     location / {
         try_files $uri $uri.html /index.html;
     }
