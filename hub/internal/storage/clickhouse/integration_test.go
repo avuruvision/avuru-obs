@@ -770,3 +770,131 @@ func TestAuxDBPingExclusion(t *testing.T) {
 		t.Fatalf("includeAux should surface the ping too: %+v", all.Traces)
 	}
 }
+
+// TestSearchTracesOrphanResilience: the trace list must surface traces whose
+// true root span is absent (exported to another backend / dropped), keyed on
+// their effective root (the earliest present span), while complete traces stay
+// unchanged — one row, the root's own duration, filters matching the root.
+func TestSearchTracesOrphanResilience(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	base := time.Now().UTC().Truncate(time.Minute).Add(-10 * time.Minute)
+	spans := []testSpan{
+		// complete: frontend root (500ms) + driver client child (100ms).
+		{base.Add(1 * time.Minute), "cmpl0001", "c1", "", "GET /a", "Server", "frontend", 500 * time.Millisecond, "Unset"},
+		{base.Add(1*time.Minute + 10*time.Millisecond), "cmpl0001", "c2", "c1", "SQL", "Client", "driver", 100 * time.Millisecond, "Unset"},
+		// orphan1: a single child whose parent span is missing from the store.
+		{base.Add(2 * time.Minute), "orph0001", "o1", "missingp", "SQL SELECT", "Client", "checkout", 30 * time.Millisecond, "Unset"},
+		// orphan2: two children with NO root, tied on Timestamp — SpanId breaks
+		// the tie so the representative is deterministically "a1".
+		{base.Add(3 * time.Minute), "orph0002", "a1", "px", "op-a1", "Client", "svc", 70 * time.Millisecond, "Unset"},
+		{base.Add(3 * time.Minute), "orph0002", "b2", "px", "op-b2", "Client", "svc", 40 * time.Millisecond, "Unset"},
+	}
+	insertSpans(t, store, spans)
+	tr := storage.TimeRange{Start: base.Add(-time.Minute), End: base.Add(9 * time.Minute)}
+
+	t.Run("OrphanAppearsWithChildAsRoot", func(t *testing.T) {
+		page, err := store.SearchTraces(ctx, storage.TraceQuery{Tenant: "default", Range: tr, Service: "checkout"})
+		if err != nil {
+			t.Fatalf("SearchTraces: %v", err)
+		}
+		if len(page.Traces) != 1 || page.Traces[0].TraceID != "orph0001" {
+			t.Fatalf("want 1 orphan trace orph0001, got %+v", page.Traces)
+		}
+		got := page.Traces[0]
+		if got.RootService != "checkout" || got.RootOperation != "SQL SELECT" ||
+			got.Duration != 30*time.Millisecond || got.SpanCount != 1 {
+			t.Errorf("orphan representative wrong: %+v", got)
+		}
+	})
+
+	t.Run("MultiChildOrphanEarliestSpanIdWins", func(t *testing.T) {
+		page, err := store.SearchTraces(ctx, storage.TraceQuery{Tenant: "default", Range: tr, Service: "svc"})
+		if err != nil {
+			t.Fatalf("SearchTraces: %v", err)
+		}
+		if len(page.Traces) != 1 || page.Traces[0].TraceID != "orph0002" {
+			t.Fatalf("want 1 trace orph0002, got %+v", page.Traces)
+		}
+		// a1 (< b2) is the representative: its op name and its 70ms duration,
+		// both spans counted.
+		got := page.Traces[0]
+		if got.RootOperation != "op-a1" || got.Duration != 70*time.Millisecond || got.SpanCount != 2 {
+			t.Errorf("tiebreak representative wrong: %+v", got)
+		}
+	})
+
+	t.Run("CompleteTraceUnchanged", func(t *testing.T) {
+		page, err := store.SearchTraces(ctx, storage.TraceQuery{Tenant: "default", Range: tr, Service: "frontend"})
+		if err != nil {
+			t.Fatalf("SearchTraces: %v", err)
+		}
+		if len(page.Traces) != 1 || page.Traces[0].TraceID != "cmpl0001" {
+			t.Fatalf("want 1 trace cmpl0001, got %+v", page.Traces)
+		}
+		// Root's own duration (500ms), NOT wall-clock; both spans counted once.
+		got := page.Traces[0]
+		if got.RootOperation != "GET /a" || got.Duration != 500*time.Millisecond || got.SpanCount != 2 {
+			t.Errorf("complete trace summary wrong: %+v", got)
+		}
+	})
+
+	t.Run("FilterMatchesRepresentativeNotAnyChild", func(t *testing.T) {
+		// "driver" is only a child of cmpl0001 (root is frontend); filtering by
+		// it must NOT surface the trace.
+		page, err := store.SearchTraces(ctx, storage.TraceQuery{Tenant: "default", Range: tr, Service: "driver"})
+		if err != nil {
+			t.Fatalf("SearchTraces: %v", err)
+		}
+		if len(page.Traces) != 0 {
+			t.Fatalf("driver is a child only; want 0 traces, got %+v", page.Traces)
+		}
+	})
+
+	t.Run("PaginationNewestMixed", func(t *testing.T) {
+		p1, err := store.SearchTraces(ctx, storage.TraceQuery{Tenant: "default", Range: tr, Limit: 2})
+		if err != nil {
+			t.Fatalf("page1: %v", err)
+		}
+		if len(p1.Traces) != 2 || p1.NextCursor == nil {
+			t.Fatalf("page1 got %d traces cursor=%v", len(p1.Traces), p1.NextCursor)
+		}
+		// newest by StartTime: orph0002 (base+3m), orph0001 (base+2m), cmpl0001 (base+1m).
+		if p1.Traces[0].TraceID != "orph0002" || p1.Traces[1].TraceID != "orph0001" {
+			t.Errorf("newest order wrong: %+v", p1.Traces)
+		}
+		p2, err := store.SearchTraces(ctx, storage.TraceQuery{Tenant: "default", Range: tr, Limit: 2, Cursor: p1.NextCursor})
+		if err != nil {
+			t.Fatalf("page2: %v", err)
+		}
+		if len(p2.Traces) != 1 || p2.Traces[0].TraceID != "cmpl0001" || p2.NextCursor != nil {
+			t.Fatalf("page2 wrong: %+v cursor=%v", p2.Traces, p2.NextCursor)
+		}
+		seen := map[string]int{}
+		for _, s := range append(p1.Traces, p2.Traces...) {
+			seen[s.TraceID]++
+		}
+		if len(seen) != 3 || seen["cmpl0001"] != 1 || seen["orph0001"] != 1 || seen["orph0002"] != 1 {
+			t.Errorf("pagination lost/duplicated traces: %v", seen)
+		}
+	})
+
+	t.Run("PaginationSlowestMixed", func(t *testing.T) {
+		p1, err := store.SearchTraces(ctx, storage.TraceQuery{Tenant: "default", Range: tr, Order: "slowest", Limit: 2})
+		if err != nil {
+			t.Fatalf("page1: %v", err)
+		}
+		// slowest by representative duration: cmpl0001 (500ms), orph0002 (70ms), orph0001 (30ms).
+		if len(p1.Traces) != 2 || p1.Traces[0].TraceID != "cmpl0001" || p1.Traces[1].TraceID != "orph0002" {
+			t.Fatalf("slowest page1 wrong: %+v", p1.Traces)
+		}
+		p2, err := store.SearchTraces(ctx, storage.TraceQuery{Tenant: "default", Range: tr, Order: "slowest", Limit: 2, Cursor: p1.NextCursor})
+		if err != nil {
+			t.Fatalf("page2: %v", err)
+		}
+		if len(p2.Traces) != 1 || p2.Traces[0].TraceID != "orph0001" {
+			t.Fatalf("slowest page2 wrong: %+v", p2.Traces)
+		}
+	})
+}

@@ -96,6 +96,12 @@ ORDER BY calls DESC`
 }
 
 // TraceOverview aggregates RED stats per (service, operation) over root spans.
+//
+// Deliberately keeps `ParentSpanId = ''` (unlike SearchTraces, which lists
+// orphaned/effective-root traces): this is a rate/latency table whose numbers
+// must stay comparable with ListServices/REDSeries, which count entry spans.
+// Redefining "request" to include orphan children would double-count and skew
+// the percentiles. Orphan visibility is a trace-listing concern, not a metric.
 func (s *Store) TraceOverview(ctx context.Context, q storage.OverviewQuery) ([]storage.OperationStats, error) {
 	query := `
 SELECT

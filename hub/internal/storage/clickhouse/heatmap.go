@@ -9,6 +9,11 @@ import (
 )
 
 // TraceHeatmap buckets root spans into a (time × log2-duration) histogram.
+//
+// TODO(orphans): this still keys on `ParentSpanId = ''` while SearchTraces now
+// lists effective-root (incl. orphaned) traces, so brushing a region can select
+// fewer traces than the list shows. Aligning it means a per-trace-grouping
+// rewrite with its own duration-bucket semantics — deferred as a fast-follow.
 func (s *Store) TraceHeatmap(ctx context.Context, q storage.HeatmapQuery) (storage.Heatmap, error) {
 	timeBuckets := q.TimeBuckets
 	if timeBuckets <= 0 || timeBuckets > 240 {
