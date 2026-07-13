@@ -29,10 +29,12 @@ const defaultDesc = (key: SortKey) =>
 export function SpansTable({
   trace,
   selectedSpanId,
+  focusService,
   onSelectSpan,
 }: {
   trace: TraceResponse;
   selectedSpanId?: string | null;
+  focusService?: string | null;
   onSelectSpan?: (span: Span) => void;
 }) {
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({
@@ -116,6 +118,7 @@ export function SpansTable({
               className={cn(
                 "cursor-pointer border-b border-neutral/40",
                 isSelected ? "bg-base-300/50" : "hover:bg-base-300/40",
+                Boolean(focusService) && span.service !== focusService && "opacity-40",
               )}
             >
               <td>

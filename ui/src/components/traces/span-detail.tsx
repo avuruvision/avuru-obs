@@ -3,10 +3,14 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useURLState } from "@/hooks/use-url-state";
 import { formatTime, utcTooltip } from "@/lib/format";
+import { serviceColor } from "@/lib/trace";
 import { spanComponent, spanPeer } from "@/lib/component";
 import { spanStatus } from "@/lib/span-status";
 import type { Span } from "@/lib/api-types";
+import { CLEAR_WORKSPACE_PARAMS } from "./workspace-params";
 
 // One attribute value cell: wraps long values and reveals a copy affordance on
 // hover. `name` is the attribute key, used for the accessible label.
@@ -57,6 +61,7 @@ function AttrTable({ title, attrs }: { title: string; attrs?: Record<string, str
 }
 
 export function SpanDetail({ span }: { span: Span }) {
+  const { setMany } = useURLState();
   const status = spanStatus(span);
   const component = spanComponent(span);
   const peer = spanPeer(span);
@@ -76,6 +81,41 @@ export function SpanDetail({ span }: { span: Span }) {
         </Badge>
         {peer && <span className="text-base-content/50">→ {peer}</span>}
         <span className="font-mono text-base-content/50">span {span.spanId}</span>
+      </div>
+      {/* Service perspective: jump from this span to the service's traces
+          (participant filter) or to every request hitting the same endpoint. */}
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        <span className="inline-flex items-center gap-1.5 font-medium">
+          <span
+            className="h-2.5 w-2.5 rounded-sm"
+            style={{ backgroundColor: serviceColor(span.service) }}
+            aria-hidden
+          />
+          {span.service}
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            setMany({ ...CLEAR_WORKSPACE_PARAMS, service: span.service, tab: "traces" })
+          }
+        >
+          Service traces
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            setMany({
+              ...CLEAR_WORKSPACE_PARAMS,
+              service: span.service,
+              operation: span.operation,
+              tab: "traces",
+            })
+          }
+        >
+          Traces of this operation
+        </Button>
       </div>
       {span.scopeName && (
         <p className="font-mono text-[10px] text-base-content/45">

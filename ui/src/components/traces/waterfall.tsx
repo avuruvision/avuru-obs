@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { formatMs } from "@/lib/format";
 import { cn } from "@/lib/cn";
@@ -36,10 +36,12 @@ const STATUS_DOT = {
 export function Waterfall({
   trace,
   selectedSpanId,
+  focusService,
   onSelectSpan,
 }: {
   trace: TraceResponse;
   selectedSpanId?: string | null;
+  focusService?: string | null;
   onSelectSpan?: (span: Span) => void;
 }) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -48,6 +50,24 @@ export function Waterfall({
   // A span selected at mount time is a deep link (span-id search, shared URL):
   // bring it into view once. Later clicks select rows already on screen.
   const deepLinkSpan = useRef(selectedSpanId);
+
+  // Focusing a service (legend chip / ?focus= deep link) scrolls to its first
+  // span. A span deep link is more specific, so it wins at mount: seeding
+  // prevFocus with the current focus makes the effect see "no change".
+  const firstFocusSpanId = useMemo(
+    () => (focusService ? (rows.find((r) => r.span.service === focusService)?.span.spanId ?? null) : null),
+    [rows, focusService],
+  );
+  const firstFocusRow = useRef<HTMLButtonElement | null>(null);
+  // Initializer only matters on the first render, where selectedSpanId IS the
+  // span deep link (same seed as deepLinkSpan above).
+  const prevFocus = useRef<string | null>(selectedSpanId ? (focusService ?? null) : null);
+  useEffect(() => {
+    if (focusService && focusService !== prevFocus.current) {
+      firstFocusRow.current?.scrollIntoView({ block: "center" });
+    }
+    prevFocus.current = focusService ?? null;
+  }, [focusService]);
 
   const toggle = (spanId: string) =>
     setCollapsed((prev) => {
@@ -85,6 +105,7 @@ export function Waterfall({
         const component = spanComponent(span);
         const peer = spanPeer(span);
         const KindIcon = kindIcon(span.kind);
+        const isDimmed = Boolean(focusService) && span.service !== focusService;
         return (
           <button
             key={span.spanId}
@@ -93,6 +114,7 @@ export function Waterfall({
                 deepLinkSpan.current = null;
                 el.scrollIntoView({ block: "center" });
               }
+              if (el && span.spanId === firstFocusSpanId) firstFocusRow.current = el;
             }}
             onClick={() => onSelectSpan?.(span)}
             title={`${span.operation} — ${formatMs(span.durationMs)} (${share}% of trace)`}
@@ -100,6 +122,7 @@ export function Waterfall({
               "grid w-full items-center gap-2 border-b border-neutral/30 py-0.5 pr-2 text-left transition-colors hover:bg-base-300/40",
               GRID_COLS,
               isSelected && "bg-base-300/50",
+              isDimmed && "opacity-40",
             )}
           >
             <span className="flex min-w-0 items-center gap-1 pl-2 text-xs">

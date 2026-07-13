@@ -15,6 +15,7 @@ import { OverviewTable } from "./overview-table";
 import { TraceList } from "./trace-list";
 import { TraceFilterPanel } from "./trace-filters";
 import { TraceWorkspace } from "./trace-workspace";
+import { CLEAR_WORKSPACE_PARAMS } from "./workspace-params";
 
 type Tab = "overview" | "traces";
 
@@ -91,16 +92,7 @@ export function TracesScreen() {
         value={tab}
         // Tabs double as the escape hatch from the trace workspace: selecting
         // one closes the open trace (same params the panel's close button clears).
-        onChange={(t) =>
-          setMany({
-            tab: t,
-            trace: undefined,
-            view: undefined,
-            span: undefined,
-            compare: undefined,
-            full: undefined,
-          })
-        }
+        onChange={(t) => setMany({ ...CLEAR_WORKSPACE_PARAMS, tab: t })}
       />
 
       {selectedTrace ? (

@@ -7,6 +7,7 @@ import { test, expect, type Page } from "@playwright/test";
 const SEED_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
 const SEED_SERVICE = "seed-checkout";
 const SEED_ERROR_SPAN_ID = "b2c3d4e5f6071829";
+const MULTI_TRACE_ID = "eeee5555ffff6666aaaa7777bbbb8888";
 const MULTI_ROOT_SERVICE = "seed-gateway";
 const MULTI_CHILD_SERVICE = "seed-payments";
 
@@ -277,6 +278,68 @@ test.describe("trace inspect views (seeded data)", () => {
     await page.getByRole("button", { name: /SELECT orders/ }).click();
     await expect(page.getByText("Span detail", { exact: true })).toBeVisible();
     await expect(page.getByText("connection refused").first()).toBeVisible();
+  });
+});
+
+test.describe("service perspective from a trace (seeded data)", () => {
+  const traceUrl = `/traces?trace=${MULTI_TRACE_ID}&tab=traces`;
+  const gatewayRow = (page: Page) =>
+    page.getByRole("button", { name: /GET \/api\/pay/ });
+  const paymentsRow = (page: Page) =>
+    page.getByRole("button", { name: /POST \/pay/ });
+
+  test("legend chip toggles focus: other services dim, URL is shareable", async ({ page }) => {
+    await page.goto(traceUrl);
+    await expect(gatewayRow(page)).toBeVisible();
+
+    const chip = page.getByRole("button", { name: MULTI_CHILD_SERVICE, exact: true });
+    await chip.click();
+    await expect(page).toHaveURL(new RegExp(`focus=${MULTI_CHILD_SERVICE}`));
+    await expect(chip).toHaveAttribute("aria-pressed", "true");
+    await expect(gatewayRow(page)).toHaveClass(/opacity-40/);
+    await expect(paymentsRow(page)).not.toHaveClass(/opacity-40/);
+
+    // Second click clears the focus.
+    await chip.click();
+    await expect(page).not.toHaveURL(/[?&]focus=/);
+    await expect(gatewayRow(page)).not.toHaveClass(/opacity-40/);
+  });
+
+  test("?focus= deep link applies dimming on load", async ({ page }) => {
+    await page.goto(`${traceUrl}&focus=${MULTI_CHILD_SERVICE}`);
+    await expect(gatewayRow(page)).toHaveClass(/opacity-40/);
+    await expect(paymentsRow(page)).not.toHaveClass(/opacity-40/);
+  });
+
+  test("chip menu jumps to the service's participant-filtered traces", async ({ page }) => {
+    await page.goto(traceUrl);
+    await expect(gatewayRow(page)).toBeVisible();
+
+    await page.getByRole("button", { name: `${MULTI_CHILD_SERVICE} actions` }).click();
+    await page.getByRole("menuitem", { name: "View service traces" }).click();
+
+    await expect(page).toHaveURL(new RegExp(`service=${MULTI_CHILD_SERVICE}`));
+    await expect(page).not.toHaveURL(/[?&]trace=/);
+    await expect(page.getByRole("group", { name: "Trace summary" })).not.toBeVisible();
+    // The gateway-rooted trace is listed because seed-payments participates.
+    const row = page.getByRole("row").filter({ hasText: "GET /api/pay" });
+    await expect(row).toBeVisible();
+    await expect(row).toContainText(MULTI_ROOT_SERVICE);
+  });
+
+  test("span detail links to service traces and the operation's traces", async ({ page }) => {
+    await page.goto(traceUrl);
+    await paymentsRow(page).click();
+
+    await expect(page.getByText("Span detail", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Traces of this operation" }).click();
+
+    await expect(page).toHaveURL(new RegExp(`service=${MULTI_CHILD_SERVICE}`));
+    await expect(page).toHaveURL(/operation=POST/);
+    await expect(page).not.toHaveURL(/[?&]trace=/);
+    await expect(
+      page.getByRole("row").filter({ hasText: "GET /api/pay" }),
+    ).toBeVisible();
   });
 });
 

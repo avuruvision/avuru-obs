@@ -19,6 +19,7 @@ import { TraceStats } from "./views/trace-stats";
 import { TraceTree } from "./views/trace-tree";
 import { TraceJson } from "./views/trace-json";
 import { TraceDiff } from "./views/trace-diff";
+import { CLEAR_WORKSPACE_PARAMS } from "./workspace-params";
 
 // "Tree" replaced the aggregated graph but keeps the "graph" URL value so
 // shared links stay valid.
@@ -121,8 +122,13 @@ export function TraceDetailPanel({
   const trace = a.data;
   const selectedSpan = trace?.spans.find((s) => s.spanId === selectedSpanId) ?? null;
 
-  const close = () =>
-    setMany({ trace: undefined, view: undefined, span: undefined, compare: undefined, full: undefined });
+  // ?focus= dims other services' spans; inert when the focused service isn't
+  // in this trace (focus survives trace switches and applies where relevant).
+  const focusRaw = get("focus");
+  const focusService =
+    focusRaw && trace?.spans.some((s) => s.service === focusRaw) ? focusRaw : null;
+
+  const close = () => setMany(CLEAR_WORKSPACE_PARAMS);
   const onSelectSpan = (span: Span) =>
     setMany({ span: span.spanId === selectedSpanId ? undefined : span.spanId });
 
@@ -192,10 +198,20 @@ export function TraceDetailPanel({
           ) : (
             <>
               {view === "timeline" && (
-                <Waterfall trace={trace} selectedSpanId={selectedSpanId} onSelectSpan={onSelectSpan} />
+                <Waterfall
+                  trace={trace}
+                  selectedSpanId={selectedSpanId}
+                  focusService={focusService}
+                  onSelectSpan={onSelectSpan}
+                />
               )}
               {view === "spans" && (
-                <SpansTable trace={trace} selectedSpanId={selectedSpanId} onSelectSpan={onSelectSpan} />
+                <SpansTable
+                  trace={trace}
+                  selectedSpanId={selectedSpanId}
+                  focusService={focusService}
+                  onSelectSpan={onSelectSpan}
+                />
               )}
               {view === "flame" && (
                 <Flamegraph trace={trace} selectedSpanId={selectedSpanId} onSelectSpan={onSelectSpan} />
