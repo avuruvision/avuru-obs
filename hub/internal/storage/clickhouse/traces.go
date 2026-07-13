@@ -16,9 +16,15 @@ import (
 // orphaned/partial traces: when the true root was created upstream (an Istio/
 // APISIX edge span, a browser span) and exported to a different backend, the
 // app's child span here has a non-empty ParentSpanId whose parent is absent;
-// grouping by TraceId still lists the trace once, keyed on that child. Filters
-// (service/operation/status/duration/tags/aux) match the representative, so a
-// complete trace behaves exactly as when we filtered on its root span.
+// grouping by TraceId still lists the trace once, keyed on that child.
+//
+// Filter semantics: with a service filter, a trace matches when it CONTAINS a
+// span of that service satisfying the operation/duration filters (status is
+// judged on that service's spans) — so a gateway-rooted trace shows up when
+// filtering by a downstream service. Without a service filter, the
+// operation/status/duration filters match the representative, as do tags and
+// aux exclusion always (a trace rooted at a health check stays hidden by
+// default even when the filtered service participates in it).
 func (s *Store) SearchTraces(ctx context.Context, q storage.TraceQuery) (storage.TracePage, error) {
 	limit := q.Limit
 	if limit <= 0 || limit > 500 {
@@ -50,26 +56,52 @@ HAVING 1 = 1`
 	args := []any{q.Tenant, q.Range.Start, q.Range.End}
 
 	if q.Service != "" {
-		inner += ` AND RootService = ?`
+		// Participant match: one countIf so operation/duration must hold on
+		// the SAME span of the filtered service — an Overview drill-down sends
+		// a child service's entry-span operation, which never matches the
+		// root's. Args append in statement order (positional placeholders).
+		cond := `ServiceName = ?`
 		args = append(args, q.Service)
-	}
-	if q.Operation != "" {
-		inner += ` AND RootOperation = ?`
-		args = append(args, q.Operation)
-	}
-	switch q.Status {
-	case "error":
-		inner += ` AND RepIsError = 1`
-	case "ok":
-		inner += ` AND RepIsError = 0`
-	}
-	if q.MinDuration > 0 {
-		inner += ` AND RepDuration >= ?`
-		args = append(args, uint64(q.MinDuration.Nanoseconds()))
-	}
-	if q.MaxDuration > 0 {
-		inner += ` AND RepDuration <= ?`
-		args = append(args, uint64(q.MaxDuration.Nanoseconds()))
+		if q.Operation != "" {
+			cond += ` AND SpanName = ?`
+			args = append(args, q.Operation)
+		}
+		if q.MinDuration > 0 {
+			cond += ` AND Duration >= ?`
+			args = append(args, uint64(q.MinDuration.Nanoseconds()))
+		}
+		if q.MaxDuration > 0 {
+			cond += ` AND Duration <= ?`
+			args = append(args, uint64(q.MaxDuration.Nanoseconds()))
+		}
+		inner += ` AND countIf(` + cond + `) > 0`
+		switch q.Status {
+		case "error":
+			inner += ` AND countIf(ServiceName = ? AND ` + errorSpanExpr("") + `) > 0`
+			args = append(args, q.Service)
+		case "ok":
+			inner += ` AND countIf(ServiceName = ? AND ` + errorSpanExpr("") + `) = 0`
+			args = append(args, q.Service)
+		}
+	} else {
+		if q.Operation != "" {
+			inner += ` AND RootOperation = ?`
+			args = append(args, q.Operation)
+		}
+		switch q.Status {
+		case "error":
+			inner += ` AND RepIsError = 1`
+		case "ok":
+			inner += ` AND RepIsError = 0`
+		}
+		if q.MinDuration > 0 {
+			inner += ` AND RepDuration >= ?`
+			args = append(args, uint64(q.MinDuration.Nanoseconds()))
+		}
+		if q.MaxDuration > 0 {
+			inner += ` AND RepDuration <= ?`
+			args = append(args, uint64(q.MaxDuration.Nanoseconds()))
+		}
 	}
 	inner, args = tagFiltersRep(inner, q.Tags, args)
 	if q.ExcludeAux {
@@ -141,6 +173,20 @@ LIMIT ?`
 		page.NextCursor = &storage.TraceCursor{Timestamp: last.StartTime, Duration: last.Duration, TraceID: last.TraceID}
 	}
 	return page, nil
+}
+
+// FindSpanTrace resolves the trace containing spanID. Deliberately no time
+// bound: trace-id open (via the otel_traces_trace_id_ts lookup) is
+// window-independent, and span search behaves the same; the idx_span_id
+// bloom filter (0005) keeps it cheap on indexed parts.
+func (s *Store) FindSpanTrace(ctx context.Context, tenant, spanID string) (string, error) {
+	row := s.conn.QueryRow(ctx,
+		`SELECT TraceId FROM otel_traces WHERE Tenant = ? AND SpanId = ? LIMIT 1`, tenant, spanID)
+	var traceID string
+	if err := row.Scan(&traceID); err != nil || traceID == "" {
+		return "", storage.ErrNotFound
+	}
+	return traceID, nil
 }
 
 // GetTrace fetches a full span tree via the trace-id timestamp lookup table.

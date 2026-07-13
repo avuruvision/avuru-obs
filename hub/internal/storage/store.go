@@ -55,7 +55,7 @@ type OverviewQuery struct {
 }
 
 // OperationStats aggregates RED metrics for one (service, operation) pair
-// over root spans.
+// over entry spans (Server/Consumer).
 type OperationStats struct {
 	Service    string
 	Operation  string
@@ -361,6 +361,8 @@ type Store interface {
 	TraceOverview(ctx context.Context, q OverviewQuery) ([]OperationStats, error)
 	SearchTraces(ctx context.Context, q TraceQuery) (TracePage, error)
 	GetTrace(ctx context.Context, tenant, traceID string) (Trace, error)
+	// FindSpanTrace resolves the trace containing spanID, or ErrNotFound.
+	FindSpanTrace(ctx context.Context, tenant, spanID string) (traceID string, err error)
 	TraceHeatmap(ctx context.Context, q HeatmapQuery) (Heatmap, error)
 	SearchLogs(ctx context.Context, q LogQuery) (LogPage, error)
 	LogsForTrace(ctx context.Context, tenant, traceID string) ([]LogRecord, error)

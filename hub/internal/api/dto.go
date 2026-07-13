@@ -66,6 +66,11 @@ type tracesResponse struct {
 	NextCursor string            `json:"nextCursor,omitempty"`
 }
 
+type spanLookupResponse struct {
+	TraceID string `json:"traceId"`
+	SpanID  string `json:"spanId"`
+}
+
 type spanEventDTO struct {
 	Time       time.Time         `json:"time"`
 	Name       string            `json:"name"`

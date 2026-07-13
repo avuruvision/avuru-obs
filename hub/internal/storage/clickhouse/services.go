@@ -95,13 +95,17 @@ ORDER BY calls DESC`
 	return out, rows.Err()
 }
 
-// TraceOverview aggregates RED stats per (service, operation) over root spans.
+// TraceOverview aggregates RED stats per (service, operation) over entry
+// spans (Server/Consumer) — the same population ListServices and REDSeries
+// count, so the numbers stay comparable across screens. Entry spans (rather
+// than parentless roots) mean a downstream service's operations show
+// up both when filtering by that service and in the unfiltered per-service
+// grouping, and orphaned/partial traces' operations aren't invisible (same
+// concern SearchTraces addresses with its effective root). Each request is
+// counted once per service that handled it — the standard RED definition.
 //
-// Deliberately keeps `ParentSpanId = ''` (unlike SearchTraces, which lists
-// orphaned/effective-root traces): this is a rate/latency table whose numbers
-// must stay comparable with ListServices/REDSeries, which count entry spans.
-// Redefining "request" to include orphan children would double-count and skew
-// the percentiles. Orphan visibility is a trace-listing concern, not a metric.
+// Ordered by service name first (stable server-side grouping for the UI),
+// busiest operations first within a service.
 func (s *Store) TraceOverview(ctx context.Context, q storage.OverviewQuery) ([]storage.OperationStats, error) {
 	query := `
 SELECT
@@ -113,7 +117,7 @@ SELECT
 FROM otel_traces
 WHERE Tenant = ?
   AND Timestamp >= ? AND Timestamp < ?
-  AND ParentSpanId = ''`
+  AND SpanKind IN ('Server', 'Consumer')`
 	args := []any{q.Tenant, q.Range.Start, q.Range.End}
 	if q.Service != "" {
 		query += ` AND ServiceName = ?`
@@ -124,7 +128,7 @@ WHERE Tenant = ?
 	}
 	query += `
 GROUP BY ServiceName, SpanName
-ORDER BY reqs DESC`
+ORDER BY ServiceName ASC, reqs DESC`
 
 	rows, err := s.conn.Query(ctx, query, args...)
 	if err != nil {

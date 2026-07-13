@@ -60,6 +60,7 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 	mux.Handle("GET /api/v1/traces/heatmap", handle(a.handleHeatmap))
 	mux.Handle("GET /api/v1/traces/{traceId}", handle(a.handleGetTrace))
 	mux.Handle("GET /api/v1/traces/{traceId}/logs", handle(a.handleLogsForTrace))
+	mux.Handle("GET /api/v1/spans/{spanId}", handle(a.handleGetSpan))
 	mux.Handle("GET /api/v1/logs", handle(a.handleSearchLogs))
 	mux.Handle("GET /api/v1/profiles/services", handle(a.handleProfiledServices))
 	mux.Handle("GET /api/v1/profiles/flamegraph", handle(a.handleFlamegraph))

@@ -8,12 +8,17 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
-// TraceHeatmap buckets root spans into a (time × log2-duration) histogram.
+// TraceHeatmap buckets spans into a (time × log2-duration) histogram. With a
+// service filter it buckets that service's entry spans (Server/Consumer) so a
+// non-root service still gets a heatmap, and brushing a band coheres with the
+// participant-filtered trace list (which also judges durations on that
+// service's spans). Without a filter it buckets root spans.
 //
-// TODO(orphans): this still keys on `ParentSpanId = ''` while SearchTraces now
-// lists effective-root (incl. orphaned) traces, so brushing a region can select
-// fewer traces than the list shows. Aligning it means a per-trace-grouping
-// rewrite with its own duration-bucket semantics — deferred as a fast-follow.
+// TODO(orphans): the unfiltered case still keys on parentless spans while
+// SearchTraces lists effective-root (incl. orphaned) traces, so brushing a
+// region can select fewer traces than the list shows. Aligning it means a
+// per-trace-grouping rewrite with its own duration-bucket semantics —
+// deferred as a fast-follow.
 func (s *Store) TraceHeatmap(ctx context.Context, q storage.HeatmapQuery) (storage.Heatmap, error) {
 	timeBuckets := q.TimeBuckets
 	if timeBuckets <= 0 || timeBuckets > 240 {
@@ -37,16 +42,21 @@ SELECT
     countIf(` + errorSpanExpr("") + `)                                                   AS e
 FROM otel_traces
 WHERE Tenant = ?
-  AND Timestamp >= ? AND Timestamp < ?
-  AND ParentSpanId = ''`
+  AND Timestamp >= ? AND Timestamp < ?`
 	args := []any{q.Range.Start.Unix(), bucketSec, durBuckets, q.Tenant, q.Range.Start, q.Range.End}
 	if q.Service != "" {
-		query += ` AND ServiceName = ?`
+		query += ` AND ServiceName = ? AND SpanKind IN ('Server', 'Consumer')`
 		args = append(args, q.Service)
-	}
-	if q.Operation != "" {
-		query += ` AND SpanName = ?`
-		args = append(args, q.Operation)
+		if q.Operation != "" {
+			query += ` AND SpanName = ?`
+			args = append(args, q.Operation)
+		}
+	} else {
+		query += ` AND ParentSpanId = ''`
+		if q.Operation != "" {
+			query += ` AND SpanName = ?`
+			args = append(args, q.Operation)
+		}
 	}
 	query, args = tagFilters(query, q.Tags, args)
 	if q.ExcludeAux {
