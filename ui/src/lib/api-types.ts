@@ -59,6 +59,11 @@ export interface TracesResponse {
   nextCursor?: string;
 }
 
+export interface SpanLookupResponse {
+  traceId: string;
+  spanId: string;
+}
+
 export interface SpanEvent {
   time: string;
   name: string;

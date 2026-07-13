@@ -5,7 +5,8 @@ import { useTimeRange, RANGE_PRESETS, type RangePreset } from "@/hooks/use-time-
 import { cn } from "@/lib/cn";
 
 // One global time range for every screen (agent_docs/ui_patterns.md rule 4),
-// held in the URL (?range=) so views stay pasteable.
+// held in the URL (?range=) so views stay pasteable, with localStorage
+// carrying it across navigations (see TimeRangeSync).
 export function TimeRangePicker() {
   const { preset, setPreset } = useTimeRange();
 

@@ -1,12 +1,13 @@
 "use client";
 
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { queryKeys, type TimeParams } from "@/lib/query-keys";
 import type {
   HeatmapResponse,
   OverviewResponse,
+  SpanLookupResponse,
   TraceResponse,
   TracesResponse,
 } from "@/lib/api-types";
@@ -93,6 +94,17 @@ export function useTraceSearch(time: TimeParams, filters: TraceFilters) {
       ),
     initialPageParam: "",
     getNextPageParam: (last) => last.nextCursor ?? undefined,
+  });
+}
+
+// Resolves a span id to its containing trace (the "paste a span id" search).
+// A mutation, not a query: fired on Enter, and a miss (404) is user feedback,
+// not a retryable fetch.
+export function useResolveSpan() {
+  const { project } = useProject();
+  return useMutation({
+    mutationFn: (spanId: string) =>
+      apiGet<SpanLookupResponse>(`/api/v1/spans/${spanId}`, undefined, { project }),
   });
 }
 

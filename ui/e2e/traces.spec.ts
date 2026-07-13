@@ -1,8 +1,14 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// Seeded fixture (deploy/compose/seed/fixtures): one deterministic trace.
+// Seeded fixtures (deploy/compose/seed/fixtures): one deterministic
+// single-service trace plus one gateway→payments multi-service trace.
+// NOTE: the overview groups rows under per-service header rows, so row
+// lookups filter by OPERATION text (unique to data rows), not service name.
 const SEED_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
 const SEED_SERVICE = "seed-checkout";
+const SEED_ERROR_SPAN_ID = "b2c3d4e5f6071829";
+const MULTI_ROOT_SERVICE = "seed-gateway";
+const MULTI_CHILD_SERVICE = "seed-payments";
 
 test.describe("shell", () => {
   test("renders sidebar nav and toggles theme", async ({ page }) => {
@@ -44,18 +50,31 @@ test.describe("traces screen (seeded data)", () => {
   test("overview lists the seeded operation with its error rate", async ({ page }) => {
     await page.goto("/traces");
 
-    const row = page.getByRole("row").filter({ hasText: SEED_SERVICE });
+    const row = page.getByRole("row").filter({ hasText: "POST /checkout" });
     await expect(row).toBeVisible();
-    await expect(row).toContainText("POST /checkout");
+    await expect(row).toContainText(SEED_SERVICE);
     // The seeded root span is an error → the row carries an error badge.
     await expect(row.locator("text=%")).toBeVisible();
+  });
+
+  test("overview groups operations under per-service headers", async ({ page }) => {
+    await page.goto("/traces");
+
+    // Three seeded services in the default project → one header row each.
+    for (const svc of [SEED_SERVICE, MULTI_ROOT_SERVICE, MULTI_CHILD_SERVICE]) {
+      await expect(
+        page.getByRole("row").filter({ hasText: svc }).first(),
+      ).toBeVisible();
+    }
+    // The child service's entry operation is a data row of its own.
+    await expect(page.getByRole("row").filter({ hasText: "POST /pay" })).toBeVisible();
   });
 
   test("drill down: overview row → filtered list → waterfall → span detail", async ({ page }) => {
     await page.goto("/traces");
 
     // Row click filters to the operation and switches to the Traces tab.
-    await page.getByRole("row").filter({ hasText: SEED_SERVICE }).click();
+    await page.getByRole("row").filter({ hasText: "POST /checkout" }).click();
     await expect(page).toHaveURL(/tab=traces/);
     await expect(page).toHaveURL(new RegExp(`service=${SEED_SERVICE}`));
 
@@ -101,7 +120,7 @@ test.describe("traces screen (seeded data)", () => {
     await expect(page).not.toHaveURL(/[?&]trace=/);
     await expect(page.getByRole("group", { name: "Trace summary" })).not.toBeVisible();
     await expect(
-      page.getByRole("row").filter({ hasText: SEED_SERVICE }),
+      page.getByRole("row").filter({ hasText: "POST /checkout" }),
     ).toBeVisible();
   });
 
@@ -116,6 +135,86 @@ test.describe("traces screen (seeded data)", () => {
     await cells.first().click();
     await expect(page).toHaveURL(/minMs=/);
     await expect(page).toHaveURL(/tab=traces/);
+  });
+
+  test("service filter matches participating services, root stays visible", async ({ page }) => {
+    // seed-payments never roots a trace: the gateway does. The filter must
+    // still surface the trace, listed under its root service.
+    await page.goto(`/traces?service=${MULTI_CHILD_SERVICE}&tab=traces`);
+
+    const row = page.getByRole("row").filter({ hasText: "GET /api/pay" });
+    await expect(row).toBeVisible();
+    await expect(row).toContainText(MULTI_ROOT_SERVICE);
+  });
+
+  test("overview for a non-root service shows its ops and drills into traces", async ({ page }) => {
+    await page.goto(`/traces?service=${MULTI_CHILD_SERVICE}`);
+
+    // The child service's own entry-span operation, not "no root spans".
+    const opRow = page.getByRole("row").filter({ hasText: "POST /pay" });
+    await expect(opRow).toBeVisible();
+
+    // Drill-down: service+operation land on a non-empty trace list.
+    await opRow.click();
+    await expect(page).toHaveURL(/tab=traces/);
+    await expect(
+      page.getByRole("row").filter({ hasText: "GET /api/pay" }),
+    ).toBeVisible();
+  });
+
+  test("span id search opens the containing trace with the span selected", async ({ page }) => {
+    await page.goto("/traces");
+
+    const input = page.getByLabel("Open trace or span by id");
+    await input.fill(SEED_ERROR_SPAN_ID);
+    await input.press("Enter");
+
+    await expect(page).toHaveURL(new RegExp(`trace=${SEED_TRACE_ID}`));
+    await expect(page).toHaveURL(new RegExp(`span=${SEED_ERROR_SPAN_ID}`));
+    // The selected span's detail panel opens on the failing SQL span.
+    await expect(page.getByText("Span detail", { exact: true })).toBeVisible();
+    await expect(page.getByText("connection refused").first()).toBeVisible();
+  });
+
+  test("unknown span id shows an inline error and stays on the list", async ({ page }) => {
+    await page.goto("/traces");
+
+    const input = page.getByLabel("Open trace or span by id");
+    await input.fill("0000000000000000");
+    await input.press("Enter");
+
+    await expect(page.getByText("No span found with this id.")).toBeVisible();
+    await expect(page).not.toHaveURL(/[?&]trace=/);
+  });
+});
+
+test.describe("global time range", () => {
+  test("selected range survives sidebar navigation", async ({ page }) => {
+    await page.goto("/traces");
+
+    await page.getByRole("button", { name: "1h", exact: true }).click();
+    await expect(page).toHaveURL(/range=1h/);
+
+    await page.getByRole("link", { name: "Logs", exact: true }).click();
+    // localStorage bridges the bare-path navigation, then TimeRangeSync
+    // re-materializes ?range= for shareability.
+    await expect(page.getByRole("button", { name: "1h", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(page).toHaveURL(/range=1h/);
+  });
+});
+
+test.describe("service map controls", () => {
+  test("re-layout button re-runs the graph layout", async ({ page }) => {
+    await page.goto("/service-map");
+
+    const button = page.getByRole("button", { name: "Re-run layout" });
+    await expect(button).toBeVisible();
+    await button.click();
+    // The graph stays mounted and interactive after the re-layout.
+    await expect(page.getByText(/click a node for its traces/)).toBeVisible();
   });
 });
 

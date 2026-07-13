@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ThemeProvider } from "next-themes";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ProjectProvider } from "@/lib/project-context";
+import { TimeRangeSync } from "@/lib/time-range-context";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   // QueryClient in useState: module-scope clients leak state across
@@ -29,7 +30,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       disableTransitionOnChange
     >
       <QueryClientProvider client={queryClient}>
-        <ProjectProvider>{children}</ProjectProvider>
+        <ProjectProvider>
+          <TimeRangeSync>{children}</TimeRangeSync>
+        </ProjectProvider>
       </QueryClientProvider>
     </ThemeProvider>
   );

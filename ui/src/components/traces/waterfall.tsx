@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { formatMs } from "@/lib/format";
 import { cn } from "@/lib/cn";
@@ -45,6 +45,10 @@ export function Waterfall({
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const rows = useMemo(() => buildRows(trace.spans, collapsed), [trace.spans, collapsed]);
 
+  // A span selected at mount time is a deep link (span-id search, shared URL):
+  // bring it into view once. Later clicks select rows already on screen.
+  const deepLinkSpan = useRef(selectedSpanId);
+
   const toggle = (spanId: string) =>
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -84,6 +88,12 @@ export function Waterfall({
         return (
           <button
             key={span.spanId}
+            ref={(el) => {
+              if (el && span.spanId === deepLinkSpan.current) {
+                deepLinkSpan.current = null;
+                el.scrollIntoView({ block: "center" });
+              }
+            }}
             onClick={() => onSelectSpan?.(span)}
             title={`${span.operation} — ${formatMs(span.durationMs)} (${share}% of trace)`}
             className={cn(
