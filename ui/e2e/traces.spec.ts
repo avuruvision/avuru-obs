@@ -204,6 +204,22 @@ test.describe("traces screen (seeded data)", () => {
     await expect(page.getByRole("row").filter({ hasText: "POST /checkout" })).toBeVisible();
   });
 
+  test("operation filter autocompletes seeded operations (GET/POST)", async ({ page }) => {
+    await page.goto("/traces?tab=traces");
+
+    const combo = page.getByRole("combobox", { name: "Filter by operation" });
+    await combo.click();
+    await combo.fill("POST");
+
+    // Operation suggestions come from the overview (all services); pick one.
+    const listbox = page.getByRole("listbox", { name: "Filter by operation" });
+    await expect(listbox.getByRole("option", { name: "POST /checkout", exact: true })).toBeVisible();
+    await listbox.getByRole("option", { name: "POST /checkout", exact: true }).click();
+
+    await expect(page).toHaveURL(/operation=/);
+    await expect(page.getByRole("row").filter({ hasText: "POST /checkout" })).toBeVisible();
+  });
+
   test("group-by-service toggle sections and collapses the trace list", async ({ page }) => {
     await page.goto("/traces?tab=traces");
 

@@ -60,6 +60,14 @@ export function TracesScreen() {
   const services = useServices(time);
   const [groupByService, setGroupByService] = useLocalStorageFlag("traces:groupByService");
 
+  // Operation names for the Operation filter's type-ahead — reuse the overview
+  // data (already fetched), deduped across services. Scoped to the selected
+  // service when one is set, otherwise all operations in the window.
+  const operationOptions = useMemo(
+    () => [...new Set((overview.data?.operations ?? []).map((o) => o.operation))],
+    [overview.data],
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <TraceFilterPanel
@@ -68,6 +76,8 @@ export function TracesScreen() {
         hasFilters={hasFilters}
         services={services.data ?? []}
         servicesLoading={services.isLoading}
+        operations={operationOptions}
+        operationsLoading={overview.isLoading}
         onClear={() =>
           setMany({
             service: undefined,

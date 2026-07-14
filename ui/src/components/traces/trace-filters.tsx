@@ -44,6 +44,8 @@ export function TraceFilterPanel({
   onClear,
   services,
   servicesLoading,
+  operations,
+  operationsLoading,
 }: {
   filters: TraceFilters;
   set: SetFn;
@@ -51,6 +53,8 @@ export function TraceFilterPanel({
   onClear: () => void;
   services: string[];
   servicesLoading?: boolean;
+  operations: string[];
+  operationsLoading?: boolean;
 }) {
   const apply = (key: string) => (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") set({ [key]: (e.target as HTMLInputElement).value || undefined });
@@ -112,13 +116,14 @@ export function TraceFilterPanel({
         </Field>
 
         <Field label="Operation">
-          <input
+          <Combobox
             key={`op-${filters.operation ?? ""}`}
-            defaultValue={filters.operation ?? ""}
+            value={filters.operation ?? ""}
+            options={operations}
+            loading={operationsLoading}
+            onCommit={(v) => set({ operation: v || undefined })}
             placeholder="any operation"
-            aria-label="Filter by operation"
-            onKeyDown={apply("operation")}
-            className={INPUT}
+            ariaLabel="Filter by operation"
           />
         </Field>
 
