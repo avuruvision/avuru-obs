@@ -5,6 +5,7 @@ import { FilterX } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
 import { ApiError } from "@/lib/api";
 import { useResolveSpan, type TraceFilters } from "@/hooks/use-traces-data";
 
@@ -41,11 +42,15 @@ export function TraceFilterPanel({
   set,
   hasFilters,
   onClear,
+  services,
+  servicesLoading,
 }: {
   filters: TraceFilters;
   set: SetFn;
   hasFilters: boolean;
   onClear: () => void;
+  services: string[];
+  servicesLoading?: boolean;
 }) {
   const apply = (key: string) => (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") set({ [key]: (e.target as HTMLInputElement).value || undefined });
@@ -95,13 +100,14 @@ export function TraceFilterPanel({
         </Field>
 
         <Field label="Service">
-          <input
+          <Combobox
             key={`svc-${filters.service ?? ""}`}
-            defaultValue={filters.service ?? ""}
+            value={filters.service ?? ""}
+            options={services}
+            loading={servicesLoading}
+            onCommit={(v) => set({ service: v || undefined })}
             placeholder="any service"
-            aria-label="Filter by service"
-            onKeyDown={apply("service")}
-            className={INPUT}
+            ariaLabel="Filter by service"
           />
         </Field>
 

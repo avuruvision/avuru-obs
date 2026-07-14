@@ -7,6 +7,7 @@ import { queryKeys, type TimeParams } from "@/lib/query-keys";
 import type {
   HeatmapResponse,
   OverviewResponse,
+  ServicesResponse,
   SpanLookupResponse,
   TraceResponse,
   TracesResponse,
@@ -26,6 +27,18 @@ export interface TraceFilters {
 // The backend excludes auxiliary traffic by default; send includeAux=true only
 // when the user opts in.
 const aux = (includeAux?: boolean) => (includeAux ? "true" : undefined);
+
+// Distinct service names in the window, for the Service filter's type-ahead.
+// Keyed by time only (matches queryKeys.services); the default (aux-excluded)
+// list is the right set of names to filter by.
+export function useServices(time: TimeParams) {
+  const { project } = useProject();
+  return useQuery({
+    queryKey: queryKeys.services(project, time),
+    queryFn: () => apiGet<ServicesResponse>("/api/v1/services", { ...time }, { project }),
+    select: (data) => data.services.map((s) => s.name),
+  });
+}
 
 export function useTraceOverview(time: TimeParams, service?: string, includeAux?: boolean) {
   const { project } = useProject();

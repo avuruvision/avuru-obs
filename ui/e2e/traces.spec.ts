@@ -187,6 +187,41 @@ test.describe("traces screen (seeded data)", () => {
     await expect(page.getByText("No span found with this id.")).toBeVisible();
     await expect(page).not.toHaveURL(/[?&]trace=/);
   });
+
+  test("service filter autocompletes seeded service names", async ({ page }) => {
+    await page.goto("/traces?tab=traces");
+
+    const combo = page.getByRole("combobox", { name: "Filter by service" });
+    await combo.click();
+    await combo.fill("seed");
+
+    // Suggestions come from /api/v1/services; picking one applies it as a filter.
+    const listbox = page.getByRole("listbox", { name: "Filter by service" });
+    await expect(listbox.getByRole("option", { name: SEED_SERVICE, exact: true })).toBeVisible();
+    await listbox.getByRole("option", { name: SEED_SERVICE, exact: true }).click();
+
+    await expect(page).toHaveURL(new RegExp(`service=${SEED_SERVICE}`));
+    await expect(page.getByRole("row").filter({ hasText: "POST /checkout" })).toBeVisible();
+  });
+
+  test("group-by-service toggle sections and collapses the trace list", async ({ page }) => {
+    await page.goto("/traces?tab=traces");
+
+    const checkoutRow = page.getByRole("row").filter({ hasText: "POST /checkout" });
+    await expect(checkoutRow.first()).toBeVisible();
+
+    await page.getByRole("checkbox", { name: "Group by service" }).check();
+
+    // A per-service header row (name + trace count) appears for each root service.
+    const header = (svc: string) =>
+      page.getByRole("row").filter({ hasText: svc }).filter({ hasText: /trace/ });
+    await expect(header(SEED_SERVICE)).toBeVisible();
+    await expect(header(MULTI_ROOT_SERVICE)).toBeVisible();
+
+    // Collapsing the checkout section hides its data row.
+    await header(SEED_SERVICE).click();
+    await expect(checkoutRow).toHaveCount(0);
+  });
 });
 
 test.describe("global time range", () => {

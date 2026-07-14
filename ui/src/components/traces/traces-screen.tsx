@@ -4,8 +4,10 @@ import { useMemo } from "react";
 import { Tabs } from "@/components/ui/tabs";
 import { useTimeRange } from "@/hooks/use-time-range";
 import { useURLState } from "@/hooks/use-url-state";
+import { useLocalStorageFlag } from "@/hooks/use-local-storage-flag";
 import {
   useHeatmap,
+  useServices,
   useTraceOverview,
   useTraceSearch,
   type TraceFilters,
@@ -55,6 +57,8 @@ export function TracesScreen() {
   const overview = useTraceOverview(time, filters.service, filters.includeAux);
   const heatmap = useHeatmap(time, filters);
   const search = useTraceSearch(time, filters);
+  const services = useServices(time);
+  const [groupByService, setGroupByService] = useLocalStorageFlag("traces:groupByService");
 
   return (
     <div className="flex flex-col gap-4">
@@ -62,6 +66,8 @@ export function TracesScreen() {
         filters={filters}
         set={setMany}
         hasFilters={hasFilters}
+        services={services.data ?? []}
+        servicesLoading={services.isLoading}
         onClear={() =>
           setMany({
             service: undefined,
@@ -116,15 +122,27 @@ export function TracesScreen() {
           }
         />
       ) : (
-        <TraceList
-          pages={search.data?.pages.map((p) => p.traces)}
-          isLoading={search.isLoading}
-          hasNextPage={Boolean(search.hasNextPage)}
-          isFetchingNextPage={search.isFetchingNextPage}
-          fetchNextPage={() => search.fetchNextPage()}
-          onSelect={(traceId) => setMany({ trace: traceId })}
-          selectedTraceId={selectedTrace ?? undefined}
-        />
+        <div className="flex flex-col gap-2">
+          <label className="flex cursor-pointer items-center gap-1.5 self-end text-xs text-base-content/70">
+            <input
+              type="checkbox"
+              checked={groupByService}
+              onChange={(e) => setGroupByService(e.target.checked)}
+              className="accent-primary"
+            />
+            Group by service
+          </label>
+          <TraceList
+            pages={search.data?.pages.map((p) => p.traces)}
+            isLoading={search.isLoading}
+            hasNextPage={Boolean(search.hasNextPage)}
+            isFetchingNextPage={search.isFetchingNextPage}
+            fetchNextPage={() => search.fetchNextPage()}
+            onSelect={(traceId) => setMany({ trace: traceId })}
+            selectedTraceId={selectedTrace ?? undefined}
+            groupByService={groupByService}
+          />
+        </div>
       )}
     </div>
   );
