@@ -32,7 +32,7 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
   time heatmap, per-operation RED overview, split workspace, span panel, six
   trace views (timeline, spans, flamegraph, statistics, graph, JSON) and
   structural **trace diff**; service map with call edges derived from spans.
-- **Trace inspect, SkyWalking-style**: resizable/expandable span detail with
+- **Deep trace inspect**: resizable/expandable span detail with
   copyable attributes, per-span tree view, derived span status and component
   detection, service perspective from inside a trace (focus dimming,
   participant-filtered drill-down), span-id lookup, service/operation filter
@@ -45,7 +45,7 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
   five frozen `otel_metrics_*` ClickHouse tables (migration `0003`).
 - **Continuous profiling** (experimental, opt-in via
   `sensor.profiler.enabled=true` — the upstream alpha loader hard-fails on
-  some kernels): Coroot-style stack-dedup schema (migration `0004`), OTLP
+  some kernels): stack-deduplicated profile schema (migration `0004`), OTLP
   profiles ingest at `POST /v1development/profiles` isolated behind
   `hub/internal/storage/profilesadapter` (the alpha wire format never leaks
   past it), flame-graph API (`GET /api/v1/profiles/*`) and a click-to-zoom
@@ -63,7 +63,7 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
   into CI.
 - Per-signal retention knobs applied as ClickHouse TTLs by `hub migrate`:
   `retention.{traces,logs,metrics,profiles}`.
-- **Per-project model (Coroot-style):** config-defined projects
+- **Per-project model:** config-defined projects
   (`projects` chart value / `AVURUOPS_PROJECTS`) merged with tenants
   auto-discovered from data (`GET /api/v1/projects`); per-environment ingest
   tagging via `gateway.tenant` (stamps `avuru.tenant`, plus the profiler's
@@ -102,7 +102,7 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
   `kube-public` are no longer collected by default (traces, logs, pod
   metrics). Set `sensor.collection.excludeNamespaces: []` to restore the old
   behavior; node-level metrics are unaffected.
-- Adopted a Kiali-style trunk branch model: `main` is the single development
+- Adopted a trunk-based branch model: `main` is the single development
   trunk, with `vX.Y` release branches and `vX.Y.Z` tags (retired `develop`).
 - Commit signing is now required (see `COMMIT-SIGNING-SETUP.md`).
 
