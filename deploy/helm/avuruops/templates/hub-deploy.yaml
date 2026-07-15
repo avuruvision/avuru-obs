@@ -27,6 +27,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             {{- include "avuruops.clickhouseEnv" . | nindent 12 }}
+            {{- include "avuruops.modulesEnv" . | nindent 12 }}
             {{- if .Values.projects }}
             - name: AVURUOPS_PROJECTS
               value: {{ join "," .Values.projects | quote }}

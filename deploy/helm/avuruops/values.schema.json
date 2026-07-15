@@ -38,6 +38,27 @@
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
     },
+    "modules": {
+      "type": "object",
+      "properties": {
+        "logs": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } },
+          "required": ["enabled"]
+        },
+        "infraMetrics": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } },
+          "required": ["enabled"]
+        },
+        "profiling": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } },
+          "required": ["enabled"]
+        }
+      },
+      "required": ["logs", "infraMetrics", "profiling"]
+    },
     "sensor": {
       "type": "object",
       "properties": {

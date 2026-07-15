@@ -59,6 +59,23 @@ gateway:
     limits:
       memory: 512Mi
 
+# Modules: which signal families this install runs. One switch gates a module
+# end to end — its schema (`hub migrate` skips the DDL), its Hub API routes
+# (404 when off), its gateway pipeline, its sensor collection, and its UI
+# entry. The service map + traces + RED core is always on and has no switch.
+# Defaults enable everything: an existing install upgrades unchanged.
+# Turning a module on later is a values change + `helm upgrade` (the migrator
+# is idempotent and applies the newly-active DDL).
+modules:
+  logs:
+    enabled: true
+  # Node/pod metrics AND the sensor inventory (it reads collector
+  # self-metrics), plus any OTLP metrics you send: all live in these tables.
+  infraMetrics:
+    enabled: true
+  profiling:
+    enabled: true
+
 # Sensor: per-node DaemonSet for zero-code signal collection (eBPF). v0.1
 # wires OBI (zero-code traces + RED); the otel-agent (logs, kubeletstats) and
 # profiler containers join in later milestones, the Rust flow tracer in v0.2.
