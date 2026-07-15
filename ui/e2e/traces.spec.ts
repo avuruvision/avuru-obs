@@ -220,6 +220,26 @@ test.describe("traces screen (seeded data)", () => {
     await expect(page.getByRole("row").filter({ hasText: "POST /checkout" })).toBeVisible();
   });
 
+  test("cleared filters stay cleared after navigating away and back", async ({ page }) => {
+    // Regression: the static-export segment cache resurrects the hydration
+    // query string when a bare sidebar <Link> re-enters the route — cleared
+    // filters came back after visiting another screen (see nav-url-guard.tsx).
+    await page.goto(`/traces?service=${SEED_SERVICE}&status=error&tab=traces`);
+    const combo = page.getByRole("combobox", { name: "Filter by service" });
+    await expect(combo).toHaveValue(SEED_SERVICE);
+
+    await page.getByRole("button", { name: "Clear" }).click();
+    await expect(page).not.toHaveURL(/[?&]service=/);
+
+    await page.getByRole("link", { name: "Logs", exact: true }).click();
+    await expect(page).toHaveURL(/\/logs/);
+    await page.getByRole("link", { name: "Traces", exact: true }).click();
+    await expect(page).toHaveURL(/\/traces/);
+
+    await expect(page).not.toHaveURL(/[?&]service=/);
+    await expect(combo).toHaveValue("");
+  });
+
   test("group-by-service toggle sections and collapses the trace list", async ({ page }) => {
     await page.goto("/traces?tab=traces");
 
