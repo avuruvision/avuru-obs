@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api";
+import { useProject } from "@/lib/project-context";
 import { queryKeys, type TimeParams } from "@/lib/query-keys";
 import type { ServiceMapResponse } from "@/lib/api-types";
 
@@ -10,12 +11,17 @@ import type { ServiceMapResponse } from "@/lib/api-types";
 // pass includeAux to show health-check/metrics/control-plane calls. eBPF flows
 // will enrich the edges in a later milestone.
 export function useServiceMapData(time: TimeParams, includeAux?: boolean) {
+  const { project } = useProject();
   return useQuery({
-    queryKey: queryKeys.serviceMap(time, includeAux),
+    queryKey: queryKeys.serviceMap(project, time, includeAux),
     queryFn: () =>
-      apiGet<ServiceMapResponse>("/api/v1/service-map", {
-        ...time,
-        includeAux: includeAux ? "true" : undefined,
-      }),
+      apiGet<ServiceMapResponse>(
+        "/api/v1/service-map",
+        {
+          ...time,
+          includeAux: includeAux ? "true" : undefined,
+        },
+        { project },
+      ),
   });
 }

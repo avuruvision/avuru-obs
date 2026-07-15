@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -36,9 +37,12 @@ func get(t *testing.T, mux *http.ServeMux, path string) *httptest.ResponseRecord
 }
 
 func TestRoutes(t *testing.T) {
-	fake := &storagetest.Fake{Traces: map[string]storage.Trace{
-		"abc": {TraceID: "abc", Spans: []storage.Span{{SpanID: "s1", Service: "svc", StartTime: time.Now(), Duration: time.Millisecond}}},
-	}}
+	fake := &storagetest.Fake{
+		Traces: map[string]storage.Trace{
+			"abc": {TraceID: "abc", Spans: []storage.Span{{SpanID: "s1", Service: "svc", StartTime: time.Now(), Duration: time.Millisecond}}},
+		},
+		SpanTraces: map[string]string{"s1": "abc"},
+	}
 	mux := newMux(fake)
 
 	tests := []struct {
@@ -56,6 +60,8 @@ func TestRoutes(t *testing.T) {
 		{"overview ok", http.MethodGet, "/api/v1/traces/overview", http.StatusOK},
 		{"heatmap ok", http.MethodGet, "/api/v1/traces/heatmap", http.StatusOK},
 		{"trace by id ok", http.MethodGet, "/api/v1/traces/abc", http.StatusOK},
+		{"span lookup ok", http.MethodGet, "/api/v1/spans/s1", http.StatusOK},
+		{"span lookup not found", http.MethodGet, "/api/v1/spans/nope", http.StatusNotFound},
 		{"logs ok", http.MethodGet, "/api/v1/logs", http.StatusOK},
 		{"logs for trace ok", http.MethodGet, "/api/v1/traces/abc/logs", http.StatusOK},
 		{"infra nodes ok", http.MethodGet, "/api/v1/infra/nodes", http.StatusOK},
@@ -64,6 +70,8 @@ func TestRoutes(t *testing.T) {
 		{"flamegraph needs service", http.MethodGet, "/api/v1/profiles/flamegraph", http.StatusBadRequest},
 		{"flamegraph ok", http.MethodGet, "/api/v1/profiles/flamegraph?service=checkout", http.StatusOK},
 		{"infra pods ok", http.MethodGet, "/api/v1/infra/pods", http.StatusOK},
+		{"agents ok", http.MethodGet, "/api/v1/agents", http.StatusOK},
+		{"agents bad window", http.MethodGet, "/api/v1/agents?windowSec=-5", http.StatusBadRequest},
 		{"infra nodes bad start", http.MethodGet, "/api/v1/infra/nodes?start=garbage", http.StatusBadRequest},
 		{"trace not found", http.MethodGet, "/api/v1/traces/nope", http.StatusNotFound},
 		{"bad start", http.MethodGet, "/api/v1/traces?start=garbage", http.StatusBadRequest},
@@ -87,7 +95,7 @@ func TestRoutes(t *testing.T) {
 func TestStoreUnavailable(t *testing.T) {
 	mux := newMux(nil)
 
-	for _, path := range []string{"/api/v1/services", "/api/v1/traces", "/api/v1/traces/abc", "/api/v1/logs", "/api/v1/traces/abc/logs", "/api/v1/infra/nodes", "/api/v1/infra/pods"} {
+	for _, path := range []string{"/api/v1/services", "/api/v1/traces", "/api/v1/traces/abc", "/api/v1/spans/s1", "/api/v1/logs", "/api/v1/traces/abc/logs", "/api/v1/infra/nodes", "/api/v1/infra/pods", "/api/v1/agents"} {
 		if rec := get(t, mux, path); rec.Code != http.StatusServiceUnavailable {
 			t.Errorf("%s: got %d, want 503", path, rec.Code)
 		}
@@ -148,6 +156,58 @@ func TestSearchTracesParamParsing(t *testing.T) {
 	}
 	if q2.Tags["http.status_code"] != "500" || q2.Tags["http.method"] != "GET" {
 		t.Errorf("tags not parsed: %+v", q2.Tags)
+	}
+}
+
+func TestSpanLookup(t *testing.T) {
+	fake := &storagetest.Fake{SpanTraces: map[string]string{"s1": "abc"}}
+	mux := newMux(fake)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/spans/s1", nil)
+	req.Header.Set("X-Avuru-Tenant", "staging")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	// Tenant header is honored (the enterprise seam).
+	if fake.LastSpanLookupTenant != "staging" {
+		t.Errorf("tenant header not honored: %q", fake.LastSpanLookupTenant)
+	}
+	var resp spanLookupResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.TraceID != "abc" || resp.SpanID != "s1" {
+		t.Errorf("lookup response wrong: %+v", resp)
+	}
+}
+
+func TestTraceOverviewParamParsing(t *testing.T) {
+	fake := &storagetest.Fake{}
+	mux := newMux(fake)
+
+	rec := get(t, mux, "/api/v1/traces/overview?service=frontend")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	q := fake.LastOverviewQuery
+	if q.Service != "frontend" {
+		t.Errorf("service = %q, want frontend", q.Service)
+	}
+	if q.Tenant != storage.DefaultTenant {
+		t.Errorf("tenant = %q, want default", q.Tenant)
+	}
+	if !q.ExcludeAux {
+		t.Errorf("ExcludeAux should default to true")
+	}
+
+	rec2 := get(t, mux, "/api/v1/traces/overview?includeAux=true")
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec2.Code, rec2.Body.String())
+	}
+	if fake.LastOverviewQuery.ExcludeAux {
+		t.Errorf("ExcludeAux should be false with includeAux=true")
 	}
 }
 
@@ -450,5 +510,112 @@ func TestFlamegraphEndpoint(t *testing.T) {
 	kids := resp.Root.Children[0].Children
 	if len(kids) != 2 || kids[0].Name != "handler" || kids[0].Self != 5 {
 		t.Errorf("children wrong: %+v", kids)
+	}
+}
+
+func TestAgentsEndpoint(t *testing.T) {
+	seen := time.Date(2026, 7, 5, 10, 0, 0, 0, time.UTC)
+	older := seen.Add(-2 * time.Minute)
+	fake := &storagetest.Fake{
+		Agents: []storage.AgentNode{
+			{Node: "worker-1", LastSeen: seen, Metrics: &seen, Logs: &older},
+		},
+	}
+	mux := newMux(fake)
+
+	var resp agentsResponse
+	rec := get(t, mux, "/api/v1/agents?windowSec=300")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decoding agents: %v", err)
+	}
+	if fake.LastAgentQuery.Tenant != storage.DefaultTenant {
+		t.Errorf("tenant = %q, want default", fake.LastAgentQuery.Tenant)
+	}
+	if fake.LastAgentQuery.Window != 5*time.Minute {
+		t.Errorf("window = %v, want 5m", fake.LastAgentQuery.Window)
+	}
+	if resp.WindowSeconds != 300 || len(resp.Sensors) != 1 {
+		t.Fatalf("response wrong: %+v", resp)
+	}
+	s := resp.Sensors[0]
+	if s.Node != "worker-1" || s.LastSeen != "2026-07-05T10:00:00Z" {
+		t.Errorf("sensor wrong: %+v", s)
+	}
+	if s.Signals.Metrics == nil || s.Signals.Logs == nil {
+		t.Errorf("expected metrics+logs freshness, got %+v", s.Signals)
+	}
+	if s.Signals.Traces != nil || s.Signals.Profiles != nil {
+		t.Errorf("expected nil traces/profiles freshness, got %+v", s.Signals)
+	}
+
+	// Tenant header is honored (the enterprise seam).
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil)
+	req.Header.Set("X-Avuru-Tenant", "staging")
+	rec2 := httptest.NewRecorder()
+	mux.ServeHTTP(rec2, req)
+	if fake.LastAgentQuery.Tenant != "staging" {
+		t.Errorf("tenant header not honored: %q", fake.LastAgentQuery.Tenant)
+	}
+}
+
+func TestProjectsEndpoint(t *testing.T) {
+	fake := &storagetest.Fake{Tenants: []string{"default", "prod-eu"}}
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return fake }, Config{Projects: []string{"staging", "default"}})
+
+	var resp projectsResponse
+	rec := get(t, mux, "/api/v1/projects")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decoding projects: %v", err)
+	}
+	// Sorted union: default (always), prod-eu (data), staging (config).
+	want := []projectDTO{
+		{ID: "default", Source: "default"},
+		{ID: "prod-eu", Source: "data"},
+		{ID: "staging", Source: "config"},
+	}
+	if len(resp.Projects) != len(want) {
+		t.Fatalf("projects = %+v, want %+v", resp.Projects, want)
+	}
+	for i, p := range want {
+		if resp.Projects[i] != p {
+			t.Errorf("projects[%d] = %+v, want %+v", i, resp.Projects[i], p)
+		}
+	}
+}
+
+func TestProjectsEndpointStoreDown(t *testing.T) {
+	// The switcher must always render: store down -> config list, 200.
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return nil }, Config{Projects: []string{"staging"}})
+
+	var resp projectsResponse
+	rec := get(t, mux, "/api/v1/projects")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200 during store outage", rec.Code)
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decoding projects: %v", err)
+	}
+	if len(resp.Projects) != 2 || resp.Projects[0].ID != "default" || resp.Projects[1].ID != "staging" {
+		t.Errorf("projects during outage = %+v", resp.Projects)
+	}
+}
+
+func TestProjectsEndpointListTenantsError(t *testing.T) {
+	// A flaky store degrades to config-only, never 5xx.
+	fake := &storagetest.Fake{TenantsErr: errors.New("boom")}
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return fake }, Config{})
+
+	rec := get(t, mux, "/api/v1/projects")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200 when ListTenants fails", rec.Code)
 	}
 }

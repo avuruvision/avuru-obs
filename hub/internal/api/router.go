@@ -25,12 +25,16 @@ type Config struct {
 	RetentionLogsDays     int
 	RetentionMetricsDays  int
 	RetentionProfilesDays int
+	// Projects declared through deployment config (AVURUOPS_PROJECTS) —
+	// merged with data-observed tenants by GET /api/v1/projects.
+	Projects []string
 }
 
 // API holds handler dependencies.
 type API struct {
 	provider StoreProvider
 	cfg      Config
+	tenants  tenantCache
 }
 
 // store resolves the current backend or fails with 503.
@@ -47,6 +51,7 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.Handle("GET /api/v1/status", handle(a.handleStatus))
+	mux.Handle("GET /api/v1/projects", handle(a.handleProjects))
 	mux.Handle("GET /api/v1/system/status", handle(a.handleSystemStatus))
 	mux.Handle("GET /api/v1/services", handle(a.handleServices))
 	mux.Handle("GET /api/v1/service-map", handle(a.handleServiceMap))
@@ -55,6 +60,7 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 	mux.Handle("GET /api/v1/traces/heatmap", handle(a.handleHeatmap))
 	mux.Handle("GET /api/v1/traces/{traceId}", handle(a.handleGetTrace))
 	mux.Handle("GET /api/v1/traces/{traceId}/logs", handle(a.handleLogsForTrace))
+	mux.Handle("GET /api/v1/spans/{spanId}", handle(a.handleGetSpan))
 	mux.Handle("GET /api/v1/logs", handle(a.handleSearchLogs))
 	mux.Handle("GET /api/v1/profiles/services", handle(a.handleProfiledServices))
 	mux.Handle("GET /api/v1/profiles/flamegraph", handle(a.handleFlamegraph))
@@ -64,6 +70,7 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 	mux.Handle("GET /api/v1/metrics/red", handle(a.handleREDSeries))
 	mux.Handle("GET /api/v1/infra/nodes", handle(a.handleInfraNodes))
 	mux.Handle("GET /api/v1/infra/pods", handle(a.handleInfraPods))
+	mux.Handle("GET /api/v1/agents", handle(a.handleAgents))
 }
 
 func handleHealthz(w http.ResponseWriter, _ *http.Request) {

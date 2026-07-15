@@ -35,6 +35,44 @@ No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale
 | `retention.traces` / `retention.logs` | `7` / `3` | Per-signal TTL in days |
 | `ingress.enabled` / `ingress.host` | `false` / `avuruops.local` | Expose the hub UI |
 | `auth.enabled` | `false` | Forward placeholder — enforce auth at your ingress (OIDC is v0.2) |
+| `gateway.tenant` | `""` | Tag ALL telemetry through this gateway with a project/environment (see Projects) |
+| `projects` | `[]` | Declare the project list the hub advertises to the UI switcher |
+| `sensor.priorityClass.create` | `false` | Run the sensor below default priority ("do no harm") |
+| `sensor.collection.excludeNamespaces` | kube-system, kube-node-lease, kube-public | Namespaces never collected (any signal) |
+| `sensor.collection.optOutLabel` | `avuru.obs/instrument` | Pods labeled `=false` are never traced; their logs/pod-metrics dropped |
+| `sensor.collection.nodeOptOutLabel` | `avuru.obs/collect` | Nodes labeled `=false` get no sensor pod at all |
+
+## Deactivating collection (what turns off what)
+
+Every knob is a Helm value (a `helm upgrade` rolls the DaemonSet via its
+config checksum) — except the per-node label, which works instantly with no
+upgrade. The platform's own namespace is always excluded.
+
+| Scope | Traces/RED (OBI) | Logs (filelog) | Pod metrics (kubeletstats) | Profiles |
+|---|---|---|---|---|
+| Whole signal | `sensor.obi.enabled=false` | `sensor.agent.logs.enabled=false` | `sensor.agent.kubeletstats.enabled=false` | `sensor.profiler.enabled=false` |
+| Namespace | `sensor.collection.excludeNamespaces` (+ `sensor.obi.discovery.excludeNamespaces` for traces only) | same shared list | same shared list (pod-scoped datapoints only; node metrics unaffected) | not supported — whole-node profiler |
+| Pod / app | label the pod `avuru.obs/instrument: "false"` | same label | same label | not supported |
+| Node (= agent instance) | `kubectl label node <n> avuru.obs/collect=false` — removes the entire sensor pod | same | same | same |
+
+Examples:
+
+```bash
+# Exempt a probe-sensitive workload from eBPF instrumentation + collection:
+kubectl -n payments patch deploy checkout --type=merge \
+  -p '{"spec":{"template":{"metadata":{"labels":{"avuru.obs/instrument":"false"}}}}}'
+
+# Stop collecting an entire namespace:
+helm upgrade avuruops ./avuruops --reuse-values \
+  --set 'sensor.collection.excludeNamespaces={kube-system,kube-node-lease,kube-public,payments}'
+
+# Pull the sensor off one node right now (no helm upgrade):
+kubectl label node worker-3 avuru.obs/collect=false
+```
+
+If apps fail probes after installing the chart, start at
+`docs/runbooks/app-probe-failures.md` — prefer these targeted opt-outs over
+uninstalling.
 
 ## Downstream consumption
 

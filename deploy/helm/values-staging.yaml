@@ -34,6 +34,13 @@ ui:
     limits:
       memory: 96Mi
 
+gateway:
+  tenant: staging
+
+sensor:
+  priorityClass:
+    create: true
+
 ingress:
   enabled: true
   className: nginx

@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api";
+import { useProject } from "@/lib/project-context";
 import { queryKeys, type TimeParams } from "@/lib/query-keys";
 import type { ServicesResponse } from "@/lib/api-types";
 
@@ -9,12 +10,17 @@ import type { ServicesResponse } from "@/lib/api-types";
 // (rate, error rate, latency percentiles). Auxiliary traffic is excluded by
 // default; pass includeAux to count health checks/metrics/control-plane too.
 export function useServicesData(time: TimeParams, includeAux?: boolean) {
+  const { project } = useProject();
   return useQuery({
-    queryKey: queryKeys.services(time, includeAux),
+    queryKey: queryKeys.services(project, time, includeAux),
     queryFn: () =>
-      apiGet<ServicesResponse>("/api/v1/services", {
-        ...time,
-        includeAux: includeAux ? "true" : undefined,
-      }),
+      apiGet<ServicesResponse>(
+        "/api/v1/services",
+        {
+          ...time,
+          includeAux: includeAux ? "true" : undefined,
+        },
+        { project },
+      ),
   });
 }

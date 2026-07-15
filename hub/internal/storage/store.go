@@ -55,7 +55,7 @@ type OverviewQuery struct {
 }
 
 // OperationStats aggregates RED metrics for one (service, operation) pair
-// over root spans.
+// over entry spans (Server/Consumer).
 type OperationStats struct {
 	Service    string
 	Operation  string
@@ -126,6 +126,8 @@ type Span struct {
 	Service            string
 	Operation          string
 	Kind               string
+	ScopeName          string // instrumentation library, e.g. "@opentelemetry/instrumentation-http"
+	ScopeVersion       string
 	StartTime          time.Time
 	Duration           time.Duration
 	StatusCode         string
@@ -307,6 +309,26 @@ type FlameNode struct {
 	Children []*FlameNode
 }
 
+// AgentQuery filters ListAgentNodes. Window is the lookback within which a
+// node counts as "reporting".
+type AgentQuery struct {
+	Tenant string
+	Window time.Duration // <=0 → backend default
+}
+
+// AgentNode is one node with sensor data inside the window. Per-signal
+// freshness is nil when that signal has no data from the node — the agent
+// inventory is DERIVED from telemetry (no heartbeat protocol until OpAMP,
+// v0.2).
+type AgentNode struct {
+	Node     string
+	LastSeen time.Time // newest event across all signals
+	Traces   *time.Time
+	Logs     *time.Time
+	Metrics  *time.Time
+	Profiles *time.Time
+}
+
 // SignalStats summarizes one telemetry signal's stored data.
 type SignalStats struct {
 	Signal          string // "traces" | "logs"
@@ -339,11 +361,17 @@ type Store interface {
 	TraceOverview(ctx context.Context, q OverviewQuery) ([]OperationStats, error)
 	SearchTraces(ctx context.Context, q TraceQuery) (TracePage, error)
 	GetTrace(ctx context.Context, tenant, traceID string) (Trace, error)
+	// FindSpanTrace resolves the trace containing spanID, or ErrNotFound.
+	FindSpanTrace(ctx context.Context, tenant, spanID string) (traceID string, err error)
 	TraceHeatmap(ctx context.Context, q HeatmapQuery) (Heatmap, error)
 	SearchLogs(ctx context.Context, q LogQuery) (LogPage, error)
 	LogsForTrace(ctx context.Context, tenant, traceID string) ([]LogRecord, error)
 	ListNodeStats(ctx context.Context, q InfraQuery) ([]NodeStat, error)
 	ListPodStats(ctx context.Context, q InfraQuery) ([]PodStat, error)
+	ListAgentNodes(ctx context.Context, q AgentQuery) ([]AgentNode, error)
+	// ListTenants returns tenants observed in recent data (projects
+	// auto-discovery; config-defined projects merge in at the API layer).
+	ListTenants(ctx context.Context) ([]string, error)
 	REDSeries(ctx context.Context, q REDQuery) ([]REDSeries, error)
 	WriteProfileSamples(ctx context.Context, samples []ProfileSample) error
 	ListProfiledServices(ctx context.Context, q ProfileQuery) ([]ProfiledService, error)

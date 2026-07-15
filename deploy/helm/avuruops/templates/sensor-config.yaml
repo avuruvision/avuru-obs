@@ -8,14 +8,26 @@ metadata:
     app.kubernetes.io/component: sensor
 data:
   obi-config.yml: |
-    # Zero-code instrumentation of everything on the node, EXCEPT this
-    # release's own namespace (the platform must not trace itself — OBI's
-    # built-in defaults already skip kube-system, otelcol binaries, and OBI).
+    # Zero-code instrumentation scoped by sensor.collection / sensor.obi
+    # .discovery values. The release's own namespace is ALWAYS excluded (the
+    # platform must not trace itself); kube-system & co are excluded via
+    # sensor.collection.excludeNamespaces rather than trusting OBI's
+    # built-in defaults.
     discovery:
       instrument:
-        - k8s_namespace: '*'
+        {{- range .Values.sensor.obi.discovery.namespaces }}
+        - k8s_namespace: {{ . | quote }}
+        {{- end }}
       exclude_instrument:
         - k8s_namespace: {{ .Release.Namespace | quote }}
+        {{- range concat .Values.sensor.collection.excludeNamespaces .Values.sensor.obi.discovery.excludeNamespaces }}
+        - k8s_namespace: {{ . | quote }}
+        {{- end }}
+        {{- if .Values.sensor.collection.optOutLabel }}
+        # Per-pod escape hatch for probe-sensitive workloads.
+        - k8s_pod_labels:
+            {{ .Values.sensor.collection.optOutLabel | quote }}: "false"
+        {{- end }}
     attributes:
       kubernetes:
         enable: true
@@ -41,12 +53,16 @@ data:
     {{- if .Values.sensor.agent.logs.enabled }}
       filelog:
         # Zero-config stdout/stderr collection for every pod on the node,
-        # EXCEPT this release's namespace: the platform must not ingest its
-        # own logs (gateway error -> agent ships it -> gateway error ...).
+        # EXCEPT this release's namespace (the platform must not ingest its
+        # own logs: gateway error -> agent ships it -> gateway error ...) and
+        # the shared sensor.collection.excludeNamespaces list.
         include:
           - /var/log/pods/*/*/*.log
         exclude:
           - /var/log/pods/{{ .Release.Namespace }}_*/*/*.log
+        {{- range .Values.sensor.collection.excludeNamespaces }}
+          - /var/log/pods/{{ . }}_*/*/*.log
+        {{- end }}
         start_at: beginning
         storage: file_storage
         operators:
@@ -81,10 +97,41 @@ data:
             - k8s.statefulset.name
             - k8s.daemonset.name
             - k8s.node.name
+          {{- if .Values.sensor.collection.optOutLabel }}
+          labels:
+            # Surfaces the per-pod opt-out label so filter/collection can
+            # drop that pod's logs and metrics (same label OBI honors).
+            - tag_name: avuru.obs.collect
+              key: {{ .Values.sensor.collection.optOutLabel }}
+              from: pod
+          {{- end }}
         pod_association:
           - sources:
               - from: resource_attribute
                 name: k8s.pod.uid
+      {{- if or .Values.sensor.collection.excludeNamespaces .Values.sensor.collection.optOutLabel }}
+      # Collection guardrails: drop pod-scoped telemetry from excluded
+      # namespaces and opted-out pods. Node-level metrics carry no
+      # k8s.namespace.name attribute and are never dropped here.
+      filter/collection:
+        error_mode: ignore
+        metrics:
+          datapoint:
+          {{- range .Values.sensor.collection.excludeNamespaces }}
+            - resource.attributes["k8s.namespace.name"] == {{ . | quote }}
+          {{- end }}
+          {{- if .Values.sensor.collection.optOutLabel }}
+            - resource.attributes["avuru.obs.collect"] == "false"
+          {{- end }}
+        logs:
+          log_record:
+          {{- range .Values.sensor.collection.excludeNamespaces }}
+            - resource.attributes["k8s.namespace.name"] == {{ . | quote }}
+          {{- end }}
+          {{- if .Values.sensor.collection.optOutLabel }}
+            - resource.attributes["avuru.obs.collect"] == "false"
+          {{- end }}
+      {{- end }}
       # Tailed logs carry no OTLP resource, so service.name is empty and the
       # Logs UI would show blank services — derive it from workload metadata.
       transform/service_name:
@@ -111,10 +158,11 @@ data:
     service:
       extensions: [health_check, file_storage]
       pipelines:
+    {{- $collectionFilter := or .Values.sensor.collection.excludeNamespaces .Values.sensor.collection.optOutLabel }}
     {{- if .Values.sensor.agent.logs.enabled }}
         logs:
           receivers: [filelog]
-          processors: [memory_limiter, k8sattributes, transform/service_name, batch]
+          processors: [memory_limiter, k8sattributes{{ if $collectionFilter }}, filter/collection{{ end }}, transform/service_name, batch]
           exporters: [otlphttp]
     {{- end }}
     {{- if .Values.sensor.agent.kubeletstats.enabled }}
@@ -122,7 +170,7 @@ data:
           # k8sattributes adds workload names (deployment/statefulset) to pod
           # metrics via k8s.pod.uid, for the pods panel.
           receivers: [kubeletstats]
-          processors: [memory_limiter, k8sattributes, batch]
+          processors: [memory_limiter, k8sattributes{{ if $collectionFilter }}, filter/collection{{ end }}, batch]
           exporters: [otlphttp]
     {{- end }}
 {{- end }}
@@ -154,6 +202,13 @@ data:
       # "the hub is never in the telemetry byte-path".
       otlphttp:
         endpoint: http://{{ include "avuruops.fullname" . }}-hub:80
+        {{- if .Values.gateway.tenant }}
+        # Profiles bypass the gateway, so the project tag rides the ingest
+        # header instead of the resource processor — same gateway.tenant
+        # value, or profiles would split-brain into 'default'.
+        headers:
+          X-Avuru-Tenant: {{ .Values.gateway.tenant | quote }}
+        {{- end }}
     extensions:
       health_check:
         endpoint: 0.0.0.0:13135

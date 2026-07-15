@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useImperativeHandle, useRef } from "react";
 import { useRouter } from "next/navigation";
 import cytoscape, { type Core, type LayoutOptions } from "cytoscape";
 import fcose from "cytoscape-fcose";
@@ -69,19 +69,47 @@ function applyStyle(cy: Core) {
     .update();
 }
 
+// Label-aware fcose options: without nodeDimensionsIncludeLabels the
+// simulation ignores label width and stacks the names on top of each other.
+// The initial layout is deterministic (no animation, seeded positions); a
+// re-layout randomizes the seed to escape a tangled local minimum, animated
+// so the untangle reads as movement, not a flash.
+const layoutOptions = (animate: boolean) =>
+  ({
+    name: "fcose",
+    quality: "proof",
+    animate,
+    randomize: animate,
+    padding: 60,
+    nodeDimensionsIncludeLabels: true,
+    nodeSeparation: 170,
+    idealEdgeLength: 170,
+    nodeRepulsion: 9000,
+  }) as unknown as LayoutOptions;
+
+export interface ServiceMapHandle {
+  relayout: () => void;
+}
+
 // Service-map graph. Nodes = services (sized by request rate, red = errors);
 // edges = caller→callee call volume derived from trace spans. Click a node to
 // open its traces.
 export function ServiceMap({
   services,
   edges,
+  handleRef,
 }: {
   services: ServiceStats[];
   edges: ServiceEdge[];
+  handleRef?: React.Ref<ServiceMapHandle>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const router = useRouter();
+
+  useImperativeHandle(handleRef, () => ({
+    relayout: () => cyRef.current?.layout(layoutOptions(true)).run(),
+  }));
 
   useEffect(() => {
     if (!ref.current) return;
@@ -106,18 +134,7 @@ export function ServiceMap({
             },
           })),
       ],
-      // Label-aware layout: without nodeDimensionsIncludeLabels the simulation
-      // ignores label width and stacks the names on top of each other.
-      layout: {
-        name: "fcose",
-        quality: "proof",
-        animate: false,
-        padding: 60,
-        nodeDimensionsIncludeLabels: true,
-        nodeSeparation: 140,
-        idealEdgeLength: 130,
-        nodeRepulsion: 6500,
-      } as unknown as LayoutOptions,
+      layout: layoutOptions(false),
       minZoom: 0.3,
       maxZoom: 2.5,
     });

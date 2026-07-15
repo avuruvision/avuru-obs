@@ -1,0 +1,48 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          { "key": "service.name", "value": { "stringValue": "seed-checkout-staging" } },
+          { "key": "service.version", "value": { "stringValue": "1.0.0" } },
+          { "key": "avuru.tenant", "value": { "stringValue": "staging" } }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": { "name": "avuru-seed", "version": "1" },
+          "spans": [
+            {
+              "traceId": "bbbb1111cccc2222dddd3333eeee4444",
+              "spanId": "d4e5f60718293a4b",
+              "name": "POST /checkout",
+              "kind": 2,
+              "startTimeUnixNano": "0",
+              "endTimeUnixNano": "180000000",
+              "status": { "code": 1 },
+              "attributes": [
+                { "key": "http.request.method", "value": { "stringValue": "POST" } },
+                { "key": "http.route", "value": { "stringValue": "/checkout" } },
+                { "key": "http.response.status_code", "value": { "intValue": "200" } }
+              ]
+            },
+            {
+              "traceId": "bbbb1111cccc2222dddd3333eeee4444",
+              "spanId": "e5f60718293a4b5c",
+              "parentSpanId": "d4e5f60718293a4b",
+              "name": "SELECT orders",
+              "kind": 3,
+              "startTimeUnixNano": "20000000",
+              "endTimeUnixNano": "90000000",
+              "status": { "code": 1 },
+              "attributes": [
+                { "key": "db.system.name", "value": { "stringValue": "postgresql" } },
+                { "key": "db.query.text", "value": { "stringValue": "SELECT * FROM orders WHERE id = ?" } }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -18,4 +18,5 @@ var Ordered = []string{
 	"0002_logs.sql",
 	"0003_metrics.sql",
 	"0004_profiles.sql",
+	"0005_span_index.sql",
 }

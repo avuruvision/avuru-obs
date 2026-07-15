@@ -61,3 +61,6 @@ Thumbs.db
 
 # Visual brainstorm sessions (superpowers companion)
 .superpowers/
+
+# Claude Code worktrees (local working copies, never committed)
+.claude/worktrees/

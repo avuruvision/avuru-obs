@@ -174,6 +174,25 @@ func (a *API) handleGetTrace(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+// handleGetSpan resolves the trace containing a span id (the "paste a span
+// id" search). ErrNotFound maps to 404 via handle().
+func (a *API) handleGetSpan(w http.ResponseWriter, r *http.Request) error {
+	store, err := a.store()
+	if err != nil {
+		return err
+	}
+	spanID := r.PathValue("spanId")
+	if spanID == "" {
+		return badRequest("missing spanId")
+	}
+	traceID, err := store.FindSpanTrace(r.Context(), tenant(r), spanID)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, spanLookupResponse{TraceID: traceID, SpanID: spanID})
+	return nil
+}
+
 func (a *API) handleHeatmap(w http.ResponseWriter, r *http.Request) error {
 	store, err := a.store()
 	if err != nil {

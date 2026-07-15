@@ -47,6 +47,11 @@ gateway:
     repository: avuruops/gateway
     tag: "" # defaults to .Chart.AppVersion
   replicas: 1
+  # Project/environment this gateway feeds (Coroot-style project-per-cluster):
+  # stamps `avuru.tenant` on ALL telemetry passing through (and the profiler's
+  # ingest header). "" = everything lands in the `default` project. Senders
+  # never change — this is server-side tagging (drop-in OTLP stays true).
+  tenant: ""
   resources:
     requests:
       cpu: 100m
@@ -63,6 +68,30 @@ sensor:
   enabled: true
   nodeSelector: {}
   tolerations: []
+  # "Do no harm": run the sensor below default priority so that under node
+  # pressure it is throttled/evicted BEFORE user applications. Opt-in in the
+  # 0.1.x line (scheduling behavior change); values-prod turns it on.
+  priorityClass:
+    create: false
+    name: "" # use an existing PriorityClass instead of creating one
+    value: -10
+  # Collection guardrails shared by every sensor container. The release's own
+  # namespace is ALWAYS excluded in the templates and never listed here.
+  collection:
+    # Namespaces never collected (traces, logs, pod metrics). OBI's built-in
+    # defaults already skip kube-system — listed explicitly so the guarantee
+    # doesn't depend on upstream defaults. Set [] to collect everything.
+    excludeNamespaces:
+      - kube-system
+      - kube-node-lease
+      - kube-public
+    # Pods labeled <optOutLabel>=false are never eBPF-instrumented and their
+    # logs/pod-metrics are dropped at the node agent. Escape hatch for
+    # probe-sensitive workloads (docs/runbooks/app-probe-failures.md).
+    optOutLabel: avuru.obs/instrument
+    # Nodes labeled <nodeOptOutLabel>=false get NO sensor pod at all — a pure
+    # runtime toggle (kubectl label node), no helm upgrade needed.
+    nodeOptOutLabel: avuru.obs/collect
   # Node collector: tails container stdout/stderr (zero-config logs). Infra
   # metrics (kubeletstats) join this container in M3.
   agent:
@@ -81,6 +110,7 @@ sensor:
         cpu: 50m
         memory: 96Mi
       limits:
+        cpu: 500m
         memory: 256Mi
   # Continuous CPU profiling (OTel eBPF profiler collector distro). Ships
   # OTLP Profiles (ALPHA) directly to the hub's profiles-ingest seam — the
@@ -100,6 +130,7 @@ sensor:
         cpu: 50m
         memory: 128Mi
       limits:
+        cpu: 500m
         memory: 512Mi
   obi:
     enabled: true
@@ -111,11 +142,20 @@ sensor:
     # (BPF/PERFMON/SYS_PTRACE/NET_RAW/CHECKPOINT_RESTORE/DAC_READ_SEARCH/
     # SYS_RESOURCE) instead — needs kernel ≥5.11.
     privileged: true
+    # Discovery scope for zero-code instrumentation. `namespaces` is a glob
+    # allowlist; excludes extend sensor.collection.excludeNamespaces. NOTE:
+    # the CPU limit bounds only OBI's userspace half — uprobe overhead runs
+    # in the TARGET process and is charged to the app's cgroup (see
+    # docs/runbooks/app-probe-failures.md).
+    discovery:
+      namespaces: ["*"]
+      excludeNamespaces: []
     resources:
       requests:
         cpu: 50m
         memory: 128Mi
       limits:
+        cpu: "1"
         memory: 512Mi
 
 # ClickHouse: single-node StatefulSet by default; flip external.enabled to BYO.
@@ -143,6 +183,12 @@ clickhouse:
       memory: 2Gi
     limits:
       memory: 4Gi
+
+# Projects the hub advertises to the UI switcher (Coroot's "defined through
+# the config" mode). Tenants observed in the data are auto-discovered and
+# merged; `default` always exists. Typically one entry per environment
+# (matching each cluster's gateway.tenant) on a shared-ClickHouse install.
+projects: []
 
 # Per-signal retention in DAYS, applied as ClickHouse TTL by `hub migrate`.
 retention:
