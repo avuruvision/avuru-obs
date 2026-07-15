@@ -76,6 +76,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push ${{ matrix.component }}
         uses: docker/build-push-action@v6
+        env:
+          # No *.dockerbuild build-record artifacts: the release job downloads
+          # run artifacts and must only ever see the helm chart (v0.1.0 cut
+          # failed on a .dockerbuild blob that errored after 5 retries).
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -113,7 +118,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          # Only the chart — never "all artifacts": with a single name the
+          # files land directly under path (no per-artifact subdirectory).
+          name: helm-chart
+          path: artifacts/helm-chart
       - name: Extract changelog notes
         id: notes
         run: |
