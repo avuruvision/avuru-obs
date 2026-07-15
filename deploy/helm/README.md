@@ -21,8 +21,7 @@ helm install avuruops ./avuruops -n avuruops --create-namespace
 | hub | Deployment + Service (+ Ingress) | API + embedded UI |
 | migrate | Job (Helm hook) | `hub migrate` on `post-install,pre-upgrade` |
 
-No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale
-(validated against Coroot/SigNoz/DeepFlow/SkyWalking).
+No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale.
 
 ## Key values
 

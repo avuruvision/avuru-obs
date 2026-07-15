@@ -80,8 +80,15 @@ the matching changelog entry.
 
 ## Writing rules
 
-- **No competitor comparisons or names** (repo rule; see the site's
-  no-competitor writing rule).
+- **No competitor comparisons or names** — anywhere user-facing: docs pages,
+  the ENGINE repo's `CHANGELOG.md`, GitHub release notes/tag messages (the
+  release job extracts notes from the changelog verbatim). "X-style"/"à la X"
+  phrasings count. Sole exception: the site's dedicated Compare section.
+  Sweep before shipping:
+  `grep -rin "skywalking\|coroot\|kiali\|datadog\|jaeger\|signoz\|uptrace\|dynatrace"`
+  over every file you touched (v0.1.0 shipped with "Coroot-style"/
+  "SkyWalking-style" in its release notes and had to be scrubbed after the
+  fact).
 - FR is a **real translation**, never a copy of the English or a stub.
 - Conventional commits, `docs:` prefix; **no AI co-author trailers**.
 - Marketing tone in changelog titles (action + benefit), factual body.

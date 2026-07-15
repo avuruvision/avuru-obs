@@ -89,6 +89,41 @@ releases on `vX.Y.Z` tags.
    files under ~300 lines.
 6. **No sampling by default**: 100% ingestion; sampling is an explicit,
    opt-in gateway knob.
+7. **No competitor names in user-facing text**: describe avuru-obs on its own
+   terms. See below.
+
+## No competitor names (user-facing text)
+
+`CHANGELOG.md`, release notes/tag messages, `README.md`, `ROADMAP.md`, UI
+strings, and the docs site describe what avuru-obs does — never how it
+compares. **"X-style", "X-like", "à la X" count as naming a competitor**, and
+`release.yml` copies the changelog section into the GitHub release verbatim,
+so a comparison written here ships to users.
+
+- Applies to: Coroot, SkyWalking, Kiali, Datadog, Jaeger, SigNoz, Uptrace,
+  Dynatrace, New Relic, Grafana/LGTM as a *comparison* — and any other
+  product used as a style reference.
+- Not covered: naming an upstream dependency we actually reuse or interop with
+  (OTel/OBI/OTLP, "OTLP drop-in for Jaeger endpoints", "a Grafana data source
+  is planned", ClickHouse) — that's a fact about our stack, not a comparison.
+  Code comments and `agent_docs/` may cite prior art for rationale.
+- The **only** place comparisons belong is the docs site's dedicated Compare
+  section (see `.claude/skills/docs-align`).
+
+Before shipping user-facing text, sweep it (scoped to shipped prose — UI
+source is excluded on purpose: its hits are prior-art comments, which are
+allowed and would drown the signal):
+
+```bash
+grep -rin "coroot\|skywalking\|kiali\|datadog\|signoz\|uptrace\|dynatrace\|new relic" \
+  CHANGELOG.md README.md ROADMAP.md deploy/helm/README.md docs/
+```
+
+Then re-read your own new prose for "X-style"/"X-like" — grep won't catch a
+comparison phrased without the product name.
+
+> v0.1.0 shipped with "Coroot-style" and "SkyWalking-style" in its release
+> notes and had to be scrubbed after the fact — the changelog is user-facing.
 
 ## PR hygiene for agent-generated code
 
