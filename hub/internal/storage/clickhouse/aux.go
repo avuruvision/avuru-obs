@@ -3,9 +3,10 @@ package clickhouse
 import "sort"
 
 // repTuple selects a trace's effective-root span inside a GROUP BY TraceId:
-// argMin(col, repTuple) prefers the real root (a parentless span, where
-// `ParentSpanId != ''` is 0 and so sorts first), else falls back to the
-// earliest span by Timestamp, with SpanId as a stable final tiebreaker. Every
+// argMin(col, repTuple) prefers the real root (a parentless span — its empty
+// ParentSpanId makes the tuple's first element 0, sorting it first), else
+// falls back to the earliest span by Timestamp, with SpanId as a stable
+// final tiebreaker. Every
 // representative field in SearchTraces must use this SAME tuple so they all
 // come from ONE span — the effective root — even when the true root span was
 // exported to a different backend and the trace is an orphan here.
