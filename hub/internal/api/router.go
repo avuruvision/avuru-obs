@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
@@ -28,12 +29,17 @@ type Config struct {
 	// Projects declared through deployment config (AVURUOPS_PROJECTS) —
 	// merged with data-observed tenants by GET /api/v1/projects.
 	Projects []string
+	// Modules is the active-module set (AVURUOPS_MODULES); nil means all
+	// modules — the backward-compatible default. Routes owned by an inactive
+	// module are not registered (404).
+	Modules modules.Set
 }
 
 // API holds handler dependencies.
 type API struct {
 	provider StoreProvider
 	cfg      Config
+	modules  modules.Set
 	tenants  tenantCache
 }
 
@@ -45,12 +51,18 @@ func (a *API) store() (storage.Store, error) {
 	return nil, errStoreUnavailable
 }
 
-// Register mounts all API routes on mux.
+// Register mounts the API routes for the active modules on mux.
 func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
-	a := &API{provider: provider, cfg: cfg}
+	active := cfg.Modules
+	if active == nil {
+		active = modules.AllSet()
+	}
+	a := &API{provider: provider, cfg: cfg, modules: active}
 
+	// core — never disableable (the wedge: service map + traces + RED).
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.Handle("GET /api/v1/status", handle(a.handleStatus))
+	mux.Handle("GET /api/v1/capabilities", handle(a.handleCapabilities))
 	mux.Handle("GET /api/v1/projects", handle(a.handleProjects))
 	mux.Handle("GET /api/v1/system/status", handle(a.handleSystemStatus))
 	mux.Handle("GET /api/v1/services", handle(a.handleServices))
@@ -59,18 +71,27 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 	mux.Handle("GET /api/v1/traces/overview", handle(a.handleTraceOverview))
 	mux.Handle("GET /api/v1/traces/heatmap", handle(a.handleHeatmap))
 	mux.Handle("GET /api/v1/traces/{traceId}", handle(a.handleGetTrace))
-	mux.Handle("GET /api/v1/traces/{traceId}/logs", handle(a.handleLogsForTrace))
 	mux.Handle("GET /api/v1/spans/{spanId}", handle(a.handleGetSpan))
-	mux.Handle("GET /api/v1/logs", handle(a.handleSearchLogs))
-	mux.Handle("GET /api/v1/profiles/services", handle(a.handleProfiledServices))
-	mux.Handle("GET /api/v1/profiles/flamegraph", handle(a.handleFlamegraph))
-	// OTLP profiles ingest (alpha signal) — deliberately NOT under /api/v1;
-	// this is the otlphttp exporter's default profiles path.
-	mux.Handle("POST /v1development/profiles", handle(a.handleProfilesIngest))
 	mux.Handle("GET /api/v1/metrics/red", handle(a.handleREDSeries))
-	mux.Handle("GET /api/v1/infra/nodes", handle(a.handleInfraNodes))
-	mux.Handle("GET /api/v1/infra/pods", handle(a.handleInfraPods))
-	mux.Handle("GET /api/v1/agents", handle(a.handleAgents))
+
+	if active.Enabled(modules.Logs) {
+		mux.Handle("GET /api/v1/logs", handle(a.handleSearchLogs))
+		mux.Handle("GET /api/v1/traces/{traceId}/logs", handle(a.handleLogsForTrace))
+	}
+	if active.Enabled(modules.Profiling) {
+		mux.Handle("GET /api/v1/profiles/services", handle(a.handleProfiledServices))
+		mux.Handle("GET /api/v1/profiles/flamegraph", handle(a.handleFlamegraph))
+		// OTLP profiles ingest (alpha signal) — deliberately NOT under
+		// /api/v1; this is the otlphttp exporter's default profiles path.
+		mux.Handle("POST /v1development/profiles", handle(a.handleProfilesIngest))
+	}
+	if active.Enabled(modules.InfraMetrics) {
+		mux.Handle("GET /api/v1/infra/nodes", handle(a.handleInfraNodes))
+		mux.Handle("GET /api/v1/infra/pods", handle(a.handleInfraPods))
+		// The sensor inventory reads collector self-metrics from the metrics
+		// tables, so it lives with infra-metrics (see the module AEP).
+		mux.Handle("GET /api/v1/agents", handle(a.handleAgents))
+	}
 }
 
 func handleHealthz(w http.ResponseWriter, _ *http.Request) {

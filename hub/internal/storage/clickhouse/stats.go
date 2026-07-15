@@ -23,6 +23,8 @@ var signalTables = []struct {
 
 // SystemStats reports per-signal storage usage (system.parts), data freshness
 // (min/max Timestamp), and disk capacity (system.disks) for the status view.
+// Signals whose tables are absent (module disabled → migration not applied)
+// are skipped rather than erroring.
 func (s *Store) SystemStats(ctx context.Context) (storage.SystemStats, error) {
 	var out storage.SystemStats
 
@@ -30,10 +32,27 @@ func (s *Store) SystemStats(ctx context.Context) (storage.SystemStats, error) {
 	if err != nil {
 		return out, err
 	}
+	existing, err := s.existingTables(ctx)
+	if err != nil {
+		return out, err
+	}
 	for _, sig := range signalTables {
 		var st storage.SignalStats
 		st.Signal = sig.signal
+		present := false
 		for _, table := range sig.tables {
+			if existing[table] {
+				present = true
+				break
+			}
+		}
+		if !present {
+			continue
+		}
+		for _, table := range sig.tables {
+			if !existing[table] {
+				continue
+			}
 			sz := sizes[table] // zero value when the table has no parts yet
 			st.Rows += sz.Rows
 			st.Bytes += sz.Bytes
@@ -58,6 +77,27 @@ func (s *Store) SystemStats(ctx context.Context) (storage.SystemStats, error) {
 	}
 	out.Disks = disks
 	return out, nil
+}
+
+// existingTables lists the tables present in the telemetry database — the
+// module-aware guard for per-table queries (system.parts only lists tables
+// that already have parts, so it can't tell "empty" from "absent").
+func (s *Store) existingTables(ctx context.Context) (map[string]bool, error) {
+	rows, err := s.conn.Query(ctx, `SELECT name FROM system.tables WHERE database = ?`, s.db)
+	if err != nil {
+		return nil, fmt.Errorf("listing tables: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[string]bool{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("scanning table name: %w", err)
+		}
+		out[name] = true
+	}
+	return out, rows.Err()
 }
 
 // tableSizes sums active-part bytes/rows per table in the telemetry database.

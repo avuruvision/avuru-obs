@@ -4,7 +4,11 @@
 // NOT in these files — it is applied env-driven by the migrator.
 package migrations
 
-import "embed"
+import (
+	"embed"
+
+	"github.com/avuru/avuru-obs/hub/internal/modules"
+)
 
 // FS holds the versioned .sql migrations.
 //
@@ -19,4 +23,16 @@ var Ordered = []string{
 	"0003_metrics.sql",
 	"0004_profiles.sql",
 	"0005_span_index.sql",
+}
+
+// ByModule tags each migration with the module owning its schema; the
+// migrator applies only active modules' files. Enabling a module later just
+// re-runs `hub migrate` (idempotent) with the new set. Every Ordered entry
+// MUST be tagged — enforced by TestByModuleCoversOrdered.
+var ByModule = map[string]modules.Name{
+	"0001_traces.sql":     modules.Core,
+	"0002_logs.sql":       modules.Logs,
+	"0003_metrics.sql":    modules.InfraMetrics,
+	"0004_profiles.sql":   modules.Profiling,
+	"0005_span_index.sql": modules.Core,
 }

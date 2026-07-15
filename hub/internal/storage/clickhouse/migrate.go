@@ -5,14 +5,20 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage/migrations"
 )
 
-// Migrate applies any unapplied embedded migrations, recording each in the
-// `<db>.schema_migrations` ledger. Idempotent: already-applied versions are
-// skipped, so re-running is a no-op. ClickHouse DDL is not transactional —
-// every statement is `IF NOT EXISTS` and the ledger row is the commit marker.
-func (s *Store) Migrate(ctx context.Context) error {
+// Migrate applies any unapplied embedded migrations for the active modules,
+// recording each in the `<db>.schema_migrations` ledger. Idempotent:
+// already-applied versions are skipped, so re-running is a no-op — enabling a
+// module later is just a re-run with a bigger set. ClickHouse DDL is not
+// transactional — every statement is `IF NOT EXISTS` and the ledger row is
+// the commit marker.
+func (s *Store) Migrate(ctx context.Context, active modules.Set) error {
+	if active == nil {
+		active = modules.AllSet()
+	}
 	if err := s.conn.Exec(ctx, "CREATE DATABASE IF NOT EXISTS "+s.db); err != nil {
 		return fmt.Errorf("creating database %s: %w", s.db, err)
 	}
@@ -30,6 +36,11 @@ func (s *Store) Migrate(ctx context.Context) error {
 
 	for _, version := range migrations.Ordered {
 		if applied[version] {
+			continue
+		}
+		// Untagged migrations apply everywhere (belt and braces — the
+		// migrations package test enforces full tagging).
+		if mod, ok := migrations.ByModule[version]; ok && !active.Enabled(mod) {
 			continue
 		}
 		body, err := migrations.FS.ReadFile(version)

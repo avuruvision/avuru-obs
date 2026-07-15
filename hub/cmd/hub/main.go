@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/api"
+	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 	ch "github.com/avuru/avuru-obs/hub/internal/storage/clickhouse"
 )
@@ -65,6 +66,17 @@ func clickhouseConfig() ch.Config {
 	}
 }
 
+// activeModules resolves AVURUOPS_MODULES (empty = all). A typo must fail the
+// deploy loudly — silently skipping a module's schema is worse than a crash
+// loop with a clear message.
+func activeModules() (modules.Set, error) {
+	set, err := modules.Parse(os.Getenv("AVURUOPS_MODULES"))
+	if err != nil {
+		return nil, fmt.Errorf("AVURUOPS_MODULES: %w", err)
+	}
+	return set, nil
+}
+
 // runMigrate applies schema migrations + retention, then exits. Retries
 // ClickHouse for ~60s so it tolerates the database still coming up.
 func runMigrate() error {
@@ -92,7 +104,11 @@ func runMigrate() error {
 	}
 	defer func() { _ = store.Close() }()
 
-	if err := store.Migrate(ctx); err != nil {
+	active, err := activeModules()
+	if err != nil {
+		return err
+	}
+	if err := store.Migrate(ctx, active); err != nil {
 		return fmt.Errorf("applying migrations: %w", err)
 	}
 	retention := ch.Retention{
@@ -101,10 +117,23 @@ func runMigrate() error {
 		MetricsDays:  envIntOr("AVURUOPS_RETENTION_METRICS_DAYS", 7),
 		ProfilesDays: envIntOr("AVURUOPS_RETENTION_PROFILES_DAYS", 3),
 	}
+	// Don't touch a disabled module's TTL: its tables were never created —
+	// or, if the module was enabled once, they still hold data we no longer
+	// manage. Either way the ALTER is not ours to run.
+	if !active.Enabled(modules.Logs) {
+		retention.LogsDays = 0
+	}
+	if !active.Enabled(modules.InfraMetrics) {
+		retention.MetricsDays = 0
+	}
+	if !active.Enabled(modules.Profiling) {
+		retention.ProfilesDays = 0
+	}
 	if err := store.ApplyRetention(ctx, retention); err != nil {
 		return fmt.Errorf("applying retention: %w", err)
 	}
 	slog.Info("migration complete",
+		"modules", active.Names(),
 		"tracesRetentionDays", retention.TracesDays,
 		"logsRetentionDays", retention.LogsDays,
 		"metricsRetentionDays", retention.MetricsDays,
@@ -120,6 +149,12 @@ func run() error {
 
 	provider := connectStore(ctx, clickhouseConfig())
 
+	active, err := activeModules()
+	if err != nil {
+		return err
+	}
+	slog.Info("active modules", "modules", active.Names())
+
 	// Hub is API-only: the UI is a separate deployable (its own nginx pod),
 	// reached single-origin via the gateway/ingress. See agent_docs/architecture.md.
 	mux := http.NewServeMux()
@@ -129,6 +164,7 @@ func run() error {
 		RetentionMetricsDays:  envIntOr("AVURUOPS_RETENTION_METRICS_DAYS", 7),
 		RetentionProfilesDays: envIntOr("AVURUOPS_RETENTION_PROFILES_DAYS", 3),
 		Projects:              splitCSV(envOr("AVURUOPS_PROJECTS", "")),
+		Modules:               active,
 	})
 
 	srv := &http.Server{
