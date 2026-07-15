@@ -5,7 +5,7 @@ members = ["crates/flow-core", "crates/avuru-agent"]
 [workspace.package]
 version = "0.2.0-SNAPSHOT"
 edition = "2021"
-license = "Apache-2.0"
+license = "AGPL-3.0-only"
 
 [workspace.dependencies]
 thiserror = "2"

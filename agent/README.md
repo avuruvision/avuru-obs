@@ -12,7 +12,7 @@ before writing Rust.
 
 ## Stack
 
-- **Rust** (edition 2021), Cargo workspace, Apache 2.0.
+- **Rust** (edition 2021), Cargo workspace, AGPL-3.0.
 - [aya](https://aya-rs.dev/) for eBPF; OpenTelemetry / OTLP for export.
 
 ## Layout

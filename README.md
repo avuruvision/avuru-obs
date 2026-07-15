@@ -4,7 +4,7 @@
 Live in 5 minutes, zero code changes.**
 
 [![CI](https://github.com/avuruvision/avuru-obs/actions/workflows/ci.yml/badge.svg)](https://github.com/avuruvision/avuru-obs/actions/workflows/ci.yml)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Roadmap](https://img.shields.io/badge/status-pre--v0.1-orange.svg)](ROADMAP.md)
 
 Avuru Obs replaces the Grafana LGTM stack with one storage engine
@@ -87,4 +87,4 @@ New here? Look for **good first issue** labels, and open an issue or
 
 ## License
 
-[Apache 2.0](LICENSE)
+[AGPL-3.0](LICENSE)

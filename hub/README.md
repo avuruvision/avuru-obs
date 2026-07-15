@@ -12,7 +12,7 @@ flow and [`agent_docs/go_style.md`](../agent_docs/go_style.md) before writing Go
 
 ## Stack
 
-- **Go 1.26**, Apache 2.0; distroless container image (`Dockerfile`).
+- **Go 1.26**, AGPL-3.0; distroless container image (`Dockerfile`).
 - ClickHouse via `clickhouse-go/v2`; testcontainers-go for integration tests.
 
 ## Layout

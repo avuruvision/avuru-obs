@@ -11,7 +11,7 @@ document](#changing-this-document)).
 
 Make production observability — traces, metrics, logs, and continuous profiling
 — work in five minutes with zero code changes, as open source under
-[Apache 2.0](LICENSE).
+[AGPL-3.0](LICENSE).
 
 ## Roles
 

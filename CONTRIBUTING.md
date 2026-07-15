@@ -9,7 +9,7 @@
 - Read [AGENTS.md](./AGENTS.md) — the canonical developer **and** agent guide
   (yes, even humans). It has the repo map, branch model, and validation commands.
 - By contributing you agree to the [Code of Conduct](./CODE_OF_CONDUCT.md) and
-  to license your work under [Apache 2.0](./LICENSE).
+  to license your work under [AGPL-3.0](./LICENSE).
 
 ## Workflow
 
