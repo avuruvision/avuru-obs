@@ -1,0 +1,18 @@
+{{- /* "Do no harm": a negative-priority class so the kubelet throttles or
+       evicts the sensor before ANY user application under node pressure.
+       Cluster-scoped resource — created only on explicit opt-in. */}}
+{{- if and .Values.sensor.enabled .Values.sensor.priorityClass.create }}
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ .Values.sensor.priorityClass.name | default (printf "%s-sensor" (include "avuruops.fullname" .)) }}
+  labels:
+    {{- include "avuruops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sensor
+value: {{ .Values.sensor.priorityClass.value }}
+globalDefault: false
+preemptionPolicy: Never
+description: >-
+  Avuru Obs sensor pods run below default priority so observability never
+  outcompetes the applications it observes.
+{{- end }}

@@ -15,6 +15,17 @@ data:
           http:
             endpoint: 0.0.0.0:4318
     processors:
+    {{- if .Values.gateway.tenant }}
+      # Everything through this gateway belongs to one project/environment
+      # (Coroot-style project-per-cluster). `upsert` makes the gateway the
+      # authority; senders stay untouched (drop-in OTLP). Use action `insert`
+      # instead if trusted senders must pick their own tenant.
+      resource/tenant:
+        attributes:
+          - key: avuru.tenant
+            value: {{ .Values.gateway.tenant | quote }}
+            action: upsert
+    {{- end }}
       batch:
         send_batch_size: 4096
         timeout: 2s
@@ -37,15 +48,17 @@ data:
     service:
       extensions: [health_check]
       pipelines:
+    {{- $tenantStage := "" }}
+    {{- if .Values.gateway.tenant }}{{ $tenantStage = "resource/tenant, " }}{{ end }}
         traces:
           receivers: [otlp]
-          processors: [batch]
+          processors: [{{ $tenantStage }}batch]
           exporters: [clickhouse]
         logs:
           receivers: [otlp]
-          processors: [batch]
+          processors: [{{ $tenantStage }}batch]
           exporters: [clickhouse]
         metrics:
           receivers: [otlp]
-          processors: [batch]
+          processors: [{{ $tenantStage }}batch]
           exporters: [clickhouse]

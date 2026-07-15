@@ -15,7 +15,7 @@ func (s *Store) ListServices(ctx context.Context, q storage.ServiceQuery) ([]sto
 SELECT
     ServiceName,
     count()                                         AS spans,
-    countIf(StatusCode = 'Error')                   AS errors,
+    countIf(` + errorSpanExpr("") + `)              AS errors,
     quantiles(0.5, 0.95, 0.99)(toFloat64(Duration)) AS qs
 FROM otel_traces
 WHERE Tenant = ?
@@ -60,7 +60,7 @@ SELECT
     client.ServiceName                   AS src,
     server.ServiceName                   AS dst,
     count()                              AS calls,
-    countIf(server.StatusCode = 'Error') AS errors
+    countIf(` + errorSpanExpr("server.") + `) AS errors
 FROM otel_traces AS server
 INNER JOIN otel_traces AS client
     ON server.TraceId = client.TraceId AND server.ParentSpanId = client.SpanId
@@ -95,19 +95,29 @@ ORDER BY calls DESC`
 	return out, rows.Err()
 }
 
-// TraceOverview aggregates RED stats per (service, operation) over root spans.
+// TraceOverview aggregates RED stats per (service, operation) over entry
+// spans (Server/Consumer) — the same population ListServices and REDSeries
+// count, so the numbers stay comparable across screens. Entry spans (rather
+// than parentless roots) mean a downstream service's operations show
+// up both when filtering by that service and in the unfiltered per-service
+// grouping, and orphaned/partial traces' operations aren't invisible (same
+// concern SearchTraces addresses with its effective root). Each request is
+// counted once per service that handled it — the standard RED definition.
+//
+// Ordered by service name first (stable server-side grouping for the UI),
+// busiest operations first within a service.
 func (s *Store) TraceOverview(ctx context.Context, q storage.OverviewQuery) ([]storage.OperationStats, error) {
 	query := `
 SELECT
     ServiceName,
     SpanName,
     count()                                         AS reqs,
-    countIf(StatusCode = 'Error')                   AS errors,
+    countIf(` + errorSpanExpr("") + `)              AS errors,
     quantiles(0.5, 0.95, 0.99)(toFloat64(Duration)) AS qs
 FROM otel_traces
 WHERE Tenant = ?
   AND Timestamp >= ? AND Timestamp < ?
-  AND ParentSpanId = ''`
+  AND SpanKind IN ('Server', 'Consumer')`
 	args := []any{q.Tenant, q.Range.Start, q.Range.End}
 	if q.Service != "" {
 		query += ` AND ServiceName = ?`
@@ -118,7 +128,7 @@ WHERE Tenant = ?
 	}
 	query += `
 GROUP BY ServiceName, SpanName
-ORDER BY reqs DESC`
+ORDER BY ServiceName ASC, reqs DESC`
 
 	rows, err := s.conn.Query(ctx, query, args...)
 	if err != nil {

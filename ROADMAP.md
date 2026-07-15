@@ -55,8 +55,24 @@ These milestone tags (`M1`–`M5`) are referenced throughout the codebase and
   [enterprise seam](agent_docs/architecture.md#enterprise-seam-do-not-bypass)
   — auth provider, `tenant` column, retention policy objects — is built in from
   v0.1 so this lands without a rewrite.
-- **Remote configuration:** the hub's OpAMP server and a configuration UI
-  (day-2 config is Helm-driven in v0.1).
+- **v0.2 — runtime collection control plane:** v0.1 controls collection through
+  Helm values (per-signal, per-namespace, per-pod label, per-node label — see
+  `deploy/helm/README.md`) with a read-only agent inventory in Settings →
+  Collection. v0.2 makes the same knobs switchable from the UI: the hub
+  persists a bounded, schema-validated collection overlay and patches the
+  sensor ConfigMaps (rollout via the existing config checksum), gated by a
+  default-off flag and a namespace-scoped Role on the named resources only.
+  OpAMP remains the destination — status reporting first, remote-config once
+  OBI grows a client (AEP when it lands). Query-time filtering was rejected:
+  it saves no collection or storage cost.
+- **Projects (per environment):** v0.1 ships config-defined projects +
+  auto-discovery from data (`projects`/`gateway.tenant` chart values, sidebar
+  switcher, `?project=` links). Later: per-project **API keys** at ingest
+  (needs v0.2 auth — replaces topology-based trust of `avuru.tenant` and the
+  tenancy header), project CRUD (config-defined entries stay read-only),
+  per-project retention (per-tenant TTL is its own design), per-project
+  system status, and chart component toggles so secondary clusters install
+  gateway(+sensor)-only against a shared ClickHouse.
 - **More clients:** the Hub API is the client-agnostic contract; the SPA is one
   thin client. A **Grafana** data source and a **CLI** are planned.
 - **Storage re-evaluation:** ClickHouse stays behind `storage.Store`; GreptimeDB

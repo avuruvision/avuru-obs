@@ -1,0 +1,30 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          { "key": "service.name", "value": { "stringValue": "seed-checkout-staging" } },
+          { "key": "avuru.tenant", "value": { "stringValue": "staging" } }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": { "name": "avuru-seed", "version": "1" },
+          "logRecords": [
+            {
+              "timeUnixNano": "100000000",
+              "severityNumber": 9,
+              "severityText": "INFO",
+              "body": { "stringValue": "staging checkout completed" },
+              "traceId": "bbbb1111cccc2222dddd3333eeee4444",
+              "spanId": "d4e5f60718293a4b",
+              "attributes": [
+                { "key": "order.id", "value": { "stringValue": "ord-staging-7" } }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

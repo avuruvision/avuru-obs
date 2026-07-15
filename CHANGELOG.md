@@ -11,7 +11,7 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
-## [0.1.0] — 2026-07-03
+## [0.1.0] — 2026-07-15
 
 The first tagged release: **the wedge**. A fresh Kubernetes cluster reaches a
 live service map in under five minutes with zero app changes — and that
@@ -32,6 +32,11 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
   time heatmap, per-operation RED overview, split workspace, span panel, six
   trace views (timeline, spans, flamegraph, statistics, graph, JSON) and
   structural **trace diff**; service map with call edges derived from spans.
+- **Trace inspect, SkyWalking-style**: resizable/expandable span detail with
+  copyable attributes, per-span tree view, derived span status and component
+  detection, service perspective from inside a trace (focus dimming,
+  participant-filtered drill-down), span-id lookup, service/operation filter
+  autocomplete, and a trace list groupable by service.
 - **Services inventory**: sortable RED table with drill-down to traces.
 - **RED metrics dashboard**: bucketed rate/errors/latency charts per service
   (`GET /api/v1/metrics/red`).
@@ -58,6 +63,28 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
   into CI.
 - Per-signal retention knobs applied as ClickHouse TTLs by `hub migrate`:
   `retention.{traces,logs,metrics,profiles}`.
+- **Per-project model (Coroot-style):** config-defined projects
+  (`projects` chart value / `AVURUOPS_PROJECTS`) merged with tenants
+  auto-discovered from data (`GET /api/v1/projects`); per-environment ingest
+  tagging via `gateway.tenant` (stamps `avuru.tenant`, plus the profiler's
+  ingest header); UI project switcher in the sidebar with shareable
+  `?project=` links and project-scoped caches.
+- **Collection controls:** deactivate collection per signal, per namespace
+  (`sensor.collection.excludeNamespaces`), per pod (label
+  `avuru.obs/instrument=false`), or per node (label
+  `avuru.obs/collect=false`, instant — no upgrade). Full matrix in
+  `deploy/helm/README.md`.
+- **Agent inventory:** `GET /api/v1/agents` + Settings → Collection show
+  per-node sensor freshness per signal ("N nodes reporting").
+- **Sensor "do no harm" hardening:** CPU limits on all sensor containers,
+  opt-in negative `PriorityClass` (on by default in the prod/staging
+  overlays), and a diagnostics runbook + evidence script
+  (`docs/runbooks/app-probe-failures.md`, `tools/diagnose/sensor-impact.sh`)
+  for app pods failing probes after install.
+- Settings screen restructured into General / Collection / Status tabs with
+  shareable `?tab=` state.
+- Chart render test suite (`make helm-check`) and an e2e-helm regression gate
+  asserting pre-existing app pods stay healthy after the chart installs.
 - Open-source governance layer: `GOVERNANCE.md`, `CODE_OF_CONDUCT.md`,
   `MAINTAINERS.md`, and `.github/CODEOWNERS`.
 - Release process: `RELEASING.md`, `RELEASE-CHECKLIST.md`, this changelog,
@@ -71,6 +98,10 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
 - The Helm chart deploys the full stack: hub (API) + UI (nginx) deployables,
   gateway, ClickHouse (or BYO), the migrate hook — and now the sensor
   DaemonSet.
+- **Default collection scope:** `kube-system`, `kube-node-lease`, and
+  `kube-public` are no longer collected by default (traces, logs, pod
+  metrics). Set `sensor.collection.excludeNamespaces: []` to restore the old
+  behavior; node-level metrics are unaffected.
 - Adopted a Kiali-style trunk branch model: `main` is the single development
   trunk, with `vX.Y` release branches and `vX.Y.Z` tags (retired `develop`).
 - Commit signing is now required (see `COMMIT-SIGNING-SETUP.md`).

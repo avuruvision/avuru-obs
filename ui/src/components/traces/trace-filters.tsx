@@ -1,10 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { FilterX } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
-import type { TraceFilters } from "@/hooks/use-traces-data";
+import { Combobox } from "@/components/ui/combobox";
+import { ApiError } from "@/lib/api";
+import { useResolveSpan, type TraceFilters } from "@/hooks/use-traces-data";
 
 const INPUT =
   "h-9 w-full rounded-lg border border-neutral bg-base-100 px-3 text-sm outline-none placeholder:text-base-content/40 focus:border-primary";
@@ -39,54 +42,88 @@ export function TraceFilterPanel({
   set,
   hasFilters,
   onClear,
+  services,
+  servicesLoading,
+  operations,
+  operationsLoading,
 }: {
   filters: TraceFilters;
   set: SetFn;
   hasFilters: boolean;
   onClear: () => void;
+  services: string[];
+  servicesLoading?: boolean;
+  operations: string[];
+  operationsLoading?: boolean;
 }) {
   const apply = (key: string) => (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") set({ [key]: (e.target as HTMLInputElement).value || undefined });
   };
 
+  const resolveSpan = useResolveSpan();
+  const [idError, setIdError] = useState<string | null>(null);
+
+  // 16 hex chars = a span id, which must be resolved to its trace first;
+  // anything else opens as a trace id directly (32 hex is the strict form,
+  // but stay permissive like the previous input).
+  const openId = (v: string) => {
+    if (/^[0-9a-fA-F]{16}$/.test(v)) {
+      resolveSpan.mutate(v, {
+        onSuccess: (res) => set({ trace: res.traceId, span: v }),
+        onError: (err) =>
+          setIdError(
+            err instanceof ApiError && err.status === 404
+              ? "No span found with this id."
+              : "Span lookup failed.",
+          ),
+      });
+      return;
+    }
+    set({ trace: v });
+  };
+
   return (
     <Card className="p-3">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
-        <Field label="Trace ID" className="col-span-2 xl:col-span-1">
+        <Field label="Trace / Span ID" className="col-span-2 xl:col-span-1">
           <input
             key={`trace-${filters.service ?? ""}`}
             type="text"
-            placeholder="paste a trace id…"
-            aria-label="Open trace by id"
+            placeholder="paste a trace or span id…"
+            aria-label="Open trace or span by id"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 const v = (e.target as HTMLInputElement).value.trim();
-                if (v) set({ trace: v });
+                if (v) openId(v);
               }
             }}
+            onChange={() => setIdError(null)}
             className={`${INPUT} font-mono`}
           />
+          {idError && <p className="mt-1 text-xs text-error">{idError}</p>}
         </Field>
 
         <Field label="Service">
-          <input
+          <Combobox
             key={`svc-${filters.service ?? ""}`}
-            defaultValue={filters.service ?? ""}
+            value={filters.service ?? ""}
+            options={services}
+            loading={servicesLoading}
+            onCommit={(v) => set({ service: v || undefined })}
             placeholder="any service"
-            aria-label="Filter by service"
-            onKeyDown={apply("service")}
-            className={INPUT}
+            ariaLabel="Filter by service"
           />
         </Field>
 
         <Field label="Operation">
-          <input
+          <Combobox
             key={`op-${filters.operation ?? ""}`}
-            defaultValue={filters.operation ?? ""}
+            value={filters.operation ?? ""}
+            options={operations}
+            loading={operationsLoading}
+            onCommit={(v) => set({ operation: v || undefined })}
             placeholder="any operation"
-            aria-label="Filter by operation"
-            onKeyDown={apply("operation")}
-            className={INPUT}
+            ariaLabel="Filter by operation"
           />
         </Field>
 

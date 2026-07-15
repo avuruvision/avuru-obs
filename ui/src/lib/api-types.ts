@@ -59,6 +59,11 @@ export interface TracesResponse {
   nextCursor?: string;
 }
 
+export interface SpanLookupResponse {
+  traceId: string;
+  spanId: string;
+}
+
 export interface SpanEvent {
   time: string;
   name: string;
@@ -71,6 +76,8 @@ export interface Span {
   service: string;
   operation: string;
   kind: string;
+  scopeName?: string;
+  scopeVersion?: string;
   startTime: string;
   durationMs: number;
   statusCode: string;
@@ -234,4 +241,31 @@ export interface FlameNode {
 
 export interface FlamegraphResponse {
   root: FlameNode;
+}
+
+export interface Project {
+  id: string;
+  source: "default" | "config" | "data";
+}
+
+export interface ProjectsResponse {
+  projects: Project[];
+}
+
+export interface AgentSignals {
+  traces: string | null;
+  logs: string | null;
+  metrics: string | null;
+  profiles: string | null;
+}
+
+export interface AgentNode {
+  node: string;
+  lastSeen: string;
+  signals: AgentSignals;
+}
+
+export interface AgentsResponse {
+  sensors: AgentNode[];
+  windowSeconds: number;
 }

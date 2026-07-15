@@ -5,10 +5,12 @@
 import type { Span } from "@/lib/api-types";
 
 // Stable service hue from a name hash — consistent colors across all screens.
+// Hues are kept out of the red/pink error band ([0,40) and (330,360]): a
+// service whose name hashed red used to make an all-OK trace read as failing.
 export function serviceHue(name: string): number {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
-  return h;
+  return 40 + (h % 290);
 }
 
 export function serviceColor(name: string): string {
@@ -18,6 +20,8 @@ export function serviceColor(name: string): string {
 export interface TraceRow {
   span: Span;
   depth: number;
+  hasChildren: boolean;
+  descendantCount: number; // total spans under this one (for "+N" collapse chips)
 }
 
 // childrenByParent maps a parent span id → its direct children, ordered by start
@@ -38,14 +42,25 @@ export function childrenByParent(spans: Span[]): Map<string, Span[]> {
   return byParent;
 }
 
-// buildRows flattens the span tree depth-first into render rows.
-export function buildRows(spans: Span[]): TraceRow[] {
+// buildRows flattens the span tree depth-first into render rows. Spans whose
+// id is in `collapsed` still get a row, but their subtree is skipped.
+export function buildRows(spans: Span[], collapsed?: ReadonlySet<string>): TraceRow[] {
   const byParent = childrenByParent(spans);
+  const counts = new Map<string, number>();
+  const countDescendants = (id: string): number => {
+    const cached = counts.get(id);
+    if (cached !== undefined) return cached;
+    let n = 0;
+    for (const c of byParent.get(id) ?? []) n += 1 + countDescendants(c.spanId);
+    counts.set(id, n);
+    return n;
+  };
   const rows: TraceRow[] = [];
   const walk = (parent: string, depth: number) => {
     for (const s of byParent.get(parent) ?? []) {
-      rows.push({ span: s, depth });
-      walk(s.spanId, depth + 1);
+      const hasChildren = (byParent.get(s.spanId) ?? []).length > 0;
+      rows.push({ span: s, depth, hasChildren, descendantCount: countDescendants(s.spanId) });
+      if (!collapsed?.has(s.spanId)) walk(s.spanId, depth + 1);
     }
   };
   walk("", 0);

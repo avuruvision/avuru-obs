@@ -1,33 +1,41 @@
 "use client";
 
-import { useState } from "react";
-import { Settings } from "lucide-react";
 import { Tabs } from "@/components/ui/tabs";
-import { ComingSoon } from "@/components/ui/coming-soon";
+import { useURLState } from "@/hooks/use-url-state";
 import { SystemStatus } from "./system-status";
+import { GeneralTab } from "./general-tab";
+import { CollectionSettings } from "./collection-settings";
 
-type Tab = "status" | "configuration";
+const TABS = ["general", "collection", "status"] as const;
+type Tab = (typeof TABS)[number];
 
+// Coroot-inspired settings: General (project), Collection (agents), Status
+// (instance). Tab state lives in the URL (?tab=) — shareable like everything
+// else. Requires a Suspense boundary in the page (useSearchParams).
 export function SettingsScreen() {
-  const [tab, setTab] = useState<Tab>("status");
+  const { get, setMany } = useURLState();
+  const tab = (TABS.find((t) => t === get("tab")) ?? "general") as Tab;
 
   return (
     <div className="flex flex-col gap-4">
       <Tabs<Tab>
         value={tab}
-        onChange={setTab}
+        onChange={(t) => setMany({ tab: t === "general" ? undefined : t })}
         items={[
+          { value: "general", label: "General" },
+          { value: "collection", label: "Collection" },
           { value: "status", label: "Status" },
-          { value: "configuration", label: "Configuration" },
         ]}
       />
-      {tab === "status" ? (
-        <SystemStatus />
-      ) : (
-        <ComingSoon icon={Settings} title="Configuration" milestone="M5">
-          Authentication, retention policies, agent configuration (OpAMP) — the
-          control plane gets its controls in the hardening milestone.
-        </ComingSoon>
+      {tab === "general" && <GeneralTab />}
+      {tab === "collection" && <CollectionSettings />}
+      {tab === "status" && (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-base-content/45">
+            Instance-wide (all projects) — storage and ingestion are shared.
+          </p>
+          <SystemStatus />
+        </div>
       )}
     </div>
   );

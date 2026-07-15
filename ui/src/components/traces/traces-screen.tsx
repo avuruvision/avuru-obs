@@ -4,8 +4,10 @@ import { useMemo } from "react";
 import { Tabs } from "@/components/ui/tabs";
 import { useTimeRange } from "@/hooks/use-time-range";
 import { useURLState } from "@/hooks/use-url-state";
+import { useLocalStorageFlag } from "@/hooks/use-local-storage-flag";
 import {
   useHeatmap,
+  useServices,
   useTraceOverview,
   useTraceSearch,
   type TraceFilters,
@@ -15,6 +17,7 @@ import { OverviewTable } from "./overview-table";
 import { TraceList } from "./trace-list";
 import { TraceFilterPanel } from "./trace-filters";
 import { TraceWorkspace } from "./trace-workspace";
+import { CLEAR_WORKSPACE_PARAMS } from "./workspace-params";
 
 type Tab = "overview" | "traces";
 
@@ -54,6 +57,16 @@ export function TracesScreen() {
   const overview = useTraceOverview(time, filters.service, filters.includeAux);
   const heatmap = useHeatmap(time, filters);
   const search = useTraceSearch(time, filters);
+  const services = useServices(time);
+  const [groupByService, setGroupByService] = useLocalStorageFlag("traces:groupByService");
+
+  // Operation names for the Operation filter's type-ahead — reuse the overview
+  // data (already fetched), deduped across services. Scoped to the selected
+  // service when one is set, otherwise all operations in the window.
+  const operationOptions = useMemo(
+    () => [...new Set((overview.data?.operations ?? []).map((o) => o.operation))],
+    [overview.data],
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -61,6 +74,10 @@ export function TracesScreen() {
         filters={filters}
         set={setMany}
         hasFilters={hasFilters}
+        services={services.data ?? []}
+        servicesLoading={services.isLoading}
+        operations={operationOptions}
+        operationsLoading={overview.isLoading}
         onClear={() =>
           setMany({
             service: undefined,
@@ -91,16 +108,7 @@ export function TracesScreen() {
         value={tab}
         // Tabs double as the escape hatch from the trace workspace: selecting
         // one closes the open trace (same params the panel's close button clears).
-        onChange={(t) =>
-          setMany({
-            tab: t,
-            trace: undefined,
-            view: undefined,
-            span: undefined,
-            compare: undefined,
-            full: undefined,
-          })
-        }
+        onChange={(t) => setMany({ ...CLEAR_WORKSPACE_PARAMS, tab: t })}
       />
 
       {selectedTrace ? (
@@ -124,15 +132,27 @@ export function TracesScreen() {
           }
         />
       ) : (
-        <TraceList
-          pages={search.data?.pages.map((p) => p.traces)}
-          isLoading={search.isLoading}
-          hasNextPage={Boolean(search.hasNextPage)}
-          isFetchingNextPage={search.isFetchingNextPage}
-          fetchNextPage={() => search.fetchNextPage()}
-          onSelect={(traceId) => setMany({ trace: traceId })}
-          selectedTraceId={selectedTrace ?? undefined}
-        />
+        <div className="flex flex-col gap-2">
+          <label className="flex cursor-pointer items-center gap-1.5 self-end text-xs text-base-content/70">
+            <input
+              type="checkbox"
+              checked={groupByService}
+              onChange={(e) => setGroupByService(e.target.checked)}
+              className="accent-primary"
+            />
+            Group by service
+          </label>
+          <TraceList
+            pages={search.data?.pages.map((p) => p.traces)}
+            isLoading={search.isLoading}
+            hasNextPage={Boolean(search.hasNextPage)}
+            isFetchingNextPage={search.isFetchingNextPage}
+            fetchNextPage={() => search.fetchNextPage()}
+            onSelect={(traceId) => setMany({ trace: traceId })}
+            selectedTraceId={selectedTrace ?? undefined}
+            groupByService={groupByService}
+          />
+        </div>
       )}
     </div>
   );

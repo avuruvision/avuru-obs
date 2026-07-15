@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { cn } from "@/lib/cn";
 import { formatMs } from "@/lib/format";
 import { buildRows, serviceColor } from "@/lib/trace";
+import { isSpanError } from "@/lib/span-status";
 import type { Span, TraceResponse } from "@/lib/api-types";
 
 const ROW_H = 22;
@@ -31,7 +32,7 @@ export function Flamegraph({
       {rows.map(({ span, depth }) => {
         const left = ((new Date(span.startTime).getTime() - t0) / total) * 100;
         const width = Math.max((span.durationMs / total) * 100, 0.2);
-        const isError = span.statusCode === "Error";
+        const isError = isSpanError(span);
         const isSelected = selectedSpanId === span.spanId;
         return (
           <button

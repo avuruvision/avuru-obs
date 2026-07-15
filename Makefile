@@ -1,6 +1,6 @@
 # Thin root dispatcher ONLY — build logic lives in each component
 # (agent_docs/development.md). Keep it that way.
-.PHONY: hub agent ui ui-image gateway-image proto check e2e e2e-helm e2e-ui dev dev-clean version version-set
+.PHONY: hub agent ui ui-image gateway-image proto check helm-check e2e e2e-helm e2e-ui dev dev-clean version version-set
 
 COMPOSE := docker compose -f deploy/compose/docker-compose.yaml
 
@@ -49,6 +49,10 @@ e2e:
 	$(COMPOSE) up -d gateway demo
 	sleep 3 && cd tools/seed && go run . -endpoint http://localhost:4318 -fixtures ../../deploy/compose/seed/fixtures
 	cd e2e && go test -tags=e2e -count=1 -v ./... ; rc=$$? ; cd .. && $(COMPOSE) down -v && exit $$rc
+
+# Chart render assertions (lint + template matrix) — fast, no cluster.
+helm-check:
+	bash deploy/helm/template-test.sh
 
 # Helm install smoke: kind cluster + helm install + seed + assert (traces +
 # correlated logs). Owns the kind lifecycle (deploy/helm/e2e-helm.sh).

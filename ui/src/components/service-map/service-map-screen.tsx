@@ -1,18 +1,21 @@
 "use client";
 
-import { Map as MapIcon } from "lucide-react";
+import { useRef } from "react";
+import { Map as MapIcon, Shuffle } from "lucide-react";
 import { useTimeRange } from "@/hooks/use-time-range";
 import { useURLState } from "@/hooks/use-url-state";
 import { useServiceMapData } from "@/hooks/use-service-map-data";
+import { Button } from "@/components/ui/button";
 import { CenteredSpinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ServiceMap } from "./service-map";
+import { ServiceMap, type ServiceMapHandle } from "./service-map";
 
 export function ServiceMapScreen() {
   const { time } = useTimeRange();
   const { get, setMany } = useURLState();
   const includeAux = get("includeAux") === "true";
   const { data, isLoading } = useServiceMapData(time, includeAux);
+  const mapRef = useRef<ServiceMapHandle>(null);
 
   if (isLoading) return <CenteredSpinner />;
   const services = data?.services ?? [];
@@ -35,17 +38,27 @@ export function ServiceMapScreen() {
           {services.length} services · {edges.length} call edges · nodes sized by
           request rate, red = errors · click a node for its traces.
         </p>
-        <label className="flex cursor-pointer items-center gap-1.5 text-xs text-base-content/70">
-          <input
-            type="checkbox"
-            checked={includeAux}
-            onChange={(e) => setMany({ includeAux: e.target.checked ? "true" : undefined })}
-            className="accent-primary"
-          />
-          Show auxiliary requests
-        </label>
+        <div className="flex items-center gap-3">
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-base-content/70">
+            <input
+              type="checkbox"
+              checked={includeAux}
+              onChange={(e) => setMany({ includeAux: e.target.checked ? "true" : undefined })}
+              className="accent-primary"
+            />
+            Show auxiliary requests
+          </label>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Re-run layout"
+            onClick={() => mapRef.current?.relayout()}
+          >
+            <Shuffle className="h-3.5 w-3.5" /> Re-layout
+          </Button>
+        </div>
       </div>
-      <ServiceMap services={services} edges={edges} />
+      <ServiceMap services={services} edges={edges} handleRef={mapRef} />
     </div>
   );
 }

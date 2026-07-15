@@ -10,31 +10,38 @@ import (
 
 // Fake implements storage.Store from canned data. Zero value is usable.
 type Fake struct {
-	PingErr   error
-	Services  []storage.ServiceStats
-	Edges     []storage.ServiceEdge
-	Ops       []storage.OperationStats
-	Page      storage.TracePage
-	Traces    map[string]storage.Trace
-	Heat      storage.Heatmap
-	LogPage   storage.LogPage
-	TraceLogs map[string][]storage.LogRecord
-	Stats     storage.SystemStats
-	StatsErr  error
-	Nodes     []storage.NodeStat
-	Pods      []storage.PodStat
-	RED       []storage.REDSeries
-	Written   []storage.ProfileSample
-	Profiled  []storage.ProfiledService
-	Flame     storage.FlameNode
+	PingErr    error
+	Services   []storage.ServiceStats
+	Edges      []storage.ServiceEdge
+	Ops        []storage.OperationStats
+	Page       storage.TracePage
+	Traces     map[string]storage.Trace
+	SpanTraces map[string]string // spanId -> traceId
+	Heat       storage.Heatmap
+	LogPage    storage.LogPage
+	TraceLogs  map[string][]storage.LogRecord
+	Stats      storage.SystemStats
+	StatsErr   error
+	Nodes      []storage.NodeStat
+	Pods       []storage.PodStat
+	Agents     []storage.AgentNode
+	Tenants    []string
+	TenantsErr error
+	RED        []storage.REDSeries
+	Written    []storage.ProfileSample
+	Profiled   []storage.ProfiledService
+	Flame      storage.FlameNode
 
 	// Last*Query record the most recent inputs for asserting parameter parsing.
-	LastTraceQuery   storage.TraceQuery
-	LastServiceQuery storage.ServiceQuery
-	LastLogQuery     storage.LogQuery
-	LastInfraQuery   storage.InfraQuery
-	LastREDQuery     storage.REDQuery
-	LastProfileQuery storage.ProfileQuery
+	LastTraceQuery       storage.TraceQuery
+	LastServiceQuery     storage.ServiceQuery
+	LastOverviewQuery    storage.OverviewQuery
+	LastLogQuery         storage.LogQuery
+	LastInfraQuery       storage.InfraQuery
+	LastAgentQuery       storage.AgentQuery
+	LastREDQuery         storage.REDQuery
+	LastProfileQuery     storage.ProfileQuery
+	LastSpanLookupTenant string
 }
 
 func (f *Fake) REDSeries(_ context.Context, q storage.REDQuery) ([]storage.REDSeries, error) {
@@ -67,6 +74,15 @@ func (f *Fake) ListPodStats(_ context.Context, q storage.InfraQuery) ([]storage.
 	return f.Pods, nil
 }
 
+func (f *Fake) ListAgentNodes(_ context.Context, q storage.AgentQuery) ([]storage.AgentNode, error) {
+	f.LastAgentQuery = q
+	return f.Agents, nil
+}
+
+func (f *Fake) ListTenants(context.Context) ([]string, error) {
+	return f.Tenants, f.TenantsErr
+}
+
 var _ storage.Store = (*Fake)(nil)
 
 func (f *Fake) Ping(context.Context) error { return f.PingErr }
@@ -85,7 +101,8 @@ func (f *Fake) ServiceEdges(_ context.Context, q storage.ServiceQuery) ([]storag
 	return f.Edges, nil
 }
 
-func (f *Fake) TraceOverview(_ context.Context, _ storage.OverviewQuery) ([]storage.OperationStats, error) {
+func (f *Fake) TraceOverview(_ context.Context, q storage.OverviewQuery) ([]storage.OperationStats, error) {
+	f.LastOverviewQuery = q
 	return f.Ops, nil
 }
 
@@ -100,6 +117,14 @@ func (f *Fake) GetTrace(_ context.Context, _, traceID string) (storage.Trace, er
 		return storage.Trace{}, storage.ErrNotFound
 	}
 	return t, nil
+}
+
+func (f *Fake) FindSpanTrace(_ context.Context, tenant, spanID string) (string, error) {
+	f.LastSpanLookupTenant = tenant
+	if id, ok := f.SpanTraces[spanID]; ok {
+		return id, nil
+	}
+	return "", storage.ErrNotFound
 }
 
 func (f *Fake) TraceHeatmap(_ context.Context, _ storage.HeatmapQuery) (storage.Heatmap, error) {

@@ -30,6 +30,7 @@ export class ApiError extends Error {
 export async function apiGet<T>(
   path: string,
   params?: Record<string, string | number | undefined>,
+  opts?: { project?: string },
 ): Promise<T> {
   // path is already "/api/v1/..."; an absolute apiBase wins, "" stays same-origin.
   const url = new URL(apiBase() + path, window.location.origin);
@@ -38,7 +39,13 @@ export async function apiGet<T>(
       if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
     }
   }
-  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  const headers: Record<string, string> = { Accept: "application/json" };
+  // The hub's tenancy seam; omitted for "default" so requests stay
+  // byte-identical to the pre-project UI.
+  if (opts?.project && opts.project !== "default") {
+    headers["X-Avuru-Tenant"] = opts.project;
+  }
+  const res = await fetch(url, { headers });
   if (!res.ok) {
     let message = res.statusText;
     try {
