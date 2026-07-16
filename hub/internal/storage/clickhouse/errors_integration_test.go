@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/modules"
+	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
 // insertSpanWithEvent inserts one span carrying a single named event with the
@@ -280,4 +281,127 @@ func TestErrorTrackingModuleGating(t *testing.T) {
 			t.Errorf("SystemStats reports errors although module is off")
 		}
 	}
+}
+
+// insertRawErrorEvent writes directly into error_events (bypassing the MVs) so
+// read-path tests can control fingerprints and timestamps precisely.
+func insertRawErrorEvent(t *testing.T, s *Store, ts time.Time, tenant string, fp uint64, service, excType, msg, traceID string) {
+	t.Helper()
+	ctx := context.Background()
+	batch, err := s.conn.PrepareBatch(ctx, `INSERT INTO error_events
+		(Timestamp, Tenant, ServiceName, Fingerprint, Source, ExceptionType, ExceptionMessage,
+		 ExceptionStacktrace, TraceId, SpanId, Environment, SdkName, SdkVersion, Attributes)`)
+	if err != nil {
+		t.Fatalf("preparing error_events batch: %v", err)
+	}
+	if err := batch.Append(ts, tenant, service, fp, "span", excType, msg,
+		"at x(x.go:1)", traceID, "s1", "prod", "", "", map[string]string{}); err != nil {
+		t.Fatalf("appending error_event: %v", err)
+	}
+	if err := batch.Send(); err != nil {
+		t.Fatalf("sending error_events batch: %v", err)
+	}
+}
+
+// TestErrorReadQueries exercises SearchErrorIssues (grouping, window, sort),
+// GetErrorIssue, ListErrorEvents (keyset), and the histogram against real
+// ClickHouse.
+func TestErrorReadQueries(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+	base := time.Now().UTC().Truncate(time.Minute).Add(-30 * time.Minute)
+
+	insertRawErrorEvent(t, store, base.Add(20*time.Minute), "default", 100, "web", "NPE", "boom", "tA1")
+	insertRawErrorEvent(t, store, base.Add(21*time.Minute), "default", 100, "web", "NPE", "boom", "tA2")
+	insertRawErrorEvent(t, store, base.Add(22*time.Minute), "default", 100, "web", "NPE", "boom", "tA3")
+	insertRawErrorEvent(t, store, base.Add(1*time.Minute), "default", 200, "api", "Timeout", "slow", "tB1")
+	insertRawErrorEvent(t, store, base.Add(23*time.Minute), "other", 300, "web", "NPE", "boom", "tX1")
+
+	win := storage.TimeRange{Start: base, End: base.Add(time.Hour)}
+
+	t.Run("SearchByCount", func(t *testing.T) {
+		issues, err := store.SearchErrorIssues(ctx, storage.ErrorIssueQuery{Tenant: "default", Range: win, Sort: "count"})
+		if err != nil {
+			t.Fatalf("SearchErrorIssues: %v", err)
+		}
+		if len(issues) != 2 {
+			t.Fatalf("got %d issues, want 2: %+v", len(issues), issues)
+		}
+		if issues[0].Fingerprint != 100 || issues[0].Count != 3 {
+			t.Errorf("top issue by count wrong: %+v", issues[0])
+		}
+		if issues[0].Status != "unresolved" || issues[0].Regressed {
+			t.Errorf("untriaged issue should be plain unresolved: %+v", issues[0])
+		}
+		if !issues[0].FirstSeen.Before(issues[0].LastSeen) {
+			t.Errorf("first/last seen wrong: %+v", issues[0])
+		}
+	})
+
+	t.Run("TenantIsolation", func(t *testing.T) {
+		issues, err := store.SearchErrorIssues(ctx, storage.ErrorIssueQuery{Tenant: "other", Range: win})
+		if err != nil {
+			t.Fatalf("SearchErrorIssues: %v", err)
+		}
+		if len(issues) != 1 || issues[0].Fingerprint != 300 {
+			t.Fatalf("tenant isolation broken: %+v", issues)
+		}
+	})
+
+	t.Run("ServiceFilter", func(t *testing.T) {
+		issues, err := store.SearchErrorIssues(ctx, storage.ErrorIssueQuery{Tenant: "default", Range: win, Service: "api"})
+		if err != nil {
+			t.Fatalf("SearchErrorIssues: %v", err)
+		}
+		if len(issues) != 1 || issues[0].Fingerprint != 200 {
+			t.Fatalf("service filter wrong: %+v", issues)
+		}
+	})
+
+	t.Run("GetErrorIssue", func(t *testing.T) {
+		iss, err := store.GetErrorIssue(ctx, "default", 100)
+		if err != nil {
+			t.Fatalf("GetErrorIssue: %v", err)
+		}
+		if iss.Count != 3 || iss.Service != "web" {
+			t.Errorf("issue wrong: %+v", iss)
+		}
+		if _, err := store.GetErrorIssue(ctx, "default", 999); err != storage.ErrNotFound {
+			t.Errorf("missing issue: want ErrNotFound, got %v", err)
+		}
+	})
+
+	t.Run("ListErrorEventsKeyset", func(t *testing.T) {
+		page, err := store.ListErrorEvents(ctx, storage.ErrorEventQuery{Tenant: "default", Fingerprint: 100, Limit: 2})
+		if err != nil {
+			t.Fatalf("ListErrorEvents: %v", err)
+		}
+		if len(page.Events) != 2 || page.NextCursor == nil {
+			t.Fatalf("first page wrong: %d events, cursor=%v", len(page.Events), page.NextCursor)
+		}
+		if page.Events[0].TraceID != "tA3" {
+			t.Errorf("expected newest first, got %s", page.Events[0].TraceID)
+		}
+		next, err := store.ListErrorEvents(ctx, storage.ErrorEventQuery{Tenant: "default", Fingerprint: 100, Limit: 2, Cursor: page.NextCursor})
+		if err != nil {
+			t.Fatalf("ListErrorEvents page 2: %v", err)
+		}
+		if len(next.Events) != 1 || next.NextCursor != nil {
+			t.Errorf("second page wrong: %d events, cursor=%v", len(next.Events), next.NextCursor)
+		}
+	})
+
+	t.Run("Histogram", func(t *testing.T) {
+		pts, err := store.ErrorIssueHistogram(ctx, "default", 100, win, 60)
+		if err != nil {
+			t.Fatalf("ErrorIssueHistogram: %v", err)
+		}
+		var total uint64
+		for _, p := range pts {
+			total += p.Count
+		}
+		if total != 3 {
+			t.Errorf("histogram total = %d, want 3", total)
+		}
+	})
 }

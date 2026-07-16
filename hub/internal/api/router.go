@@ -92,6 +92,12 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 		// tables, so it lives with infra-metrics (see the module AEP).
 		mux.Handle("GET /api/v1/agents", handle(a.handleAgents))
 	}
+	if active.Enabled(modules.ErrorTracking) {
+		mux.Handle("GET /api/v1/errors/issues", handle(a.handleSearchErrorIssues))
+		mux.Handle("GET /api/v1/errors/issues/{fingerprint}", handle(a.handleGetErrorIssue))
+		mux.Handle("GET /api/v1/errors/issues/{fingerprint}/events", handle(a.handleListErrorEvents))
+		mux.Handle("GET /api/v1/errors/issues/{fingerprint}/histogram", handle(a.handleErrorIssueHistogram))
+	}
 }
 
 func handleHealthz(w http.ResponseWriter, _ *http.Request) {
