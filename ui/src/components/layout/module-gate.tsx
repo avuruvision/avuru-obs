@@ -10,12 +10,14 @@ const HELM_VALUE: Record<Exclude<ModuleName, "core">, string> = {
   logs: "modules.logs.enabled",
   "infra-metrics": "modules.infraMetrics.enabled",
   profiling: "modules.profiling.enabled",
+  "error-tracking": "modules.errorTracking.enabled",
 };
 
 const LABEL: Record<Exclude<ModuleName, "core">, string> = {
   logs: "Logs",
   "infra-metrics": "Infrastructure metrics",
   profiling: "Continuous profiling",
+  "error-tracking": "Error tracking",
 };
 
 // Renders `children` unless this install doesn't run `module`, in which case

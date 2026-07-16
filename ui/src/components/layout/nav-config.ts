@@ -1,5 +1,6 @@
 import {
   Boxes,
+  Bug,
   Flame,
   Gauge,
   ListTree,
@@ -38,6 +39,7 @@ export const NAV_SECTIONS: NavSection[] = [
       // RED is derived from traces, not from the metrics tables — core.
       { href: "/metrics", label: "Metrics", icon: Gauge },
       { href: "/profiling", label: "Profiling", icon: Flame, module: "profiling" },
+      { href: "/errors", label: "Errors", icon: Bug, module: "error-tracking" },
     ],
   },
   {

@@ -46,6 +46,29 @@ export async function apiGet<T>(
     headers["X-Avuru-Tenant"] = opts.project;
   }
   const res = await fetch(url, { headers });
+  return handleJSON<T>(res);
+}
+
+// apiPost sends a JSON body (used by triage writes). Same tenant header and
+// error handling as apiGet.
+export async function apiPost<T>(
+  path: string,
+  body: unknown,
+  opts?: { project?: string },
+): Promise<T> {
+  const url = new URL(apiBase() + path, window.location.origin);
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+  if (opts?.project && opts.project !== "default") {
+    headers["X-Avuru-Tenant"] = opts.project;
+  }
+  const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+  return handleJSON<T>(res);
+}
+
+async function handleJSON<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let message = res.statusText;
     try {
