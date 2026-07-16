@@ -1,6 +1,16 @@
 // Hand-written M1 mirror of the hub API DTOs (hub/internal/api/dto.go).
 // Replaced by proto/buf codegen in a follow-up — keep field names in sync.
 
+// Signal families this install runs. Mirrors the Go registry in
+// hub/internal/modules — keep the wire names in sync. `core` (service map,
+// traces, RED) is always present.
+export type ModuleName = "core" | "logs" | "infra-metrics" | "profiling";
+
+export interface CapabilitiesResponse {
+  version: string;
+  modules: ModuleName[];
+}
+
 export interface ServiceStats {
   name: string;
   spanCount: number;

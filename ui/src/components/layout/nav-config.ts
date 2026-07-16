@@ -9,6 +9,7 @@ import {
   Settings,
   type LucideIcon,
 } from "lucide-react";
+import type { ModuleName } from "@/lib/api-types";
 
 // The navigation model: grouped sections (Kiali-style IA). One source of truth
 // for the sidebar AND breadcrumbs (the avuru-obs analog of Kiali's routes).
@@ -16,6 +17,9 @@ export interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  // Module owning this entry; omitted = core (always shown). The sidebar
+  // hides entries whose module is inactive — see useCapabilities.
+  module?: ModuleName;
 }
 
 export interface NavSection {
@@ -30,14 +34,15 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/service-map", label: "Service Map", icon: MapIcon },
       { href: "/services", label: "Services", icon: Boxes },
       { href: "/traces", label: "Traces", icon: ListTree },
-      { href: "/logs", label: "Logs", icon: ScrollText },
+      { href: "/logs", label: "Logs", icon: ScrollText, module: "logs" },
+      // RED is derived from traces, not from the metrics tables — core.
       { href: "/metrics", label: "Metrics", icon: Gauge },
-      { href: "/profiling", label: "Profiling", icon: Flame },
+      { href: "/profiling", label: "Profiling", icon: Flame, module: "profiling" },
     ],
   },
   {
     title: "Infrastructure",
-    items: [{ href: "/nodes", label: "Nodes", icon: Server }],
+    items: [{ href: "/nodes", label: "Nodes", icon: Server, module: "infra-metrics" }],
   },
   {
     title: "System",

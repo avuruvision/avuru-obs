@@ -12,6 +12,7 @@ export const queryKeys = {
   status: ["status"] as const,
   systemStatus: ["system", "status"] as const,
   projects: ["projects"] as const,
+  capabilities: ["capabilities"] as const,
   services: (p: string, t: TimeParams, includeAux?: boolean) =>
     [p, "services", "list", { ...t, includeAux }] as const,
   serviceMap: (p: string, t: TimeParams, includeAux?: boolean) =>
