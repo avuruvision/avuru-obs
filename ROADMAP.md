@@ -73,6 +73,32 @@ These milestone tags (`M1`–`M5`) are referenced throughout the codebase and
   per-project retention (per-tenant TTL is its own design), per-project
   system status, and chart component toggles so secondary clusters install
   gateway(+sensor)-only against a shared ClickHouse.
+- **Modules — pick your signals:** one switch per signal family
+  (`modules.<name>.enabled`) gates its schema, API, pipeline, collection and UI
+  together, so a traces-only install carries no log/profile weight. Everything
+  is on by default; `core` (service map + traces + RED) always is. Shipped as
+  the seam that new signals plug into — see the
+  [AEP](design/2026-07-15-module-framework.md).
+- **Error tracking (new module):** exceptions already reach us as span events
+  and ERROR logs, but only as counts. This groups them into deduplicated
+  issues with a stack trace, an occurrence timeline, links to the originating
+  trace, and a triage lifecycle (resolved/ignored, plus regression detection
+  when a resolved issue recurs). Two ways in, no code change either way:
+  derived in-database from the OTLP you already send, and a Sentry-protocol
+  ingest endpoint so existing SDKs — browser JS especially, the one signal
+  eBPF cannot reach — point at avuru-obs by changing a DSN. Later: alerting,
+  release tracking, source maps.
+- **Wider ingest compatibility:** Jaeger, Zipkin, Prometheus and Loki push
+  receivers alongside OTLP, plus forwarding exporters (OTLP/Kafka) so
+  avuru-obs can dual-write during a migration. Extends the drop-in promise
+  beyond OTLP and keeps the door open in both directions.
+- **Network health on the service map:** per-edge RTT, retransmissions and
+  resets from the eBPF flow tracer — connection-level health without traces,
+  SDKs, or app changes.
+- **Richer auto-tagging:** map Kubernetes labels/annotations to business tags
+  and filter by them across every signal.
+- **Deeper profiling:** off-CPU and memory profiles as the upstream OTel eBPF
+  profiler grows them.
 - **More clients:** the Hub API is the client-agnostic contract; the SPA is one
   thin client. A **Grafana** data source and a **CLI** are planned.
 - **Storage re-evaluation:** ClickHouse stays behind `storage.Store`; GreptimeDB

@@ -64,6 +64,27 @@ with the hub (`/`→UI, `/api`→hub). The hub API is the client-agnostic contra
 - **Lite**: profiling (CPU flame graphs per service only)
 - **Supporting**: infra metrics (kubeletstats: node/pod CPU/mem/network)
 
+## Modules (which signal families an install runs)
+
+A **module** is one signal family gated end to end by a single switch
+(`modules.<name>.enabled` → `AVURUOPS_MODULES`): schema, Hub API routes,
+gateway pipeline, sensor collection, and UI entry. Everything is enabled by
+default, so this is subtraction only — never install friction. See
+[the AEP](../design/2026-07-15-module-framework.md).
+
+| Module | Owns | Notes |
+|---|---|---|
+| `core` | traces, service map, RED, projects, system status | **No switch** — this is the wedge. RED is trace-derived, so the Metrics view is core |
+| `logs` | `otel_logs`, log search + trace correlation | |
+| `infra-metrics` | the `otel_metrics_*` tables, `/infra/*`, sensor inventory | The inventory reads collector self-metrics from these tables |
+| `profiling` | `profiling_*`, flame graphs, profiles ingest | |
+
+Registry: `hub/internal/modules` (Go) mirrored in `ui/src/lib/api-types.ts`;
+migrations are tagged per module in `migrations.ByModule`. Clients discover the
+active set from **`GET /api/v1/capabilities`** — the client-agnostic contract
+(the SPA hides inactive entries; a hub predating the endpoint means "all on").
+Disabling a module never drops existing tables; it stops managing them.
+
 ## Enterprise seam (do not bypass)
 
 - Auth: `hub/internal/auth.Provider` interface; v0.1 ships local admin
