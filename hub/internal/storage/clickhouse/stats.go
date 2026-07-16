@@ -19,6 +19,7 @@ var signalTables = []struct {
 	{"logs", []string{"otel_logs"}, "Timestamp"},
 	{"metrics", metricsTables, "TimeUnix"},
 	{"profiles", []string{"profiling_samples"}, "Timestamp"},
+	{"errors", []string{"error_events"}, "Timestamp"},
 }
 
 // SystemStats reports per-signal storage usage (system.parts), data freshness

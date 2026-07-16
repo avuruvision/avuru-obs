@@ -55,9 +55,14 @@
           "type": "object",
           "properties": { "enabled": { "type": "boolean" } },
           "required": ["enabled"]
+        },
+        "errorTracking": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } },
+          "required": ["enabled"]
         }
       },
-      "required": ["logs", "infraMetrics", "profiling"]
+      "required": ["logs", "infraMetrics", "profiling", "errorTracking"]
     },
     "sensor": {
       "type": "object",
@@ -174,9 +179,10 @@
         "traces": { "type": "integer", "minimum": 0 },
         "logs": { "type": "integer", "minimum": 0 },
         "metrics": { "type": "integer", "minimum": 0 },
-        "profiles": { "type": "integer", "minimum": 0 }
+        "profiles": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "integer", "minimum": 0 }
       },
-      "required": ["traces", "logs", "metrics", "profiles"]
+      "required": ["traces", "logs", "metrics", "profiles", "errors"]
     },
     "ingress": {
       "type": "object",

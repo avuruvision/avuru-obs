@@ -116,6 +116,9 @@ func runMigrate() error {
 		LogsDays:     envIntOr("AVURUOPS_RETENTION_LOGS_DAYS", 3),
 		MetricsDays:  envIntOr("AVURUOPS_RETENTION_METRICS_DAYS", 7),
 		ProfilesDays: envIntOr("AVURUOPS_RETENTION_PROFILES_DAYS", 3),
+		// Errors default higher: low volume after fingerprint grouping, and
+		// issue history is the point of the module.
+		ErrorsDays: envIntOr("AVURUOPS_RETENTION_ERRORS_DAYS", 30),
 	}
 	// Don't touch a disabled module's TTL: its tables were never created —
 	// or, if the module was enabled once, they still hold data we no longer
@@ -129,6 +132,9 @@ func runMigrate() error {
 	if !active.Enabled(modules.Profiling) {
 		retention.ProfilesDays = 0
 	}
+	if !active.Enabled(modules.ErrorTracking) {
+		retention.ErrorsDays = 0
+	}
 	if err := store.ApplyRetention(ctx, retention); err != nil {
 		return fmt.Errorf("applying retention: %w", err)
 	}
@@ -137,7 +143,8 @@ func runMigrate() error {
 		"tracesRetentionDays", retention.TracesDays,
 		"logsRetentionDays", retention.LogsDays,
 		"metricsRetentionDays", retention.MetricsDays,
-		"profilesRetentionDays", retention.ProfilesDays)
+		"profilesRetentionDays", retention.ProfilesDays,
+		"errorsRetentionDays", retention.ErrorsDays)
 	return nil
 }
 

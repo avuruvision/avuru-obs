@@ -83,6 +83,7 @@ otel
 {{- if .Values.modules.logs.enabled -}}{{- $mods = append $mods "logs" -}}{{- end -}}
 {{- if .Values.modules.infraMetrics.enabled -}}{{- $mods = append $mods "infra-metrics" -}}{{- end -}}
 {{- if .Values.modules.profiling.enabled -}}{{- $mods = append $mods "profiling" -}}{{- end -}}
+{{- if .Values.modules.errorTracking.enabled -}}{{- $mods = append $mods "error-tracking" -}}{{- end -}}
 {{- join "," $mods -}}
 {{- end -}}
 

@@ -46,3 +46,5 @@ spec:
               value: {{ .Values.retention.metrics | quote }}
             - name: AVURUOPS_RETENTION_PROFILES_DAYS
               value: {{ .Values.retention.profiles | quote }}
+            - name: AVURUOPS_RETENTION_ERRORS_DAYS
+              value: {{ .Values.retention.errors | quote }}

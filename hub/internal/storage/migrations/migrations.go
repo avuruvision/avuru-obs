@@ -23,6 +23,7 @@ var Ordered = []string{
 	"0003_metrics.sql",
 	"0004_profiles.sql",
 	"0005_span_index.sql",
+	"0006_errors.sql",
 }
 
 // ByModule tags each migration with the module owning its schema; the
@@ -35,4 +36,5 @@ var ByModule = map[string]modules.Name{
 	"0003_metrics.sql":    modules.InfraMetrics,
 	"0004_profiles.sql":   modules.Profiling,
 	"0005_span_index.sql": modules.Core,
+	"0006_errors.sql":     modules.ErrorTracking,
 }

@@ -75,6 +75,12 @@ modules:
     enabled: true
   profiling:
     enabled: true
+  # Error tracking: exceptions (span events, error spans, ERROR/FATAL logs)
+  # become deduplicated, triageable issues. Default on — it derives from data
+  # you already send. The Sentry-SDK ingest PORT is a separate opt-in
+  # (gateway.sentry.enabled), off by default.
+  errorTracking:
+    enabled: true
 
 # Sensor: per-node DaemonSet for zero-code signal collection (eBPF). v0.1
 # wires OBI (zero-code traces + RED); the otel-agent (logs, kubeletstats) and
@@ -213,6 +219,8 @@ retention:
   logs: 3
   metrics: 7
   profiles: 3
+  # Errors keep longer: low volume after grouping, and issue history matters.
+  errors: 30
 
 ingress:
   enabled: false

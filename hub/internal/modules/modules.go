@@ -15,14 +15,15 @@ type Name string
 // The module registry. Core is the wedge (service map + traces + RED) and is
 // never disableable.
 const (
-	Core         Name = "core"
-	Logs         Name = "logs"
-	InfraMetrics Name = "infra-metrics"
-	Profiling    Name = "profiling"
+	Core          Name = "core"
+	Logs          Name = "logs"
+	InfraMetrics  Name = "infra-metrics"
+	Profiling     Name = "profiling"
+	ErrorTracking Name = "error-tracking"
 )
 
 // All lists every known module in registry (display) order.
-var All = []Name{Core, Logs, InfraMetrics, Profiling}
+var All = []Name{Core, Logs, InfraMetrics, Profiling, ErrorTracking}
 
 // Set is a resolved active-module set; Core is always present.
 type Set map[Name]bool

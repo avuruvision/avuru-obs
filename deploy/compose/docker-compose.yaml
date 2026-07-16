@@ -38,11 +38,12 @@ services:
       AVURUOPS_CLICKHOUSE_PASSWORD: avuru
       # Modules this sandbox runs (empty/unset = all). Drop an entry to skip
       # its schema — the hub then 404s its API and the UI hides its entry.
-      AVURUOPS_MODULES: "core,logs,infra-metrics,profiling"
+      AVURUOPS_MODULES: "core,logs,infra-metrics,profiling,error-tracking"
       AVURUOPS_RETENTION_TRACES_DAYS: "7"
       AVURUOPS_RETENTION_LOGS_DAYS: "3"
       AVURUOPS_RETENTION_METRICS_DAYS: "7"
       AVURUOPS_RETENTION_PROFILES_DAYS: "3"
+      AVURUOPS_RETENTION_ERRORS_DAYS: "30"
     depends_on:
       clickhouse:
         condition: service_healthy

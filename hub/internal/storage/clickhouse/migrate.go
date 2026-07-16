@@ -77,6 +77,7 @@ type Retention struct {
 	LogsDays     int
 	MetricsDays  int
 	ProfilesDays int
+	ErrorsDays   int
 }
 
 // ApplyRetention sets per-signal TTL via `ALTER ... MODIFY TTL`. Retention
@@ -114,6 +115,14 @@ func (s *Store) ApplyRetention(ctx context.Context, r Retention) error {
 		q := fmt.Sprintf("ALTER TABLE %s.profiling_samples MODIFY TTL toDateTime(Timestamp) + toIntervalDay(%d)", s.db, r.ProfilesDays)
 		if err := s.conn.Exec(ctx, q); err != nil {
 			return fmt.Errorf("retention on profiling_samples: %w", err)
+		}
+	}
+	if r.ErrorsDays > 0 {
+		// error_events only: error_issue_status is tiny (bounded by triaged
+		// issues) and keeping resolved-issue history is the point.
+		q := fmt.Sprintf("ALTER TABLE %s.error_events MODIFY TTL toDateTime(Timestamp) + toIntervalDay(%d)", s.db, r.ErrorsDays)
+		if err := s.conn.Exec(ctx, q); err != nil {
+			return fmt.Errorf("retention on error_events: %w", err)
 		}
 	}
 	return nil

@@ -55,6 +55,7 @@ existing install upgrades unchanged.
 | logs | `modules.logs.enabled` | Log collection, search, and trace correlation |
 | infra-metrics | `modules.infraMetrics.enabled` | Node/pod metrics, the sensor inventory, and any OTLP metrics you send |
 | profiling | `modules.profiling.enabled` | Continuous CPU profiling and flame graphs |
+| error-tracking | `modules.errorTracking.enabled` | Exceptions grouped into deduplicated, triageable issues (derived from your data; optional Sentry-SDK ingest) |
 
 ```bash
 # Traces-only install: lighter ClickHouse, service map still live in <5 min.
