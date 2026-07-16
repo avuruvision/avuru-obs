@@ -5,6 +5,7 @@ package api
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -216,6 +217,45 @@ func (a *API) handleErrorIssueHistogram(w http.ResponseWriter, r *http.Request) 
 		resp.Points = append(resp.Points, histogramPointDTO{Time: b.Time.UTC(), Count: b.Count})
 	}
 	writeJSON(w, http.StatusOK, resp)
+	return nil
+}
+
+type setStatusRequest struct {
+	Status string `json:"status"`
+}
+
+var validTriageStatus = map[string]bool{"unresolved": true, "resolved": true, "ignored": true}
+
+// handleSetErrorIssueStatus records a triage decision and returns the updated
+// issue. Resolving a regressed issue simply writes a newer resolved row, which
+// resets the read-time regression comparison — no special case.
+func (a *API) handleSetErrorIssueStatus(w http.ResponseWriter, r *http.Request) error {
+	store, err := a.store()
+	if err != nil {
+		return err
+	}
+	fp, err := parseFingerprint(r)
+	if err != nil {
+		return err
+	}
+	var body setStatusRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+		return badRequest("invalid body")
+	}
+	if !validTriageStatus[body.Status] {
+		return badRequest("invalid status %q (want unresolved|resolved|ignored)", body.Status)
+	}
+	t := tenant(r)
+	if err := store.SetErrorIssueStatus(r.Context(), t, fp, body.Status); err != nil {
+		return err
+	}
+	// Return the issue as it now reads, so the client reflects the effective
+	// status (including a reset of regression).
+	issue, err := store.GetErrorIssue(r.Context(), t, fp)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, toErrorIssueDTO(issue))
 	return nil
 }
 

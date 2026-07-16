@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -131,6 +133,54 @@ func TestErrorHistogramEndpoint(t *testing.T) {
 	}
 	if len(resp.Points) != 1 || resp.Points[0].Count != 5 {
 		t.Errorf("histogram wrong: %+v", resp)
+	}
+}
+
+func TestSetErrorIssueStatus(t *testing.T) {
+	fake := &storagetest.Fake{Issue: storage.ErrorIssue{Fingerprint: 0xdeadbeef, Status: "resolved"}}
+	mux := newMux(fake)
+
+	post := func(fpHex, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/errors/issues/"+fpHex+"/status", strings.NewReader(body))
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec
+	}
+
+	rec := post("00000000deadbeef", `{"status":"resolved"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(fake.StatusWrites) != 1 {
+		t.Fatalf("status writes = %+v", fake.StatusWrites)
+	}
+	w := fake.StatusWrites[0]
+	if w.Fingerprint != 0xdeadbeef || w.Status != "resolved" || w.Tenant != storage.DefaultTenant {
+		t.Errorf("status write wrong: %+v", w)
+	}
+	var iss errorIssueDTO
+	if err := json.NewDecoder(rec.Body).Decode(&iss); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if iss.Status != "resolved" {
+		t.Errorf("returned issue status = %q", iss.Status)
+	}
+
+	// Invalid status is a 400, and writes nothing more.
+	if rec := post("00000000deadbeef", `{"status":"bogus"}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("bogus status: got %d, want 400", rec.Code)
+	}
+	if len(fake.StatusWrites) != 1 {
+		t.Errorf("bogus status should not have written: %+v", fake.StatusWrites)
+	}
+
+	// Tenant header is honored.
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/errors/issues/00000000deadbeef/status", strings.NewReader(`{"status":"ignored"}`))
+	req.Header.Set("X-Avuru-Tenant", "prod-eu")
+	rec2 := httptest.NewRecorder()
+	mux.ServeHTTP(rec2, req)
+	if fake.StatusWrites[len(fake.StatusWrites)-1].Tenant != "prod-eu" {
+		t.Errorf("tenant header not honored: %+v", fake.StatusWrites)
 	}
 }
 

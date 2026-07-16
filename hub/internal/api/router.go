@@ -97,6 +97,7 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("GET /api/v1/errors/issues/{fingerprint}", handle(a.handleGetErrorIssue))
 		mux.Handle("GET /api/v1/errors/issues/{fingerprint}/events", handle(a.handleListErrorEvents))
 		mux.Handle("GET /api/v1/errors/issues/{fingerprint}/histogram", handle(a.handleErrorIssueHistogram))
+		mux.Handle("POST /api/v1/errors/issues/{fingerprint}/status", handle(a.handleSetErrorIssueStatus))
 	}
 }
 

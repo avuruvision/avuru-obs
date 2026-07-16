@@ -405,3 +405,116 @@ func TestErrorReadQueries(t *testing.T) {
 		}
 	})
 }
+
+// setIssueStatusAt writes a triage row with an explicit UpdatedAt, so the
+// resolve time can be placed relative to event times deterministically (the
+// production SetErrorIssueStatus stamps now(), which a test can't pin against
+// historical events).
+func setIssueStatusAt(t *testing.T, s *Store, tenant string, fp uint64, status string, updatedAt time.Time) {
+	t.Helper()
+	batch, err := s.conn.PrepareBatch(context.Background(),
+		"INSERT INTO error_issue_status (Tenant, Fingerprint, Status, UpdatedAt)")
+	if err != nil {
+		t.Fatalf("preparing status batch: %v", err)
+	}
+	if err := batch.Append(tenant, fp, status, updatedAt); err != nil {
+		t.Fatalf("appending status: %v", err)
+	}
+	if err := batch.Send(); err != nil {
+		t.Fatalf("sending status batch: %v", err)
+	}
+}
+
+// TestTriageAndRegression drives the triage lifecycle end to end: resolve hides
+// an issue from the unresolved list; a later occurrence flips it to regressed
+// (surfacing in unresolved again); re-resolving clears the regression. Status
+// timestamps are explicit so the resolve/recur ordering is deterministic.
+func TestTriageAndRegression(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+	base := time.Now().UTC().Truncate(time.Minute).Add(-30 * time.Minute)
+	win := storage.TimeRange{Start: base.Add(-time.Hour), End: base.Add(time.Hour)}
+
+	insertRawErrorEvent(t, store, base, "default", 777, "web", "NPE", "boom", "t1")
+
+	unresolvedCount := func() int {
+		t.Helper()
+		iss, err := store.SearchErrorIssues(ctx, storage.ErrorIssueQuery{Tenant: "default", Range: win, Status: "unresolved"})
+		if err != nil {
+			t.Fatalf("search unresolved: %v", err)
+		}
+		return len(iss)
+	}
+
+	if unresolvedCount() != 1 {
+		t.Fatalf("new issue should be unresolved")
+	}
+
+	// The real API path: resolve now (all events are in the past), so the
+	// issue reads resolved and drops off the unresolved list.
+	if err := store.SetErrorIssueStatus(ctx, "default", 777, "resolved"); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if unresolvedCount() != 0 {
+		t.Errorf("resolved issue still in unresolved list")
+	}
+	iss, err := store.GetErrorIssue(ctx, "default", 777)
+	if err != nil {
+		t.Fatalf("get after resolve: %v", err)
+	}
+	if iss.Status != "resolved" || iss.Regressed {
+		t.Errorf("after resolve: %+v", iss)
+	}
+
+	// Regression sequence on its own fingerprint with only explicit status
+	// times, so the ReplacingMergeTree(UpdatedAt) ordering is deterministic
+	// (the real-API resolve above stamped now(), which would otherwise shadow
+	// a past-dated status row).
+	insertRawErrorEvent(t, store, base.Add(time.Minute), "default", 888, "web", "IOError", "disk", "u1")
+	setIssueStatusAt(t, store, "default", 888, "resolved", base.Add(5*time.Minute))
+	iss, err = store.GetErrorIssue(ctx, "default", 888)
+	if err != nil {
+		t.Fatalf("get 888 after resolve: %v", err)
+	}
+	if iss.Status != "resolved" || iss.Regressed {
+		t.Errorf("888 after resolve should be plain resolved: %+v", iss)
+	}
+
+	// A later occurrence → regression.
+	insertRawErrorEvent(t, store, base.Add(10*time.Minute), "default", 888, "web", "IOError", "disk", "u2")
+	iss, err = store.GetErrorIssue(ctx, "default", 888)
+	if err != nil {
+		t.Fatalf("get 888 after recurrence: %v", err)
+	}
+	if !iss.Regressed {
+		t.Errorf("recurrence after resolve should be regressed: %+v", iss)
+	}
+	regressed := false
+	for _, i := range mustSearch(t, store, storage.ErrorIssueQuery{Tenant: "default", Range: win, Status: "unresolved"}) {
+		if i.Fingerprint == 888 {
+			regressed = true
+		}
+	}
+	if !regressed {
+		t.Errorf("regressed issue should surface in the unresolved list")
+	}
+
+	// Re-resolving AFTER the recurrence clears the regression (newer row wins).
+	setIssueStatusAt(t, store, "default", 888, "resolved", base.Add(15*time.Minute))
+	iss, err = store.GetErrorIssue(ctx, "default", 888)
+	if err != nil {
+		t.Fatalf("get 888 after re-resolve: %v", err)
+	}
+	if iss.Regressed || iss.Status != "resolved" {
+		t.Errorf("after re-resolve should be cleanly resolved: %+v", iss)
+	}
+}
+
+func mustSearch(t *testing.T, s *Store, q storage.ErrorIssueQuery) []storage.ErrorIssue {
+	t.Helper()
+	iss, err := s.SearchErrorIssues(context.Background(), q)
+	if err != nil {
+		t.Fatalf("SearchErrorIssues: %v", err)
+	}
+	return iss
+}
