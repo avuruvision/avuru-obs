@@ -1,10 +1,11 @@
 apiVersion: v2
 name: avuruops
-description: Avuru Obs — deployable OTLP backend (traces + logs), a Jaeger replacement.
+description: Avuru Obs — all-in-one observability on ClickHouse. Zero-code eBPF traces, RED metrics, logs, continuous profiling and error tracking behind one OTLP endpoint.
 type: application
 # Chart version (SemVer); appVersion tracks the hub/gateway image generation.
-version: 0.1.0
-appVersion: "0.1.0"
+# Both are stamped by `make version-set V=x.y.z` (RELEASING.md) — do not hand-edit.
+version: 0.2.0-SNAPSHOT
+appVersion: "0.2.0-SNAPSHOT"
 home: https://github.com/avuruvision/avuru-obs
 sources:
   - https://github.com/avuruvision/avuru-obs
