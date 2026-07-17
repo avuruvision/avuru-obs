@@ -65,17 +65,17 @@ jobs:
           - component: gateway
             dockerfile: gateway/Dockerfile
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
       - name: Log in to registry
         if: needs.meta.outputs.dry_run != 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push ${{ matrix.component }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         env:
           # No *.dockerbuild build-record artifacts: the release job downloads
           # run artifacts and must only ever see the helm chart (v0.1.0 cut
@@ -95,8 +95,8 @@ jobs:
     needs: meta
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
       - name: Package Helm chart
         run: |
           helm lint deploy/helm/avuruops
@@ -104,7 +104,7 @@ jobs:
             --version "${{ needs.meta.outputs.version }}" \
             --app-version "${{ needs.meta.outputs.version }}" \
             --destination dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: helm-chart
           path: dist/*.tgz
@@ -114,8 +114,8 @@ jobs:
     needs: [meta, images, chart]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           # Only the chart — never "all artifacts": with a single name the
           # files land directly under path (no per-artifact subdirectory).
@@ -134,7 +134,7 @@ jobs:
           if [ ! -s notes.md ]; then echo "See CHANGELOG.md for details." > notes.md; fi
       - name: Create GitHub Release
         if: needs.meta.outputs.dry_run != 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
           name: ${{ needs.meta.outputs.tag }}
