@@ -24,17 +24,23 @@ var Ordered = []string{
 	"0004_profiles.sql",
 	"0005_span_index.sql",
 	"0006_errors.sql",
+	"0007_errors_from_logs.sql",
 }
 
-// ByModule tags each migration with the module owning its schema; the
-// migrator applies only active modules' files. Enabling a module later just
-// re-runs `hub migrate` (idempotent) with the new set. Every Ordered entry
-// MUST be tagged — enforced by TestByModuleCoversOrdered.
-var ByModule = map[string]modules.Name{
-	"0001_traces.sql":     modules.Core,
-	"0002_logs.sql":       modules.Logs,
-	"0003_metrics.sql":    modules.InfraMetrics,
-	"0004_profiles.sql":   modules.Profiling,
-	"0005_span_index.sql": modules.Core,
-	"0006_errors.sql":     modules.ErrorTracking,
+// ByModule tags each migration with the module(s) whose schema it owns; the
+// migrator applies a file only when ALL its modules are active. Most files
+// belong to one module; a few (a derived view over another module's table)
+// require several. Enabling a module later just re-runs `hub migrate`
+// (idempotent). Every Ordered entry MUST be tagged — enforced by
+// TestByModuleCoversOrdered.
+var ByModule = map[string][]modules.Name{
+	"0001_traces.sql":     {modules.Core},
+	"0002_logs.sql":       {modules.Logs},
+	"0003_metrics.sql":    {modules.InfraMetrics},
+	"0004_profiles.sql":   {modules.Profiling},
+	"0005_span_index.sql": {modules.Core},
+	// Span/error-span derivation reads otel_traces (core) — needs only the module.
+	"0006_errors.sql": {modules.ErrorTracking},
+	// The log-derived view reads otel_logs, so it also needs the logs module.
+	"0007_errors_from_logs.sql": {modules.ErrorTracking, modules.Logs},
 }

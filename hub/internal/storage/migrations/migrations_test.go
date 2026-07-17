@@ -16,13 +16,15 @@ func TestByModuleCoversOrdered(t *testing.T) {
 	}
 
 	for _, version := range Ordered {
-		mod, ok := ByModule[version]
-		if !ok {
+		mods, ok := ByModule[version]
+		if !ok || len(mods) == 0 {
 			t.Errorf("migration %s has no module tag in ByModule", version)
 			continue
 		}
-		if !known[mod] {
-			t.Errorf("migration %s tagged with unknown module %q", version, mod)
+		for _, mod := range mods {
+			if !known[mod] {
+				t.Errorf("migration %s tagged with unknown module %q", version, mod)
+			}
 		}
 	}
 	for version := range ByModule {

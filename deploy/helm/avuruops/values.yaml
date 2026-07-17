@@ -52,6 +52,15 @@ gateway:
   # ingest header). "" = everything lands in the `default` project. Senders
   # never change — this is server-side tagging (drop-in OTLP stays true).
   tenant: ""
+  # Sentry SDK ingest (error-tracking module). OFF by default: it opens a
+  # network surface (:4319) for browser/app error reporting. Needs the
+  # error-tracking AND logs modules (events are stored as log records). Expose
+  # :4319 via ingress for browser clients; CORS must allow their origins.
+  sentry:
+    enabled: false
+    allowedOrigins:
+      - "*"
+    projects: {}
   resources:
     requests:
       cpu: 100m

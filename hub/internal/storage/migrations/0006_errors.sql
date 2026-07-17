@@ -1,7 +1,7 @@
 -- Error tracking schema v1 (module: error-tracking).
 -- Derived signal: exceptions already in the data (span exception events, error
--- spans, ERROR/FATAL logs) become deduplicated issues. Populated at insert
--- time by the three materialized views below; NEVER written directly by an
+-- spans, and — via 0007 — ERROR/FATAL logs) become deduplicated issues.
+-- Populated at insert time by materialized views; NEVER written directly by an
 -- exporter, so the column list is Avuru-owned (no frozen-contract constraint).
 -- Retention (TTL) is applied by `hub migrate` ApplyRetention, not here.
 --
@@ -118,33 +118,6 @@ WHERE (StatusCode = 'Error'
           OR (SpanKind = 'Client' AND greatest(toUInt16OrZero(SpanAttributes['http.response.status_code']), toUInt16OrZero(SpanAttributes['http.status_code'])) >= 400))))
   AND NOT has(Events.Name, 'exception');
 
--- MV 3 of 3: ERROR/FATAL logs (SeverityNumber >= 17). Sentry-originated records
--- (the gateway receiver tags them avuru.error.source=sentry and fills the
--- exception.* / sentry.* attributes) are picked up here too, so they need no
--- separate path and also appear in the Logs explorer.
-CREATE MATERIALIZED VIEW IF NOT EXISTS otel.error_events_from_logs_mv
-TO otel.error_events
-AS
-SELECT
-    Timestamp,
-    if(ResourceAttributes['avuru.tenant'] != '', ResourceAttributes['avuru.tenant'], 'default') AS Tenant,
-    ServiceName,
-    cityHash64(
-        ServiceName,
-        if(LogAttributes['exception.type'] != '', LogAttributes['exception.type'], 'log-error'),
-        if(LogAttributes['exception.stacktrace'] != '',
-           arrayStringConcat(arraySlice(arrayMap(l -> replaceRegexpAll(replaceRegexpAll(l, '0x[0-9a-fA-F]+', 'A'), '[0-9]+', 'N'), splitByChar('\n', LogAttributes['exception.stacktrace'])), 1, 8), '\n'),
-           replaceRegexpAll(replaceRegexpAll(if(LogAttributes['exception.message'] != '', LogAttributes['exception.message'], Body), '0x[0-9a-fA-F]+', 'A'), '[0-9]+', 'N'))
-    ) AS Fingerprint,
-    if(LogAttributes['avuru.error.source'] = 'sentry', 'sentry', 'log') AS Source,
-    if(LogAttributes['exception.type'] != '', LogAttributes['exception.type'], SeverityText) AS ExceptionType,
-    if(LogAttributes['exception.message'] != '', LogAttributes['exception.message'], Body) AS ExceptionMessage,
-    LogAttributes['exception.stacktrace'] AS ExceptionStacktrace,
-    TraceId,
-    SpanId,
-    ResourceAttributes['deployment.environment.name'] AS Environment,
-    LogAttributes['sentry.sdk.name'] AS SdkName,
-    LogAttributes['sentry.sdk.version'] AS SdkVersion,
-    LogAttributes AS Attributes
-FROM otel.otel_logs
-WHERE SeverityNumber >= 17;
+-- The log-derived view (ERROR/FATAL logs, including Sentry-originated records)
+-- lives in 0007_errors_from_logs.sql: it reads otel_logs and so is applied
+-- only when the logs module is also active.

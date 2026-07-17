@@ -50,13 +50,20 @@ services:
     restart: "no"
 
   gateway:
-    image: otel/opentelemetry-collector-contrib:0.154.0
+    # The Avuru minimal OCB distro (not stock contrib): it carries the custom
+    # sentryreceiver, which the sandbox enables so browser/SDK error ingest can
+    # be exercised end to end.
+    image: avuru-obs-gateway:local
+    build:
+      context: ../..
+      dockerfile: gateway/Dockerfile
     command: ["--config=/etc/avuru/config.yaml"]
     volumes:
       - ./gateway/config.yaml:/etc/avuru/config.yaml:ro
     ports:
       - "4317:4317"   # OTLP gRPC — the ONLY address apps need to change (Jaeger drop-in)
       - "4318:4318"   # OTLP HTTP
+      - "4319:4319"   # Sentry ingest (error-tracking module)
       - "127.0.0.1:13133:13133" # health_check extension
     depends_on:
       migrate:

@@ -7,6 +7,17 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
+  # Sentry SDK ingest (error-tracking module). Permissive CORS so browser SDKs
+  # can POST cross-origin; events become OTel log records the hub derives
+  # issues from. Project "1" maps to a friendly service name for the sandbox.
+  sentry:
+    endpoint: 0.0.0.0:4319
+    cors:
+      allowed_origins:
+        - "*"
+    projects:
+      "1":
+        service_name: sentry-demo
 
 processors:
   batch:
@@ -39,7 +50,7 @@ service:
       processors: [batch]
       exporters: [clickhouse]
     logs:
-      receivers: [otlp]
+      receivers: [otlp, sentry]
       processors: [batch]
       exporters: [clickhouse]
     metrics:

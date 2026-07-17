@@ -42,6 +42,10 @@ spec:
               containerPort: 4317
             - name: otlp-http
               containerPort: 4318
+            {{- if and .Values.modules.errorTracking.enabled .Values.modules.logs.enabled .Values.gateway.sentry.enabled }}
+            - name: sentry-http
+              containerPort: 4319
+            {{- end }}
             - name: health
               containerPort: 13133
           livenessProbe:

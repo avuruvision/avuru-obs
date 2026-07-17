@@ -38,9 +38,10 @@ func (s *Store) Migrate(ctx context.Context, active modules.Set) error {
 		if applied[version] {
 			continue
 		}
-		// Untagged migrations apply everywhere (belt and braces — the
-		// migrations package test enforces full tagging).
-		if mod, ok := migrations.ByModule[version]; ok && !active.Enabled(mod) {
+		// Apply only when ALL the migration's modules are active. Untagged
+		// migrations apply everywhere (belt and braces — the migrations
+		// package test enforces full tagging).
+		if mods, ok := migrations.ByModule[version]; ok && !allEnabled(active, mods) {
 			continue
 		}
 		body, err := migrations.FS.ReadFile(version)
@@ -59,6 +60,16 @@ func (s *Store) Migrate(ctx context.Context, active modules.Set) error {
 		}
 	}
 	return nil
+}
+
+// allEnabled reports whether every module in mods is active.
+func allEnabled(active modules.Set, mods []modules.Name) bool {
+	for _, m := range mods {
+		if !active.Enabled(m) {
+			return false
+		}
+	}
+	return true
 }
 
 // metricsTables are the five exporter metric-type tables (0003_metrics.sql).

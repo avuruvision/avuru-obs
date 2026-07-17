@@ -82,8 +82,8 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	if err := store.conn.QueryRow(ctx, "SELECT count() FROM otel.schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("counting schema_migrations: %v", err)
 	}
-	if count != 5 {
-		t.Fatalf("schema_migrations has %d rows, want 5", count)
+	if count != uint64(len(migrations.Ordered)) {
+		t.Fatalf("schema_migrations has %d rows, want %d", count, len(migrations.Ordered))
 	}
 
 	tables := append([]string{"otel_traces", "otel_logs", "otel_traces_trace_id_ts", "profiling_stacks", "profiling_samples"}, metricsTables...)

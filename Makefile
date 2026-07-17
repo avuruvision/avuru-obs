@@ -33,12 +33,13 @@ gateway-image:
 
 check:
 	cd hub && go build ./... && go test -race ./...
+	cd gateway/sentryreceiver && go build ./... && go vet ./... && go test ./...
 	cd ui && npm run lint && npm run build
 
 e2e:
 	$(COMPOSE) down -v --remove-orphans
 	$(COMPOSE) up -d --build --wait clickhouse hub
-	$(COMPOSE) up -d gateway demo
+	$(COMPOSE) up -d --build gateway demo
 	sleep 3 && cd tools/seed && go run . -endpoint http://localhost:4318 -fixtures ../../deploy/compose/seed/fixtures
 	cd e2e && go test -tags=e2e -count=1 -v ./... ; rc=$$? ; cd .. && $(COMPOSE) down -v && exit $$rc
 
