@@ -25,6 +25,12 @@ spec:
       serviceAccountName: {{ include "avuruops.fullname" . }}-sensor
       # eBPF containers discover and inspect host processes.
       hostPID: true
+      {{- if .Values.sensor.obi.network.enabled }}
+      # OBI's network-flow feature observes node-level L4 traffic and needs the
+      # host network namespace. Scoped to sensor.obi.network.enabled only.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- end }}
       {{- if or .Values.sensor.priorityClass.create .Values.sensor.priorityClass.name }}
       priorityClassName: {{ .Values.sensor.priorityClass.name | default (printf "%s-sensor" (include "avuruops.fullname" .)) }}
       {{- end }}

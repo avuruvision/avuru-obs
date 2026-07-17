@@ -95,6 +95,61 @@ ORDER BY calls DESC`
 	return out, rows.Err()
 }
 
+// networkFlowMetric is the OBI-exported OTLP metric carrying per-flow byte
+// counts, tagged with the k8s src/dst owner (workload) names OBI resolves —
+// which we use as the map edge's endpoints.
+const networkFlowMetric = "obi.network.flow.bytes"
+
+// NetworkEdges derives service→service edges from OBI network flow metrics in
+// otel_metrics_sum, so services that emit NO application traces still show up on
+// the map. Endpoints are the k8s owner (workload) names OBI tags each flow with;
+// self-edges and unlabeled flows are dropped.
+//
+// sum(Value) over what is a cumulative Sum counter is an APPROXIMATION: it does
+// not reconstruct a true byte-rate (that would need a per-series max()-min()
+// delta, as ListNodeStats' network rates do). It's used here only for edge
+// PRESENCE and relative weighting at eval scale; revisit with a per-series delta
+// rollup if an exact byte-rate is ever needed — the same "revisit with a rollup"
+// caveat as ServiceEdges' self-join.
+//
+// This reads the otel_metrics_* tables, which exist only when the infra-metrics
+// module is active; callers must gate accordingly.
+func (s *Store) NetworkEdges(ctx context.Context, q storage.ServiceQuery) ([]storage.ServiceEdge, error) {
+	// Flow metrics carry no span attributes, so q.ExcludeAux has nothing to
+	// filter here and is deliberately ignored.
+	const query = `
+SELECT
+    Attributes['k8s.src.owner.name'] AS src,
+    Attributes['k8s.dst.owner.name'] AS dst,
+    toUInt64(sum(Value))             AS bytes
+FROM otel_metrics_sum
+WHERE Tenant = ?
+  AND MetricName = ?
+  AND TimeUnix >= ? AND TimeUnix < ?
+  AND Attributes['k8s.src.owner.name'] != ''
+  AND Attributes['k8s.dst.owner.name'] != ''
+  AND Attributes['k8s.src.owner.name'] != Attributes['k8s.dst.owner.name']
+GROUP BY src, dst
+ORDER BY bytes DESC`
+
+	rows, err := s.conn.Query(ctx, query, q.Tenant, networkFlowMetric, q.Range.Start, q.Range.End)
+	if err != nil {
+		return nil, fmt.Errorf("network edges: %w", err)
+	}
+	defer rows.Close()
+
+	var out []storage.ServiceEdge
+	for rows.Next() {
+		// Count/ErrorCount stay 0 — flows carry byte volume, not call volume.
+		e := storage.ServiceEdge{Provenance: "flow"}
+		if err := rows.Scan(&e.Source, &e.Target, &e.Bytes); err != nil {
+			return nil, fmt.Errorf("scanning network edge row: %w", err)
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // TraceOverview aggregates RED stats per (service, operation) over entry
 // spans (Server/Consumer) — the same population ListServices and REDSeries
 // count, so the numbers stay comparable across screens. Entry spans (rather

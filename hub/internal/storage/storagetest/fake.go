@@ -13,6 +13,7 @@ type Fake struct {
 	PingErr    error
 	Services   []storage.ServiceStats
 	Edges      []storage.ServiceEdge
+	NetEdges   []storage.ServiceEdge
 	Ops        []storage.OperationStats
 	Page       storage.TracePage
 	Traces     map[string]storage.Trace
@@ -115,6 +116,11 @@ func (f *Fake) ListServices(_ context.Context, q storage.ServiceQuery) ([]storag
 func (f *Fake) ServiceEdges(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceEdge, error) {
 	f.LastServiceQuery = q
 	return f.Edges, nil
+}
+
+func (f *Fake) NetworkEdges(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceEdge, error) {
+	f.LastServiceQuery = q
+	return f.NetEdges, nil
 }
 
 func (f *Fake) TraceOverview(_ context.Context, q storage.OverviewQuery) ([]storage.OperationStats, error) {

@@ -104,6 +104,12 @@
                 "repository": { "type": "string", "minLength": 1 },
                 "tag": { "type": "string", "minLength": 1 }
               }
+            },
+            "network": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" }
+              }
             }
           }
         },

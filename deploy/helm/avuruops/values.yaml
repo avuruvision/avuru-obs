@@ -84,7 +84,7 @@ modules:
 
 # Sensor: per-node DaemonSet for zero-code signal collection (eBPF). v0.1
 # wires OBI (zero-code traces + RED); the otel-agent (logs, kubeletstats) and
-# profiler containers join in later milestones, the Rust flow tracer in v0.2.
+# profiler containers join in later milestones.
 # Kernel ≥5.8 with BTF is required for eBPF; a preflight initContainer warns
 # loudly (but never blocks) when the node can't support it.
 sensor:
@@ -165,14 +165,27 @@ sensor:
     # (BPF/PERFMON/SYS_PTRACE/NET_RAW/CHECKPOINT_RESTORE/DAC_READ_SEARCH/
     # SYS_RESOURCE) instead — needs kernel ≥5.11.
     privileged: true
-    # Discovery scope for zero-code instrumentation. `namespaces` is a glob
-    # allowlist; excludes extend sensor.collection.excludeNamespaces. NOTE:
-    # the CPU limit bounds only OBI's userspace half — uprobe overhead runs
-    # in the TARGET process and is charged to the app's cgroup (see
+    # Discovery scope for zero-code L7 instrumentation (uprobes). `namespaces`
+    # is a glob allowlist; excludes extend sensor.collection.excludeNamespaces.
+    # NOTE: the CPU limit bounds only OBI's userspace half — uprobe overhead
+    # runs in the TARGET process and is charged to the app's cgroup (see
     # docs/runbooks/app-probe-failures.md).
+    # MITIGATION for neighbour-pod impact: NARROW `namespaces` to the services
+    # that actually need L7 spans and turn on `network.enabled` below — the
+    # service map stays complete via kernel flows (no uprobes), while the heavy
+    # L7 instrumentation is scoped down. Also consider priorityClass and moving
+    # ClickHouse off the app nodes (runbook cause #2).
     discovery:
       namespaces: ["*"]
       excludeNamespaces: []
+    # Network flows (OBI `network` feature): kernel L4 topology + per-edge
+    # health for workloads the L7 probes don't parse — map completeness WITHOUT
+    # uprobes (no app-cgroup cost, unlike L7 instrumentation above). Off by
+    # default. REQUIRES modules.infraMetrics (flows land in otel_metrics_*); a
+    # chart guard enforces it. When on, the sensor pod also enables hostNetwork
+    # so OBI can observe node flows. Verify the key surface against OBI v0.9.0.
+    network:
+      enabled: false
     resources:
       requests:
         cpu: 50m
