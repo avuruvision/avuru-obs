@@ -35,7 +35,7 @@ data:
     processors:
     {{- if .Values.gateway.tenant }}
       # Everything through this gateway belongs to one project/environment
-      # (Coroot-style project-per-cluster). `upsert` makes the gateway the
+      # (one project per cluster). `upsert` makes the gateway the
       # authority; senders stay untouched (drop-in OTLP). Use action `insert`
       # instead if trusted senders must pick their own tenant.
       resource/tenant:
