@@ -12,6 +12,7 @@ the post-release verification steps, see
 |---|---|
 | `hub` container image | container registry (`ghcr.io/<org>/avuru-obs-hub`, configurable) |
 | `ui` container image | container registry (`ghcr.io/<org>/avuru-obs-ui`, configurable) |
+| `gateway` container image | container registry (`ghcr.io/<org>/avuru-obs-gateway`, configurable) |
 | Helm chart (`deploy/helm/avuruops`) | packaged and attached to the GitHub Release |
 | GitHub Release | tag `vX.Y.Z` + notes from [CHANGELOG.md](CHANGELOG.md) |
 

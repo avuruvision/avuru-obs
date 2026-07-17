@@ -5,16 +5,17 @@ Live in 5 minutes, zero code changes.**
 
 [![CI](https://github.com/avuruvision/avuru-obs/actions/workflows/ci.yml/badge.svg)](https://github.com/avuruvision/avuru-obs/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![Roadmap](https://img.shields.io/badge/status-pre--v0.1-orange.svg)](ROADMAP.md)
+[![Release](https://img.shields.io/github/v/release/avuruvision/avuru-obs?color=blue)](https://github.com/avuruvision/avuru-obs/releases)
 
-Avuru Obs replaces the Grafana LGTM stack with one storage engine
-(ClickHouse), one binary control plane, and one UI. eBPF auto-discovers your
-services: install the Helm chart and watch the service map light up — no SDK,
-no sidecars, no YAML archaeology.
+Avuru Obs keeps every signal — traces, metrics, logs, profiles — in one storage
+engine (ClickHouse), behind one binary control plane and one UI. eBPF
+auto-discovers your services: install the Helm chart and watch the service map
+light up — no SDK, no sidecars, no YAML archaeology.
 
-> **Status: pre-v0.1, under active development.** See [ROADMAP.md](ROADMAP.md)
-> for where it's headed and [`agent_docs/architecture.md`](agent_docs/architecture.md)
-> for the living architecture.
+> **Status: v0.1.0 released**; `main` is under active development toward v0.2.
+> See [ROADMAP.md](ROADMAP.md) for where it's headed and
+> [`agent_docs/architecture.md`](agent_docs/architecture.md) for the living
+> architecture.
 
 ## How it works
 

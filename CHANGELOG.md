@@ -11,6 +11,49 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **Module framework — pick your signals.** One switch per signal family
+  (`modules.<name>.enabled`) gates it end to end: its ClickHouse schema
+  (`hub migrate` skips the DDL), its Hub API routes (404 when off), its gateway
+  pipeline, its sensor collection, and its UI entry — so a traces-only install
+  carries no log or profile weight. The service map + traces + RED `core` is
+  always on and has no switch. Everything defaults on, so an existing install
+  upgrades unchanged; turning a module on later is a values change plus
+  `helm upgrade` (the migrator is idempotent and applies the newly-active DDL,
+  and disabling never drops tables). An install advertises its active set at
+  `GET /api/v1/capabilities`: the UI sidebar follows it, and a module-off page
+  prints the exact `helm upgrade --set` hint for direct links and bookmarks.
+  See [`design/2026-07-15-module-framework.md`](design/2026-07-15-module-framework.md).
+- **Error tracking** — a new module (`modules.errorTracking.enabled`, default
+  on). Exceptions already reaching avuru-obs as span events, error spans and
+  ERROR/FATAL logs are grouped into deduplicated, triageable **issues**: a
+  stack trace, an occurrence timeline and histogram, a link to the originating
+  trace, and a triage lifecycle (resolved/ignored) that flags a regression when
+  a resolved issue recurs. Derived in-database from the OTLP you already send,
+  so it needs no code change and no extra collection. See
+  [`design/2026-07-16-error-tracking.md`](design/2026-07-16-error-tracking.md).
+- **Sentry-protocol ingest** — opt-in (`gateway.sentry.enabled`, off by
+  default; it opens a network surface). A gateway receiver on `:4319` accepts
+  existing Sentry SDKs — browser JavaScript especially, which eBPF cannot
+  reach — so an app reports by changing its DSN, with no SDK swap. Requires the
+  `error-tracking` and `logs` modules (events are stored as log records);
+  accepted browser origins are configurable via `gateway.sentry.allowedOrigins`.
+- **Service-map edges derived from OBI network flows.** The sensor now builds
+  topology from OBI's network-flow data, widening the map beyond the protocols
+  zero-code instrumentation parses.
+
+### Changed
+
+- **Relicensed from Apache-2.0 to AGPL-3.0.**
+
+### Removed
+
+- **The cancelled Rust eBPF L4 flow tracer** (`agent/`), together with the
+  `proto/` cross-language contract that existed to carry its `flow.proto`.
+  Service-map topology now derives from OBI network flows instead, so the
+  custom tracer, its flows schema and its codegen are no longer planned.
+
 ## [0.1.0] — 2026-07-15
 
 The first tagged release: **the wedge**. A fresh Kubernetes cluster reaches a
