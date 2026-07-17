@@ -248,6 +248,11 @@ ingress:
   enabled: false
   className: ""
   host: avuruops.local
+  # Hostname for Sentry SDK ingest, when gateway.sentry.enabled. It needs one
+  # of its own: SDKs POST to /api/<project>/envelope/, which the main host
+  # routes to the hub. "" = no ingress route (reach :4319 in-cluster, or via
+  # your own). Put it in gateway.sentry.allowedOrigins' reach for browsers.
+  sentryHost: ""
   annotations: {}
   tls: []
 

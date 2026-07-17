@@ -8,8 +8,9 @@ metadata:
 data:
   config.yaml: |
     {{- /* Sentry events become log records in otel_logs, so the ingest needs
-           the logs module (its table) as well as error-tracking + the flag. */}}
-    {{- $sentry := and .Values.modules.errorTracking.enabled .Values.modules.logs.enabled .Values.gateway.sentry.enabled }}
+           the logs module (its table) as well as error-tracking + the flag.
+           Shared with the container/Service ports and the ingress route. */}}
+    {{- $sentry := include "avuruops.sentryEnabled" . }}
     receivers:
       otlp:
         protocols:

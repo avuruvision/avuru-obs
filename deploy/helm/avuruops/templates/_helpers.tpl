@@ -110,6 +110,15 @@ otel
 {{- if and .Values.modules.profiling.enabled .Values.sensor.profiler.enabled -}}true{{- end -}}
 {{- end -}}
 
+{{/* Sentry SDK ingest is live only when the flag AND both modules it leans on
+     are on: events land as log records (logs) that the hub derives issues from
+     (error-tracking). Gates the receiver, the container port, the Service port
+     and the ingress route, so they can never drift apart. Same true/"" contract
+     as the collect* helpers above. */}}
+{{- define "avuruops.sentryEnabled" -}}
+{{- if and .Values.modules.errorTracking.enabled .Values.modules.logs.enabled .Values.gateway.sentry.enabled -}}true{{- end -}}
+{{- end -}}
+
 {{/* ClickHouse env block shared by the hub Deployment and the migrate Job. */}}
 {{- define "avuruops.clickhouseEnv" -}}
 - name: AVURUOPS_CLICKHOUSE_ADDR

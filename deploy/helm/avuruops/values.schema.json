@@ -203,7 +203,8 @@
       "properties": {
         "enabled": { "type": "boolean" },
         "className": { "type": "string" },
-        "host": { "type": "string" }
+        "host": { "type": "string" },
+        "sentryHost": { "type": "string" }
       }
     },
     "auth": {
