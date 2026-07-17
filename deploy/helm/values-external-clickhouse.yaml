@@ -1,0 +1,40 @@
+# Large / HA overlay: bring your own ClickHouse.
+#
+# The chart's in-tree ClickHouse is single-node by design (no Keeper/Zookeeper —
+# see the M2 design spec), so HA means pointing at an external, operator-managed
+# cluster rather than scaling the bundled one. Layer this on top of an
+# environment overlay:
+#
+#   helm upgrade --install avuruops oci://ghcr.io/avuruvision/charts/avuruops \
+#     -f values-prod.yaml -f values-external-clickhouse.yaml \
+#     --set clickhouse.external.address=ch.prod.svc.cluster.local:9000
+
+clickhouse:
+  external:
+    enabled: true
+    # host:9000 (native protocol) of your ClickHouse — set at deploy time.
+    address: ""
+    database: otel
+    username: avuru
+    # Secret with key `clickhouse-password`. Never inline the password in prod.
+    existingSecret: avuruops-clickhouse-external
+
+# The stateless tier scales out; ClickHouse is the shared backend, so add
+# gateway replicas as ingest grows and hub replicas for query concurrency.
+gateway:
+  replicas: 3
+hub:
+  replicas: 3
+
+# Larger fleets keep more history; size the external cluster's disk for it
+# (retention.days x ingest — see the sizing notes in deploy/helm/README.md).
+retention:
+  traces: 30
+  logs: 14
+  metrics: 30
+  profiles: 7
+
+sensor:
+  # Production posture: the sensor loses every scheduling fight with user apps.
+  priorityClass:
+    create: true

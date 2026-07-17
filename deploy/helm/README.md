@@ -80,6 +80,37 @@ collects nothing. Turning a module on later is a values change plus
 schema. Turning one **off** leaves existing tables in place (no data is
 dropped); delete them yourself if you want the space back.
 
+## Upgrading
+
+```bash
+helm upgrade avuruops oci://ghcr.io/avuruvision/charts/avuruops \
+  --version <new> -n avuruops   # reuse your -f values / --set flags
+```
+
+Schema changes are applied by the `migrate` Job, a `post-install,post-upgrade`
+Helm hook running `hub migrate`. It runs **after** Helm applies the manifests
+(so the in-chart ClickHouse already exists) and records each applied version in
+a `schema_migrations` ledger, so:
+
+- **Migrations are additive and idempotent.** Every statement is
+  `IF NOT EXISTS`; already-applied versions are skipped. Re-running, or enabling
+  a module later, only applies what is newly due — never re-applies or drops.
+- **They are forward-only** — there are no down-migrations. `helm rollback`
+  reverts the manifests (images, config), not the schema. Rolling back to an
+  older `appVersion` is safe when the newer version only *added* tables (an
+  older hub ignores tables it doesn't know); it is **not** safe across a
+  shape-changing migration. Roll forward; don't roll back across a schema
+  change.
+- **A failed migration is kept for inspection.** The hook is
+  `hook-delete-policy: before-hook-creation,hook-succeeded` with
+  `backoffLimit: 6`, so a failed Job stays around (`kubectl logs job/…-migrate`)
+  and is recreated on the next upgrade. `--wait` surfaces the failure rather
+  than leaving a half-migrated store.
+
+Because collection is driven by ConfigMaps with a checksum annotation, a
+`helm upgrade` that changes sensor/gateway config rolls those pods
+automatically — no manual restart.
+
 ## Deactivating collection (what turns off what)
 
 Every knob is a Helm value (a `helm upgrade` rolls the DaemonSet via its
@@ -111,6 +142,28 @@ kubectl label node worker-3 avuru.obs/collect=false
 If apps fail probes after installing the chart, start at
 `docs/runbooks/app-probe-failures.md` — prefer these targeted opt-outs over
 uninstalling.
+
+## Sizing & overlays
+
+The chart stays environment-agnostic; overlays carry the sizing. Three ship in
+this directory — compose them left-to-right (`-f` wins rightward):
+
+| Overlay | Shape | ClickHouse |
+|---|---|---|
+| `values-staging.yaml` | small — 1 replica each, short retention | in-chart, 20Gi |
+| `values-prod.yaml` | medium — 2 replicas, `priorityClass`, ingress | in-chart, 100Gi |
+| `values-external-clickhouse.yaml` | large / HA — 3 replicas, long retention | **external (BYO)** |
+
+**High availability = external ClickHouse.** The in-tree ClickHouse is
+single-node by design (no Keeper); for HA point `clickhouse.external.*` at an
+operator-managed cluster and layer `values-external-clickhouse.yaml`. The
+stateless tier (gateway, hub, ui) scales with plain `replicas`.
+
+**Disk.** ClickHouse storage tracks `retention.<signal>` days × ingest rate
+(compressed, and columnar compression is high). Start from the overlay sizes,
+watch actual PVC/backend growth over one full retention window, and adjust —
+raising retention raises disk roughly linearly. The sensor's own CPU/memory
+scales with the number of processes per node, not with retention.
 
 ## Downstream consumption
 
