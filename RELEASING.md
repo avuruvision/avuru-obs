@@ -10,23 +10,62 @@ the post-release verification steps, see
 
 | Artifact | Where |
 |---|---|
-| `hub` container image | container registry (`ghcr.io/<org>/avuru-obs-hub`, configurable) |
-| `ui` container image | container registry (`ghcr.io/<org>/avuru-obs-ui`, configurable) |
-| `gateway` container image | container registry (`ghcr.io/<org>/avuru-obs-gateway`, configurable) |
-| Helm chart (`deploy/helm/avuruops`) | packaged and attached to the GitHub Release |
+| `hub` container image | `ghcr.io/<org>/avuru-obs-hub` — `linux/amd64` + `linux/arm64`, cosign-signed, SBOM + provenance attached |
+| `ui` container image | `ghcr.io/<org>/avuru-obs-ui` — same |
+| `gateway` container image | `ghcr.io/<org>/avuru-obs-gateway` — same |
+| Helm chart (`deploy/helm/avuruops`) | `oci://ghcr.io/<org>/charts/avuruops` (cosign-signed), **and** the `.tgz` attached to the GitHub Release |
 | GitHub Release | tag `vX.Y.Z` + notes from [CHANGELOG.md](CHANGELOG.md) |
 
 > The registry is parameterized in [`release.yml`](.github/workflows/release.yml)
-> and defaults to GHCR. No registry is wired to real infrastructure yet — set
-> the `REGISTRY`/`IMAGE_PREFIX` inputs (and credentials) when one is.
+> and defaults to GHCR, which the workflow authenticates to with the built-in
+> `GITHUB_TOKEN` — nothing to configure. Point `REGISTRY`/`IMAGE_PREFIX`
+> elsewhere only if you publish somewhere other than GHCR (you must then supply
+> credentials).
+
+The chart is the install path, so it ships to the registry alongside the images:
+
+```bash
+helm install avuruops oci://ghcr.io/<org>/charts/avuruops --version X.Y.Z \
+  -n avuruops --create-namespace
+```
+
+The `.tgz` on the Release is the offline fallback for clients that cannot reach
+a registry. (A classic `helm repo add` index is deliberately not published: OCI
+reuses the same registry and credentials, and signs the same way.)
+
+### Verifying a release
+
+Signing is keyless — the identity is the workflow itself, so the certificate is
+tied to `release.yml` at the release tag. Rename that workflow and these
+commands change with it.
+
+```bash
+# images (the digest covers both architectures)
+cosign verify ghcr.io/<org>/avuru-obs-hub:vX.Y.Z \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/<org>/avuru-obs/\.github/workflows/release\.yml@refs/tags/v'
+
+# chart (SemVer tag, no leading v)
+cosign verify ghcr.io/<org>/charts/avuruops:X.Y.Z \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/<org>/avuru-obs/\.github/workflows/release\.yml@refs/tags/v'
+
+# both arches actually present
+docker buildx imagetools inspect ghcr.io/<org>/avuru-obs-hub:vX.Y.Z
+```
+
+We sign the three images we build plus the chart. The runtime images the chart
+pulls (collector, ClickHouse, OBI, profiler) are upstream and pinned in
+`values.yaml` — their provenance is theirs, not ours.
 
 ## Versioning
 
 - **Scheme:** [Semantic Versioning](https://semver.org) — `vX.Y.Z`.
 - **In-development version** carries a `-SNAPSHOT` suffix and lives in the root
   [`VERSION`](VERSION) file — the **single source of truth**. `make version`
-  prints it; `make version-set V=<x.y.z>` stamps it into `ui/package.json`
-  and the Hub build.
+  prints it; `make version-set V=<x.y.z>` stamps it into `ui/package.json`, the
+  chart (`Chart.yaml` `version`/`appVersion`, plus the image refs its Artifact
+  Hub annotation lists) and the Hub build. Never hand-edit those.
 - **Pre-1.0 caveat:** until `v1.0.0`, a minor bump (`0.Y`) may include breaking
   changes; patch bumps (`0.Y.Z`) are fixes only.
 
