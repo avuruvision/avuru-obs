@@ -35,6 +35,37 @@ hub (Go binary: API + OpAMP config plane)   ◄── UI (static SPA, own pod)
 - **Drop-in**: already on OTLP/Jaeger? Point your exporter at the gateway —
   no SDK or code changes (a hard product requirement).
 
+## Quickstart
+
+**Kubernetes (the real install).** The chart is published to GHCR as an OCI
+artifact — no repo to add:
+
+```bash
+helm install avuruops oci://ghcr.io/avuruvision/charts/avuruops \
+  --version <X.Y.Z> -n avuruops --create-namespace
+```
+
+Or let the installer resolve the latest release and wait for rollout (it only
+runs `helm`/`kubectl` against your current context — read it first if you like,
+`--dry-run` prints the exact command):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/avuruvision/avuru-obs/main/deploy/install.sh | sh
+```
+
+The chart and every image we build are cosign-signed and multi-arch; see
+[RELEASING.md](RELEASING.md#verifying-a-release) to verify a release.
+
+**Laptop (no cluster, no checkout).** One compose file pulls the released
+images and a demo app so the service map lights up immediately:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/avuruvision/avuru-obs/main/deploy/compose/docker-compose.release.yaml
+docker compose -f docker-compose.release.yaml up --wait   # then open http://localhost:3001
+```
+
+Full setup, sizing, and configuration: [`deploy/helm/README.md`](deploy/helm/README.md).
+
 ## Repository layout
 
 | Path | What | Stack |

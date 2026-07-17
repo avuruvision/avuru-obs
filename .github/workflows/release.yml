@@ -183,6 +183,15 @@ jobs:
             grab {print}
           ' CHANGELOG.md > notes.md || true
           if [ ! -s notes.md ]; then echo "See CHANGELOG.md for details." > notes.md; fi
+      # Attach the installer and its checksum so the pinned-per-tag copy users
+      # pipe to sh can be verified. Committing a checksum next to the script
+      # would go stale on every edit and nothing would check it; the release is
+      # the immutable point where a checksum is meaningful.
+      - name: Stage installer + checksum
+        run: |
+          mkdir -p artifacts/installer
+          cp deploy/install.sh artifacts/installer/install.sh
+          sha256sum deploy/install.sh | sed 's# .*/# #' > artifacts/installer/install.sh.sha256
       - name: Create GitHub Release
         if: needs.meta.outputs.dry_run != 'true'
         uses: softprops/action-gh-release@v2
@@ -193,6 +202,8 @@ jobs:
           prerelease: ${{ needs.meta.outputs.prerelease == 'true' }}
           files: |
             artifacts/helm-chart/*.tgz
+            artifacts/installer/install.sh
+            artifacts/installer/install.sh.sha256
       - name: Dry-run summary
         if: needs.meta.outputs.dry_run == 'true'
         run: echo "Dry run — built images and chart, skipped push and release for ${{ needs.meta.outputs.tag }}"

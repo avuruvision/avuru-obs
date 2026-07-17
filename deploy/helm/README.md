@@ -1,16 +1,22 @@
 # deploy/helm — the Avuru Obs chart
 
-`avuruops/` is the vendor-neutral product chart: a deployable OTLP backend
-(traces + logs) that replaces Jaeger for OTLP-exporting apps. One
-`helm install` brings up the gateway, a single-node ClickHouse, the hub
-(API + UI), and a schema-migration hook. (The M4 operator + sensor DaemonSet
-for the service map build on top of this chart.)
+`avuruops/` is the vendor-neutral product chart: an OTLP backend on ClickHouse
+that already-instrumented apps reach by pointing their exporter at the gateway.
+One `helm install` brings up the gateway, a single-node ClickHouse, the hub API,
+the UI, the sensor DaemonSet, and a schema-migration hook.
+
+The chart is published to GHCR as an OCI artifact — install it by version, no
+repo to add:
 
 ```bash
-helm install avuruops ./avuruops -n avuruops --create-namespace
+helm install avuruops oci://ghcr.io/avuruvision/charts/avuruops \
+  --version <X.Y.Z> -n avuruops --create-namespace
 # point apps at:  http://avuruops-gateway:4318   (or :4317 gRPC)
-# UI:  kubectl -n avuruops port-forward svc/avuruops-hub 8080:80
+# UI:  kubectl -n avuruops port-forward svc/avuruops-ui 8080:80   (then http://localhost:8080/)
 ```
+
+Contributors installing local changes use the chart in-tree instead:
+`helm install avuruops ./avuruops -n avuruops --create-namespace`.
 
 ## What it deploys
 
@@ -18,8 +24,9 @@ helm install avuruops ./avuruops -n avuruops --create-namespace
 |---|---|---|
 | gateway | Deployment + Service | OTLP 4317/4318 → ClickHouse exporter (contrib collector + ConfigMap) |
 | clickhouse | StatefulSet + Service + PVC | single-node default; skipped when `clickhouse.external.enabled` |
-| hub | Deployment + Service (+ Ingress) | API + embedded UI |
-| migrate | Job (Helm hook) | `hub migrate` on `post-install,pre-upgrade` |
+| hub | Deployment + Service | API only (the UI is its own deployable) |
+| ui | Deployment + Service (+ Ingress) | static SPA, single-origin `/api` → hub |
+| migrate | Job (Helm hook) | `hub migrate` on `post-install,post-upgrade` |
 
 No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale.
 
@@ -31,7 +38,8 @@ No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale.
 | `clickhouse.external.enabled` | `false` | BYO ClickHouse — set `.address` + `.existingSecret` |
 | `clickhouse.persistence.storageClassName` | `""` | `""` = cluster default StorageClass |
 | `clickhouse.persistence.size` | `50Gi` | PVC size |
-| `modules.logs.enabled` / `modules.infraMetrics.enabled` / `modules.profiling.enabled` | `true` | Run a signal family, or not — one switch for schema + API + pipeline + collection + UI (see Modules) |
+| `modules.logs.enabled` / `modules.infraMetrics.enabled` / `modules.profiling.enabled` / `modules.errorTracking.enabled` | `true` | Run a signal family, or not — one switch for schema + API + pipeline + collection + UI (see Modules) |
+| `gateway.sentry.enabled` / `ingress.sentryHost` | `false` / `""` | Accept existing Sentry SDKs (needs the error-tracking + logs modules); give the ingest its own host |
 | `retention.traces` / `retention.logs` | `7` / `3` | Per-signal TTL in days |
 | `ingress.enabled` / `ingress.host` | `false` / `avuruops.local` | Expose the hub UI |
 | `auth.enabled` | `false` | Forward placeholder — enforce auth at your ingress (OIDC is v0.2) |
