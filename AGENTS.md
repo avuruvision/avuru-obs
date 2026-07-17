@@ -19,12 +19,11 @@ for data flow and decision rationale.
 
 | Path | Language | Purpose |
 |---|---|---|
-| `agent/` | **Rust** (aya eBPF) | `avuru-agent`: L4 flow tracer feeding the service map; OTLP export |
 | `hub/` | **Go** | API-only single binary: REST/WS API, OpAMP server, alerting, storage interface (ClickHouse impl). The UI is a separate deployable. |
 | `gateway/` | OCB manifest | Minimal OTel Collector distro + ClickHouse schemas/migrations |
 | `ui/` | **Next.js/TS** | Static-export SPA (`output: 'export'`) served by its own nginx image (separate pod), single-origin with the hub |
-| `proto/` | protobuf | Shared Rust↔Go↔TS contracts — single source of truth, codegen only |
-| `sensor/` | YAML | DaemonSet pod assembly: avuru-agent + OBI + OTel Collector + eBPF profiler |
+| `proto/` | protobuf | Shared Go↔TS contracts — single source of truth, codegen only |
+| `sensor/` | YAML | DaemonSet pod assembly: OBI + OTel Collector + eBPF profiler |
 | `deploy/` | Helm/compose | `helm/` flagship chart + operator; `compose/` all-in-one demo |
 
 **Data flow**: sensor pod (eBPF + OTLP) → gateway collector → ClickHouse;
@@ -34,7 +33,7 @@ the telemetry byte-path.
 **Reuse over rewrite**: OBI, OTel Collector, and the OTel eBPF profiler are
 upstream OSS reused as-is (pinned in
 [`agent_docs/tech_stack.md`](agent_docs/tech_stack.md)). We only build what
-doesn't exist: the Rust flow tracer, the Hub, and the UI.
+doesn't exist: the Hub and the UI.
 
 ## Working on the Codebase (HOW)
 
@@ -44,8 +43,7 @@ doesn't exist: the Rust flow tracer, the Hub, and the UI.
 - `agent_docs/tech_stack.md` — pinned versions and upgrade rules
 - `agent_docs/development.md` — dev workflows, ports, common tasks
 - `agent_docs/testing.md` — test pyramid, commands per component
-- `agent_docs/proto_contracts.md` — shared-contract rules (read before touching `proto/`)
-- `agent_docs/go_style.md` / `agent_docs/rust_style.md` / `agent_docs/ui_patterns.md` — read only when actively coding in that language
+- `agent_docs/go_style.md` / `agent_docs/ui_patterns.md` — read only when actively coding in that language
 
 **Governance & meta** (repo root): `CONTRIBUTING.md` (workflow), `GOVERNANCE.md`
 (decisions, maintainers), `MAINTAINERS.md`, `AI_POLICY.md` (AI use — note: **no
@@ -57,7 +55,6 @@ releases on `vX.Y.Z` tags.
 
 ## Generated files — NEVER hand-edit
 
-- Anything under `*/generated/` or marked `// Code generated` — regenerate via `make proto` *[v0.2 — echoes until buf is wired with the flow tracer]*
 - `hub/internal/ui/dist/` — produced by `make ui` (Next.js static export)
 - `gateway/` collector binary — built from the OCB manifest, never patched
 
@@ -66,9 +63,7 @@ releases on `vX.Y.Z` tags.
 | Component | Command |
 |---|---|
 | hub | `cd hub && go build ./... && go test -race ./... && golangci-lint run` |
-| agent | `cd agent && cargo check && cargo test && cargo clippy -- -D warnings` |
 | ui | `cd ui && npm run lint && npm run build` (build MUST succeed — static export fails on server-only features) |
-| proto | `make proto && git diff --exit-code` (codegen must be committed) *[v0.2]* |
 | all | `make check` |
 
 `make check` mirrors CI but does **not** run `golangci-lint` — run it via
@@ -137,9 +132,6 @@ comparison phrased without the product name.
 4. **Tests land alongside the implementation, not after** — see
    [`agent_docs/testing.md`](agent_docs/testing.md) for the pyramid and
    per-component commands.
-5. **A `proto/` change ships contract + regenerated code + consuming code in
-   ONE MR** — never split a contract change across MRs (see
-   [`agent_docs/proto_contracts.md`](agent_docs/proto_contracts.md)).
 
 ## Git commits
 
@@ -185,8 +177,8 @@ Branch naming: milestone branches use `feature/<milestone>` (e.g.
    code diverges after extraction, and a naive "keep ours" silently drops the
    other branch's fixes.
 3. **Never hand-resolve generated code.** Conflicts in `*/generated/` or
-   `hub/internal/ui/dist/` are resolved at the source (`proto/`, `ui/`) and
-   regenerated via `make proto` / `make ui`.
+   `hub/internal/ui/dist/` are resolved at the source (`ui/`) and
+   regenerated via `make ui`.
 4. **Verify the result builds** — run the touched component's validation
    command after resolving.
 5. **When uncertain, stop and ask** rather than guess. A wrong guess silently
@@ -194,9 +186,6 @@ Branch naming: milestone branches use `feature/<milestone>` (e.g.
 
 ## Platform notes
 
-- **macOS**: `cd agent && cargo check && cargo test` works (eBPF is
-  `#[cfg]`-gated). Full eBPF build/test requires Linux — use
-  `agent/Dockerfile` or CI.
 - **Ports** (local defaults): hub 8080, OpAMP 4320, gateway OTLP 4317/4318,
   ClickHouse 8123/9000, Next.js dev 3000 — full table in
   [`agent_docs/development.md`](agent_docs/development.md).

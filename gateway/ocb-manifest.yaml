@@ -11,6 +11,10 @@ dist:
 
 receivers:
   - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.154.0
+  # Sentry-protocol ingest (error-tracking module): accepts Sentry SDK
+  # envelopes and emits OTel log records the hub derives issues from. Built
+  # from the in-repo module via the replaces entry below.
+  - gomod: github.com/avuru/avuru-obs/gateway/sentryreceiver v0.1.0
   # Drop-in Jaeger replacement is a product requirement (see
   # agent_docs/architecture.md): OTLP senders migrate by changing only the
   # endpoint address. If legacy Jaeger-protocol (thrift/gRPC) senders show up,
@@ -32,3 +36,9 @@ extensions:
   # healthcheck lives in contrib (no core equivalent).
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.154.0
   # opampextension added with the v0.2 OpAMP server (hub-managed config)
+
+# Local module: the Sentry receiver lives in-repo (gateway/sentryreceiver).
+# The path is relative to the generated ./build/go.mod; the Dockerfile copies
+# the module to /src/sentryreceiver so ../sentryreceiver resolves there too.
+replaces:
+  - github.com/avuru/avuru-obs/gateway/sentryreceiver => ../sentryreceiver

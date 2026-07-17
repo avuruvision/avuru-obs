@@ -7,6 +7,9 @@ metadata:
     app.kubernetes.io/component: gateway
 data:
   config.yaml: |
+    {{- /* Sentry events become log records in otel_logs, so the ingest needs
+           the logs module (its table) as well as error-tracking + the flag. */}}
+    {{- $sentry := and .Values.modules.errorTracking.enabled .Values.modules.logs.enabled .Values.gateway.sentry.enabled }}
     receivers:
       otlp:
         protocols:
@@ -14,6 +17,20 @@ data:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
+    {{- if $sentry }}
+      # Sentry SDK ingest (error-tracking module). Browser SDKs POST
+      # cross-origin, so CORS must be open; expose :4319 via ingress to accept
+      # them. Events become OTel log records the hub derives issues from.
+      sentry:
+        endpoint: 0.0.0.0:4319
+        cors:
+          allowed_origins:
+            {{- toYaml .Values.gateway.sentry.allowedOrigins | nindent 12 }}
+        {{- with .Values.gateway.sentry.projects }}
+        projects:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+    {{- end }}
     processors:
     {{- if .Values.gateway.tenant }}
       # Everything through this gateway belongs to one project/environment
@@ -50,15 +67,23 @@ data:
       pipelines:
     {{- $tenantStage := "" }}
     {{- if .Values.gateway.tenant }}{{ $tenantStage = "resource/tenant, " }}{{ end }}
+    {{- /* A module's pipeline is dropped when the module is off: its tables
+           don't exist, so accepting the signal would only produce export
+           errors. `traces` is core and always present, so the collector
+           always has at least one pipeline. */}}
         traces:
           receivers: [otlp]
           processors: [{{ $tenantStage }}batch]
           exporters: [clickhouse]
+    {{- if or .Values.modules.logs.enabled $sentry }}
         logs:
-          receivers: [otlp]
+          receivers: [otlp{{ if $sentry }}, sentry{{ end }}]
           processors: [{{ $tenantStage }}batch]
           exporters: [clickhouse]
+    {{- end }}
+    {{- if .Values.modules.infraMetrics.enabled }}
         metrics:
           receivers: [otlp]
           processors: [{{ $tenantStage }}batch]
           exporters: [clickhouse]
+    {{- end }}

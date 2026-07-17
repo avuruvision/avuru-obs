@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
@@ -55,6 +56,19 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	// Enrich with OBI network-flow edges so services that emit no application
+	// traces still appear. The otel_metrics_* tables exist only when the
+	// infra-metrics module is active; querying them otherwise would error, so
+	// gate the call on the module. When it's off, flowEdges stays nil and
+	// mergeEdges just stamps the trace edges with their provenance.
+	var flowEdges []storage.ServiceEdge
+	if a.modules.Enabled(modules.InfraMetrics) {
+		flowEdges, err = store.NetworkEdges(r.Context(), q)
+		if err != nil {
+			return err
+		}
+	}
+	edges = mergeEdges(edges, flowEdges)
 	resp := serviceMapResponse{
 		Services: make([]serviceDTO, 0, len(services)),
 		Edges:    make([]serviceEdgeDTO, 0, len(edges)),
@@ -68,6 +82,33 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 	}
 	writeJSON(w, http.StatusOK, resp)
 	return nil
+}
+
+// mergeEdges folds trace-derived and flow-derived service edges into one set
+// for the map. It keys edges on (Source, Target): an edge present in BOTH
+// sources becomes "both" — keeping the trace's call volume and taking the
+// flow's byte volume — while trace-only edges are "trace" and flow-only edges
+// are "flow" (appended after the trace edges). Trace order is preserved so the
+// map stays stable across refreshes.
+func mergeEdges(traceEdges, flowEdges []storage.ServiceEdge) []storage.ServiceEdge {
+	type key struct{ src, dst string }
+	merged := make([]storage.ServiceEdge, len(traceEdges))
+	index := make(map[key]int, len(traceEdges))
+	for i, e := range traceEdges {
+		e.Provenance = "trace"
+		merged[i] = e
+		index[key{e.Source, e.Target}] = i
+	}
+	for _, fe := range flowEdges {
+		if i, ok := index[key{fe.Source, fe.Target}]; ok {
+			merged[i].Provenance = "both"
+			merged[i].Bytes = fe.Bytes // keep trace Count/ErrorCount, add flow bytes
+			continue
+		}
+		fe.Provenance = "flow"
+		merged = append(merged, fe)
+	}
+	return merged
 }
 
 func (a *API) handleTraceOverview(w http.ResponseWriter, r *http.Request) error {

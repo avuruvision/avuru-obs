@@ -37,6 +37,7 @@ spec:
           args: ["migrate"]
           env:
             {{- include "avuruops.clickhouseEnv" . | nindent 12 }}
+            {{- include "avuruops.modulesEnv" . | nindent 12 }}
             - name: AVURUOPS_RETENTION_TRACES_DAYS
               value: {{ .Values.retention.traces | quote }}
             - name: AVURUOPS_RETENTION_LOGS_DAYS
@@ -45,3 +46,5 @@ spec:
               value: {{ .Values.retention.metrics | quote }}
             - name: AVURUOPS_RETENTION_PROFILES_DAYS
               value: {{ .Values.retention.profiles | quote }}
+            - name: AVURUOPS_RETENTION_ERRORS_DAYS
+              value: {{ .Values.retention.errors | quote }}

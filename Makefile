@@ -1,6 +1,6 @@
 # Thin root dispatcher ONLY — build logic lives in each component
 # (agent_docs/development.md). Keep it that way.
-.PHONY: hub agent ui ui-image gateway-image proto check helm-check e2e e2e-helm e2e-ui dev dev-clean version version-set
+.PHONY: hub ui ui-image gateway-image check helm-check e2e e2e-helm e2e-ui dev dev-clean version version-set
 
 COMPOSE := docker compose -f deploy/compose/docker-compose.yaml
 
@@ -14,15 +14,11 @@ version:
 version-set:
 	@test -n "$(V)" || { echo "usage: make version-set V=x.y.z[-SNAPSHOT]"; exit 1; }
 	@printf '%s\n' "$(V)" > VERSION
-	@perl -i -pe 's/^version = ".*"/version = "$(V)"/ && ($$done=1) if !$$done' agent/Cargo.toml
 	@perl -i -pe 's/"version": ".*"/"version": "$(V)"/ && ($$done=1) if !$$done' ui/package.json
-	@echo "version set to $(V) (VERSION, agent/Cargo.toml, ui/package.json)"
+	@echo "version set to $(V) (VERSION, ui/package.json)"
 
 hub:
 	$(MAKE) -C hub build
-
-agent:
-	cd agent && cargo build
 
 # UI is a separate deployable now — build the static export only (served by
 # its own nginx image / the UI container), no longer copied into the hub.
@@ -35,18 +31,15 @@ ui-image:
 gateway-image:
 	docker build -f gateway/Dockerfile -t avuru-obs-gateway:local .
 
-proto:
-	@echo "proto codegen (buf) is wired in M1 — proto/ is the source of truth"
-
 check:
 	cd hub && go build ./... && go test -race ./...
-	cd agent && cargo check && cargo test && cargo clippy -- -D warnings
+	cd gateway/sentryreceiver && go build ./... && go vet ./... && go test ./...
 	cd ui && npm run lint && npm run build
 
 e2e:
 	$(COMPOSE) down -v --remove-orphans
 	$(COMPOSE) up -d --build --wait clickhouse hub
-	$(COMPOSE) up -d gateway demo
+	$(COMPOSE) up -d --build gateway demo
 	sleep 3 && cd tools/seed && go run . -endpoint http://localhost:4318 -fixtures ../../deploy/compose/seed/fixtures
 	cd e2e && go test -tags=e2e -count=1 -v ./... ; rc=$$? ; cd .. && $(COMPOSE) down -v && exit $$rc
 

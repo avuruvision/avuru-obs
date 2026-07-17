@@ -11,13 +11,26 @@ import (
 	tc "github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
+	"github.com/avuru/avuru-obs/hub/internal/storage/migrations"
 )
 
 // startClickHouse runs the pinned ClickHouse image and applies the schema via
 // the hub-owned migrator (the same `Migrate` used in compose and k8s) —
 // dogfooded here so schema drift between migrations and queries fails first.
 func startClickHouse(t *testing.T) *Store {
+	t.Helper()
+	store := startClickHouseContainer(t)
+	if err := store.Migrate(context.Background(), modules.AllSet()); err != nil {
+		t.Fatalf("migrating schema: %v", err)
+	}
+	return store
+}
+
+// startClickHouseContainer runs the pinned ClickHouse image and connects a
+// Store WITHOUT migrating — for tests exercising the migrator itself.
+func startClickHouseContainer(t *testing.T) *Store {
 	t.Helper()
 	ctx := context.Background()
 
@@ -50,9 +63,6 @@ func startClickHouse(t *testing.T) *Store {
 	if err != nil {
 		t.Fatalf("connecting store: %v", err)
 	}
-	if err := store.Migrate(ctx); err != nil {
-		t.Fatalf("migrating schema: %v", err)
-	}
 	t.Cleanup(func() { _ = store.Close() })
 	return store
 }
@@ -64,7 +74,7 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	store := startClickHouse(t) // migrated once already
 	ctx := context.Background()
 
-	if err := store.Migrate(ctx); err != nil {
+	if err := store.Migrate(ctx, modules.AllSet()); err != nil {
 		t.Fatalf("second Migrate: %v", err)
 	}
 
@@ -72,8 +82,8 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	if err := store.conn.QueryRow(ctx, "SELECT count() FROM otel.schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("counting schema_migrations: %v", err)
 	}
-	if count != 5 {
-		t.Fatalf("schema_migrations has %d rows, want 5", count)
+	if count != uint64(len(migrations.Ordered)) {
+		t.Fatalf("schema_migrations has %d rows, want %d", count, len(migrations.Ordered))
 	}
 
 	tables := append([]string{"otel_traces", "otel_logs", "otel_traces_trace_id_ts", "profiling_stacks", "profiling_samples"}, metricsTables...)
@@ -1137,4 +1147,69 @@ func TestFindSpanTrace(t *testing.T) {
 			t.Fatalf("want ErrNotFound for other tenant, got %v", err)
 		}
 	})
+}
+
+// TestMigrateModuleGating guards the module framework's schema layer: an
+// inactive module's migrations are skipped, SystemStats tolerates the absent
+// tables, and enabling the module later is a plain re-run.
+func TestMigrateModuleGating(t *testing.T) {
+	store := startClickHouseContainer(t)
+	ctx := context.Background()
+
+	subset, err := modules.Parse("core,logs")
+	if err != nil {
+		t.Fatalf("parsing modules: %v", err)
+	}
+	if err := store.Migrate(ctx, subset); err != nil {
+		t.Fatalf("Migrate(core,logs): %v", err)
+	}
+
+	tableCount := func(name string) uint64 {
+		t.Helper()
+		var n uint64
+		if err := store.conn.QueryRow(ctx, "SELECT count() FROM system.tables WHERE database='otel' AND name=?", name).Scan(&n); err != nil {
+			t.Fatalf("checking table %s: %v", name, err)
+		}
+		return n
+	}
+
+	for _, tbl := range []string{"otel_traces", "otel_traces_trace_id_ts", "otel_logs"} {
+		if tableCount(tbl) != 1 {
+			t.Errorf("table %s missing with core+logs active", tbl)
+		}
+	}
+	for _, tbl := range append([]string{"profiling_stacks", "profiling_samples"}, metricsTables...) {
+		if tableCount(tbl) != 0 {
+			t.Errorf("table %s exists although its module is inactive", tbl)
+		}
+	}
+
+	// The status view must not error on the absent tables and must not
+	// report the disabled signals.
+	stats, err := store.SystemStats(ctx)
+	if err != nil {
+		t.Fatalf("SystemStats with disabled modules: %v", err)
+	}
+	for _, sig := range stats.Signals {
+		if sig.Signal == "profiles" || sig.Signal == "metrics" {
+			t.Errorf("SystemStats reports disabled signal %q", sig.Signal)
+		}
+	}
+
+	// Enabling the remaining modules later is a plain idempotent re-run.
+	if err := store.Migrate(ctx, modules.AllSet()); err != nil {
+		t.Fatalf("Migrate(all) after subset: %v", err)
+	}
+	for _, tbl := range append([]string{"profiling_stacks", "profiling_samples"}, metricsTables...) {
+		if tableCount(tbl) != 1 {
+			t.Errorf("table %s missing after enabling its module", tbl)
+		}
+	}
+	var count uint64
+	if err := store.conn.QueryRow(ctx, "SELECT count() FROM otel.schema_migrations").Scan(&count); err != nil {
+		t.Fatalf("counting schema_migrations: %v", err)
+	}
+	if count != uint64(len(migrations.Ordered)) {
+		t.Fatalf("schema_migrations has %d rows, want %d", count, len(migrations.Ordered))
+	}
 }

@@ -20,20 +20,14 @@ relevant Dockerfile/manifest together.
 
 | Component | Stack | Key crates/libs |
 |---|---|---|
-| `agent/` avuru-agent | Rust stable (see `agent/rust-toolchain.toml`) | `aya` (pure-Rust eBPF, no libbpf C dep), `opentelemetry`/`opentelemetry-otlp` (Rust), `tokio` |
 | `hub/` | Go (see `hub/go.mod`) | stdlib `net/http`, `opamp-go`, `clickhouse-go`, `modernc.org/sqlite` (CGO-free SQLite) |
 | `ui/` | Next.js (App Router, `output: 'export'`), TypeScript strict | Tailwind v4 CSS-first + daisyUI 5 (two custom themes, Avuru Gold), next-themes (`data-theme`, dark default), TanStack Query, lucide-react, CVA + clsx/tailwind-merge. NO chart lib in M1 (heatmap = CSS grid, waterfall = flex bars); canvas/flame-graph lib chosen in M4 |
 
 ## Hard rules
 
-- **OBI is Go — it is reused as a container, never embedded in Rust.**
-- **eBPF code compiles on Linux only.** `agent/` must keep `cargo check` green
-  on macOS by gating eBPF/aya behind `#[cfg(target_os = "linux")]` and
-  target-specific dependencies. Real builds happen in the Docker build image.
 - **No CGO in the hub** — single static binary is the deliverable
   (`modernc.org/sqlite`, not `mattn/go-sqlite3`).
 - **UI must keep `output: 'export'` working** — no SSR, server actions, API
   routes, or middleware. CI fails the build otherwise.
-- Toolchain versions live in `agent/rust-toolchain.toml`, `hub/go.mod`
-  (toolchain directive), and `ui/package.json` (`engines`). Update them there,
-  not in CI files.
+- Toolchain versions live in `hub/go.mod` (toolchain directive) and
+  `ui/package.json` (`engines`). Update them there, not in CI files.

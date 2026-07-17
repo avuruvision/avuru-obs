@@ -76,6 +76,40 @@ otel
 {{- end -}}
 {{- end -}}
 
+{{/* Active module set, as the CSV the hub reads (AVURUOPS_MODULES). `core` is
+     always present — it is the wedge and has no switch. */}}
+{{- define "avuruops.activeModules" -}}
+{{- $mods := list "core" -}}
+{{- if .Values.modules.logs.enabled -}}{{- $mods = append $mods "logs" -}}{{- end -}}
+{{- if .Values.modules.infraMetrics.enabled -}}{{- $mods = append $mods "infra-metrics" -}}{{- end -}}
+{{- if .Values.modules.profiling.enabled -}}{{- $mods = append $mods "profiling" -}}{{- end -}}
+{{- if .Values.modules.errorTracking.enabled -}}{{- $mods = append $mods "error-tracking" -}}{{- end -}}
+{{- join "," $mods -}}
+{{- end -}}
+
+{{/* Module env block shared by the hub Deployment and the migrate Job. */}}
+{{- define "avuruops.modulesEnv" -}}
+- name: AVURUOPS_MODULES
+  value: {{ include "avuruops.activeModules" . | quote }}
+{{- end -}}
+
+{{/* Effective collection switches: a module gates its own collection, so a
+     disabled module never collects regardless of the sensor knob. These emit
+     "true" or the empty string — a rendered "false" would be a non-empty
+     string, and therefore TRUTHY in `if`. Always consume them via
+     `if include "..." .`, never compare to "false". */}}
+{{- define "avuruops.collectLogs" -}}
+{{- if and .Values.modules.logs.enabled .Values.sensor.agent.logs.enabled -}}true{{- end -}}
+{{- end -}}
+
+{{- define "avuruops.collectInfraMetrics" -}}
+{{- if and .Values.modules.infraMetrics.enabled .Values.sensor.agent.kubeletstats.enabled -}}true{{- end -}}
+{{- end -}}
+
+{{- define "avuruops.collectProfiles" -}}
+{{- if and .Values.modules.profiling.enabled .Values.sensor.profiler.enabled -}}true{{- end -}}
+{{- end -}}
+
 {{/* ClickHouse env block shared by the hub Deployment and the migrate Job. */}}
 {{- define "avuruops.clickhouseEnv" -}}
 - name: AVURUOPS_CLICKHOUSE_ADDR

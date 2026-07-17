@@ -24,18 +24,6 @@ jobs:
           working-directory: hub
           version: latest
 
-  agent:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: rust check/test/clippy
-        working-directory: agent
-        run: |
-          rustup toolchain install stable --profile minimal --component clippy
-          cargo check
-          cargo test
-          cargo clippy -- -D warnings
-
   ui:
     runs-on: ubuntu-latest
     steps:

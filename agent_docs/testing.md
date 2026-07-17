@@ -7,8 +7,6 @@ Write or update tests **alongside** the implementation, not after.
 1. **Unit** (fast, everywhere)
    - Go: table-driven tests, `go test -race ./...`. Handlers test against a
      fake `storage.Store`; never spin ClickHouse for a handler test.
-   - Rust: `cargo test` on pure logic (flow aggregation, OTLP mapping). eBPF
-     program logic is factored so the userspace side is testable off-Linux.
    - TS: component/unit tests only where logic is non-trivial; the UI safety
      net is Playwright.
 
@@ -17,8 +15,6 @@ Write or update tests **alongside** the implementation, not after.
      migrations, the ClickHouse `storage.Store` impl, and OTLP→CH round-trips.
      Run with `cd hub && make test-int`. Path-filtered in CI.
    - OpAMP/API contract: `httptest` against the hub's REST/WS surface.
-   - Rust/eBPF: privileged CI job on a kernel ≥5.8 runner loads the eBPF
-     programs and asserts flow capture (DeepFlow's agent-verify pattern).
 
 3. **E2E — Playwright (AI-maintained, SigNoz pattern)**
    - Specs live in `ui/e2e/`. Run against the compose stack with **seeded demo
@@ -43,7 +39,6 @@ Write or update tests **alongside** the implementation, not after.
 |---|---|
 | Go unit | `cd hub && go test -race ./...` |
 | Go integration | `cd hub && make test-int` |
-| Rust | `cd agent && cargo test && cargo clippy -- -D warnings` |
 | UI lint+build guard | `cd ui && npm run lint && npm run build` |
 | E2E API (Go: drop-in promise, seeded determinism) | `make e2e` (owns the compose lifecycle) |
 | E2E UI (Playwright smoke, specs in `ui/e2e/`) | `make e2e-ui` (compose lifecycle + seeded data) |

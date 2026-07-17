@@ -36,23 +36,34 @@ services:
       AVURUOPS_CLICKHOUSE_ADDR: clickhouse:9000
       AVURUOPS_CLICKHOUSE_USER: avuru
       AVURUOPS_CLICKHOUSE_PASSWORD: avuru
+      # Modules this sandbox runs (empty/unset = all). Drop an entry to skip
+      # its schema — the hub then 404s its API and the UI hides its entry.
+      AVURUOPS_MODULES: "core,logs,infra-metrics,profiling,error-tracking"
       AVURUOPS_RETENTION_TRACES_DAYS: "7"
       AVURUOPS_RETENTION_LOGS_DAYS: "3"
       AVURUOPS_RETENTION_METRICS_DAYS: "7"
       AVURUOPS_RETENTION_PROFILES_DAYS: "3"
+      AVURUOPS_RETENTION_ERRORS_DAYS: "30"
     depends_on:
       clickhouse:
         condition: service_healthy
     restart: "no"
 
   gateway:
-    image: otel/opentelemetry-collector-contrib:0.154.0
+    # The Avuru minimal OCB distro (not stock contrib): it carries the custom
+    # sentryreceiver, which the sandbox enables so browser/SDK error ingest can
+    # be exercised end to end.
+    image: avuru-obs-gateway:local
+    build:
+      context: ../..
+      dockerfile: gateway/Dockerfile
     command: ["--config=/etc/avuru/config.yaml"]
     volumes:
       - ./gateway/config.yaml:/etc/avuru/config.yaml:ro
     ports:
       - "4317:4317"   # OTLP gRPC — the ONLY address apps need to change (Jaeger drop-in)
       - "4318:4318"   # OTLP HTTP
+      - "4319:4319"   # Sentry ingest (error-tracking module)
       - "127.0.0.1:13133:13133" # health_check extension
     depends_on:
       migrate:

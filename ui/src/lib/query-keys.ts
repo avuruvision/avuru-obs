@@ -12,6 +12,7 @@ export const queryKeys = {
   status: ["status"] as const,
   systemStatus: ["system", "status"] as const,
   projects: ["projects"] as const,
+  capabilities: ["capabilities"] as const,
   services: (p: string, t: TimeParams, includeAux?: boolean) =>
     [p, "services", "list", { ...t, includeAux }] as const,
   serviceMap: (p: string, t: TimeParams, includeAux?: boolean) =>
@@ -41,4 +42,15 @@ export const queryKeys = {
   logs: (p: string, t: TimeParams, filters: Record<string, string | number | undefined>) =>
     [p, "logs", "search", { ...t, ...filters }] as const,
   traceLogs: (p: string, traceId: string) => [p, "logs", "trace", traceId] as const,
+  errorIssues: (
+    p: string,
+    t: TimeParams,
+    filters: Record<string, string | undefined>,
+  ) => [p, "errors", "issues", { ...t, ...filters }] as const,
+  errorIssue: (p: string, fingerprint: string) =>
+    [p, "errors", "issue", fingerprint] as const,
+  errorIssueEvents: (p: string, fingerprint: string) =>
+    [p, "errors", "events", fingerprint] as const,
+  errorIssueHistogram: (p: string, fingerprint: string, t: TimeParams) =>
+    [p, "errors", "histogram", fingerprint, t] as const,
 };

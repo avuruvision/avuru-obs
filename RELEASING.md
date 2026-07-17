@@ -12,7 +12,6 @@ the post-release verification steps, see
 |---|---|
 | `hub` container image | container registry (`ghcr.io/<org>/avuru-obs-hub`, configurable) |
 | `ui` container image | container registry (`ghcr.io/<org>/avuru-obs-ui`, configurable) |
-| `agent` binary | attached to the GitHub Release |
 | Helm chart (`deploy/helm/avuruops`) | packaged and attached to the GitHub Release |
 | GitHub Release | tag `vX.Y.Z` + notes from [CHANGELOG.md](CHANGELOG.md) |
 
@@ -25,8 +24,8 @@ the post-release verification steps, see
 - **Scheme:** [Semantic Versioning](https://semver.org) — `vX.Y.Z`.
 - **In-development version** carries a `-SNAPSHOT` suffix and lives in the root
   [`VERSION`](VERSION) file — the **single source of truth**. `make version`
-  prints it; `make version-set V=<x.y.z>` stamps it into `agent/Cargo.toml`,
-  `ui/package.json`, and the Hub build.
+  prints it; `make version-set V=<x.y.z>` stamps it into `ui/package.json`
+  and the Hub build.
 - **Pre-1.0 caveat:** until `v1.0.0`, a minor bump (`0.Y`) may include breaking
   changes; patch bumps (`0.Y.Z`) are fixes only.
 
@@ -81,7 +80,7 @@ For a **new minor** `vX.Y.0`:
 5. **Create the release branch:** `git branch vX.Y vX.Y.0 && git push origin vX.Y`.
 6. **Automation runs:** pushing the tag triggers
    [`release.yml`](.github/workflows/release.yml), which builds/pushes the `hub`
-   and `ui` images, builds the `agent` binary, packages the Helm chart, and
+   and `ui` images, packages the Helm chart, and
    creates the GitHub Release with notes from the changelog. (If automation is
    unavailable, run the equivalent build steps locally — the workflow is the
    reference.)

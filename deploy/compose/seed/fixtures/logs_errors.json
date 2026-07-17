@@ -1,0 +1,45 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          { "key": "service.name", "value": { "stringValue": "seed-payments" } },
+          { "key": "deployment.environment.name", "value": { "stringValue": "production" } }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": { "name": "avuru-seed", "version": "1" },
+          "logRecords": [
+            {
+              "timeUnixNano": "140000000",
+              "severityNumber": 17,
+              "severityText": "ERROR",
+              "body": { "stringValue": "NullPointerException: cannot read field 'total' of null" },
+              "traceId": "eeee5555ffff6666aaaa7777bbbb8888",
+              "spanId": "b2c3d4e5f6071829",
+              "attributes": [
+                { "key": "exception.type", "value": { "stringValue": "java.lang.NullPointerException" } },
+                { "key": "exception.message", "value": { "stringValue": "cannot read field 'total' of null" } },
+                { "key": "exception.stacktrace", "value": { "stringValue": "at com.shop.Cart.total(Cart.java:88)\nat com.shop.Checkout.handle(Checkout.java:41)\nat com.shop.Router.route(Router.java:120)" } }
+              ]
+            },
+            {
+              "timeUnixNano": "155000000",
+              "severityNumber": 17,
+              "severityText": "ERROR",
+              "body": { "stringValue": "NullPointerException: cannot read field 'total' of null" },
+              "traceId": "eeee5555ffff6666aaaa7777bbbb8888",
+              "spanId": "c3d4e5f607182930",
+              "attributes": [
+                { "key": "exception.type", "value": { "stringValue": "java.lang.NullPointerException" } },
+                { "key": "exception.message", "value": { "stringValue": "cannot read field 'total' of null" } },
+                { "key": "exception.stacktrace", "value": { "stringValue": "at com.shop.Cart.total(Cart.java:91)\nat com.shop.Checkout.handle(Checkout.java:41)\nat com.shop.Router.route(Router.java:120)" } }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

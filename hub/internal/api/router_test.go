@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pprofile"
 	"go.opentelemetry.io/collector/pdata/pprofile/pprofileotlp"
 
+	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 	"github.com/avuru/avuru-obs/hub/internal/storage/storagetest"
 )
@@ -234,6 +235,144 @@ func TestServiceMapDefaults(t *testing.T) {
 	}
 	if len(resp.Services) != 1 || len(resp.Edges) != 1 || resp.Edges[0].Source != "frontend" {
 		t.Errorf("service-map response wrong: %+v", resp)
+	}
+}
+
+// TestMergeEdges exercises the trace+flow edge merge directly (table-driven):
+// an edge seen in both sources becomes "both" and gains bytes while keeping its
+// call volume; trace-only stays "trace"; flow-only is appended as "flow".
+func TestMergeEdges(t *testing.T) {
+	type want struct {
+		provenance string
+		count      uint64
+		bytesPos   bool
+	}
+	tests := []struct {
+		name   string
+		trace  []storage.ServiceEdge
+		flow   []storage.ServiceEdge
+		expect map[string]want
+	}{
+		{
+			name:  "shared edge becomes both, flow-only appended",
+			trace: []storage.ServiceEdge{{Source: "A", Target: "B", Count: 3, ErrorCount: 1}},
+			flow: []storage.ServiceEdge{
+				{Source: "A", Target: "B", Bytes: 1024},
+				{Source: "C", Target: "D", Bytes: 2048},
+			},
+			expect: map[string]want{
+				"A->B": {provenance: "both", count: 3, bytesPos: true},
+				"C->D": {provenance: "flow", count: 0, bytesPos: true},
+			},
+		},
+		{
+			name:   "trace only (no infra-metrics)",
+			trace:  []storage.ServiceEdge{{Source: "A", Target: "B", Count: 2}},
+			flow:   nil,
+			expect: map[string]want{"A->B": {provenance: "trace", count: 2, bytesPos: false}},
+		},
+		{
+			name:   "flow only",
+			trace:  nil,
+			flow:   []storage.ServiceEdge{{Source: "C", Target: "D", Bytes: 7}},
+			expect: map[string]want{"C->D": {provenance: "flow", count: 0, bytesPos: true}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			merged := mergeEdges(tt.trace, tt.flow)
+			if len(merged) != len(tt.expect) {
+				t.Fatalf("got %d edges, want %d: %+v", len(merged), len(tt.expect), merged)
+			}
+			for _, e := range merged {
+				k := e.Source + "->" + e.Target
+				w, ok := tt.expect[k]
+				if !ok {
+					t.Fatalf("unexpected edge %s: %+v", k, e)
+				}
+				if e.Provenance != w.provenance {
+					t.Errorf("%s provenance = %q, want %q", k, e.Provenance, w.provenance)
+				}
+				if e.Count != w.count {
+					t.Errorf("%s count = %d, want %d", k, e.Count, w.count)
+				}
+				if (e.Bytes > 0) != w.bytesPos {
+					t.Errorf("%s bytes = %d, want positive=%v", k, e.Bytes, w.bytesPos)
+				}
+			}
+		})
+	}
+}
+
+// TestServiceMapMergesNetworkEdges proves the handler wires NetworkEdges into
+// the response when infra-metrics is active: the shared A→B edge is "both" with
+// bytes, and the flow-only C→D edge shows up as "flow".
+func TestServiceMapMergesNetworkEdges(t *testing.T) {
+	fake := &storagetest.Fake{
+		Services: []storage.ServiceStats{{Name: "A", SpanCount: 5}},
+		Edges:    []storage.ServiceEdge{{Source: "A", Target: "B", Count: 3, ErrorCount: 1}},
+		NetEdges: []storage.ServiceEdge{
+			{Source: "A", Target: "B", Bytes: 1024, Provenance: "flow"},
+			{Source: "C", Target: "D", Bytes: 2048, Provenance: "flow"},
+		},
+	}
+	mux := newMux(fake) // zero-value Config → all modules on → infra-metrics active
+
+	var resp struct {
+		Edges []serviceEdgeDTO `json:"edges"`
+	}
+	rec := get(t, mux, "/api/v1/service-map")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	byPair := map[string]serviceEdgeDTO{}
+	for _, e := range resp.Edges {
+		byPair[e.Source+"->"+e.Target] = e
+	}
+	if len(resp.Edges) != 2 {
+		t.Fatalf("got %d edges, want 2: %+v", len(resp.Edges), resp.Edges)
+	}
+	ab := byPair["A->B"]
+	if ab.Provenance != "both" || ab.Bytes == 0 || ab.Calls != 3 {
+		t.Errorf("A->B = %+v, want provenance=both, bytes>0, calls=3", ab)
+	}
+	cd := byPair["C->D"]
+	if cd.Provenance != "flow" || cd.Bytes == 0 {
+		t.Errorf("C->D = %+v, want provenance=flow, bytes>0", cd)
+	}
+}
+
+// TestServiceMapSkipsNetworkEdgesWithoutInfraMetrics proves the flow query is
+// gated: with infra-metrics disabled, NetworkEdges is never consulted (the
+// otel_metrics_* tables don't exist), so only trace edges appear — stamped
+// "trace".
+func TestServiceMapSkipsNetworkEdgesWithoutInfraMetrics(t *testing.T) {
+	fake := &storagetest.Fake{
+		Edges:    []storage.ServiceEdge{{Source: "A", Target: "B", Count: 3}},
+		NetEdges: []storage.ServiceEdge{{Source: "C", Target: "D", Bytes: 2048}},
+	}
+	set, err := modules.Parse("core") // infra-metrics off
+	if err != nil {
+		t.Fatalf("parse modules: %v", err)
+	}
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return fake }, Config{Modules: set})
+
+	var resp struct {
+		Edges []serviceEdgeDTO `json:"edges"`
+	}
+	rec := get(t, mux, "/api/v1/service-map")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Edges) != 1 || resp.Edges[0].Source != "A" || resp.Edges[0].Provenance != "trace" {
+		t.Errorf("edges = %+v, want only A->B with provenance=trace", resp.Edges)
 	}
 }
 

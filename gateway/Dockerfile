@@ -9,10 +9,13 @@ WORKDIR /src
 RUN go install go.opentelemetry.io/collector/cmd/builder@v${OCB_VERSION}
 
 COPY gateway/ocb-manifest.yaml .
+# The Sentry receiver is an in-repo module; the manifest's replaces resolves
+# ../sentryreceiver relative to the generated ./build/go.mod (i.e. /src/sentryreceiver).
+COPY gateway/sentryreceiver ./sentryreceiver
 RUN CGO_ENABLED=0 builder --config ocb-manifest.yaml
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /src/build/avuru-gateway /avuru-gateway
-# OTLP gRPC / OTLP HTTP / healthcheck
-EXPOSE 4317 4318 13133
+# OTLP gRPC / OTLP HTTP / Sentry ingest / healthcheck
+EXPOSE 4317 4318 4319 13133
 ENTRYPOINT ["/avuru-gateway"]

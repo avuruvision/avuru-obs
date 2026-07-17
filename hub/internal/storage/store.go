@@ -37,13 +37,20 @@ type ServiceStats struct {
 	P99        time.Duration
 }
 
-// ServiceEdge is a caller→callee call edge derived from trace spans (a Client
-// span and the cross-service Server span it spawned), with call volume.
+// ServiceEdge is a service→service edge on the topology map. It can be derived
+// from trace spans (a Client span and the cross-service Server span it spawned,
+// giving call volume in Count/ErrorCount) and/or from OBI network flow metrics
+// (giving byte volume in Bytes) — the latter surfaces services that emit no
+// application traces. Provenance records which source(s) produced the edge:
+// "trace", "flow", or "both". Count/ErrorCount stay 0 for flow-only edges;
+// Bytes stays 0 for trace-only edges.
 type ServiceEdge struct {
-	Source     string
-	Target     string
-	Count      uint64
-	ErrorCount uint64
+	Source     string // caller service (edge tail)
+	Target     string // callee service (edge head)
+	Count      uint64 // trace call volume
+	ErrorCount uint64 // trace errored-call volume
+	Bytes      uint64 // network flow bytes (flow-derived edges)
+	Provenance string // "trace", "flow", or "both"
 }
 
 // OverviewQuery filters TraceOverview.
@@ -352,12 +359,87 @@ type SystemStats struct {
 	Disks   []DiskStats
 }
 
+// ErrorIssueQuery filters SearchErrorIssues. Zero values mean "no filter".
+type ErrorIssueQuery struct {
+	Tenant  string
+	Range   TimeRange
+	Status  string // "", "unresolved", "resolved", "ignored" (unresolved includes regressed)
+	Service string
+	Query   string // case-insensitive substring on type + message
+	Sort    string // "", "lastSeen" (default), "count", "firstSeen"
+	Limit   int
+}
+
+// ErrorIssue is a fingerprint-grouped error, with all-time aggregates so first/
+// last seen and regression are correct regardless of the query window.
+type ErrorIssue struct {
+	Fingerprint uint64
+	Service     string
+	Type        string
+	Message     string
+	Source      string
+	Status      string // effective status: unresolved | resolved | ignored
+	Regressed   bool   // resolved but seen again since — needs attention
+	FirstSeen   time.Time
+	LastSeen    time.Time
+	Count       uint64
+	LastTraceID string
+}
+
+// ErrorEventCursor is keyset pagination for an issue's occurrence list.
+type ErrorEventCursor struct {
+	Timestamp time.Time
+	TraceID   string
+	SpanID    string
+}
+
+// ErrorEventQuery lists the occurrences of one issue (by fingerprint).
+type ErrorEventQuery struct {
+	Tenant      string
+	Fingerprint uint64
+	Range       TimeRange
+	Limit       int
+	Cursor      *ErrorEventCursor
+}
+
+// ErrorEvent is one occurrence of an issue.
+type ErrorEvent struct {
+	Timestamp   time.Time
+	Service     string
+	Type        string
+	Message     string
+	Stacktrace  string
+	TraceID     string
+	SpanID      string
+	Source      string
+	Environment string
+	SdkName     string
+	SdkVersion  string
+	Attributes  map[string]string
+}
+
+// ErrorEventPage is a page of occurrences plus the next cursor (nil at end).
+type ErrorEventPage struct {
+	Events     []ErrorEvent
+	NextCursor *ErrorEventCursor
+}
+
+// ErrorHistogramPoint is one time bucket of an issue's occurrence count.
+type ErrorHistogramPoint struct {
+	Time  time.Time
+	Count uint64
+}
+
 // Store is the telemetry query seam implemented by storage backends.
 type Store interface {
 	Ping(ctx context.Context) error
 	SystemStats(ctx context.Context) (SystemStats, error)
 	ListServices(ctx context.Context, q ServiceQuery) ([]ServiceStats, error)
 	ServiceEdges(ctx context.Context, q ServiceQuery) ([]ServiceEdge, error)
+	// NetworkEdges derives service→service edges from OBI network flow metrics
+	// (otel_metrics_sum). It reads the metrics tables, so callers must gate it
+	// on the infra-metrics module being active (the tables exist only then).
+	NetworkEdges(ctx context.Context, q ServiceQuery) ([]ServiceEdge, error)
 	TraceOverview(ctx context.Context, q OverviewQuery) ([]OperationStats, error)
 	SearchTraces(ctx context.Context, q TraceQuery) (TracePage, error)
 	GetTrace(ctx context.Context, tenant, traceID string) (Trace, error)
@@ -376,4 +458,11 @@ type Store interface {
 	WriteProfileSamples(ctx context.Context, samples []ProfileSample) error
 	ListProfiledServices(ctx context.Context, q ProfileQuery) ([]ProfiledService, error)
 	ProfileFlamegraph(ctx context.Context, q ProfileQuery) (FlameNode, error)
+	// Error tracking (module error-tracking).
+	SearchErrorIssues(ctx context.Context, q ErrorIssueQuery) ([]ErrorIssue, error)
+	GetErrorIssue(ctx context.Context, tenant string, fingerprint uint64) (ErrorIssue, error)
+	ListErrorEvents(ctx context.Context, q ErrorEventQuery) (ErrorEventPage, error)
+	ErrorIssueHistogram(ctx context.Context, tenant string, fingerprint uint64, r TimeRange, points int) ([]ErrorHistogramPoint, error)
+	// SetErrorIssueStatus records a triage decision (unresolved|resolved|ignored).
+	SetErrorIssueStatus(ctx context.Context, tenant string, fingerprint uint64, status string) error
 }

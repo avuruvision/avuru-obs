@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Activity, ChevronsLeft, ChevronsRight, Hexagon } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useLocalStorageFlag } from "@/hooks/use-local-storage-flag";
+import { useCapabilities } from "@/hooks/use-capabilities";
 import { NAV_SECTIONS } from "./nav-config";
 import { ProjectSwitcher } from "./project-switcher";
 
@@ -16,6 +17,17 @@ export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useLocalStorageFlag(COLLAPSE_KEY);
   const toggle = () => setCollapsed(!collapsed);
+  const { data: capabilities } = useCapabilities();
+
+  // Hide entries whose module this install doesn't run. Until capabilities
+  // are known (or against a hub without the endpoint) everything shows —
+  // see useModuleEnabled for why "show" is the safe unknown.
+  const sections = NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter(
+      (item) => !item.module || !capabilities || capabilities.modules.includes(item.module),
+    ),
+  })).filter((section) => section.items.length > 0);
 
   return (
     <aside
@@ -35,7 +47,7 @@ export function Sidebar() {
       </Link>
 
       <nav aria-label="Primary" className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
-        {NAV_SECTIONS.map((section) => (
+        {sections.map((section) => (
           <div key={section.title} className="flex flex-col gap-0.5">
             {collapsed ? (
               <div className="mx-2 my-1 border-t border-neutral/60" />

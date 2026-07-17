@@ -8,11 +8,9 @@
 *                       @egilberny
 
 # Components
-/agent/                 @egilberny
 /hub/                   @egilberny
 /ui/                    @egilberny
 /gateway/               @egilberny
-/proto/                 @egilberny
 /sensor/                @egilberny
 /deploy/                @egilberny
 /tools/                 @egilberny

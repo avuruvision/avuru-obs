@@ -6,9 +6,7 @@ The front door to avuru-obs coding conventions. The detail lives in
 | Component | Conventions | Linter |
 |---|---|---|
 | Go (`hub/`) | [agent_docs/go_style.md](./agent_docs/go_style.md) | `golangci-lint run` (`hub/.golangci.yml`) |
-| Rust (`agent/`) | [agent_docs/rust_style.md](./agent_docs/rust_style.md) | `cargo clippy -- -D warnings` |
 | TS/React (`ui/`) | [agent_docs/ui_patterns.md](./agent_docs/ui_patterns.md) | `npm run lint` |
-| Proto (`proto/`) | [agent_docs/proto_contracts.md](./agent_docs/proto_contracts.md) | `make proto` (codegen committed) |
 
 ## General
 

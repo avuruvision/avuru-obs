@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { CenteredSpinner } from "@/components/ui/spinner";
 import { formatAgo } from "@/lib/format";
 import { useAgents } from "@/hooks/use-agents";
+import { useModuleEnabled } from "@/hooks/use-capabilities";
 import type { AgentSignals } from "@/lib/api-types";
 
 const SIGNALS: { key: keyof AgentSignals; label: string }[] = [
@@ -30,7 +31,10 @@ function SignalBadge({ label, seen }: { label: string; seen: string | null }) {
 // control plane (v0.2); until then collection is controlled through Helm
 // values (see the toggle matrix in deploy/helm/README.md).
 export function CollectionSettings() {
-  const { data, isLoading, isError } = useAgents();
+  // The inventory is derived from sensor freshness in the metrics tables, so
+  // it needs the infra-metrics module; without it the query would just 404.
+  const infraMetrics = useModuleEnabled("infra-metrics");
+  const { data, isLoading, isError } = useAgents(600, { enabled: infraMetrics });
 
   return (
     <div className="flex flex-col gap-4">
@@ -44,7 +48,14 @@ export function CollectionSettings() {
             </span>
           )}
         </CardHeader>
-        {isLoading ? (
+        {!infraMetrics ? (
+          <p className="border-t border-neutral p-4 text-sm text-base-content/60">
+            The sensor inventory reads telemetry freshness from the
+            infrastructure metrics module, which this install doesn’t run.
+            Enable it with{" "}
+            <code className="font-mono">modules.infraMetrics.enabled=true</code>.
+          </p>
+        ) : isLoading ? (
           <div className="border-t border-neutral p-6">
             <CenteredSpinner />
           </div>

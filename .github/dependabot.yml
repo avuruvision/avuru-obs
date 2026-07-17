@@ -21,15 +21,6 @@ updates:
       ui-npm:
         patterns: ["*"]
 
-  - package-ecosystem: cargo
-    directory: /agent
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    groups:
-      agent-cargo:
-        patterns: ["*"]
-
   - package-ecosystem: github-actions
     directory: /
     schedule:

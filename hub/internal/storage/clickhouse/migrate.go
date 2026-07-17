@@ -5,14 +5,20 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage/migrations"
 )
 
-// Migrate applies any unapplied embedded migrations, recording each in the
-// `<db>.schema_migrations` ledger. Idempotent: already-applied versions are
-// skipped, so re-running is a no-op. ClickHouse DDL is not transactional —
-// every statement is `IF NOT EXISTS` and the ledger row is the commit marker.
-func (s *Store) Migrate(ctx context.Context) error {
+// Migrate applies any unapplied embedded migrations for the active modules,
+// recording each in the `<db>.schema_migrations` ledger. Idempotent:
+// already-applied versions are skipped, so re-running is a no-op — enabling a
+// module later is just a re-run with a bigger set. ClickHouse DDL is not
+// transactional — every statement is `IF NOT EXISTS` and the ledger row is
+// the commit marker.
+func (s *Store) Migrate(ctx context.Context, active modules.Set) error {
+	if active == nil {
+		active = modules.AllSet()
+	}
 	if err := s.conn.Exec(ctx, "CREATE DATABASE IF NOT EXISTS "+s.db); err != nil {
 		return fmt.Errorf("creating database %s: %w", s.db, err)
 	}
@@ -30,6 +36,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 
 	for _, version := range migrations.Ordered {
 		if applied[version] {
+			continue
+		}
+		// Apply only when ALL the migration's modules are active. Untagged
+		// migrations apply everywhere (belt and braces — the migrations
+		// package test enforces full tagging).
+		if mods, ok := migrations.ByModule[version]; ok && !allEnabled(active, mods) {
 			continue
 		}
 		body, err := migrations.FS.ReadFile(version)
@@ -50,6 +62,16 @@ func (s *Store) Migrate(ctx context.Context) error {
 	return nil
 }
 
+// allEnabled reports whether every module in mods is active.
+func allEnabled(active modules.Set, mods []modules.Name) bool {
+	for _, m := range mods {
+		if !active.Enabled(m) {
+			return false
+		}
+	}
+	return true
+}
+
 // metricsTables are the five exporter metric-type tables (0003_metrics.sql).
 var metricsTables = []string{
 	"otel_metrics_gauge",
@@ -66,6 +88,7 @@ type Retention struct {
 	LogsDays     int
 	MetricsDays  int
 	ProfilesDays int
+	ErrorsDays   int
 }
 
 // ApplyRetention sets per-signal TTL via `ALTER ... MODIFY TTL`. Retention
@@ -103,6 +126,14 @@ func (s *Store) ApplyRetention(ctx context.Context, r Retention) error {
 		q := fmt.Sprintf("ALTER TABLE %s.profiling_samples MODIFY TTL toDateTime(Timestamp) + toIntervalDay(%d)", s.db, r.ProfilesDays)
 		if err := s.conn.Exec(ctx, q); err != nil {
 			return fmt.Errorf("retention on profiling_samples: %w", err)
+		}
+	}
+	if r.ErrorsDays > 0 {
+		// error_events only: error_issue_status is tiny (bounded by triaged
+		// issues) and keeping resolved-issue history is the point.
+		q := fmt.Sprintf("ALTER TABLE %s.error_events MODIFY TTL toDateTime(Timestamp) + toIntervalDay(%d)", s.db, r.ErrorsDays)
+		if err := s.conn.Exec(ctx, q); err != nil {
+			return fmt.Errorf("retention on error_events: %w", err)
 		}
 	}
 	return nil

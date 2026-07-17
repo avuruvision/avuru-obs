@@ -28,6 +28,8 @@ type serviceEdgeDTO struct {
 	Calls      uint64  `json:"calls"`
 	ErrorCount uint64  `json:"errorCount"`
 	ErrorRate  float64 `json:"errorRate"`
+	Bytes      uint64  `json:"bytes,omitempty"` // network flow bytes (flow/both edges)
+	Provenance string  `json:"provenance"`      // "trace", "flow", or "both"
 }
 
 type serviceMapResponse struct {
@@ -148,6 +150,8 @@ func toServiceEdgeDTO(e storage.ServiceEdge) serviceEdgeDTO {
 		Calls:      e.Count,
 		ErrorCount: e.ErrorCount,
 		ErrorRate:  ratio(e.ErrorCount, e.Count),
+		Bytes:      e.Bytes,
+		Provenance: e.Provenance,
 	}
 }
 

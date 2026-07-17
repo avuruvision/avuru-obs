@@ -9,7 +9,6 @@ default). Composition:
 | `obi` | upstream `otel/ebpf-instrument` (pinned, see `agent_docs/tech_stack.md`) | zero-code traces + RED metrics | v0.1 |
 | `otel-agent` | upstream collector image | filelog tailer, kubeletstats | v0.1 |
 | `profiler` | upstream OTel eBPF profiler | CPU profiles (OTLP Profiles, alpha) | v0.1 |
-| `avuru-agent` | `../agent` (Rust) | L4 flow tracer → service map | **v0.2** |
 
 All containers emit OTLP to the gateway (the profiler emits to the hub's
 profiles-ingest seam while the ClickHouse exporter lacks profiles support);

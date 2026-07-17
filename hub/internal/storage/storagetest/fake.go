@@ -13,6 +13,7 @@ type Fake struct {
 	PingErr    error
 	Services   []storage.ServiceStats
 	Edges      []storage.ServiceEdge
+	NetEdges   []storage.ServiceEdge
 	Ops        []storage.OperationStats
 	Page       storage.TracePage
 	Traces     map[string]storage.Trace
@@ -32,6 +33,13 @@ type Fake struct {
 	Profiled   []storage.ProfiledService
 	Flame      storage.FlameNode
 
+	Issues       []storage.ErrorIssue
+	Issue        storage.ErrorIssue
+	IssueErr     error
+	EventPage    storage.ErrorEventPage
+	Histogram    []storage.ErrorHistogramPoint
+	StatusWrites []StatusWrite
+
 	// Last*Query record the most recent inputs for asserting parameter parsing.
 	LastTraceQuery       storage.TraceQuery
 	LastServiceQuery     storage.ServiceQuery
@@ -41,7 +49,16 @@ type Fake struct {
 	LastAgentQuery       storage.AgentQuery
 	LastREDQuery         storage.REDQuery
 	LastProfileQuery     storage.ProfileQuery
+	LastIssueQuery       storage.ErrorIssueQuery
+	LastEventQuery       storage.ErrorEventQuery
 	LastSpanLookupTenant string
+}
+
+// StatusWrite records a SetErrorIssueStatus call.
+type StatusWrite struct {
+	Tenant      string
+	Fingerprint uint64
+	Status      string
 }
 
 func (f *Fake) REDSeries(_ context.Context, q storage.REDQuery) ([]storage.REDSeries, error) {
@@ -101,6 +118,11 @@ func (f *Fake) ServiceEdges(_ context.Context, q storage.ServiceQuery) ([]storag
 	return f.Edges, nil
 }
 
+func (f *Fake) NetworkEdges(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceEdge, error) {
+	f.LastServiceQuery = q
+	return f.NetEdges, nil
+}
+
 func (f *Fake) TraceOverview(_ context.Context, q storage.OverviewQuery) ([]storage.OperationStats, error) {
 	f.LastOverviewQuery = q
 	return f.Ops, nil
@@ -138,4 +160,27 @@ func (f *Fake) SearchLogs(_ context.Context, q storage.LogQuery) (storage.LogPag
 
 func (f *Fake) LogsForTrace(_ context.Context, _, traceID string) ([]storage.LogRecord, error) {
 	return f.TraceLogs[traceID], nil
+}
+
+func (f *Fake) SearchErrorIssues(_ context.Context, q storage.ErrorIssueQuery) ([]storage.ErrorIssue, error) {
+	f.LastIssueQuery = q
+	return f.Issues, nil
+}
+
+func (f *Fake) GetErrorIssue(_ context.Context, _ string, _ uint64) (storage.ErrorIssue, error) {
+	return f.Issue, f.IssueErr
+}
+
+func (f *Fake) ListErrorEvents(_ context.Context, q storage.ErrorEventQuery) (storage.ErrorEventPage, error) {
+	f.LastEventQuery = q
+	return f.EventPage, nil
+}
+
+func (f *Fake) ErrorIssueHistogram(_ context.Context, _ string, _ uint64, _ storage.TimeRange, _ int) ([]storage.ErrorHistogramPoint, error) {
+	return f.Histogram, nil
+}
+
+func (f *Fake) SetErrorIssueStatus(_ context.Context, tenant string, fingerprint uint64, status string) error {
+	f.StatusWrites = append(f.StatusWrites, StatusWrite{Tenant: tenant, Fingerprint: fingerprint, Status: status})
+	return nil
 }

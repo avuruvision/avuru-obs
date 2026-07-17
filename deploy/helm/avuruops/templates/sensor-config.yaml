@@ -1,3 +1,6 @@
+{{- if and .Values.sensor.obi.network.enabled (not .Values.modules.infraMetrics.enabled) }}
+{{- fail "sensor.obi.network.enabled requires modules.infraMetrics.enabled — OBI network flows are stored in the otel_metrics_* tables owned by the infra-metrics module." }}
+{{- end }}
 {{- if and .Values.sensor.enabled .Values.sensor.obi.enabled }}
 apiVersion: v1
 kind: ConfigMap
@@ -35,9 +38,24 @@ data:
       # heuristic keeps http.route cardinality bounded (ids -> wildcards);
       # explicit because RED metric cardinality is a product concern.
       unmatched: heuristic
+    {{- if .Values.sensor.obi.network.enabled }}
+    # Kernel L4 network flows: service-map completeness for workloads OBI's L7
+    # probes don't parse — WITHOUT uprobes (no app-cgroup cost). Exported as the
+    # OTLP metric obi.network.flow.bytes -> otel_metrics_sum, aggregated by k8s
+    # workload identity to bound cardinality. Verify the key surface against the
+    # pinned OBI v0.9.0 before relying on it in prod.
+    network:
+      enable: true
+      allowed_attributes:
+        - k8s.src.owner.name
+        - k8s.src.namespace
+        - k8s.dst.owner.name
+        - k8s.dst.namespace
+    {{- end }}
 {{- end }}
-{{- /* The agent needs >=1 active pipeline or the collector crash-loops. */}}
-{{- $agentActive := and .Values.sensor.enabled .Values.sensor.agent.enabled (or .Values.sensor.agent.logs.enabled .Values.sensor.agent.kubeletstats.enabled) }}
+{{- /* The agent needs >=1 active pipeline or the collector crash-loops. A
+       module gates its own collection (see avuruops.collect* helpers). */}}
+{{- $agentActive := and .Values.sensor.enabled .Values.sensor.agent.enabled (or (include "avuruops.collectLogs" .) (include "avuruops.collectInfraMetrics" .)) }}
 {{- if $agentActive }}
 ---
 apiVersion: v1
@@ -50,7 +68,7 @@ metadata:
 data:
   config.yaml: |
     receivers:
-    {{- if .Values.sensor.agent.logs.enabled }}
+    {{- if include "avuruops.collectLogs" . }}
       filelog:
         # Zero-config stdout/stderr collection for every pod on the node,
         # EXCEPT this release's namespace (the platform must not ingest its
@@ -71,7 +89,7 @@ data:
           # path to resource attributes.
           - type: container
     {{- end }}
-    {{- if .Values.sensor.agent.kubeletstats.enabled }}
+    {{- if include "avuruops.collectInfraMetrics" . }}
       # Node/pod CPU, memory, network from this node's kubelet (Supporting
       # signal tier). Read-only stats API via the pod ServiceAccount.
       kubeletstats:
@@ -159,13 +177,13 @@ data:
       extensions: [health_check, file_storage]
       pipelines:
     {{- $collectionFilter := or .Values.sensor.collection.excludeNamespaces .Values.sensor.collection.optOutLabel }}
-    {{- if .Values.sensor.agent.logs.enabled }}
+    {{- if include "avuruops.collectLogs" . }}
         logs:
           receivers: [filelog]
           processors: [memory_limiter, k8sattributes{{ if $collectionFilter }}, filter/collection{{ end }}, transform/service_name, batch]
           exporters: [otlphttp]
     {{- end }}
-    {{- if .Values.sensor.agent.kubeletstats.enabled }}
+    {{- if include "avuruops.collectInfraMetrics" . }}
         metrics:
           # k8sattributes adds workload names (deployment/statefulset) to pod
           # metrics via k8s.pod.uid, for the pods panel.
@@ -174,7 +192,7 @@ data:
           exporters: [otlphttp]
     {{- end }}
 {{- end }}
-{{- if and .Values.sensor.enabled .Values.sensor.profiler.enabled }}
+{{- if and .Values.sensor.enabled (include "avuruops.collectProfiles" .) }}
 ---
 apiVersion: v1
 kind: ConfigMap

@@ -40,9 +40,9 @@ API at runtime.
   for an o11y tool — a trace search URL must be pasteable into Slack).
   **Detail views use query params, never dynamic routes** (static export):
   e.g. `/traces?trace=<id>`. `useSearchParams` always under `<Suspense>`
-- Generated API types from `proto/` (`ui/src/generated/`) — never hand-write
-  a type the API already defines (M1 exception: `src/lib/api-types.ts`
-  hand-written until buf codegen lands)
+- API types are hand-written in `src/lib/api-types.ts`, mirroring the hub's API
+  responses — keep them in sync with the Go types; never invent a shape the API
+  doesn't return
 
 ## Patterns
 

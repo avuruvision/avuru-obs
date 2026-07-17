@@ -1,7 +1,7 @@
 {{- /* A DaemonSet with zero containers is invalid — render only when at
        least one sensor container is active. */}}
-{{- $agentActive := and .Values.sensor.agent.enabled (or .Values.sensor.agent.logs.enabled .Values.sensor.agent.kubeletstats.enabled) }}
-{{- if and .Values.sensor.enabled (or .Values.sensor.obi.enabled $agentActive .Values.sensor.profiler.enabled) }}
+{{- $agentActive := and .Values.sensor.agent.enabled (or (include "avuruops.collectLogs" .) (include "avuruops.collectInfraMetrics" .)) }}
+{{- if and .Values.sensor.enabled (or .Values.sensor.obi.enabled $agentActive (include "avuruops.collectProfiles" .)) }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -25,6 +25,12 @@ spec:
       serviceAccountName: {{ include "avuruops.fullname" . }}-sensor
       # eBPF containers discover and inspect host processes.
       hostPID: true
+      {{- if .Values.sensor.obi.network.enabled }}
+      # OBI's network-flow feature observes node-level L4 traffic and needs the
+      # host network namespace. Scoped to sensor.obi.network.enabled only.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- end }}
       {{- if or .Values.sensor.priorityClass.create .Values.sensor.priorityClass.name }}
       priorityClassName: {{ .Values.sensor.priorityClass.name | default (printf "%s-sensor" (include "avuruops.fullname" .)) }}
       {{- end }}
@@ -166,7 +172,7 @@ spec:
           resources:
             {{- toYaml .Values.sensor.agent.resources | nindent 12 }}
         {{- end }}
-        {{- if .Values.sensor.profiler.enabled }}
+        {{- if include "avuruops.collectProfiles" . }}
         # Continuous CPU profiling (OTel eBPF profiler distro). Profiles are
         # ALPHA: the feature gate is required, and export goes straight to the
         # hub's ingest seam.
@@ -216,7 +222,7 @@ spec:
           hostPath:
             path: /sys/fs/cgroup
         {{- end }}
-        {{- if .Values.sensor.profiler.enabled }}
+        {{- if include "avuruops.collectProfiles" . }}
         - name: profiler-config
           configMap:
             name: {{ include "avuruops.fullname" . }}-sensor-profiler
