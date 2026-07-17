@@ -11,7 +11,6 @@ via Hub API). See `agent_docs/testing.md`.
 ```
 ┌─ K8s cluster ──────────────────────────────────────────────────┐
 │ DaemonSet "sensor" pod (multi-container):                      │
-│   · avuru-agent (RUST, aya): L4 flow tracer → service map     │
 │   · OBI container (Go, reused as-is): traces + RED metrics    │
 │   · OTel Collector agent (reused): filelog tailer, kubeletstats│
 │   · OTel eBPF profiler (reused as-is): CPU profiles           │
@@ -21,7 +20,7 @@ via Hub API). See `agent_docs/testing.md`.
 │ Gateway: minimal OTel Collector distro─┘   ┌────────────────┐  │
 │        │ batched inserts                   │ HUB (1 Go bin) │  │
 │        ▼                                   │ API only       │  │
-│ ClickHouse (traces·logs·metrics·profiles·flows) ◄─SQL─┘+OpAMP  │
+│ ClickHouse (traces·logs·metrics·profiles) ◄─SQL─┘+OpAMP        │
 │   single-node default (8 GB rec / 4 GB floor) | external = scale│
 └────────────────────────────────────────────────────────────────┘
 ```
@@ -40,17 +39,19 @@ with the hub (`/`→UI, `/api`→hub). The hub API is the client-agnostic contra
 3. **Config path**: agents/collectors register with ONE Hub URL → receive
    ingest endpoint, auth keys, and pipeline config over **OpAMP**
    remote-config. Day-0 bootstrap is Helm/operator; day-2 tuning is OpAMP.
-4. **Service map path**: avuru-agent traces TCP `connect()`/`listen()` via
-   eBPF → flow records → flows table. The map is **independent of traces** —
-   it must light up even with zero instrumented apps and zero stitched traces.
+4. **Service map path**: the service map is derived from OBI trace spans —
+   cross-service Client/Server span pairs give the call edges. OBI's built-in
+   `network` feature (metric `obi.network.flow.bytes`, with k8s src/dst
+   identity) enriches it with edges for un-instrumented services, so the map
+   still lights up where there are no stitched traces.
 
 ## Locked decisions and rationale
 
 | Decision | Choice | Why |
 |---|---|---|
-| Storage | ClickHouse, single store for all 4 signals + flows | Only engine with production-proven profiles storage (Coroot, qryn prior art); Apache 2.0; official beta OTel exporter; mature Go clients. Storage stays behind `storage.Store` — GreptimeDB re-evaluated mid-2027 |
+| Storage | ClickHouse, single store for all 4 signals | Only engine with production-proven profiles storage (Coroot, qryn prior art); Apache 2.0; official beta OTel exporter; mature Go clients. Storage stays behind `storage.Store` — GreptimeDB re-evaluated mid-2027 |
 | Zero-code traces/RED | OBI (OTel eBPF Instrumentation, ex-Beyla) reused as-is, sibling container | Apache 2.0/CNCF; HTTP/2, gRPC, SQL, Redis, Kafka coverage; OTLP-native; pre-1.0 so versions are pinned |
-| Service map | Own Rust eBPF L4 flow tracer | Coroot's proven <5-min mechanic; de-risks the wedge from OBI's pre-1.0 trace-stitching limits |
+| Service map | OBI trace-derived edges + OBI `network` flow edges | Reuses upstream OBI (CNCF, Apache-2.0) for both span-derived and un-instrumented edges; no bespoke privileged agent to build or maintain |
 | Profiling | OTel eBPF profiler as Collector receiver | OTLP Profiles signal is **alpha** → profile ingestion isolated behind an adapter so wire-format breaks don't ripple into storage |
 | Hub | **API-only** single Go binary: API + OpAMP + alerting; SQLite app-state, Postgres for HA | SigNoz retreated from microservices to exactly this. The API is the **client-agnostic contract** for all clients (SPA, Grafana, CLI). |
 | UI packaging | Next.js `output: 'export'` static SPA in its **own nginx pod** (separate deployable), single-origin with the hub (`/`→UI, `/api`→hub). UI is one thin client among several (Grafana/CLI later) | Decouples UI from backend so any client plugs into the same API; lets the UI scale/resource independently |

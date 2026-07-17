@@ -110,7 +110,6 @@ jobs:
           path: dist/*.tgz
           if-no-files-found: error
 
-  # The Rust flow tracer ships in v0.2 — no agent artifact until then.
   release:
     needs: [meta, images, chart]
     runs-on: ubuntu-latest

@@ -23,11 +23,9 @@ CODEOWNERS so reviews route automatically.
 
 | Area | Path(s) | Owner |
 |---|---|---|
-| Agent (Rust / eBPF) | `agent/` | @egilberny |
 | Hub (Go) | `hub/` | @egilberny |
 | UI (Next.js / TS) | `ui/` | @egilberny |
 | Gateway / schemas | `gateway/` | @egilberny |
-| Contracts | `proto/` | @egilberny |
 | Deploy (Helm / compose) | `deploy/`, `sensor/` | @egilberny |
 | Docs & governance | `agent_docs/`, `design/`, root `*.md` | @egilberny |
 

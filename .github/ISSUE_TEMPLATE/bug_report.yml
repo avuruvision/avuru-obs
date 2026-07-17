@@ -35,12 +35,11 @@ body:
     attributes:
       label: Component
       options:
-        - agent (Rust / eBPF)
         - hub (Go API)
         - ui (Next.js)
         - gateway (collector / schemas)
         - deploy (Helm / compose)
-        - proto / sensor
+        - sensor
         - docs
         - unsure
     validations:

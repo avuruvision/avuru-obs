@@ -9,7 +9,7 @@ process and the branch/version model.
 - [ ] On `main` (for a minor) or the `vX.Y` branch (for a patch), `make check` is green.
 - [ ] [CHANGELOG.md](CHANGELOG.md): `Unreleased` finalized into `## [X.Y.Z] — <date>`, with a fresh empty `Unreleased` above it.
 - [ ] `make version-set V=X.Y.Z` applied (no `-SNAPSHOT`); `make version` prints `X.Y.Z`.
-- [ ] Component versions agree: `agent/Cargo.toml` and `ui/package.json` read `X.Y.Z`.
+- [ ] Component versions agree: `ui/package.json` reads `X.Y.Z`.
 - [ ] Release commit is **signed** (`git log --show-signature -1`).
 
 ## Cut
@@ -26,7 +26,7 @@ process and the branch/version model.
 ## Post-release verification
 
 - [ ] **GitHub Release** exists for `vX.Y.Z` with notes and attached artifacts
-      (agent binary, packaged Helm chart).
+      (packaged Helm chart).
       ```bash
       gh release view vX.Y.Z
       ```

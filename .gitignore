@@ -15,10 +15,6 @@ coverage.html
 # UI static export — built by `make ui`, served by the UI nginx image
 ui/out/
 
-# ── Rust (agent) ──────────────────────────────────────────────
-agent/target/
-*.profraw
-
 # ── Node / Next.js (ui) ───────────────────────────────────────
 ui/node_modules/
 ui/.next/

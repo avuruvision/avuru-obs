@@ -38,7 +38,7 @@ These milestone tags (`M1`–`M5`) are referenced throughout the codebase and
 
 | Milestone | Theme | Shipped |
 |---|---|---|
-| **M1** | Local stack & ingestion | `make dev` compose stack; OTLP ingest end-to-end; first e2e drop-in test (`proto/` buf codegen moved to v0.2 with the flow tracer) |
+| **M1** | Local stack & ingestion | `make dev` compose stack; OTLP ingest end-to-end; first e2e drop-in test |
 | **M2** | Deployable OTLP backend | Helm install path; gateway → ClickHouse → Hub API in-cluster; sensor DaemonSet (OBI zero-code traces + zero-config logs); services inventory UI |
 | **M3** | Signal depth & correlation | Logs + trace correlation; kubeletstats infra metrics (schema → hub API → Nodes UI); RED dashboard |
 | **M4** | UI depth | Trace waterfall/flamegraph/diff, split workspace; continuous profiling (ingest seam → flame-graph API → icicle UI) |
@@ -46,10 +46,6 @@ These milestone tags (`M1`–`M5`) are referenced throughout the codebase and
 
 ## v0.2 (directional)
 
-- **Kernel flow topology:** the custom Rust eBPF L4 flow tracer (`agent/`,
-  aya) and its flows schema (migration `0005`), enriching the service map
-  beyond the protocols zero-code instrumentation parses; `proto/` buf codegen
-  ships with it (flow.proto is the first cross-language contract).
 - **Auth:** OIDC behind the existing `hub/internal/auth.Provider`
   interface. The
   [enterprise seam](agent_docs/architecture.md#enterprise-seam-do-not-bypass)
@@ -93,8 +89,9 @@ These milestone tags (`M1`–`M5`) are referenced throughout the codebase and
   avuru-obs can dual-write during a migration. Extends the drop-in promise
   beyond OTLP and keeps the door open in both directions.
 - **Network health on the service map:** per-edge RTT, retransmissions and
-  resets from the eBPF flow tracer — connection-level health without traces,
-  SDKs, or app changes.
+  resets delivered via OBI's built-in `network` feature (upstream OpenTelemetry
+  eBPF Instrumentation) — connection-level health without traces, SDKs, or app
+  changes.
 - **Richer auto-tagging:** map Kubernetes labels/annotations to business tags
   and filter by them across every signal.
 - **Deeper profiling:** off-CPU and memory profiles as the upstream OTel eBPF

@@ -108,10 +108,9 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
 
 ### Deferred to v0.2
 
-- The custom Rust eBPF L4 flow tracer and its flows schema (`0005`), the
-  hub's OpAMP server + configuration UI, auth/OIDC (the enterprise seam —
-  tenant column, provider interface, retention objects — ships in v0.1), and
-  `proto/` buf codegen.
+- The hub's OpAMP server + configuration UI, and auth/OIDC (the enterprise
+  seam — tenant column, provider interface, retention objects — ships in
+  v0.1).
 
 <!--
 Release links:
