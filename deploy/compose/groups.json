@@ -1,0 +1,9 @@
+{
+  "defaultTier": "T2",
+  "thresholds": {
+    "defaults": { "minSampleCount": 1 }
+  },
+  "groups": [
+    { "name": "payments", "tier": "T0", "selector": { "services": ["seed-payments"] } }
+  ]
+}

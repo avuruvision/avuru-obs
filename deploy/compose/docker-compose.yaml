@@ -82,6 +82,11 @@ services:
       # Deterministic switcher list for e2e (staging fixtures are seeded
       # under the `staging` tenant; discovery would also find it from data).
       AVURUOPS_PROJECTS: default,staging
+      # Service-health grouping config: seed volumes are tiny, so minSampleCount
+      # is 1 here (the built-in default of 5 would read the fixtures as idle).
+      AVURUOPS_GROUPS_CONFIG: /etc/avuruops/groups.json
+    volumes:
+      - ./groups.json:/etc/avuruops/groups.json:ro
     ports:
       - "8080:8080"
     depends_on:
