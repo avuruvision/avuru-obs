@@ -84,6 +84,14 @@ These milestone tags (`M1`–`M5`) are referenced throughout the codebase and
   ingest endpoint so existing SDKs — browser JS especially, the one signal
   eBPF cannot reach — point at avuru-obs by changing a DSN. Later: alerting,
   release tracking, source maps.
+- **Service health (new module):** rolls per-service RED health up into
+  consolidated **group** health with criticality **tiers** (T0/T1/T2) and a
+  dependency-propagation rule — a service can't read green while a critical (T0)
+  dependency is red. Derived from trace data you already send (no probing, no new
+  schema); grouping is hybrid — config selectors plus automatic grouping by
+  Kubernetes namespace — and the tier/threshold config hot-reloads from a
+  ConfigMap without a redeploy. The read-side status model a future alerting
+  layer fires on. See the [AEP](design/2026-07-18-service-health-groups.md).
 - **Wider ingest compatibility:** Jaeger, Zipkin, Prometheus and Loki push
   receivers alongside OTLP, plus forwarding exporters (OTLP/Kafka) so
   avuru-obs can dual-write during a migration. Extends the drop-in promise
