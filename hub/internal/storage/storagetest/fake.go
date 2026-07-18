@@ -12,6 +12,7 @@ import (
 type Fake struct {
 	PingErr    error
 	Services   []storage.ServiceStats
+	Labels     []storage.ServiceLabel
 	Edges      []storage.ServiceEdge
 	NetEdges   []storage.ServiceEdge
 	Ops        []storage.OperationStats
@@ -111,6 +112,11 @@ func (f *Fake) SystemStats(context.Context) (storage.SystemStats, error) {
 func (f *Fake) ListServices(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceStats, error) {
 	f.LastServiceQuery = q
 	return f.Services, nil
+}
+
+func (f *Fake) ServiceLabels(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceLabel, error) {
+	f.LastServiceQuery = q
+	return f.Labels, nil
 }
 
 func (f *Fake) ServiceEdges(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceEdge, error) {

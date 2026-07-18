@@ -20,10 +20,14 @@ const (
 	InfraMetrics  Name = "infra-metrics"
 	Profiling     Name = "profiling"
 	ErrorTracking Name = "error-tracking"
+	// ServiceHealth is a derived module: it owns no schema/migration, rolling
+	// per-service RED health (core trace data) up into group health. Gating it
+	// off only removes the API routes + UI surface, never any ingestion weight.
+	ServiceHealth Name = "service-health"
 )
 
 // All lists every known module in registry (display) order.
-var All = []Name{Core, Logs, InfraMetrics, Profiling, ErrorTracking}
+var All = []Name{Core, Logs, InfraMetrics, Profiling, ErrorTracking, ServiceHealth}
 
 // Set is a resolved active-module set; Core is always present.
 type Set map[Name]bool

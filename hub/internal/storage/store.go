@@ -53,6 +53,17 @@ type ServiceEdge struct {
 	Provenance string // "trace", "flow", or "both"
 }
 
+// ServiceLabel carries a service's dominant grouping labels, resolved from
+// ResourceAttributes over entry spans (argMax by span volume — a service whose
+// spans disagree collapses to its single most common value). Used by the
+// service-health module to auto-group services by namespace when config does
+// not assign them. Either field may be empty (SDK apps that set neither).
+type ServiceLabel struct {
+	Service          string
+	K8sNamespace     string // ResourceAttributes['k8s.namespace.name']
+	ServiceNamespace string // ResourceAttributes['service.namespace']
+}
+
 // OverviewQuery filters TraceOverview.
 type OverviewQuery struct {
 	Tenant     string
@@ -435,6 +446,10 @@ type Store interface {
 	Ping(ctx context.Context) error
 	SystemStats(ctx context.Context) (SystemStats, error)
 	ListServices(ctx context.Context, q ServiceQuery) ([]ServiceStats, error)
+	// ServiceLabels returns each service's dominant grouping labels (namespace)
+	// over the same entry-span population as ListServices. Used by the
+	// service-health module to auto-group unassigned services by namespace.
+	ServiceLabels(ctx context.Context, q ServiceQuery) ([]ServiceLabel, error)
 	ServiceEdges(ctx context.Context, q ServiceQuery) ([]ServiceEdge, error)
 	// NetworkEdges derives service→service edges from OBI network flow metrics
 	// (otel_metrics_sum). It reads the metrics tables, so callers must gate it
