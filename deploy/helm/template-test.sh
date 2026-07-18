@@ -88,4 +88,40 @@ out="$(render --set sensor.obi.enabled=false --set sensor.agent.enabled=false --
 grep -q 'kind: DaemonSet' <<<"$out" && fail "DaemonSet rendered with zero active containers"
 ok "DaemonSet omitted when nothing collects"
 
+echo "== sentry ingest: off by default"
+out="$(render --set ingress.enabled=true)"
+grep -q '4319' <<<"$out" && fail "sentry port rendered without gateway.sentry.enabled"
+grep -q 'sentry' <<<"$out" && fail "sentry surface rendered without gateway.sentry.enabled"
+ok "no sentry receiver, port or route by default"
+
+echo "== sentry ingest: enabled -> receiver + container port + Service port"
+out="$(render --set gateway.sentry.enabled=true)"
+grep -q 'endpoint: 0.0.0.0:4319' <<<"$out" || fail "sentry receiver endpoint missing"
+grep -q 'receivers: \[otlp, sentry\]' <<<"$out" || fail "sentry not wired into the logs pipeline"
+grep -q 'containerPort: 4319' <<<"$out" || fail "sentry containerPort missing"
+# The Service port is the bit that was missing: without it the receiver is
+# unreachable and the DSN promise cannot be kept.
+n=$(grep -c 'targetPort: sentry-http' <<<"$out")
+[ "$n" = "1" ] || fail "sentry Service port missing (got $n)"
+ok "receiver, containerPort and Service port all rendered"
+
+echo "== sentry ingest: needs its modules (a flag alone is not enough)"
+for off in modules.logs.enabled modules.errorTracking.enabled; do
+  out="$(render --set gateway.sentry.enabled=true --set "$off=false" --set ingress.enabled=true --set ingress.sentryHost=errors.example.com)"
+  grep -q '4319' <<<"$out" && fail "sentry surface survived $off=false"
+done
+ok "surface disappears when either logs or error-tracking is off"
+
+echo "== sentry ingest: ingress route only with sentryHost"
+out="$(render --set gateway.sentry.enabled=true --set ingress.enabled=true)"
+grep -q 'number: 4319' <<<"$out" && fail "ingress routed to 4319 without ingress.sentryHost"
+ok "no ingress route until sentryHost is set"
+out="$(render --set gateway.sentry.enabled=true --set ingress.enabled=true --set ingress.sentryHost=errors.example.com)"
+grep -q 'host: "errors.example.com"' <<<"$out" || fail "sentry host rule missing"
+grep -q 'number: 4319' <<<"$out" || fail "sentry ingress backend port missing"
+# /api on the MAIN host must still reach the hub — the sentry rule is a second
+# host precisely because /api/<project>/envelope/ would collide with it.
+grep -q 'name: test-avuruops-hub' <<<"$out" || fail "hub backend lost from the main host"
+ok "dedicated sentry host routes to the gateway, hub keeps /api"
+
 echo "ALL TEMPLATE ASSERTIONS PASSED"

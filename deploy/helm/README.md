@@ -1,16 +1,22 @@
 # deploy/helm — the Avuru Obs chart
 
-`avuruops/` is the vendor-neutral product chart: a deployable OTLP backend
-(traces + logs) that replaces Jaeger for OTLP-exporting apps. One
-`helm install` brings up the gateway, a single-node ClickHouse, the hub
-(API + UI), and a schema-migration hook. (The M4 operator + sensor DaemonSet
-for the service map build on top of this chart.)
+`avuruops/` is the vendor-neutral product chart: an OTLP backend on ClickHouse
+that already-instrumented apps reach by pointing their exporter at the gateway.
+One `helm install` brings up the gateway, a single-node ClickHouse, the hub API,
+the UI, the sensor DaemonSet, and a schema-migration hook.
+
+The chart is published to GHCR as an OCI artifact — install it by version, no
+repo to add:
 
 ```bash
-helm install avuruops ./avuruops -n avuruops --create-namespace
+helm install avuruops oci://ghcr.io/avuruvision/charts/avuruops \
+  --version <X.Y.Z> -n avuruops --create-namespace
 # point apps at:  http://avuruops-gateway:4318   (or :4317 gRPC)
-# UI:  kubectl -n avuruops port-forward svc/avuruops-hub 8080:80
+# UI:  kubectl -n avuruops port-forward svc/avuruops-ui 8080:80   (then http://localhost:8080/)
 ```
+
+Contributors installing local changes use the chart in-tree instead:
+`helm install avuruops ./avuruops -n avuruops --create-namespace`.
 
 ## What it deploys
 
@@ -18,8 +24,9 @@ helm install avuruops ./avuruops -n avuruops --create-namespace
 |---|---|---|
 | gateway | Deployment + Service | OTLP 4317/4318 → ClickHouse exporter (contrib collector + ConfigMap) |
 | clickhouse | StatefulSet + Service + PVC | single-node default; skipped when `clickhouse.external.enabled` |
-| hub | Deployment + Service (+ Ingress) | API + embedded UI |
-| migrate | Job (Helm hook) | `hub migrate` on `post-install,pre-upgrade` |
+| hub | Deployment + Service | API only (the UI is its own deployable) |
+| ui | Deployment + Service (+ Ingress) | static SPA, single-origin `/api` → hub |
+| migrate | Job (Helm hook) | `hub migrate` on `post-install,post-upgrade` |
 
 No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale.
 
@@ -31,7 +38,8 @@ No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale.
 | `clickhouse.external.enabled` | `false` | BYO ClickHouse — set `.address` + `.existingSecret` |
 | `clickhouse.persistence.storageClassName` | `""` | `""` = cluster default StorageClass |
 | `clickhouse.persistence.size` | `50Gi` | PVC size |
-| `modules.logs.enabled` / `modules.infraMetrics.enabled` / `modules.profiling.enabled` | `true` | Run a signal family, or not — one switch for schema + API + pipeline + collection + UI (see Modules) |
+| `modules.logs.enabled` / `modules.infraMetrics.enabled` / `modules.profiling.enabled` / `modules.errorTracking.enabled` | `true` | Run a signal family, or not — one switch for schema + API + pipeline + collection + UI (see Modules) |
+| `gateway.sentry.enabled` / `ingress.sentryHost` | `false` / `""` | Accept existing Sentry SDKs (needs the error-tracking + logs modules); give the ingest its own host |
 | `retention.traces` / `retention.logs` | `7` / `3` | Per-signal TTL in days |
 | `ingress.enabled` / `ingress.host` | `false` / `avuruops.local` | Expose the hub UI |
 | `auth.enabled` | `false` | Forward placeholder — enforce auth at your ingress (OIDC is v0.2) |
@@ -72,6 +80,37 @@ collects nothing. Turning a module on later is a values change plus
 schema. Turning one **off** leaves existing tables in place (no data is
 dropped); delete them yourself if you want the space back.
 
+## Upgrading
+
+```bash
+helm upgrade avuruops oci://ghcr.io/avuruvision/charts/avuruops \
+  --version <new> -n avuruops   # reuse your -f values / --set flags
+```
+
+Schema changes are applied by the `migrate` Job, a `post-install,post-upgrade`
+Helm hook running `hub migrate`. It runs **after** Helm applies the manifests
+(so the in-chart ClickHouse already exists) and records each applied version in
+a `schema_migrations` ledger, so:
+
+- **Migrations are additive and idempotent.** Every statement is
+  `IF NOT EXISTS`; already-applied versions are skipped. Re-running, or enabling
+  a module later, only applies what is newly due — never re-applies or drops.
+- **They are forward-only** — there are no down-migrations. `helm rollback`
+  reverts the manifests (images, config), not the schema. Rolling back to an
+  older `appVersion` is safe when the newer version only *added* tables (an
+  older hub ignores tables it doesn't know); it is **not** safe across a
+  shape-changing migration. Roll forward; don't roll back across a schema
+  change.
+- **A failed migration is kept for inspection.** The hook is
+  `hook-delete-policy: before-hook-creation,hook-succeeded` with
+  `backoffLimit: 6`, so a failed Job stays around (`kubectl logs job/…-migrate`)
+  and is recreated on the next upgrade. `--wait` surfaces the failure rather
+  than leaving a half-migrated store.
+
+Because collection is driven by ConfigMaps with a checksum annotation, a
+`helm upgrade` that changes sensor/gateway config rolls those pods
+automatically — no manual restart.
+
 ## Deactivating collection (what turns off what)
 
 Every knob is a Helm value (a `helm upgrade` rolls the DaemonSet via its
@@ -103,6 +142,28 @@ kubectl label node worker-3 avuru.obs/collect=false
 If apps fail probes after installing the chart, start at
 `docs/runbooks/app-probe-failures.md` — prefer these targeted opt-outs over
 uninstalling.
+
+## Sizing & overlays
+
+The chart stays environment-agnostic; overlays carry the sizing. Three ship in
+this directory — compose them left-to-right (`-f` wins rightward):
+
+| Overlay | Shape | ClickHouse |
+|---|---|---|
+| `values-staging.yaml` | small — 1 replica each, short retention | in-chart, 20Gi |
+| `values-prod.yaml` | medium — 2 replicas, `priorityClass`, ingress | in-chart, 100Gi |
+| `values-external-clickhouse.yaml` | large / HA — 3 replicas, long retention | **external (BYO)** |
+
+**High availability = external ClickHouse.** The in-tree ClickHouse is
+single-node by design (no Keeper); for HA point `clickhouse.external.*` at an
+operator-managed cluster and layer `values-external-clickhouse.yaml`. The
+stateless tier (gateway, hub, ui) scales with plain `replicas`.
+
+**Disk.** ClickHouse storage tracks `retention.<signal>` days × ingest rate
+(compressed, and columnar compression is high). Start from the overlay sizes,
+watch actual PVC/backend growth over one full retention window, and adjust —
+raising retention raises disk roughly linearly. The sensor's own CPU/memory
+scales with the number of processes per node, not with retention.
 
 ## Downstream consumption
 

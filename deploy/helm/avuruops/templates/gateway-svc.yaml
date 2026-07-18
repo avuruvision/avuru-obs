@@ -18,3 +18,10 @@ spec:
     - name: otlp-http
       port: 4318
       targetPort: otlp-http
+    {{- if include "avuruops.sentryEnabled" . }}
+    # Sentry SDK ingest. Reachable in-cluster on 4319; expose it from outside
+    # via ingress.sentryHost (browser SDKs are cross-origin).
+    - name: sentry-http
+      port: 4319
+      targetPort: sentry-http
+    {{- end }}

@@ -1,0 +1,20 @@
+# Artifact Hub repository metadata — proves ownership of the published chart so
+# the listing can be claimed (and shown as a verified publisher).
+#
+# Deliberately NOT inside avuruops/: .helmignore filters *.md but not *.yml, so
+# a copy in the chart directory would be packaged into every release tarball.
+#
+# The chart publishes as an OCI artifact (.github/workflows/release.yml):
+#
+#   oci://ghcr.io/avuruvision/charts/avuruops
+#
+# For an OCI-backed repository Artifact Hub reads this metadata from an artifact
+# in the registry rather than from the git tree, so it has to be pushed there —
+# e.g. with oras, using Artifact Hub's repository-metadata media type. Register
+# the repository in Artifact Hub first, paste the generated repositoryID below,
+# then push. This file stays the source of truth for that value.
+repositoryID: "" # set when the repository is registered in Artifact Hub
+owners:
+  - name: Berny
+    email: egilberny@lab.luxavuru.com
+ignore: []

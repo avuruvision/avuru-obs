@@ -15,7 +15,10 @@ version-set:
 	@test -n "$(V)" || { echo "usage: make version-set V=x.y.z[-SNAPSHOT]"; exit 1; }
 	@printf '%s\n' "$(V)" > VERSION
 	@perl -i -pe 's/"version": ".*"/"version": "$(V)"/ && ($$done=1) if !$$done' ui/package.json
-	@echo "version set to $(V) (VERSION, ui/package.json)"
+	@perl -i -pe 's/^version: .*/version: $(V)/ && ($$done=1) if !$$done' deploy/helm/avuruops/Chart.yaml
+	@perl -i -pe 's/^appVersion: .*/appVersion: "$(V)"/ && ($$done=1) if !$$done' deploy/helm/avuruops/Chart.yaml
+	@perl -i -pe 's{(avuru-obs-(?:hub|ui|gateway)):\S+}{$$1:$(V)}g' deploy/helm/avuruops/Chart.yaml
+	@echo "version set to $(V) (VERSION, ui/package.json, Chart.yaml)"
 
 hub:
 	$(MAKE) -C hub build

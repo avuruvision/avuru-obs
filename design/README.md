@@ -39,7 +39,9 @@ only if the design needs to be pinned down before coding.
 
 | Date | Topic | Status |
 |---|---|---|
-| _(add AEPs here)_ | — | — |
+| [2026-07-15](2026-07-15-module-framework.md) | Module framework — opt-in signals | Draft |
+| [2026-07-16](2026-07-16-error-tracking.md) | Error tracking — derived issues + Sentry ingest | Draft |
+| [2026-07-17](2026-07-17-sensor-safe-by-default.md) | Make the eBPF sensor safe to leave on | Draft |
 
 ## Conventions
 

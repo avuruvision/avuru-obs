@@ -5,16 +5,17 @@ Live in 5 minutes, zero code changes.**
 
 [![CI](https://github.com/avuruvision/avuru-obs/actions/workflows/ci.yml/badge.svg)](https://github.com/avuruvision/avuru-obs/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![Roadmap](https://img.shields.io/badge/status-pre--v0.1-orange.svg)](ROADMAP.md)
+[![Release](https://img.shields.io/github/v/release/avuruvision/avuru-obs?color=blue)](https://github.com/avuruvision/avuru-obs/releases)
 
-Avuru Obs replaces the Grafana LGTM stack with one storage engine
-(ClickHouse), one binary control plane, and one UI. eBPF auto-discovers your
-services: install the Helm chart and watch the service map light up — no SDK,
-no sidecars, no YAML archaeology.
+Avuru Obs keeps every signal — traces, metrics, logs, profiles — in one storage
+engine (ClickHouse), behind one binary control plane and one UI. eBPF
+auto-discovers your services: install the Helm chart and watch the service map
+light up — no SDK, no sidecars, no YAML archaeology.
 
-> **Status: pre-v0.1, under active development.** See [ROADMAP.md](ROADMAP.md)
-> for where it's headed and [`agent_docs/architecture.md`](agent_docs/architecture.md)
-> for the living architecture.
+> **Status: v0.1.0 released**; `main` is under active development toward v0.2.
+> See [ROADMAP.md](ROADMAP.md) for where it's headed and
+> [`agent_docs/architecture.md`](agent_docs/architecture.md) for the living
+> architecture.
 
 ## How it works
 
@@ -33,6 +34,37 @@ hub (Go binary: API + OpAMP config plane)   ◄── UI (static SPA, own pod)
 - **One store**: ClickHouse for traces, metrics, logs, profiles, and flows.
 - **Drop-in**: already on OTLP/Jaeger? Point your exporter at the gateway —
   no SDK or code changes (a hard product requirement).
+
+## Quickstart
+
+**Kubernetes (the real install).** The chart is published to GHCR as an OCI
+artifact — no repo to add:
+
+```bash
+helm install avuruops oci://ghcr.io/avuruvision/charts/avuruops \
+  --version <X.Y.Z> -n avuruops --create-namespace
+```
+
+Or let the installer resolve the latest release and wait for rollout (it only
+runs `helm`/`kubectl` against your current context — read it first if you like,
+`--dry-run` prints the exact command):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/avuruvision/avuru-obs/main/deploy/install.sh | sh
+```
+
+The chart and every image we build are cosign-signed and multi-arch; see
+[RELEASING.md](RELEASING.md#verifying-a-release) to verify a release.
+
+**Laptop (no cluster, no checkout).** One compose file pulls the released
+images and a demo app so the service map lights up immediately:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/avuruvision/avuru-obs/main/deploy/compose/docker-compose.release.yaml
+docker compose -f docker-compose.release.yaml up --wait   # then open http://localhost:3001
+```
+
+Full setup, sizing, and configuration: [`deploy/helm/README.md`](deploy/helm/README.md).
 
 ## Repository layout
 

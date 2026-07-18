@@ -55,6 +55,10 @@ jobs:
   images:
     needs: meta
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push images to GHCR
+      id-token: write # cosign keyless signing (Fulcio/Rekor) via GH OIDC
     strategy:
       matrix:
         include:
@@ -66,7 +70,13 @@ jobs:
             dockerfile: gateway/Dockerfile
     steps:
       - uses: actions/checkout@v4
+      # arm64 is not optional: the sensor's eBPF stack and the gateway run on
+      # arm64 nodes, and an amd64-only image strands those clusters. QEMU is the
+      # baseline that needs no Dockerfile change; if build time becomes painful,
+      # cross-compile instead (--platform=$BUILDPLATFORM + GOARCH=$TARGETARCH).
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
+      - uses: sigstore/cosign-installer@v3
       - name: Log in to registry
         if: needs.meta.outputs.dry_run != 'true'
         uses: docker/login-action@v3
@@ -75,28 +85,49 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push ${{ matrix.component }}
+        id: build
         uses: docker/build-push-action@v6
         env:
           # No *.dockerbuild build-record artifacts: the release job downloads
           # run artifacts and must only ever see the helm chart (v0.1.0 cut
-          # failed on a .dockerbuild blob that errored after 5 retries).
+          # failed on a .dockerbuild blob that errored after 5 retries). SBOM and
+          # provenance below are unaffected — they attach to the registry index,
+          # not to run artifacts.
           DOCKER_BUILD_RECORD_UPLOAD: "false"
         with:
           context: .
           file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
           push: ${{ needs.meta.outputs.dry_run != 'true' }}
+          # Attestations need a registry to attach to, so they only make sense
+          # on a real push; a dry run just proves both arches build.
+          provenance: ${{ needs.meta.outputs.dry_run != 'true' && 'mode=max' || 'false' }}
+          sbom: ${{ needs.meta.outputs.dry_run != 'true' }}
           build-args: |
             VERSION=${{ needs.meta.outputs.tag }}
           tags: |
             ${{ env.IMAGE_PREFIX }}-${{ matrix.component }}:${{ needs.meta.outputs.tag }}
             ${{ env.IMAGE_PREFIX }}-${{ matrix.component }}:${{ needs.meta.outputs.minor }}
+      # Sign the multi-arch index by digest: one signature then covers every
+      # platform manifest under it, and a digest cannot be moved the way a tag
+      # can. Verification recipe lives in RELEASING.md.
+      - name: Sign ${{ matrix.component }} (keyless)
+        if: needs.meta.outputs.dry_run != 'true'
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.component }}@${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "$IMAGE"
 
   chart:
     needs: meta
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push the chart to GHCR as an OCI artifact
+      id-token: write # cosign keyless signing
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
+      - uses: sigstore/cosign-installer@v3
       - name: Package Helm chart
         run: |
           helm lint deploy/helm/avuruops
@@ -104,6 +135,26 @@ jobs:
             --version "${{ needs.meta.outputs.version }}" \
             --app-version "${{ needs.meta.outputs.version }}" \
             --destination dist
+      # The chart is the install path, so it ships to the registry beside the
+      # images: `helm install oci://…` needs no repo to be added and reuses the
+      # GHCR credentials we already have. The .tgz stays attached to the GitHub
+      # Release as the offline fallback for clients that cannot reach a registry.
+      - name: Push chart to OCI and sign it
+        if: needs.meta.outputs.dry_run != 'true'
+        env:
+          CHART_NS: ${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
+          VERSION: ${{ needs.meta.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # pipefail matters: the default shell would hide a failing `helm push`
+          # behind tee's exit code.
+          set -euo pipefail
+          helm registry login "${{ env.REGISTRY }}" -u "${{ github.actor }}" --password-stdin <<<"$GH_TOKEN"
+          helm push "dist/avuruops-${VERSION}.tgz" "oci://${CHART_NS}" 2>&1 | tee push.log
+          # Sign the chart by digest, exactly like the images.
+          digest="$(awk '/^Digest: /{print $2}' push.log)"
+          test -n "$digest" || { echo "helm push printed no digest"; exit 1; }
+          cosign sign --yes "${CHART_NS}/avuruops@${digest}"
       - uses: actions/upload-artifact@v4
         with:
           name: helm-chart
@@ -132,6 +183,15 @@ jobs:
             grab {print}
           ' CHANGELOG.md > notes.md || true
           if [ ! -s notes.md ]; then echo "See CHANGELOG.md for details." > notes.md; fi
+      # Attach the installer and its checksum so the pinned-per-tag copy users
+      # pipe to sh can be verified. Committing a checksum next to the script
+      # would go stale on every edit and nothing would check it; the release is
+      # the immutable point where a checksum is meaningful.
+      - name: Stage installer + checksum
+        run: |
+          mkdir -p artifacts/installer
+          cp deploy/install.sh artifacts/installer/install.sh
+          sha256sum deploy/install.sh | sed 's# .*/# #' > artifacts/installer/install.sh.sha256
       - name: Create GitHub Release
         if: needs.meta.outputs.dry_run != 'true'
         uses: softprops/action-gh-release@v2
@@ -142,6 +202,8 @@ jobs:
           prerelease: ${{ needs.meta.outputs.prerelease == 'true' }}
           files: |
             artifacts/helm-chart/*.tgz
+            artifacts/installer/install.sh
+            artifacts/installer/install.sh.sha256
       - name: Dry-run summary
         if: needs.meta.outputs.dry_run == 'true'
         run: echo "Dry run — built images and chart, skipped push and release for ${{ needs.meta.outputs.tag }}"

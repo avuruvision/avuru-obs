@@ -47,8 +47,8 @@ gateway:
     repository: avuruops/gateway
     tag: "" # defaults to .Chart.AppVersion
   replicas: 1
-  # Project/environment this gateway feeds (Coroot-style project-per-cluster):
-  # stamps `avuru.tenant` on ALL telemetry passing through (and the profiler's
+  # Project/environment this gateway feeds (one project per cluster): stamps
+  # `avuru.tenant` on ALL telemetry passing through (and the profiler's
   # ingest header). "" = everything lands in the `default` project. Senders
   # never change — this is server-side tagging (drop-in OTLP stays true).
   tenant: ""
@@ -229,8 +229,8 @@ clickhouse:
     limits:
       memory: 4Gi
 
-# Projects the hub advertises to the UI switcher (Coroot's "defined through
-# the config" mode). Tenants observed in the data are auto-discovered and
+# Projects the hub advertises to the UI switcher (the config-defined list).
+# Tenants observed in the data are auto-discovered and
 # merged; `default` always exists. Typically one entry per environment
 # (matching each cluster's gateway.tenant) on a shared-ClickHouse install.
 projects: []
@@ -248,6 +248,11 @@ ingress:
   enabled: false
   className: ""
   host: avuruops.local
+  # Hostname for Sentry SDK ingest, when gateway.sentry.enabled. It needs one
+  # of its own: SDKs POST to /api/<project>/envelope/, which the main host
+  # routes to the hub. "" = no ingress route (reach :4319 in-cluster, or via
+  # your own). Put it in gateway.sentry.allowedOrigins' reach for browsers.
+  sentryHost: ""
   annotations: {}
   tls: []
 

@@ -18,13 +18,15 @@ type Config struct {
 }
 
 // ProjectConfig configures one Sentry project.
+//
+// There is no per-project key restriction yet: any DSN key is accepted, the
+// same topology trust the OTLP receiver grants (see Projects above). Per-project
+// DSN keys arrive with v0.2 auth — a `keys` field will be added when it is
+// actually enforced, rather than shipped inert as if it were access control.
 type ProjectConfig struct {
 	// ServiceName stamped on this project's events (resource service.name). If
 	// empty, falls back to the event's server_name, then sentry-project-<id>.
 	ServiceName string `mapstructure:"service_name"`
-	// Keys optionally restricts which DSN public keys are accepted. Empty =
-	// accept any key (topology trust).
-	Keys []string `mapstructure:"keys"`
 }
 
 func (c *Config) Validate() error { return nil }

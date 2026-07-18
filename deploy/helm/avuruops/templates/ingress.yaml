@@ -44,4 +44,20 @@ spec:
                 name: {{ include "avuruops.fullname" . }}-ui
                 port:
                   number: 80
+    {{- if and (include "avuruops.sentryEnabled" .) .Values.ingress.sentryHost }}
+    # Sentry SDK ingest gets its OWN host: the SDKs POST to
+    # /api/<project>/envelope/, which on the main host would be swallowed by the
+    # /api -> hub rule above. The project id is part of the path, so no static
+    # rule can separate them — a second hostname is the portable way to do it.
+    - host: {{ .Values.ingress.sentryHost | quote }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "avuruops.fullname" . }}-gateway
+                port:
+                  number: 4319
+    {{- end }}
 {{- end }}

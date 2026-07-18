@@ -1,0 +1,180 @@
+# Avuru Obs — clone-free eval. Runs the RELEASED images from GHCR; no repo
+# checkout and no local files (both configs are inlined below).
+#
+#   curl -fsSLO https://raw.githubusercontent.com/avuruvision/avuru-obs/main/deploy/compose/docker-compose.release.yaml
+#   docker compose -f docker-compose.release.yaml up --wait
+#   # then open http://localhost:3001
+#
+# The images are published by the release workflow, so pick a released tag:
+#   AVURUOPS_VERSION=v0.2.0 docker compose -f docker-compose.release.yaml up --wait
+# The default floats to the latest v0.2 patch once that line has shipped.
+#
+# This is a laptop sandbox, not a deployment — Kubernetes is the real install
+# (deploy/helm/README.md). For a from-source dev loop use docker-compose.yaml.
+name: avuru-obs
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.3
+    environment:
+      CLICKHOUSE_USER: avuru
+      CLICKHOUSE_PASSWORD: avuru
+      CLICKHOUSE_DB: otel
+    configs:
+      - source: ch-low-resources
+        target: /etc/clickhouse-server/config.d/low-resources.xml
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    ports:
+      - "127.0.0.1:8123:8123" # HTTP (queries, debugging)
+      - "127.0.0.1:9000:9000" # native (hub, exporter)
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8123/ping"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+
+  # One-shot schema migrator (mirrors the k8s Helm post-install/post-upgrade
+  # hook). gateway + hub wait for it to complete before starting.
+  migrate:
+    image: ghcr.io/avuruvision/avuru-obs-hub:${AVURUOPS_VERSION:-v0.2}
+    command: ["migrate"]
+    environment:
+      AVURUOPS_CLICKHOUSE_ADDR: clickhouse:9000
+      AVURUOPS_CLICKHOUSE_USER: avuru
+      AVURUOPS_CLICKHOUSE_PASSWORD: avuru
+      AVURUOPS_MODULES: "core,logs,infra-metrics,profiling,error-tracking"
+      AVURUOPS_RETENTION_TRACES_DAYS: "7"
+      AVURUOPS_RETENTION_LOGS_DAYS: "3"
+      AVURUOPS_RETENTION_METRICS_DAYS: "7"
+      AVURUOPS_RETENTION_PROFILES_DAYS: "3"
+      AVURUOPS_RETENTION_ERRORS_DAYS: "30"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    restart: "no"
+
+  gateway:
+    image: ghcr.io/avuruvision/avuru-obs-gateway:${AVURUOPS_VERSION:-v0.2}
+    command: ["--config=/etc/avuru/config.yaml"]
+    configs:
+      - source: gateway-config
+        target: /etc/avuru/config.yaml
+    ports:
+      - "4317:4317" # OTLP gRPC — the ONLY address apps point at
+      - "4318:4318" # OTLP HTTP
+      - "127.0.0.1:13133:13133" # health_check extension
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    # No container healthcheck: the distro image is distroless (no shell).
+
+  hub:
+    image: ghcr.io/avuruvision/avuru-obs-hub:${AVURUOPS_VERSION:-v0.2}
+    environment:
+      AVURUOPS_CLICKHOUSE_ADDR: clickhouse:9000
+      AVURUOPS_CLICKHOUSE_USER: avuru
+      AVURUOPS_CLICKHOUSE_PASSWORD: avuru
+    ports:
+      - "127.0.0.1:8080:8080" # raw hub API (the UI proxies /api here)
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/hub", "-healthcheck"]
+      interval: 5s
+      timeout: 2s
+      retries: 12
+
+  # Static UI (own nginx pod). Single-origin: serves the SPA at / and
+  # reverse-proxies /api -> hub. Open http://localhost:3001.
+  ui:
+    image: ghcr.io/avuruvision/avuru-obs-ui:${AVURUOPS_VERSION:-v0.2}
+    ports:
+      - "3001:80"
+    depends_on:
+      - hub
+
+  # A small multi-service demo app, repointed at the gateway by OTLP env var
+  # alone — so the service map lights up out of the box with nothing to write.
+  demo:
+    image: jaegertracing/example-hotrod:2.19.0
+    command: ["all"]
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://gateway:4318
+    ports:
+      - "8088:8080" # demo UI — click around to generate traffic
+    depends_on:
+      - gateway
+
+configs:
+  # Laptop-friendly ClickHouse tuning (kept in step with
+  # clickhouse/config.d/low-resources.xml, inlined so no checkout is needed).
+  ch-low-resources:
+    content: |
+      <clickhouse>
+          <max_server_memory_usage>1500000000</max_server_memory_usage>
+          <mark_cache_size>268435456</mark_cache_size>
+          <index_mark_cache_size>67108864</index_mark_cache_size>
+          <uncompressed_cache_size>134217728</uncompressed_cache_size>
+          <max_concurrent_queries>20</max_concurrent_queries>
+          <query_log remove="1"/>
+          <query_thread_log remove="1"/>
+          <query_views_log remove="1"/>
+          <metric_log remove="1"/>
+          <asynchronous_metric_log remove="1"/>
+          <trace_log remove="1"/>
+          <part_log remove="1"/>
+          <text_log remove="1"/>
+          <latency_log remove="1"/>
+          <processors_profile_log remove="1"/>
+      </clickhouse>
+  # OTLP in, ClickHouse out. The Sentry SDK ingest port is left off here (it is
+  # off in the chart too); this sandbox shows the zero-code OTLP path.
+  gateway-config:
+    content: |
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+      processors:
+        batch:
+          send_batch_size: 4096
+          timeout: 2s
+      exporters:
+        clickhouse:
+          endpoint: tcp://clickhouse:9000
+          username: avuru
+          password: avuru
+          database: otel
+          create_schema: false
+          timeout: 10s
+          retry_on_failure:
+            enabled: true
+            initial_interval: 2s
+            max_elapsed_time: 60s
+      extensions:
+        health_check:
+          endpoint: 0.0.0.0:13133
+      service:
+        extensions: [health_check]
+        pipelines:
+          traces:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [clickhouse]
+          logs:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [clickhouse]
+          metrics:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [clickhouse]
+
+volumes:
+  clickhouse-data:

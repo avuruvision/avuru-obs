@@ -8,8 +8,9 @@ metadata:
 data:
   config.yaml: |
     {{- /* Sentry events become log records in otel_logs, so the ingest needs
-           the logs module (its table) as well as error-tracking + the flag. */}}
-    {{- $sentry := and .Values.modules.errorTracking.enabled .Values.modules.logs.enabled .Values.gateway.sentry.enabled }}
+           the logs module (its table) as well as error-tracking + the flag.
+           Shared with the container/Service ports and the ingress route. */}}
+    {{- $sentry := include "avuruops.sentryEnabled" . }}
     receivers:
       otlp:
         protocols:
@@ -34,7 +35,7 @@ data:
     processors:
     {{- if .Values.gateway.tenant }}
       # Everything through this gateway belongs to one project/environment
-      # (Coroot-style project-per-cluster). `upsert` makes the gateway the
+      # (one project per cluster). `upsert` makes the gateway the
       # authority; senders stay untouched (drop-in OTLP). Use action `insert`
       # instead if trusted senders must pick their own tenant.
       resource/tenant:

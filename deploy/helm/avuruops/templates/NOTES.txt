@@ -15,7 +15,19 @@ Open the UI (separate static deployable; single-origin /api -> hub via ingress):
 {{- end }}
 
 Schema migrations run automatically via the `{{ include "avuruops.fullname" . }}-migrate`
-hook (post-install / pre-upgrade). Retention: traces {{ .Values.retention.traces }}d, logs {{ .Values.retention.logs }}d.
+hook (post-install / post-upgrade). Retention: traces {{ .Values.retention.traces }}d, logs {{ .Values.retention.logs }}d.
+{{- if include "avuruops.sentryEnabled" . }}
+
+Sentry SDK ingest: ENABLED. Point an existing SDK here by changing only its DSN
+(<key> is not validated yet — any value works until per-project keys land):
+{{- if .Values.ingress.sentryHost }}
+  https://<key>@{{ .Values.ingress.sentryHost }}/<project>
+{{- else }}
+  http://<key>@{{ include "avuruops.fullname" . }}-gateway:4319/<project>   # in-cluster only
+  Set ingress.sentryHost to reach it from browsers (it needs its own hostname:
+  /api/<project>/envelope/ collides with the hub's /api on the main host).
+{{- end }}
+{{- end }}
 {{- if .Values.sensor.enabled }}
 
 Sensor DaemonSet: ENABLED — zero-code eBPF instrumentation (OBI) traces every
