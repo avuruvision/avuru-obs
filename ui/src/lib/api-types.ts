@@ -9,7 +9,8 @@ export type ModuleName =
   | "logs"
   | "infra-metrics"
   | "profiling"
-  | "error-tracking";
+  | "error-tracking"
+  | "service-health";
 
 export interface CapabilitiesResponse {
   version: string;
@@ -333,4 +334,46 @@ export interface ErrorHistogramPoint {
 
 export interface ErrorHistogramResponse {
   points: ErrorHistogramPoint[];
+}
+
+// Service health groups (module service-health). Mirrors hub/internal/api/health.go.
+export interface HealthDependency {
+  service: string;
+  tier: string;
+  critical: boolean;
+  status: HealthStatus;
+}
+
+export interface HealthMember {
+  service: string;
+  tier: string;
+  baseStatus: HealthStatus;
+  effectiveStatus: HealthStatus;
+  reason: string;
+  spanCount: number;
+  ratePerSec: number;
+  errorRate: number;
+  p95Ms: number;
+  dependencies?: HealthDependency[];
+}
+
+export interface HealthGroup {
+  name: string;
+  tier: string;
+  source: "config" | "auto";
+  status: HealthStatus;
+  reason: string;
+  counts: Record<string, number>;
+  spanCount: number;
+  ratePerSec: number;
+  errorRate: number;
+  p95Ms: number;
+  members: HealthMember[];
+}
+
+export interface HealthGroupsResponse {
+  overall: HealthStatus;
+  checkedAt: string;
+  window: { start: string; end: string };
+  groups: HealthGroup[];
 }
