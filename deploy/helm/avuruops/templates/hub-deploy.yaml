@@ -28,6 +28,7 @@ spec:
           env:
             {{- include "avuruops.clickhouseEnv" . | nindent 12 }}
             {{- include "avuruops.modulesEnv" . | nindent 12 }}
+            {{- include "avuruops.groupsEnv" . | nindent 12 }}
             {{- if .Values.projects }}
             - name: AVURUOPS_PROJECTS
               value: {{ join "," .Values.projects | quote }}
@@ -49,3 +50,11 @@ spec:
             periodSeconds: 10
           resources:
             {{- toYaml .Values.hub.resources | nindent 12 }}
+          {{- if .Values.modules.serviceHealth.enabled }}
+          volumeMounts:
+            {{- include "avuruops.groupsVolumeMount" . | nindent 12 }}
+          {{- end }}
+      {{- if .Values.modules.serviceHealth.enabled }}
+      volumes:
+        {{- include "avuruops.groupsVolume" . | nindent 8 }}
+      {{- end }}

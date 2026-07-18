@@ -68,9 +68,57 @@
           "type": "object",
           "properties": { "enabled": { "type": "boolean" } },
           "required": ["enabled"]
+        },
+        "serviceHealth": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } },
+          "required": ["enabled"]
         }
       },
-      "required": ["logs", "infraMetrics", "profiling", "errorTracking"]
+      "required": ["logs", "infraMetrics", "profiling", "errorTracking", "serviceHealth"]
+    },
+    "serviceGroups": {
+      "type": "object",
+      "properties": {
+        "defaultTier": { "type": "string", "enum": ["T0", "T1", "T2"] },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "tier": { "type": "string", "enum": ["T0", "T1", "T2"] },
+              "selector": {
+                "type": "object",
+                "properties": {
+                  "namespaces": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                  "services": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+                }
+              }
+            },
+            "required": ["name", "tier"]
+          }
+        },
+        "thresholds": {
+          "type": "object",
+          "properties": {
+            "defaults": { "type": "object" },
+            "tiers": { "type": "object" },
+            "services": { "type": "object" }
+          }
+        },
+        "criticalEdges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": { "type": "string", "minLength": 1 },
+              "to": { "type": "string", "minLength": 1 }
+            },
+            "required": ["from", "to"]
+          }
+        }
+      }
     },
     "sensor": {
       "type": "object",

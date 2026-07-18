@@ -90,6 +90,43 @@ modules:
   # (gateway.sentry.enabled), off by default.
   errorTracking:
     enabled: true
+  # Service health: rolls per-service RED health up into consolidated group
+  # health with criticality tiers (T0/T1/T2) and dependency propagation.
+  # Derived from trace data you already send — owns no schema. See
+  # serviceGroups below for the grouping/tier configuration.
+  serviceHealth:
+    enabled: true
+
+# Service Health grouping/tier configuration. Rendered to a ConfigMap the hub
+# reads (mounted at AVURUOPS_GROUPS_CONFIG) when modules.serviceHealth.enabled.
+# Empty groups = auto-group every service by its Kubernetes namespace at
+# defaultTier. Edit and `helm upgrade`, OR `kubectl edit` the rendered
+# ConfigMap — the hub hot-reloads it within ~15s, no restart or redeploy.
+serviceGroups:
+  # Tier applied to services not matched by any group below. T0|T1|T2.
+  defaultTier: T2
+  # Named groups override the namespace auto-grouping. A service matches by
+  # explicit name or by namespace.
+  groups: []
+  #  - name: payments
+  #    tier: T0
+  #    selector:
+  #      namespaces: [payments]
+  #      services: []
+  # SLO-lite thresholds. Precedence: services > tiers > defaults > built-in.
+  thresholds:
+    defaults: {}
+    #  errorRateWarn: 0.01
+    #  errorRateCrit: 0.05
+    #  latencyP95ObjectiveMs: 500
+    #  minSampleCount: 5
+    tiers: {}
+    #  T0: { errorRateWarn: 0.005, errorRateCrit: 0.02, latencyP95ObjectiveMs: 300 }
+    services: {}
+    #  payments: { latencyP95ObjectiveMs: 800 }
+  # Force specific edges critical even when the target isn't T0 (rare).
+  criticalEdges: []
+  #  - { from: web, to: legacy-billing }
 
 # Sensor: per-node DaemonSet for zero-code signal collection (eBPF). v0.1
 # wires OBI (zero-code traces + RED); the otel-agent (logs, kubeletstats) and

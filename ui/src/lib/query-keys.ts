@@ -53,4 +53,6 @@ export const queryKeys = {
     [p, "errors", "events", fingerprint] as const,
   errorIssueHistogram: (p: string, fingerprint: string, t: TimeParams) =>
     [p, "errors", "histogram", fingerprint, t] as const,
+  healthGroups: (p: string, t: TimeParams, includeAux?: boolean) =>
+    [p, "health", "groups", { ...t, includeAux }] as const,
 };

@@ -36,7 +36,7 @@ func TestCapabilitiesDefaultAllModules(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	want := []string{"core", "logs", "infra-metrics", "profiling", "error-tracking"}
+	want := []string{"core", "logs", "infra-metrics", "profiling", "error-tracking", "service-health"}
 	if !reflect.DeepEqual(resp.Modules, want) {
 		t.Errorf("modules = %v, want %v", resp.Modules, want)
 	}
@@ -63,6 +63,8 @@ func TestModuleRouteGating(t *testing.T) {
 		"/api/v1/infra/nodes",
 		"/api/v1/infra/pods",
 		"/api/v1/agents",
+		"/api/v1/health/groups",
+		"/api/v1/health/groups/payments",
 	} {
 		if rec := get(t, mux, path); rec.Code != http.StatusNotFound {
 			t.Errorf("%s: got %d, want 404 with module disabled", path, rec.Code)

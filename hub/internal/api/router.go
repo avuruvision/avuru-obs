@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/avuru/avuru-obs/hub/internal/health"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
@@ -33,6 +34,10 @@ type Config struct {
 	// modules — the backward-compatible default. Routes owned by an inactive
 	// module are not registered (404).
 	Modules modules.Set
+	// GroupsConfig returns the current service-health configuration. It is a
+	// function so the value can be hot-reloaded (the loader swaps an
+	// atomic.Pointer) without a hub restart. nil → health.Default().
+	GroupsConfig func() health.Config
 }
 
 // API holds handler dependencies.
@@ -99,6 +104,19 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("GET /api/v1/errors/issues/{fingerprint}/histogram", handle(a.handleErrorIssueHistogram))
 		mux.Handle("POST /api/v1/errors/issues/{fingerprint}/status", handle(a.handleSetErrorIssueStatus))
 	}
+	if active.Enabled(modules.ServiceHealth) {
+		mux.Handle("GET /api/v1/health/groups", handle(a.handleHealthGroups))
+		mux.Handle("GET /api/v1/health/groups/{name}", handle(a.handleHealthGroup))
+	}
+}
+
+// groupsConfig resolves the active service-health config, defaulting to
+// Default() (auto-only grouping) when none is wired.
+func (a *API) groupsConfig() health.Config {
+	if a.cfg.GroupsConfig != nil {
+		return a.cfg.GroupsConfig()
+	}
+	return health.Default()
 }
 
 func handleHealthz(w http.ResponseWriter, _ *http.Request) {

@@ -162,6 +162,11 @@ func run() error {
 	}
 	slog.Info("active modules", "modules", active.Names())
 
+	groupsConfig, err := loadGroupsConfig(ctx)
+	if err != nil {
+		return err
+	}
+
 	// Hub is API-only: the UI is a separate deployable (its own nginx pod),
 	// reached single-origin via the gateway/ingress. See agent_docs/architecture.md.
 	mux := http.NewServeMux()
@@ -172,6 +177,7 @@ func run() error {
 		RetentionProfilesDays: envIntOr("AVURUOPS_RETENTION_PROFILES_DAYS", 3),
 		Projects:              splitCSV(envOr("AVURUOPS_PROJECTS", "")),
 		Modules:               active,
+		GroupsConfig:          groupsConfig,
 	})
 
 	srv := &http.Server{

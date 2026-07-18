@@ -1,4 +1,5 @@
 import {
+  Activity,
   Boxes,
   Bug,
   Flame,
@@ -34,6 +35,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: "/service-map", label: "Service Map", icon: MapIcon },
       { href: "/services", label: "Services", icon: Boxes },
+      { href: "/health", label: "Service Health", icon: Activity, module: "service-health" },
       { href: "/traces", label: "Traces", icon: ListTree },
       { href: "/logs", label: "Logs", icon: ScrollText, module: "logs" },
       // RED is derived from traces, not from the metrics tables — core.
