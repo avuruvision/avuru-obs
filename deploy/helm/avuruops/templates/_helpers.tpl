@@ -84,6 +84,7 @@ otel
 {{- if .Values.modules.infraMetrics.enabled -}}{{- $mods = append $mods "infra-metrics" -}}{{- end -}}
 {{- if .Values.modules.profiling.enabled -}}{{- $mods = append $mods "profiling" -}}{{- end -}}
 {{- if .Values.modules.errorTracking.enabled -}}{{- $mods = append $mods "error-tracking" -}}{{- end -}}
+{{- if .Values.modules.serviceHealth.enabled -}}{{- $mods = append $mods "service-health" -}}{{- end -}}
 {{- join "," $mods -}}
 {{- end -}}
 
@@ -91,6 +92,33 @@ otel
 {{- define "avuruops.modulesEnv" -}}
 - name: AVURUOPS_MODULES
   value: {{ include "avuruops.activeModules" . | quote }}
+{{- end -}}
+
+{{/* Service-health groups config: env pointing the hub at the mounted
+     ConfigMap file, plus the volume and mount. Emitted only when the module is
+     on, so a disabled install carries no config surface. The hub hot-reloads
+     the file, so a `kubectl edit` of the ConfigMap applies without a restart. */}}
+{{- define "avuruops.groupsEnv" -}}
+{{- if .Values.modules.serviceHealth.enabled }}
+- name: AVURUOPS_GROUPS_CONFIG
+  value: /etc/avuruops/groups.json
+{{- end }}
+{{- end -}}
+
+{{- define "avuruops.groupsVolume" -}}
+{{- if .Values.modules.serviceHealth.enabled }}
+- name: service-groups
+  configMap:
+    name: {{ include "avuruops.fullname" . }}-groups
+{{- end }}
+{{- end -}}
+
+{{- define "avuruops.groupsVolumeMount" -}}
+{{- if .Values.modules.serviceHealth.enabled }}
+- name: service-groups
+  mountPath: /etc/avuruops
+  readOnly: true
+{{- end }}
 {{- end -}}
 
 {{/* Effective collection switches: a module gates its own collection, so a

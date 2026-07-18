@@ -1,0 +1,14 @@
+{{- if .Values.modules.serviceHealth.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "avuruops.fullname" . }}-groups
+  labels:
+    {{- include "avuruops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hub
+data:
+  # The hub parses this as JSON (fail-loud on invalid content). serviceGroups
+  # is authored as YAML in values.yaml; toJson renders it for the hub. The hub
+  # hot-reloads on change, so `kubectl edit` applies without a pod restart.
+  groups.json: {{ .Values.serviceGroups | toJson | quote }}
+{{- end }}
