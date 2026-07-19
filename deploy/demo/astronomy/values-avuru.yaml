@@ -1,0 +1,34 @@
+# avuru obs — Astronomy Shop demo overlay
+#
+# Values for the upstream OpenTelemetry Community Demo chart
+# (open-telemetry/opentelemetry-demo) that make it emit to avuru obs over the
+# STABLE OTLP path — not the eBPF sensor, and not the demo's own bundled
+# collector + backends. This is the app that powers the public Live Demo.
+#
+#   helm install astronomy open-telemetry/opentelemetry-demo \
+#     -n avuruops -f values-avuru.yaml
+#
+# Assumes avuru obs is installed in the SAME namespace (release `avuruops`), so
+# the gateway resolves as `avuruops-gateway`. For a different namespace, set the
+# value below to the FQDN, e.g. `avuruops-gateway.avuruops.svc.cluster.local`.
+
+# Route every demo service's OTLP export at the avuru obs gateway. The chart
+# derives each component's OTEL_EXPORTER_OTLP_ENDPOINT from OTEL_COLLECTOR_NAME,
+# so this single override reroutes traces, metrics and logs to avuru obs.
+default:
+  envOverrides:
+    - name: OTEL_COLLECTOR_NAME
+      value: avuruops-gateway
+
+# avuru obs IS the backend — turn off the demo's bundled collector and every
+# bundled store/UI so nothing competes with it and the footprint stays small.
+opentelemetry-collector:
+  enabled: false
+jaeger:
+  enabled: false
+prometheus:
+  enabled: false
+grafana:
+  enabled: false
+opensearch:
+  enabled: false
