@@ -9,6 +9,11 @@ COPY ui/ ./
 RUN npm run build
 
 FROM nginx:1.27-alpine
+# Patch base-image OS packages (OpenSSL/zlib/expat, …) to the latest Alpine
+# security-fixed versions at build time. The floating nginx:1.27-alpine tag can
+# lag behind Alpine's patched packages; this keeps the image scanner-clean
+# (Harbor/Trivy) without pinning a digest we'd have to bump by hand.
+RUN apk upgrade --no-cache
 # /api single-origin proxy. HUB_UPSTREAM defaults to the compose service name;
 # the Helm chart overrides it to <release>-hub:8080. The resolver comes from the
 # nginx image's built-in NGINX_LOCAL_RESOLVERS (from /etc/resolv.conf — Docker
