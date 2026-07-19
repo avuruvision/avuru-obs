@@ -10,29 +10,30 @@ import (
 
 // Fake implements storage.Store from canned data. Zero value is usable.
 type Fake struct {
-	PingErr    error
-	Services   []storage.ServiceStats
-	Labels     []storage.ServiceLabel
-	Edges      []storage.ServiceEdge
-	NetEdges   []storage.ServiceEdge
-	Ops        []storage.OperationStats
-	Page       storage.TracePage
-	Traces     map[string]storage.Trace
-	SpanTraces map[string]string // spanId -> traceId
-	Heat       storage.Heatmap
-	LogPage    storage.LogPage
-	TraceLogs  map[string][]storage.LogRecord
-	Stats      storage.SystemStats
-	StatsErr   error
-	Nodes      []storage.NodeStat
-	Pods       []storage.PodStat
-	Agents     []storage.AgentNode
-	Tenants    []string
-	TenantsErr error
-	RED        []storage.REDSeries
-	Written    []storage.ProfileSample
-	Profiled   []storage.ProfiledService
-	Flame      storage.FlameNode
+	PingErr       error
+	Services      []storage.ServiceStats
+	Labels        []storage.ServiceLabel
+	Edges         []storage.ServiceEdge
+	NetEdges      []storage.ServiceEdge
+	NetEdgeHealth []storage.NetworkEdgeHealth
+	Ops           []storage.OperationStats
+	Page          storage.TracePage
+	Traces        map[string]storage.Trace
+	SpanTraces    map[string]string // spanId -> traceId
+	Heat          storage.Heatmap
+	LogPage       storage.LogPage
+	TraceLogs     map[string][]storage.LogRecord
+	Stats         storage.SystemStats
+	StatsErr      error
+	Nodes         []storage.NodeStat
+	Pods          []storage.PodStat
+	Agents        []storage.AgentNode
+	Tenants       []string
+	TenantsErr    error
+	RED           []storage.REDSeries
+	Written       []storage.ProfileSample
+	Profiled      []storage.ProfiledService
+	Flame         storage.FlameNode
 
 	Issues       []storage.ErrorIssue
 	Issue        storage.ErrorIssue
@@ -134,6 +135,11 @@ func (f *Fake) ServiceEdges(_ context.Context, q storage.ServiceQuery) ([]storag
 func (f *Fake) NetworkEdges(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceEdge, error) {
 	f.LastServiceQuery = q
 	return f.NetEdges, nil
+}
+
+func (f *Fake) NetworkEdgeHealth(_ context.Context, q storage.ServiceQuery) ([]storage.NetworkEdgeHealth, error) {
+	f.LastServiceQuery = q
+	return f.NetEdgeHealth, nil
 }
 
 func (f *Fake) TraceOverview(_ context.Context, q storage.OverviewQuery) ([]storage.OperationStats, error) {

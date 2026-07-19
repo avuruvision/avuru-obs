@@ -1213,3 +1213,64 @@ func TestMigrateModuleGating(t *testing.T) {
 		t.Fatalf("schema_migrations has %d rows, want %d", count, len(migrations.Ordered))
 	}
 }
+
+// insertHistogram writes one exporter-shaped explicit-bucket histogram point.
+func insertHistogram(t *testing.T, s *Store, ts time.Time, metric string, res, attrs map[string]string, buckets []uint64, bounds []float64) {
+	t.Helper()
+	var count uint64
+	for _, b := range buckets {
+		count += b
+	}
+	batch, err := s.conn.PrepareBatch(context.Background(), `INSERT INTO otel_metrics_histogram
+		(ResourceAttributes, ScopeName, ServiceName, MetricName, MetricUnit, Attributes, StartTimeUnix, TimeUnix, Count, Sum, BucketCounts, ExplicitBounds, Flags, Min, Max, AggregationTemporality)`)
+	if err != nil {
+		t.Fatalf("preparing histogram insert: %v", err)
+	}
+	if err := batch.Append(res, "obi", "", metric, "s", attrs, ts, ts, count, 0.0, buckets, bounds, uint32(0), 0.0, 0.0, int32(2)); err != nil {
+		t.Fatalf("appending histogram: %v", err)
+	}
+	if err := batch.Send(); err != nil {
+		t.Fatalf("sending histogram: %v", err)
+	}
+}
+
+// TestNetworkEdgeHealthIntegration exercises the RTT-p95-from-histogram SQL and
+// the failed-connection sum against real ClickHouse.
+func TestNetworkEdgeHealthIntegration(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+	base := time.Now().UTC().Truncate(time.Minute).Add(-10 * time.Minute)
+
+	edge := map[string]string{"k8s.src.owner.name": "cart", "k8s.dst.owner.name": "payments"}
+	bounds := []float64{0.01, 0.05, 0.1, 0.5} // seconds; 5 buckets (last is +Inf)
+
+	// Two rows, same bounds, merged element-wise to [10,20,40,25,5], total 100.
+	// cumulative [10,30,70,95,100]; p95 (>=95) first hits bucket 4 -> bound 0.5s.
+	insertHistogram(t, store, base.Add(1*time.Minute), "obi.stat.tcp.rtt", nil, edge, []uint64{10, 20, 30, 5, 0}, bounds)
+	insertHistogram(t, store, base.Add(2*time.Minute), "obi.stat.tcp.rtt", nil, edge, []uint64{0, 0, 10, 20, 5}, bounds)
+	// A self-edge must be excluded.
+	insertHistogram(t, store, base.Add(1*time.Minute), "obi.stat.tcp.rtt", nil,
+		map[string]string{"k8s.src.owner.name": "cart", "k8s.dst.owner.name": "cart"}, []uint64{1, 0, 0, 0, 0}, bounds)
+	// Failed connections: cumulative counter 3 + 4 = 7.
+	insertSum(t, store, base.Add(1*time.Minute), "obi.stat.tcp.failed.connections", nil, edge, 3)
+	insertSum(t, store, base.Add(2*time.Minute), "obi.stat.tcp.failed.connections", nil, edge, 4)
+
+	tr := storage.TimeRange{Start: base, End: base.Add(6 * time.Minute)}
+	health, err := store.NetworkEdgeHealth(ctx, storage.ServiceQuery{Tenant: "default", Range: tr})
+	if err != nil {
+		t.Fatalf("NetworkEdgeHealth: %v", err)
+	}
+	if len(health) != 1 {
+		t.Fatalf("want 1 edge (self-edge excluded), got %+v", health)
+	}
+	h := health[0]
+	if h.Source != "cart" || h.Target != "payments" {
+		t.Errorf("edge endpoints wrong: %+v", h)
+	}
+	if h.RTTMs != 500 {
+		t.Errorf("RTT p95 = %v ms, want 500 (bound 0.5s)", h.RTTMs)
+	}
+	if h.FailedConnections != 7 {
+		t.Errorf("failed connections = %d, want 7", h.FailedConnections)
+	}
+}
