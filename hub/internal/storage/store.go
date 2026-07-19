@@ -480,4 +480,38 @@ type Store interface {
 	ErrorIssueHistogram(ctx context.Context, tenant string, fingerprint uint64, r TimeRange, points int) ([]ErrorHistogramPoint, error)
 	// SetErrorIssueStatus records a triage decision (unresolved|resolved|ignored).
 	SetErrorIssueStatus(ctx context.Context, tenant string, fingerprint uint64, status string) error
+	// Alerting (module alerting).
+	LoadAlertStates(ctx context.Context, tenant string) ([]AlertState, error)
+	SaveAlertStates(ctx context.Context, states []AlertState) error
+	AppendAlertHistory(ctx context.Context, entries []AlertHistoryEntry) error
+	ListAlertHistory(ctx context.Context, q AlertHistoryQuery) ([]AlertHistoryEntry, error)
+}
+
+// AlertState is the evaluator's durable memory for one rule×target: whether it
+// is ok, pending (condition true, waiting out the `for` timer) or firing.
+type AlertState struct {
+	Tenant         string
+	RuleName       string
+	Target         string
+	Status         string // ok | pending | firing
+	Since          time.Time
+	LastNotifiedAt time.Time
+}
+
+// AlertHistoryEntry is one fire/resolve event for the Alerts UI timeline.
+type AlertHistoryEntry struct {
+	Tenant   string
+	RuleName string
+	Target   string
+	Kind     string // fired | resolved
+	Status   string // the health status at the time (down|degraded|healthy)
+	Reason   string
+	FiredAt  time.Time
+}
+
+// AlertHistoryQuery filters ListAlertHistory.
+type AlertHistoryQuery struct {
+	Tenant string
+	Range  TimeRange
+	Limit  int
 }

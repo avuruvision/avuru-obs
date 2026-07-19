@@ -41,6 +41,13 @@ type Fake struct {
 	Histogram    []storage.ErrorHistogramPoint
 	StatusWrites []StatusWrite
 
+	// Alerting fakes.
+	AlertStates           []storage.AlertState
+	AlertHistoryRows      []storage.AlertHistoryEntry
+	SavedAlertStates      [][]storage.AlertState
+	AppendedHistory       [][]storage.AlertHistoryEntry
+	LastAlertHistoryQuery storage.AlertHistoryQuery
+
 	// Last*Query record the most recent inputs for asserting parameter parsing.
 	LastTraceQuery       storage.TraceQuery
 	LastServiceQuery     storage.ServiceQuery
@@ -189,4 +196,29 @@ func (f *Fake) ErrorIssueHistogram(_ context.Context, _ string, _ uint64, _ stor
 func (f *Fake) SetErrorIssueStatus(_ context.Context, tenant string, fingerprint uint64, status string) error {
 	f.StatusWrites = append(f.StatusWrites, StatusWrite{Tenant: tenant, Fingerprint: fingerprint, Status: status})
 	return nil
+}
+
+func (f *Fake) LoadAlertStates(_ context.Context, tenant string) ([]storage.AlertState, error) {
+	var out []storage.AlertState
+	for _, s := range f.AlertStates {
+		if s.Tenant == tenant {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
+func (f *Fake) SaveAlertStates(_ context.Context, states []storage.AlertState) error {
+	f.SavedAlertStates = append(f.SavedAlertStates, states)
+	return nil
+}
+
+func (f *Fake) AppendAlertHistory(_ context.Context, entries []storage.AlertHistoryEntry) error {
+	f.AppendedHistory = append(f.AppendedHistory, entries)
+	return nil
+}
+
+func (f *Fake) ListAlertHistory(_ context.Context, q storage.AlertHistoryQuery) ([]storage.AlertHistoryEntry, error) {
+	f.LastAlertHistoryQuery = q
+	return f.AlertHistoryRows, nil
 }

@@ -25,6 +25,7 @@ var Ordered = []string{
 	"0005_span_index.sql",
 	"0006_errors.sql",
 	"0007_errors_from_logs.sql",
+	"0008_alerts.sql",
 }
 
 // ByModule tags each migration with the module(s) whose schema it owns; the
@@ -43,4 +44,6 @@ var ByModule = map[string][]modules.Name{
 	"0006_errors.sql": {modules.ErrorTracking},
 	// The log-derived view reads otel_logs, so it also needs the logs module.
 	"0007_errors_from_logs.sql": {modules.ErrorTracking, modules.Logs},
+	// alert_state + alert_history — the evaluator's durable state.
+	"0008_alerts.sql": {modules.Alerting},
 }
