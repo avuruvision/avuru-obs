@@ -62,8 +62,13 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 	// gate the call on the module. When it's off, flowEdges stays nil and
 	// mergeEdges just stamps the trace edges with their provenance.
 	var flowEdges []storage.ServiceEdge
+	var health []storage.NetworkEdgeHealth
 	if a.modules.Enabled(modules.InfraMetrics) {
 		flowEdges, err = store.NetworkEdges(r.Context(), q)
+		if err != nil {
+			return err
+		}
+		health, err = store.NetworkEdgeHealth(r.Context(), q)
 		if err != nil {
 			return err
 		}
@@ -80,8 +85,36 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 	for _, e := range edges {
 		resp.Edges = append(resp.Edges, toServiceEdgeDTO(e))
 	}
+	resp.Edges = applyEdgeHealth(resp.Edges, health)
 	writeJSON(w, http.StatusOK, resp)
 	return nil
+}
+
+// applyEdgeHealth overlays OBI per-edge connection health (RTT p95, failed
+// connections) onto the map edges by (source, target). A health pair with no
+// trace/flow edge is appended as a flow edge — TCP stats and flow bytes come
+// from the same OBI network feature, so this is rare but kept for completeness.
+func applyEdgeHealth(edges []serviceEdgeDTO, health []storage.NetworkEdgeHealth) []serviceEdgeDTO {
+	if len(health) == 0 {
+		return edges
+	}
+	type key struct{ src, dst string }
+	index := make(map[key]int, len(edges))
+	for i, e := range edges {
+		index[key{e.Source, e.Target}] = i
+	}
+	for _, h := range health {
+		if i, ok := index[key{h.Source, h.Target}]; ok {
+			edges[i].RTTMs = h.RTTMs
+			edges[i].FailedConnections = h.FailedConnections
+			continue
+		}
+		edges = append(edges, serviceEdgeDTO{
+			Source: h.Source, Target: h.Target, Provenance: "flow",
+			RTTMs: h.RTTMs, FailedConnections: h.FailedConnections,
+		})
+	}
+	return edges
 }
 
 // mergeEdges folds trace-derived and flow-derived service edges into one set
