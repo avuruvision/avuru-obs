@@ -10,7 +10,8 @@ export type ModuleName =
   | "infra-metrics"
   | "profiling"
   | "error-tracking"
-  | "service-health";
+  | "service-health"
+  | "alerting";
 
 export interface CapabilitiesResponse {
   version: string;
@@ -376,4 +377,48 @@ export interface HealthGroupsResponse {
   checkedAt: string;
   window: { start: string; end: string };
   groups: HealthGroup[];
+}
+
+// Alerting (module alerting). Mirrors hub/internal/api/alerts.go (read-only).
+export interface FiringAlert {
+  rule: string;
+  target: string;
+  status: HealthStatus;
+  since: string;
+}
+
+export interface AlertHistoryEntry {
+  rule: string;
+  target: string;
+  kind: "fired" | "resolved";
+  status: HealthStatus;
+  reason: string;
+  firedAt: string;
+}
+
+export interface AlertsResponse {
+  firing: FiringAlert[];
+  history: AlertHistoryEntry[];
+}
+
+export interface AlertRule {
+  name: string;
+  when: string;
+  forSec: number;
+  channel: string;
+  groups?: string[];
+  services?: string[];
+  tiers?: string[];
+}
+
+export interface AlertChannel {
+  name: string;
+  type: string;
+  url: string;
+  hasAuth: boolean;
+}
+
+export interface AlertRulesResponse {
+  rules: AlertRule[];
+  channels: AlertChannel[];
 }

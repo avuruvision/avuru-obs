@@ -1,6 +1,7 @@
 import {
   Activity,
   Boxes,
+  BellRing,
   Bug,
   Flame,
   Gauge,
@@ -42,6 +43,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/metrics", label: "Metrics", icon: Gauge },
       { href: "/profiling", label: "Profiling", icon: Flame, module: "profiling" },
       { href: "/errors", label: "Errors", icon: Bug, module: "error-tracking" },
+      { href: "/alerts", label: "Alerts", icon: BellRing, module: "alerting" },
     ],
   },
   {

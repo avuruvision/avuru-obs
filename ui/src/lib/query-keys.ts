@@ -55,4 +55,6 @@ export const queryKeys = {
     [p, "errors", "histogram", fingerprint, t] as const,
   healthGroups: (p: string, t: TimeParams, includeAux?: boolean) =>
     [p, "health", "groups", { ...t, includeAux }] as const,
+  alerts: (p: string) => [p, "alerts", "list"] as const,
+  alertRules: (p: string) => [p, "alerts", "rules"] as const,
 };
