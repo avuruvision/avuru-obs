@@ -92,6 +92,15 @@ These milestone tags (`M1`–`M5`) are referenced throughout the codebase and
   Kubernetes namespace — and the tier/threshold config hot-reloads from a
   ConfigMap without a redeploy. The read-side status model a future alerting
   layer fires on. See the [AEP](design/2026-07-18-service-health-groups.md).
+- **Alerting (new module):** a background evaluator in the hub watches
+  service-health status and fires a generic webhook — into any incoming-webhook
+  target — when a rule's group/service/tier crosses into a bad state for a
+  configured duration, and again when it recovers. Config-defined rules and
+  channels (a hot-reloadable ConfigMap, like service health); alert state
+  persists in ClickHouse. The hub's first outbound path, treated as a security
+  surface (SSRF guard, bounded retries, secret redaction). Later: RED/error
+  triggers, native Slack/email, silences, UI-authored rules, HA. See the
+  [AEP](design/2026-07-19-alerting.md).
 - **Wider ingest compatibility:** Jaeger, Zipkin, Prometheus and Loki push
   receivers alongside OTLP, plus forwarding exporters (OTLP/Kafka) so
   avuru-obs can dual-write during a migration. Extends the drop-in promise
