@@ -67,3 +67,38 @@ jobs:
           install_only: true
       - name: helm install smoke (kind)
         run: make e2e-helm
+
+  # Build each image and scan it for known OS/library CVEs. The UI carries a real
+  # OS (nginx-alpine) and is where fixable base-image CVEs surface (Harbor flagged
+  # OpenSSL/zlib/expat); hub and gateway are distroless and near-empty, scanned
+  # for the same guarantee. ignore-unfixed keeps the gate honest — it only fails
+  # on CVEs that actually have a patched version available.
+  image-scan:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { component: ui, dockerfile: ui/Dockerfile }
+          - { component: hub, dockerfile: hub/Dockerfile }
+          - { component: gateway, dockerfile: gateway/Dockerfile }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Single-arch load: package CVE scanning is arch-independent, so QEMU/arm64
+      # would only cost build time here.
+      - name: build ${{ matrix.component }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          load: true
+          tags: avuru-obs-${{ matrix.component }}:scan
+      - name: Trivy scan (fail on fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: avuru-obs-${{ matrix.component }}:scan
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          vuln-type: os,library

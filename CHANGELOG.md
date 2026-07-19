@@ -54,6 +54,14 @@ When a release is cut, that block is renamed to the version with its date.
   Service-map topology now derives from OBI network flows instead, so the
   custom tracer, its flows schema and its codegen are no longer planned.
 
+### Security
+
+- **UI image OS packages patched at build.** The nginx-alpine base lagged behind
+  Alpine's security fixes (Harbor flagged OpenSSL/zlib/libexpat CVEs); the UI
+  Dockerfile now runs `apk upgrade` so each build ships the patched packages. A
+  new CI `image-scan` job builds every image and fails on fixable HIGH/CRITICAL
+  CVEs (Trivy, `--ignore-unfixed`) to keep it from regressing.
+
 ## [0.1.0] — 2026-07-15
 
 The first tagged release: **the wedge**. A fresh Kubernetes cluster reaches a
