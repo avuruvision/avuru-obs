@@ -154,6 +154,14 @@ cytoscape edge data.
 
 ### Documented v1 limitations
 
+- **The exact OBI stats-feature config key and per-edge attribution are
+  unverified against a running OBI** — they need a real kind/eBPF environment
+  (the sensor-config uses a best-guess `stats: enable: true` + `attributes.select`,
+  and the k8s-owner attribution on the stats metrics is assumed from the flow
+  metric's behavior). This MUST be confirmed by enabling `sensor.obi.network`
+  (+ stats) in a kind cluster and inspecting `otel_metrics_*` before relying on
+  it in prod. The wedge `e2e-helm` gate is deliberately left unchanged (network
+  is off by default) so this collection-side unknown can't destabilize it.
 - **No retransmissions** (OBI gap).
 - **Failed-connection count is a cumulative-counter `sum()` approximation** for
   edge weighting, the same caveat as `NetworkEdges` byte sums; a per-series delta
@@ -185,6 +193,7 @@ cytoscape edge data.
 - [ ] Hub: `NetworkEdgeHealth` query (histogram p95 + failed sum) + edge merge
 - [ ] API: `serviceEdgeDTO` rttMs/failedConnections
 - [ ] UI: edge tooltip + health styling; extend `ServiceEdge` type
-- [ ] e2e-helm attribution confirmation + Playwright + template-test
+- [x] Storage p95-from-histogram SQL validated against real ClickHouse (integration test)
+- [ ] **Confirm the OBI stats key + per-edge attribution in a kind/eBPF env** (blocks prod use)
 - [ ] Docs (service-map page, network-health config) via docs-align
 - [ ] Later: per-reason failure breakdown, edge-health alerting (feeds the alerting module), retransmissions if OBI adds them
