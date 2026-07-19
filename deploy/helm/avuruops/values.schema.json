@@ -73,9 +73,56 @@
           "type": "object",
           "properties": { "enabled": { "type": "boolean" } },
           "required": ["enabled"]
+        },
+        "alerting": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } },
+          "required": ["enabled"]
         }
       },
-      "required": ["logs", "infraMetrics", "profiling", "errorTracking", "serviceHealth"]
+      "required": ["logs", "infraMetrics", "profiling", "errorTracking", "serviceHealth", "alerting"]
+    },
+    "alerting": {
+      "type": "object",
+      "properties": {
+        "evalIntervalSec": { "type": "integer", "minimum": 1 },
+        "windowMinutes": { "type": "integer", "minimum": 1 },
+        "webhookAllow": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "type": { "type": "string", "enum": ["webhook"] },
+              "url": { "type": "string", "minLength": 1 },
+              "secret": { "type": "string" }
+            },
+            "required": ["name", "type", "url"]
+          }
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "when": { "type": "string", "enum": ["down", "degraded", "not-healthy"] },
+              "for": { "type": "string" },
+              "channel": { "type": "string", "minLength": 1 },
+              "selector": {
+                "type": "object",
+                "properties": {
+                  "groups": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                  "services": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                  "tiers": { "type": "array", "items": { "type": "string", "enum": ["T0", "T1", "T2"] } }
+                }
+              }
+            },
+            "required": ["name", "when", "channel"]
+          }
+        }
+      }
     },
     "serviceGroups": {
       "type": "object",

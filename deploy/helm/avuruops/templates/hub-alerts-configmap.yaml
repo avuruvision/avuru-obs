@@ -1,0 +1,15 @@
+{{- if .Values.modules.alerting.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "avuruops.fullname" . }}-alerts
+  labels:
+    {{- include "avuruops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hub
+data:
+  # The hub parses this as JSON with DisallowUnknownFields (fail-loud). alerting
+  # is authored as YAML in values.yaml; `webhookAllow` is an env knob, not a
+  # config-file field, so it is omitted here. The hub hot-reloads on change — a
+  # `kubectl edit` applies without a pod restart.
+  alerts.json: {{ omit .Values.alerting "webhookAllow" | toJson | quote }}
+{{- end }}
