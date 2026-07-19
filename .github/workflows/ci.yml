@@ -95,7 +95,7 @@ jobs:
           load: true
           tags: avuru-obs-${{ matrix.component }}:scan
       - name: Trivy scan (fail on fixable HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: avuru-obs-${{ matrix.component }}:scan
           severity: CRITICAL,HIGH
