@@ -23,6 +23,7 @@ function themeColors() {
   return {
     primary: v("--color-primary", "#c9a96a"),
     error: v("--color-error", "#f87171"),
+    warning: v("--color-warning", "#f59e0b"),
     surface: v("--color-base-200", "#0f1729"),
     base100: v("--color-base-100", "#0b1120"),
     text: v("--color-base-content", "#e8e5dc"),
@@ -64,9 +65,36 @@ function applyStyle(cy: Core) {
       "curve-style": "bezier",
       opacity: 0.85,
     })
+    // Network-health amber (high RTT or failed connections) — before the error
+    // selector so trace-error red always wins when an edge is both.
+    .selector("edge[health > 0]")
+    .style({ "line-color": c.warning, "target-arrow-color": c.warning, "line-style": "dashed" })
     .selector("edge[error > 0]")
-    .style({ "line-color": c.error, "target-arrow-color": c.error })
+    .style({ "line-color": c.error, "target-arrow-color": c.error, "line-style": "solid" })
     .update();
+}
+
+// An edge is network-unhealthy when RTT p95 is high or any connections failed.
+const RTT_UNHEALTHY_MS = 100;
+function edgeUnhealthy(e: ServiceEdge): boolean {
+  return (e.rttMs ?? 0) > RTT_UNHEALTHY_MS || (e.failedConnections ?? 0) > 0;
+}
+
+// edgeTooltip is the hover text for an edge: call volume plus any network
+// health OBI measured for the connection.
+function edgeTooltip(e: ServiceEdge): string {
+  const parts = [`${e.source} → ${e.target}`, `${e.calls} calls`];
+  if ((e.errorRate ?? 0) > 0) parts.push(`${(e.errorRate * 100).toFixed(1)}% errors`);
+  if (e.rttMs) parts.push(`RTT p95 ${e.rttMs.toFixed(0)}ms`);
+  if (e.failedConnections) parts.push(`${e.failedConnections} failed conns`);
+  if (e.bytes) parts.push(`${formatBytes(e.bytes)}`);
+  return parts.join(" · ");
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 // Label-aware fcose options: without nodeDimensionsIncludeLabels the
@@ -105,6 +133,7 @@ export function ServiceMap({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
   useImperativeHandle(handleRef, () => ({
@@ -131,6 +160,8 @@ export function ServiceMap({
               target: e.target,
               calls: e.calls,
               error: e.errorRate,
+              health: edgeUnhealthy(e) ? 1 : 0,
+              tooltip: edgeTooltip(e),
             },
           })),
       ],
@@ -142,6 +173,23 @@ export function ServiceMap({
     cy.on("tap", "node", (e) => {
       router.push(`/traces?service=${encodeURIComponent(e.target.id())}&tab=traces`);
     });
+    // Edge hover tooltip: call volume + any OBI network health for the edge.
+    const tip = tooltipRef.current;
+    cy.on("mouseover", "edge", (evt) => {
+      if (!tip) return;
+      tip.textContent = String(evt.target.data("tooltip") ?? "");
+      const p = evt.renderedPosition;
+      if (p) {
+        tip.style.left = `${p.x}px`;
+        tip.style.top = `${p.y}px`;
+      }
+      tip.style.opacity = "1";
+    });
+    const hideTip = () => {
+      if (tip) tip.style.opacity = "0";
+    };
+    cy.on("mouseout", "edge", hideTip);
+    cy.on("pan zoom drag", hideTip);
     cyRef.current = cy;
     return () => {
       cy.destroy();
@@ -162,9 +210,18 @@ export function ServiceMap({
   }, []);
 
   return (
-    <div
-      ref={ref}
-      className="h-[70vh] w-full rounded-xl border border-neutral bg-base-200"
-    />
+    <div className="relative">
+      <div
+        ref={ref}
+        className="h-[70vh] w-full rounded-xl border border-neutral bg-base-200"
+      />
+      {/* Edge hover tooltip (calls + OBI network health). Positioned by the
+          cytoscape mouseover handler; pointer-events-none so it never eats hover. */}
+      <div
+        ref={tooltipRef}
+        className="pointer-events-none absolute z-10 max-w-xs -translate-x-1/2 -translate-y-full rounded-md border border-neutral bg-base-100 px-2 py-1 text-xs text-base-content opacity-0 shadow-md transition-opacity"
+        style={{ left: 0, top: 0 }}
+      />
+    </div>
   );
 }
