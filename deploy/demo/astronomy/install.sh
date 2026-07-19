@@ -13,6 +13,11 @@ NS="${NS:-avuruops}"
 RELEASE="${RELEASE:-astronomy}"
 # Pins appVersion 2.2.0 — the version this overlay was validated against.
 CHART_VERSION="${CHART_VERSION:-0.40.10}"
+# Extra `helm` args appended verbatim. Use for CI/LAN overrides without forking
+# this script — e.g. a Harbor image mirror or a cross-namespace gateway FQDN:
+#   EXTRA_HELM_ARGS="--set default.image.repository=harbor.devops.lab/avuru/otel-demo"
+#   EXTRA_HELM_ARGS="--set default.envOverrides[0].value=avuruops-gateway.avuru-obs.svc.cluster.local"
+EXTRA_HELM_ARGS="${EXTRA_HELM_ARGS:-}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 helm repo add open-telemetry \
@@ -24,7 +29,8 @@ echo "exporting all signals to avuruops-gateway over OTLP…"
 helm upgrade --install "$RELEASE" open-telemetry/opentelemetry-demo \
   --version "$CHART_VERSION" \
   -n "$NS" --create-namespace \
-  -f "$HERE/values-avuru.yaml"
+  -f "$HERE/values-avuru.yaml" \
+  ${EXTRA_HELM_ARGS}
 
 cat <<EOF
 
