@@ -62,7 +62,7 @@ func TestParseConfigValid(t *testing.T) {
 	if len(c.Rules) != 2 || c.Rules[0].For.Std() != 5*time.Minute {
 		t.Errorf("rules parsed wrong: %+v", c.Rules)
 	}
-	if c.channelByName()["ops"].Secret != "s3cr3t" {
-		t.Errorf("channel not indexed")
+	if ch, ok := c.ChannelByName("ops"); !ok || ch.Secret != "s3cr3t" {
+		t.Errorf("channel not found")
 	}
 }

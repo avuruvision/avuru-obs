@@ -74,6 +74,8 @@ func TestRoutes(t *testing.T) {
 		{"agents ok", http.MethodGet, "/api/v1/agents", http.StatusOK},
 		{"agents bad window", http.MethodGet, "/api/v1/agents?windowSec=-5", http.StatusBadRequest},
 		{"health groups ok", http.MethodGet, "/api/v1/health/groups", http.StatusOK},
+		{"alerts ok", http.MethodGet, "/api/v1/alerts", http.StatusOK},
+		{"alert rules ok", http.MethodGet, "/api/v1/alerts/rules", http.StatusOK},
 		{"health groups bad start", http.MethodGet, "/api/v1/health/groups?start=garbage", http.StatusBadRequest},
 		{"infra nodes bad start", http.MethodGet, "/api/v1/infra/nodes?start=garbage", http.StatusBadRequest},
 		{"trace not found", http.MethodGet, "/api/v1/traces/nope", http.StatusNotFound},
@@ -98,7 +100,7 @@ func TestRoutes(t *testing.T) {
 func TestStoreUnavailable(t *testing.T) {
 	mux := newMux(nil)
 
-	for _, path := range []string{"/api/v1/services", "/api/v1/traces", "/api/v1/traces/abc", "/api/v1/spans/s1", "/api/v1/logs", "/api/v1/traces/abc/logs", "/api/v1/infra/nodes", "/api/v1/infra/pods", "/api/v1/agents", "/api/v1/health/groups"} {
+	for _, path := range []string{"/api/v1/services", "/api/v1/traces", "/api/v1/traces/abc", "/api/v1/spans/s1", "/api/v1/logs", "/api/v1/traces/abc/logs", "/api/v1/infra/nodes", "/api/v1/infra/pods", "/api/v1/agents", "/api/v1/health/groups", "/api/v1/alerts"} {
 		if rec := get(t, mux, path); rec.Code != http.StatusServiceUnavailable {
 			t.Errorf("%s: got %d, want 503", path, rec.Code)
 		}

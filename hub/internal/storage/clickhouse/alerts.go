@@ -14,7 +14,7 @@ func (s *Store) LoadAlertStates(ctx context.Context, tenant string) ([]storage.A
 	rows, err := s.conn.Query(ctx, `
 SELECT RuleName, Target, toString(Status), Since, LastNotifiedAt
 FROM alert_state FINAL
-WHERE Tenant = ?`, tenant)
+WHERE Tenant = ? AND Status != 'ok'`, tenant)
 	if err != nil {
 		return nil, fmt.Errorf("load alert states: %w", err)
 	}

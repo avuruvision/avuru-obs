@@ -1,0 +1,240 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"net"
+	"os"
+	"strings"
+	"sync/atomic"
+	"time"
+
+	"github.com/avuru/avuru-obs/hub/internal/alerting"
+	"github.com/avuru/avuru-obs/hub/internal/api"
+	"github.com/avuru/avuru-obs/hub/internal/health"
+	"github.com/avuru/avuru-obs/hub/internal/storage"
+)
+
+const alertsReloadInterval = 15 * time.Second
+
+// loadAlertingConfig loads AVURUOPS_ALERTS_CONFIG and returns a hot-reloading
+// accessor (mtime poll, like the groups config). Unset → Default() (inert). A
+// present-but-invalid file fails loud at startup; a later bad edit is logged
+// and ignored (last good config stays live).
+func loadAlertingConfig(ctx context.Context) (func() alerting.Config, error) {
+	path := os.Getenv("AVURUOPS_ALERTS_CONFIG")
+	if path == "" {
+		cfg := alerting.Default()
+		return func() alerting.Config { return cfg }, nil
+	}
+	cfg, modTime, err := readAlertingConfig(path)
+	if err != nil {
+		return nil, fmt.Errorf("AVURUOPS_ALERTS_CONFIG: %w", err)
+	}
+	slog.Info("alerting config loaded", "path", path, "rules", len(cfg.Rules), "channels", len(cfg.Channels))
+
+	var current atomic.Pointer[alerting.Config]
+	current.Store(&cfg)
+	go func() {
+		ticker := time.NewTicker(alertsReloadInterval)
+		defer ticker.Stop()
+		last := modTime
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				info, err := os.Stat(path)
+				if err != nil || !info.ModTime().After(last) {
+					continue
+				}
+				c, mt, err := readAlertingConfig(path)
+				if err != nil {
+					slog.Warn("alerting config reload rejected, keeping current", "path", path, "error", err)
+					last = info.ModTime()
+					continue
+				}
+				current.Store(&c)
+				last = mt
+				slog.Info("alerting config reloaded", "path", path, "rules", len(c.Rules))
+			}
+		}
+	}()
+	return func() alerting.Config { return *current.Load() }, nil
+}
+
+func readAlertingConfig(path string) (alerting.Config, time.Time, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return alerting.Config{}, time.Time{}, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return alerting.Config{}, time.Time{}, err
+	}
+	cfg, err := alerting.ParseConfig(data)
+	if err != nil {
+		return alerting.Config{}, time.Time{}, err
+	}
+	return cfg, info.ModTime(), nil
+}
+
+// webhookAllowCIDRs parses AVURUOPS_WEBHOOK_ALLOW (comma-separated CIDRs) — the
+// operator override that lets alerting reach a receiver on a private network.
+func webhookAllowCIDRs() []*net.IPNet {
+	var out []*net.IPNet
+	for _, part := range splitCSV(os.Getenv("AVURUOPS_WEBHOOK_ALLOW")) {
+		if _, cidr, err := net.ParseCIDR(strings.TrimSpace(part)); err == nil {
+			out = append(out, cidr)
+		} else {
+			slog.Warn("ignoring invalid AVURUOPS_WEBHOOK_ALLOW entry", "value", part, "error", err)
+		}
+	}
+	return out
+}
+
+// runAlertingEvaluator is the single background evaluator: every interval it
+// computes health per tenant, runs the alerting state machine against the
+// persisted state, delivers notifications, and writes state + history back.
+// v1 assumes ONE active evaluator (hub replicas default to 1); >1 would
+// duplicate notifications (documented, HA leader election is v2).
+func runAlertingEvaluator(ctx context.Context, provider api.StoreProvider, groupsCfg func() health.Config, alertsCfg func() alerting.Config, notifier alerting.Notifier, projects []string) {
+	slog.Info("alerting evaluator started (single active evaluator)")
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(alertsCfg().Interval()):
+		}
+		if err := evaluateOnce(ctx, provider, groupsCfg(), alertsCfg(), notifier, projects); err != nil {
+			slog.Warn("alerting evaluation tick failed", "error", err)
+		}
+	}
+}
+
+func evaluateOnce(ctx context.Context, provider api.StoreProvider, gcfg health.Config, acfg alerting.Config, notifier alerting.Notifier, projects []string) error {
+	store := provider()
+	if store == nil {
+		return fmt.Errorf("store unavailable")
+	}
+	now := time.Now().UTC()
+	for _, tenant := range tenantsToEvaluate(ctx, store, projects) {
+		report, err := computeHealth(ctx, store, gcfg, tenant, now, acfg.Window())
+		if err != nil {
+			slog.Warn("alerting: health compute failed", "tenant", tenant, "error", err)
+			continue
+		}
+		prev, err := store.LoadAlertStates(ctx, tenant)
+		if err != nil {
+			slog.Warn("alerting: load state failed", "tenant", tenant, "error", err)
+			continue
+		}
+		next, notes := alerting.Evaluate(acfg, report, toEvalState(prev), now)
+		deliver(ctx, notifier, acfg, notes)
+		if err := store.SaveAlertStates(ctx, diffToSave(tenant, toEvalState(prev), next, now)); err != nil {
+			slog.Warn("alerting: save state failed", "tenant", tenant, "error", err)
+		}
+		if hist := toHistory(tenant, notes); len(hist) > 0 {
+			if err := store.AppendAlertHistory(ctx, hist); err != nil {
+				slog.Warn("alerting: append history failed", "tenant", tenant, "error", err)
+			}
+		}
+	}
+	return nil
+}
+
+// computeHealth fetches the RED population + labels + edges for one tenant and
+// rolls it up — the same inputs the /health API uses, evaluated here.
+func computeHealth(ctx context.Context, store storage.Store, gcfg health.Config, tenant string, now time.Time, window time.Duration) (health.Report, error) {
+	q := storage.ServiceQuery{Tenant: tenant, Range: storage.TimeRange{Start: now.Add(-window), End: now}, ExcludeAux: true}
+	stats, err := store.ListServices(ctx, q)
+	if err != nil {
+		return health.Report{}, err
+	}
+	labels, err := store.ServiceLabels(ctx, q)
+	if err != nil {
+		return health.Report{}, err
+	}
+	edges, err := store.ServiceEdges(ctx, q)
+	if err != nil {
+		return health.Report{}, err
+	}
+	return health.Rollup(gcfg, window, stats, labels, edges), nil
+}
+
+// tenantsToEvaluate is the config projects ∪ tenants observed in data.
+func tenantsToEvaluate(ctx context.Context, store storage.Store, projects []string) []string {
+	set := map[string]bool{storage.DefaultTenant: true}
+	for _, p := range projects {
+		set[p] = true
+	}
+	if ts, err := store.ListTenants(ctx); err == nil {
+		for _, t := range ts {
+			set[t] = true
+		}
+	}
+	out := make([]string, 0, len(set))
+	for t := range set {
+		out = append(out, t)
+	}
+	return out
+}
+
+func deliver(ctx context.Context, notifier alerting.Notifier, acfg alerting.Config, notes []alerting.Notification) {
+	for _, n := range notes {
+		ch, ok := acfg.ChannelByName(n.Channel)
+		if !ok {
+			slog.Warn("alerting: rule references unknown channel", "channel", n.Channel, "rule", n.Rule)
+			continue
+		}
+		if err := notifier.Send(ctx, ch, n); err != nil {
+			// The transition is real; delivery failed after retries. Log and
+			// carry on — v1 does not queue failed deliveries (documented).
+			slog.Warn("alerting: delivery failed", "rule", n.Rule, "target", n.Target, "kind", n.Kind, "error", err)
+		}
+	}
+}
+
+func toEvalState(rows []storage.AlertState) alerting.State {
+	st := alerting.State{}
+	for _, r := range rows {
+		st[alerting.StateKey{Rule: r.RuleName, Target: r.Target}] = alerting.TargetState{
+			Status: r.Status, Since: r.Since, LastNotifiedAt: r.LastNotifiedAt,
+		}
+	}
+	return st
+}
+
+// diffToSave writes the next state, plus an explicit 'ok' row for every key that
+// was active last tick but is gone now, so the ReplacingMergeTree supersedes the
+// stale firing/pending row.
+func diffToSave(tenant string, prev, next alerting.State, now time.Time) []storage.AlertState {
+	var out []storage.AlertState
+	for k, v := range next {
+		out = append(out, storage.AlertState{
+			Tenant: tenant, RuleName: k.Rule, Target: k.Target,
+			Status: v.Status, Since: v.Since, LastNotifiedAt: v.LastNotifiedAt,
+		})
+	}
+	for k, v := range prev {
+		if _, still := next[k]; !still {
+			out = append(out, storage.AlertState{
+				Tenant: tenant, RuleName: k.Rule, Target: k.Target,
+				Status: "ok", Since: now, LastNotifiedAt: v.LastNotifiedAt,
+			})
+		}
+	}
+	return out
+}
+
+func toHistory(tenant string, notes []alerting.Notification) []storage.AlertHistoryEntry {
+	out := make([]storage.AlertHistoryEntry, 0, len(notes))
+	for _, n := range notes {
+		out = append(out, storage.AlertHistoryEntry{
+			Tenant: tenant, RuleName: n.Rule, Target: n.Target,
+			Kind: n.Kind, Status: n.Status, Reason: n.Reason, FiredAt: n.At,
+		})
+	}
+	return out
+}

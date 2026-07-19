@@ -188,11 +188,12 @@ func (c Config) Interval() time.Duration { return time.Duration(c.EvalIntervalSe
 // Window returns the trailing health window.
 func (c Config) Window() time.Duration { return time.Duration(c.WindowMinutes) * time.Minute }
 
-// channelByName indexes channels for delivery.
-func (c Config) channelByName() map[string]Channel {
-	m := make(map[string]Channel, len(c.Channels))
+// ChannelByName returns the named channel for delivery.
+func (c Config) ChannelByName(name string) (Channel, bool) {
 	for _, ch := range c.Channels {
-		m[ch.Name] = ch
+		if ch.Name == name {
+			return ch, true
+		}
 	}
-	return m
+	return Channel{}, false
 }
