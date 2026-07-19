@@ -51,6 +51,25 @@ data:
         - k8s.src.namespace
         - k8s.dst.owner.name
         - k8s.dst.namespace
+    {{- if .Values.sensor.obi.network.stats }}
+    # TCP-stats metrics (OBI StatsO11y): obi.stat.tcp.rtt (RTT histogram) +
+    # obi.stat.tcp.failed.connections (resets/failures), for per-edge network
+    # health on the service map. Attributes forced to the k8s owner keys the map
+    # joins on. Verify the exact stats-feature key against the pinned OBI v0.9.0
+    # in the e2e-helm run; adjust here if it differs.
+    stats:
+      enable: true
+    attributes:
+      select:
+        obi_stat_tcp_rtt:
+          include:
+            - k8s.src.owner.name
+            - k8s.dst.owner.name
+        obi_stat_tcp_failed_connections:
+          include:
+            - k8s.src.owner.name
+            - k8s.dst.owner.name
+    {{- end }}
     {{- end }}
 {{- end }}
 {{- /* The agent needs >=1 active pipeline or the collector crash-loops. A
