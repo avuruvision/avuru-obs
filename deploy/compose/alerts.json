@@ -1,0 +1,16 @@
+{
+  "evalIntervalSec": 2,
+  "windowMinutes": 120,
+  "channels": [
+    { "name": "sink", "type": "webhook", "url": "http://sink.invalid/hook" }
+  ],
+  "rules": [
+    {
+      "name": "checkout-down",
+      "when": "down",
+      "for": "0s",
+      "selector": { "services": ["seed-checkout"] },
+      "channel": "sink"
+    }
+  ]
+}
