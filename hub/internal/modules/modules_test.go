@@ -12,8 +12,8 @@ func TestParse(t *testing.T) {
 		want    []string
 		wantErr bool
 	}{
-		{"empty means all", "", []string{"core", "logs", "infra-metrics", "profiling", "error-tracking", "service-health"}, false},
-		{"whitespace means all", "  ", []string{"core", "logs", "infra-metrics", "profiling", "error-tracking", "service-health"}, false},
+		{"empty means all", "", []string{"core", "logs", "infra-metrics", "profiling", "error-tracking", "service-health", "alerting"}, false},
+		{"whitespace means all", "  ", []string{"core", "logs", "infra-metrics", "profiling", "error-tracking", "service-health", "alerting"}, false},
 		{"explicit subset", "core,logs", []string{"core", "logs"}, false},
 		{"core is forced on", "logs", []string{"core", "logs"}, false},
 		{"spaces and blanks tolerated", " logs , profiling ,", []string{"core", "logs", "profiling"}, false},

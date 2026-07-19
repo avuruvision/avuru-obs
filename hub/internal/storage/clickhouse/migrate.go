@@ -89,6 +89,7 @@ type Retention struct {
 	MetricsDays  int
 	ProfilesDays int
 	ErrorsDays   int
+	AlertsDays   int
 }
 
 // ApplyRetention sets per-signal TTL via `ALTER ... MODIFY TTL`. Retention
@@ -134,6 +135,14 @@ func (s *Store) ApplyRetention(ctx context.Context, r Retention) error {
 		q := fmt.Sprintf("ALTER TABLE %s.error_events MODIFY TTL toDateTime(Timestamp) + toIntervalDay(%d)", s.db, r.ErrorsDays)
 		if err := s.conn.Exec(ctx, q); err != nil {
 			return fmt.Errorf("retention on error_events: %w", err)
+		}
+	}
+	if r.AlertsDays > 0 {
+		// alert_history only: alert_state is tiny (bounded by rule×target) and
+		// is the evaluator's live memory, so it is never TTL'd.
+		q := fmt.Sprintf("ALTER TABLE %s.alert_history MODIFY TTL toDateTime(FiredAt) + toIntervalDay(%d)", s.db, r.AlertsDays)
+		if err := s.conn.Exec(ctx, q); err != nil {
+			return fmt.Errorf("retention on alert_history: %w", err)
 		}
 	}
 	return nil

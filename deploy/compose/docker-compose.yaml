@@ -38,7 +38,8 @@ services:
       AVURUOPS_CLICKHOUSE_PASSWORD: avuru
       # Modules this sandbox runs (empty/unset = all). Drop an entry to skip
       # its schema — the hub then 404s its API and the UI hides its entry.
-      AVURUOPS_MODULES: "core,logs,infra-metrics,profiling,error-tracking"
+      # alerting owns 0008_alerts.sql, so it must be listed for the tables.
+      AVURUOPS_MODULES: "core,logs,infra-metrics,profiling,error-tracking,alerting"
       AVURUOPS_RETENTION_TRACES_DAYS: "7"
       AVURUOPS_RETENTION_LOGS_DAYS: "3"
       AVURUOPS_RETENTION_METRICS_DAYS: "7"
@@ -85,8 +86,13 @@ services:
       # Service-health grouping config: seed volumes are tiny, so minSampleCount
       # is 1 here (the built-in default of 5 would read the fixtures as idle).
       AVURUOPS_GROUPS_CONFIG: /etc/avuruops/groups.json
+      # Alerting rules: fire immediately on the seeded down service so the e2e
+      # can assert. Delivery targets an unroutable URL (the loop persists state
+      # regardless; delivery is unit-tested, incl. the SSRF guard).
+      AVURUOPS_ALERTS_CONFIG: /etc/avuruops-alerts/alerts.json
     volumes:
       - ./groups.json:/etc/avuruops/groups.json:ro
+      - ./alerts.json:/etc/avuruops-alerts/alerts.json:ro
     ports:
       - "8080:8080"
     depends_on:

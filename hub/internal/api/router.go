@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/avuru/avuru-obs/hub/internal/alerting"
 	"github.com/avuru/avuru-obs/hub/internal/health"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
@@ -38,6 +39,10 @@ type Config struct {
 	// function so the value can be hot-reloaded (the loader swaps an
 	// atomic.Pointer) without a hub restart. nil → health.Default().
 	GroupsConfig func() health.Config
+	// AlertsConfig returns the current alerting configuration (hot-reloaded).
+	// Read-only endpoint use only; the evaluator lives in cmd/hub. nil →
+	// alerting.Default().
+	AlertsConfig func() alerting.Config
 }
 
 // API holds handler dependencies.
@@ -108,6 +113,10 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("GET /api/v1/health/groups", handle(a.handleHealthGroups))
 		mux.Handle("GET /api/v1/health/groups/{name}", handle(a.handleHealthGroup))
 	}
+	if active.Enabled(modules.Alerting) {
+		mux.Handle("GET /api/v1/alerts", handle(a.handleAlerts))
+		mux.Handle("GET /api/v1/alerts/rules", handle(a.handleAlertRules))
+	}
 }
 
 // groupsConfig resolves the active service-health config, defaulting to
@@ -117,6 +126,15 @@ func (a *API) groupsConfig() health.Config {
 		return a.cfg.GroupsConfig()
 	}
 	return health.Default()
+}
+
+// alertsConfig resolves the active alerting config (for the read-only /rules
+// endpoint), defaulting to Default() when none is wired.
+func (a *API) alertsConfig() alerting.Config {
+	if a.cfg.AlertsConfig != nil {
+		return a.cfg.AlertsConfig()
+	}
+	return alerting.Default()
 }
 
 func handleHealthz(w http.ResponseWriter, _ *http.Request) {

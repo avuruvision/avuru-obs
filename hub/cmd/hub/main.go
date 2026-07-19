@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/avuru/avuru-obs/hub/internal/alerting"
 	"github.com/avuru/avuru-obs/hub/internal/api"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
@@ -119,6 +120,8 @@ func runMigrate() error {
 		// Errors default higher: low volume after fingerprint grouping, and
 		// issue history is the point of the module.
 		ErrorsDays: envIntOr("AVURUOPS_RETENTION_ERRORS_DAYS", 30),
+		// Alert history is tiny; keep a month for the UI timeline.
+		AlertsDays: envIntOr("AVURUOPS_RETENTION_ALERTS_DAYS", 30),
 	}
 	// Don't touch a disabled module's TTL: its tables were never created —
 	// or, if the module was enabled once, they still hold data we no longer
@@ -166,6 +169,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	alertsConfig, err := loadAlertingConfig(ctx)
+	if err != nil {
+		return err
+	}
 
 	// Hub is API-only: the UI is a separate deployable (its own nginx pod),
 	// reached single-origin via the gateway/ingress. See agent_docs/architecture.md.
@@ -178,7 +185,15 @@ func run() error {
 		Projects:              splitCSV(envOr("AVURUOPS_PROJECTS", "")),
 		Modules:               active,
 		GroupsConfig:          groupsConfig,
+		AlertsConfig:          alertsConfig,
 	})
+
+	// The alerting evaluator is a single background loop (see runAlertingEvaluator);
+	// started only when the module is active.
+	if active.Enabled(modules.Alerting) {
+		notifier := alerting.NewWebhookNotifier(5*time.Second, 3, webhookAllowCIDRs())
+		go runAlertingEvaluator(ctx, provider, groupsConfig, alertsConfig, notifier, splitCSV(envOr("AVURUOPS_PROJECTS", "")))
+	}
 
 	srv := &http.Server{
 		Addr:              addr,

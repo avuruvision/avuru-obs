@@ -85,6 +85,7 @@ otel
 {{- if .Values.modules.profiling.enabled -}}{{- $mods = append $mods "profiling" -}}{{- end -}}
 {{- if .Values.modules.errorTracking.enabled -}}{{- $mods = append $mods "error-tracking" -}}{{- end -}}
 {{- if .Values.modules.serviceHealth.enabled -}}{{- $mods = append $mods "service-health" -}}{{- end -}}
+{{- if .Values.modules.alerting.enabled -}}{{- $mods = append $mods "alerting" -}}{{- end -}}
 {{- join "," $mods -}}
 {{- end -}}
 
@@ -117,6 +118,36 @@ otel
 {{- if .Values.modules.serviceHealth.enabled }}
 - name: service-groups
   mountPath: /etc/avuruops
+  readOnly: true
+{{- end }}
+{{- end -}}
+
+{{/* Alerting rules config: env + volume + mount, mounted at its OWN dir so it
+     never collides with the service-groups mount. AVURUOPS_WEBHOOK_ALLOW carries
+     the SSRF override CIDRs. Emitted only when the module is on. */}}
+{{- define "avuruops.alertsEnv" -}}
+{{- if .Values.modules.alerting.enabled }}
+- name: AVURUOPS_ALERTS_CONFIG
+  value: /etc/avuruops-alerts/alerts.json
+{{- if .Values.alerting.webhookAllow }}
+- name: AVURUOPS_WEBHOOK_ALLOW
+  value: {{ join "," .Values.alerting.webhookAllow | quote }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{- define "avuruops.alertsVolume" -}}
+{{- if .Values.modules.alerting.enabled }}
+- name: alert-rules
+  configMap:
+    name: {{ include "avuruops.fullname" . }}-alerts
+{{- end }}
+{{- end -}}
+
+{{- define "avuruops.alertsVolumeMount" -}}
+{{- if .Values.modules.alerting.enabled }}
+- name: alert-rules
+  mountPath: /etc/avuruops-alerts
   readOnly: true
 {{- end }}
 {{- end -}}

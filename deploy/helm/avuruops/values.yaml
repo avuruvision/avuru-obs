@@ -96,6 +96,37 @@ modules:
   # serviceGroups below for the grouping/tier configuration.
   serviceHealth:
     enabled: true
+  # Alerting: a hub evaluator watches service-health status and fires a webhook
+  # when a rule's target crosses into a bad state for a duration. Default on but
+  # INERT until you configure rules below (alerting.rules). The webhook is the
+  # hub's only outbound call — guarded (SSRF, retries, HMAC).
+  alerting:
+    enabled: true
+
+# Alerting rules and channels. Rendered to a ConfigMap the hub reads (mounted at
+# AVURUOPS_ALERTS_CONFIG) when modules.alerting.enabled. No rules = nothing
+# fires. Hot-reloads within ~15s on a `kubectl edit`, no restart. A channel is a
+# generic webhook (Slack/PagerDuty/Opsgenie/Alertmanager all accept these).
+alerting:
+  evalIntervalSec: 30
+  windowMinutes: 5
+  # CIDRs that override the SSRF guard so alerting can reach a webhook receiver
+  # on a private network (e.g. an in-cluster Alertmanager). Default: none —
+  # loopback/link-local/private/metadata targets are refused.
+  webhookAllow: []
+  #  - 10.0.0.0/8
+  channels: []
+  #  - name: ops
+  #    type: webhook
+  #    url: https://hooks.example.com/services/xxx
+  #    secret: "optional-hmac-signing-secret"
+  rules: []
+  #  - name: payments-critical
+  #    when: down            # down | degraded | not-healthy
+  #    for: 5m
+  #    selector:
+  #      groups: [payments]  # or services: [...] or tiers: [T0]
+  #    channel: ops
 
 # Service Health grouping/tier configuration. Rendered to a ConfigMap the hub
 # reads (mounted at AVURUOPS_GROUPS_CONFIG) when modules.serviceHealth.enabled.

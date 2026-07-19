@@ -24,10 +24,14 @@ const (
 	// per-service RED health (core trace data) up into group health. Gating it
 	// off only removes the API routes + UI surface, never any ingestion weight.
 	ServiceHealth Name = "service-health"
+	// Alerting watches service-health status and fires webhooks on transitions.
+	// It owns the alert_state/alert_history tables (0008) and is the hub's only
+	// module that makes an outbound call. Inert until rules are configured.
+	Alerting Name = "alerting"
 )
 
 // All lists every known module in registry (display) order.
-var All = []Name{Core, Logs, InfraMetrics, Profiling, ErrorTracking, ServiceHealth}
+var All = []Name{Core, Logs, InfraMetrics, Profiling, ErrorTracking, ServiceHealth, Alerting}
 
 // Set is a resolved active-module set; Core is always present.
 type Set map[Name]bool
