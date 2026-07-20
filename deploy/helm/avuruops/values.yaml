@@ -264,6 +264,13 @@ sensor:
     # L7 instrumentation is scoped down. Also consider priorityClass and moving
     # ClickHouse off the app nodes (runbook cause #2).
     discovery:
+      # optOut (default): instrument everything in `namespaces` minus the
+      # excludes — today's zero-code behaviour. optIn: uprobes attach ONLY to
+      # pods labeled <sensor.collection.optOutLabel>="true", still scoped by
+      # `namespaces` and still subject to every exclude. Narrows uprobes only —
+      # logs, infra metrics and the node inventory are unaffected. For fleets
+      # that want tracing adopted deliberately (docs/runbooks/sensor-rollout.md).
+      mode: optOut
       namespaces: ["*"]
       excludeNamespaces: []
     # Network flows (OBI `network` feature): kernel L4 topology + per-edge

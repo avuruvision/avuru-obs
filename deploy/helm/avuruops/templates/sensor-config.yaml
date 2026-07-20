@@ -1,6 +1,9 @@
 {{- if and .Values.sensor.obi.network.enabled (not .Values.modules.infraMetrics.enabled) }}
 {{- fail "sensor.obi.network.enabled requires modules.infraMetrics.enabled — OBI network flows are stored in the otel_metrics_* tables owned by the infra-metrics module." }}
 {{- end }}
+{{- if and (eq (.Values.sensor.obi.discovery.mode | default "optOut") "optIn") (not .Values.sensor.collection.optOutLabel) }}
+{{- fail "sensor.obi.discovery.mode=optIn requires sensor.collection.optOutLabel — opt-in selects pods carrying that label set to \"true\"." }}
+{{- end }}
 {{- if and .Values.sensor.enabled .Values.sensor.obi.enabled }}
 apiVersion: v1
 kind: ConfigMap
@@ -18,8 +21,16 @@ data:
     # built-in defaults.
     discovery:
       instrument:
+        {{- $mode := .Values.sensor.obi.discovery.mode | default "optOut" }}
         {{- range .Values.sensor.obi.discovery.namespaces }}
         - k8s_namespace: {{ . | quote }}
+          {{- if eq $mode "optIn" }}
+          # optIn: uprobes only for deliberately-labeled workloads. Selector
+          # keys within one entry AND together. Verify the instrument-side
+          # namespace+label combo against the pinned OBI v0.9.0.
+          k8s_pod_labels:
+            {{ $.Values.sensor.collection.optOutLabel | quote }}: "true"
+          {{- end }}
         {{- end }}
       exclude_instrument:
         - k8s_namespace: {{ .Release.Namespace | quote }}

@@ -51,6 +51,27 @@ grep -q 'k8s_namespace: "payments"' <<<"$out" || fail "extra OBI exclude namespa
 grep -q 'k8s_namespace: "billing"' <<<"$out" || fail "extra OBI exclude namespace missing"
 ok "sensor.obi.discovery.excludeNamespaces extends the shared list"
 
+echo "== OBI discovery mode: default optOut"
+out="$(render)"
+grep -q '"avuru.obs/instrument": "true"' <<<"$out" && fail "opt-in selector rendered in default optOut mode"
+ok "optOut default: instrument-all, no opt-in selector"
+
+echo "== OBI discovery mode: optIn narrows uprobes, nothing else"
+out="$(render --set sensor.obi.discovery.mode=optIn)"
+grep -q '"avuru.obs/instrument": "true"' <<<"$out" || fail "opt-in label selector missing in optIn"
+grep -q 'k8s_namespace: "kube-system"' <<<"$out" || fail "namespace excludes lost in optIn"
+grep -q '"avuru.obs/instrument": "false"' <<<"$out" || fail "per-pod opt-out exclude lost in optIn"
+grep -q 'filelog' <<<"$out" || fail "logs collection affected by optIn (must be untouched)"
+grep -q 'kubeletstats' <<<"$out" || fail "infra metrics affected by optIn (must be untouched)"
+ok "optIn: labeled-only uprobes; excludes, logs and metrics unaffected"
+
+echo "== OBI discovery mode: guards"
+render --set sensor.obi.discovery.mode=optIn --set sensor.collection.optOutLabel="" >/dev/null 2>&1 \
+  && fail "optIn rendered with empty optOutLabel (nothing to opt in with)"
+render --set sensor.obi.discovery.mode=bogus >/dev/null 2>&1 \
+  && fail "schema accepted an invalid discovery.mode"
+ok "optIn without a label fails; schema rejects unknown modes"
+
 echo "== default render: agent pipelines honor collection guardrails"
 out="$(render)"
 grep -q '/var/log/pods/kube-system_\*' <<<"$out" || fail "kube-system filelog exclude glob missing"

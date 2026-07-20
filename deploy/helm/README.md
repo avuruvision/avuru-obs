@@ -49,6 +49,7 @@ No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale.
 | `sensor.collection.excludeNamespaces` | kube-system, kube-node-lease, kube-public | Namespaces never collected (any signal) |
 | `sensor.collection.optOutLabel` | `avuru.obs/instrument` | Pods labeled `=false` are never traced; their logs/pod-metrics dropped |
 | `sensor.collection.nodeOptOutLabel` | `avuru.obs/collect` | Nodes labeled `=false` get no sensor pod at all |
+| `sensor.obi.discovery.mode` | `optOut` | `optIn` attaches uprobes ONLY to pods labeled `avuru.obs/instrument: "true"` (logs/metrics/inventory unaffected) |
 
 ## Modules (which signal families this install runs)
 
@@ -123,6 +124,12 @@ upgrade. The platform's own namespace is always excluded.
 | Namespace | `sensor.collection.excludeNamespaces` (+ `sensor.obi.discovery.excludeNamespaces` for traces only) | same shared list | same shared list (pod-scoped datapoints only; node metrics unaffected) | not supported — whole-node profiler |
 | Pod / app | label the pod `avuru.obs/instrument: "false"` | same label | same label | not supported |
 | Node (= agent instance) | `kubectl label node <n> avuru.obs/collect=false` — removes the entire sensor pod | same | same | same |
+
+Cautious fleets can invert the traces column instead of opting out piecemeal:
+`sensor.obi.discovery.mode=optIn` attaches uprobes **only** to pods labeled
+`avuru.obs/instrument: "true"`, so tracing is adopted deliberately while logs,
+metrics and the node inventory keep flowing. The staged path for enabling the
+sensor on a running fleet is `docs/runbooks/sensor-rollout.md`.
 
 Examples:
 
