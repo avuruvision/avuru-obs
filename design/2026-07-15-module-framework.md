@@ -104,9 +104,9 @@ module's tables are simply ignored (no table to alter).
 
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] Hub: module registry + conditional migrations + `/api/v1/capabilities` + conditional routes
-- [ ] Helm/compose: `modules.*` values wired to hub env, gateway config, sensor knobs
-- [ ] UI: capabilities-driven sidebar + disabled-module page
+- [x] AEP accepted
+- [x] Hub: module registry + conditional migrations + `/api/v1/capabilities` + conditional routes
+- [x] Helm/compose: `modules.*` values wired to hub env, gateway config, sensor knobs
+- [x] UI: capabilities-driven sidebar + disabled-module page
 - [ ] Docs: Modules concept page (EN/FR), configuration reference
-- [ ] First born-opt-in module ships on top (error tracking)
+- [x] First born-opt-in module ships on top (error tracking)

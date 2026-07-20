@@ -39,12 +39,13 @@ only if the design needs to be pinned down before coding.
 
 | Date | Topic | Status |
 |---|---|---|
-| [2026-07-15](2026-07-15-module-framework.md) | Module framework — opt-in signals | Draft |
-| [2026-07-16](2026-07-16-error-tracking.md) | Error tracking — derived issues + Sentry ingest | Draft |
+| [2026-07-15](2026-07-15-module-framework.md) | Module framework — opt-in signals | Implemented |
+| [2026-07-16](2026-07-16-error-tracking.md) | Error tracking — derived issues + Sentry ingest | Implemented |
+| [2026-07-16](2026-07-16-endpoint-checks.md) | Endpoint checks — health when there is no traffic | Draft |
 | [2026-07-17](2026-07-17-sensor-safe-by-default.md) | Make the eBPF sensor safe to leave on | Draft |
-| [2026-07-18](2026-07-18-service-health-groups.md) | Service health groups — consolidated group health from RED | Draft |
-| [2026-07-19](2026-07-19-alerting.md) | Alerting — webhook notifications on service-health transitions | Draft |
-| [2026-07-19](2026-07-19-network-health.md) | Network health on the service map — per-edge RTT + connection failures | Draft |
+| [2026-07-18](2026-07-18-service-health-groups.md) | Service health groups — consolidated group health from RED | Implemented |
+| [2026-07-19](2026-07-19-alerting.md) | Alerting — webhook notifications on service-health transitions | Implemented |
+| [2026-07-19](2026-07-19-network-health.md) | Network health on the service map — per-edge RTT + connection failures | Implemented |
 
 ## Conventions
 

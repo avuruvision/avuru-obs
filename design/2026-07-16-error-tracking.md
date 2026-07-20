@@ -147,10 +147,10 @@ later item, coupled to v0.2 auth.
 
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] `0006_errors.sql` + MVs + retention + `error-tracking` in the module registry
-- [ ] Hub read API + DTOs
-- [ ] Triage write + regression
-- [ ] UI errors page + detail + triage
-- [ ] Gateway `sentryreceiver` + OCB/compose/Helm wiring + e2e
-- [ ] Docs (signal page, Sentry-SDK integration, API reference) + Compare pages
+- [x] AEP accepted
+- [x] `0006_errors.sql` + MVs + retention + `error-tracking` in the module registry
+- [x] Hub read API + DTOs
+- [x] Triage write + regression
+- [x] UI errors page + detail + triage
+- [x] Gateway `sentryreceiver` + OCB/compose/Helm wiring + e2e
+- [x] Docs (signal page, Sentry-SDK integration, API reference) + Compare pages
