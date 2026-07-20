@@ -145,4 +145,22 @@ if [ -n "$UNHEALTHY" ]; then
 fi
 echo "    all wedge-demo pods Ready with 0 restarts — install did no harm"
 
+# The generic sweep above covers every wedge pod, but the probe-sensitive
+# canary is the load-bearing subject (AEP 2026-07-17): assert it BY NAME so
+# renaming or dropping it can't silently gut the gate's safety coverage.
+echo "==> REGRESSION GATE: the probe-sensitive canary specifically (AEP 2026-07-17)"
+CANARY_COUNT=$(kubectl -n wedge-demo get pods -l app=probe-canary --no-headers 2>/dev/null | wc -l | tr -d ' ')
+if [ "$CANARY_COUNT" -lt 1 ]; then
+  echo "probe-canary absent — the gate lost its probe-sensitive coverage"
+  exit 1
+fi
+CANARY_READY=$(kubectl -n wedge-demo get pods -l app=probe-canary -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}')
+CANARY_RESTARTS=$(kubectl -n wedge-demo get pods -l app=probe-canary -o jsonpath='{.items[0].status.containerStatuses[0].restartCount}')
+if [ "$CANARY_READY" != "True" ] || [ "$CANARY_RESTARTS" != "0" ]; then
+  echo "REGRESSION: probe-canary Ready=$CANARY_READY restarts=$CANARY_RESTARTS after ${SOAK}s under the sensor"
+  kubectl -n wedge-demo describe pod -l app=probe-canary | tail -30
+  exit 1
+fi
+echo "    probe-canary Ready with 0 restarts — tight-CPU-limit workload survived the sensor"
+
 rm -f "$E2E_BIN" "$SEED_BIN"
