@@ -42,6 +42,28 @@ When a release is cut, that block is renamed to the version with its date.
 - **Service-map edges derived from OBI network flows.** The sensor now builds
   topology from OBI's network-flow data, widening the map beyond the protocols
   zero-code instrumentation parses.
+- **Service health groups** — a new module (`modules.serviceHealth.enabled`,
+  default on). Operator-declared service groups with criticality tiers
+  (T0/T1/T2), a composite status per group derived from the RED data already
+  collected, critical-dependency propagation, and a `/health` tier-lane board
+  in the UI. Config is hot-reloadable (a ConfigMap edit re-tiers services with
+  no restart); unmatched services auto-group by namespace so a zero-config
+  install still gets a useful board. See
+  [`design/2026-07-18-service-health-groups.md`](design/2026-07-18-service-health-groups.md).
+- **Alerting** — a new module (`modules.alerting.enabled`, default on).
+  Webhook notifications when a service or group crosses into a bad state,
+  driven by the service-health status stream: declarative rules in values, an
+  evaluator with firing/resolved transitions, alert history, and a read-only
+  `/alerts` UI page. Outbound webhooks are SSRF-guarded
+  (`alerting.webhookAllow`). See
+  [`design/2026-07-19-alerting.md`](design/2026-07-19-alerting.md).
+- **Network health on the service-map edges** — per-edge RTT and failed/reset
+  connection counts from OBI's TCP-stats metrics
+  (`sensor.obi.network.stats`, on with `sensor.obi.network.enabled`),
+  surfaced as edge tooltips and health styling on the map. The exact OBI
+  stats key still needs confirmation in a real eBPF environment before prod
+  use. See
+  [`design/2026-07-19-network-health.md`](design/2026-07-19-network-health.md).
 
 ### Changed
 
