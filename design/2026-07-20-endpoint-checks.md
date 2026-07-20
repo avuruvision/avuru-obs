@@ -1,15 +1,16 @@
 # AEP: Endpoint checks — health when there is no traffic
 
-- **Date:** 2026-07-16
+- **Date:** 2026-07-20
 - **Author(s):** Berny ryders
 - **Status:** Draft
 
-> **History.** This AEP was drafted as "Service groups and endpoint checks". The
-> groups half was superseded by
+> **History.** Drafted 2026-07-16 as "Service groups and endpoint checks" (never
+> merged; it lived on the `design/aep-service-groups` branch). The groups half
+> was superseded by
 > [2026-07-18 Service health groups](2026-07-18-service-health-groups.md)
 > (shipped: tiered groups, composite status from RED, dependency propagation).
-> What remains here is the half that was never built: **active endpoint checks**,
-> rescoped to attach to the shipped groups.
+> Rescoped 2026-07-20 to the half that was never built: **active endpoint
+> checks**, attached to the shipped groups.
 
 ## Summary
 
