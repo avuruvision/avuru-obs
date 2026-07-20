@@ -1,5 +1,7 @@
-# The wedge demo: a deliberately UNINSTRUMENTED 3-service HTTP chain —
-# loadgen (busybox wget loop) -> frontend (nginx proxy) -> api (nginx).
+# The wedge demo: a deliberately UNINSTRUMENTED HTTP chain —
+# loadgen (busybox wget loop) -> frontend (nginx proxy) -> api (nginx),
+# plus probe-canary (nginx with a tight CPU limit + aggressive liveness
+# probe — the sensor-safety regression gate's subject).
 # Zero OTel anywhere: no SDK, no env vars, no sidecars. If the service map
 # lights up, it is the sensor's zero-code eBPF instrumentation doing it —
 # that IS the product promise the TTV gate enforces (e2e/wedge_test.go).
@@ -118,8 +120,61 @@ spec:
             - |
               while true; do
                 wget -q -O /dev/null http://frontend.wedge-demo.svc.cluster.local/ || true
+                wget -q -O /dev/null http://probe-canary.wedge-demo.svc.cluster.local/ || true
                 sleep 0.5
               done
           resources:
             requests: { cpu: 10m, memory: 8Mi }
             limits: { memory: 32Mi }
+---
+# Probe-sensitive canary — reproduces the failure mode of
+# docs/runbooks/app-probe-failures.md cause #1: a tight CPU limit (uprobe
+# overhead is charged to THIS cgroup, not OBI's) under an aggressive
+# livenessProbe. Deployed BEFORE the platform; the e2e regression gate
+# asserts it stays Ready with 0 restarts through the post-install soak
+# (AEP 2026-07-17). If it flakes WITHOUT the sensor, the canary is
+# mis-tuned — loosen cpu to 50m, then timeoutSeconds to 2, in that order;
+# that failure surfaces at the pre-install `kubectl wait`, not at the gate.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: probe-canary
+  namespace: wedge-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: probe-canary }
+  template:
+    metadata:
+      labels: { app: probe-canary }
+    spec:
+      containers:
+        - name: probe-canary
+          image: nginx:1.29-alpine
+          ports:
+            - containerPort: 80
+          resources:
+            requests: { cpu: 25m, memory: 16Mi }
+            # The tight limit IS the failure precondition — do not raise it
+            # for comfort; the gate exists to prove the sensor survives it.
+            limits: { cpu: 25m, memory: 64Mi }
+          livenessProbe:
+            httpGet: { path: /, port: 80 }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 1
+            failureThreshold: 2
+          readinessProbe:
+            httpGet: { path: /, port: 80 }
+            periodSeconds: 5
+            timeoutSeconds: 1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: probe-canary
+  namespace: wedge-demo
+spec:
+  selector: { app: probe-canary }
+  ports:
+    - port: 80

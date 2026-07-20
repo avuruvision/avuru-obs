@@ -137,7 +137,7 @@ it is a chart-surface + CI change plus one new values field.
 
 - [x] AEP accepted
 - [x] `sensor.obi.discovery.mode` (values + schema + OBI discovery config)
-- [ ] Probe-sensitive workload added to `deploy/demo/wedge/wedge.yaml`
+- [x] Probe-sensitive workload added to `deploy/demo/wedge/wedge.yaml`
 - [ ] `e2e-helm.sh` regression gate asserts it survives the sensor
 - [x] `template-test.sh` covers `optIn` / `optOut`
 - [ ] Staged-rollout runbook (`docs/runbooks/sensor-rollout.md`)
