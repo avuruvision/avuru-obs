@@ -11,14 +11,17 @@ and `sensor.priorityClass` cannot bound it — do not reach for those first.
 ## Know your escape hatches before you start
 
 All pre-existing, cheapest first. A probe regression gets a **targeted**
-response from this list — not `sensor.enabled=false`.
+response from this table — not `sensor.enabled=false`. (The authoritative
+knob-by-signal matrix is in `deploy/helm/README.md`, "Deactivating
+collection".)
 
-| Scope | Action | Rolls pods? |
+| Symptom / scope | Action | Rolls pods? |
 |---|---|---|
-| One pod/app | label the pod template `avuru.obs/instrument: "false"` | app only |
-| Namespace | add to `sensor.collection.excludeNamespaces` | sensor only |
-| Node, instantly | `kubectl label node <n> avuru.obs/collect=false` | no helm at all |
-| Cautious fleet | `sensor.obi.discovery.mode=optIn` — uprobes ONLY on pods labeled `avuru.obs/instrument: "true"`; logs/metrics/inventory keep flowing | sensor only |
+| One app misses probes | label its pod template `avuru.obs/instrument: "false"` | app only |
+| A namespace of tight-limit apps | add it to `sensor.collection.excludeNamespaces` | sensor only |
+| A whole node misbehaves | `kubectl label node <n> avuru.obs/collect=false` | none — instant, no helm |
+| Widespread probe timeouts | pause widening; `sensor.obi.discovery.mode=optIn` — uprobes ONLY on pods labeled `avuru.obs/instrument: "true"`, logs/metrics/inventory keep flowing | sensor only |
+| Suspected non-OBI cause | bisection ladder in [app-probe-failures](app-probe-failures.md) | — |
 | Last resort | `sensor.obi.enabled=false`, then `sensor.enabled=false` | sensor |
 
 ## Stage 0 — preconditions
@@ -67,15 +70,8 @@ Label the next pool and repeat Stage 2; when the last pool is green, remove
 `sensor.nodeSelector` so new nodes are covered by default. Then delete the
 rollout labels.
 
-## Rollback matrix
-
-| Symptom | Response |
-|---|---|
-| One app misses probes | `avuru.obs/instrument: "false"` on that pod template |
-| A namespace of tight-limit apps | `sensor.collection.excludeNamespaces` |
-| A whole node misbehaves | `kubectl label node <n> avuru.obs/collect=false` |
-| Widespread probe timeouts | pause widening; `discovery.mode=optIn`; investigate via [app-probe-failures](app-probe-failures.md) |
-| Suspected non-OBI cause | bisection ladder in [app-probe-failures](app-probe-failures.md) |
+On any regression while widening, respond from the escape-hatch table above —
+targeted first, never `sensor.enabled=false` as the opening move.
 
 ## What CI proves — and what it does not
 

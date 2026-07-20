@@ -29,10 +29,18 @@ Sentry SDK ingest: ENABLED. Point an existing SDK here by changing only its DSN
 {{- end }}
 {{- end }}
 {{- if .Values.sensor.enabled }}
+{{- if eq .Values.sensor.obi.discovery.mode "optIn" }}
+
+Sensor DaemonSet: ENABLED (opt-in) — zero-code eBPF instrumentation (OBI)
+traces ONLY workloads labeled {{ .Values.sensor.collection.optOutLabel }}="true"
+(kernel >=5.8 + BTF per node). Logs, infra metrics and the node inventory
+cover the whole cluster as usual. Staged rollout: docs/runbooks/sensor-rollout.md
+{{- else }}
 
 Sensor DaemonSet: ENABLED — zero-code eBPF instrumentation (OBI) traces every
 service on the cluster with no app changes (kernel >=5.8 + BTF per node; the
 platform's own namespace is excluded). Disable with --set sensor.enabled=false.
+{{- end }}
 {{- else }}
 
 Sensor DaemonSet: disabled — only apps exporting OTLP themselves are observed.

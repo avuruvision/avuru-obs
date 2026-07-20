@@ -1,10 +1,19 @@
 {{- if and .Values.sensor.obi.network.enabled (not .Values.modules.infraMetrics.enabled) }}
 {{- fail "sensor.obi.network.enabled requires modules.infraMetrics.enabled — OBI network flows are stored in the otel_metrics_* tables owned by the infra-metrics module." }}
 {{- end }}
-{{- if and (eq (.Values.sensor.obi.discovery.mode | default "optOut") "optIn") (not .Values.sensor.collection.optOutLabel) }}
+{{- if and .Values.sensor.enabled .Values.sensor.obi.enabled }}
+{{- /* optIn guards live INSIDE the render gate: values that produce no
+       manifests must never fail an install (e.g. optIn kept in a shared
+       values file on a cluster that runs with the sensor off). */}}
+{{- $mode := .Values.sensor.obi.discovery.mode }}
+{{- if eq $mode "optIn" }}
+{{- if not .Values.sensor.collection.optOutLabel }}
 {{- fail "sensor.obi.discovery.mode=optIn requires sensor.collection.optOutLabel — opt-in selects pods carrying that label set to \"true\"." }}
 {{- end }}
-{{- if and .Values.sensor.enabled .Values.sensor.obi.enabled }}
+{{- if not .Values.sensor.obi.discovery.namespaces }}
+{{- fail "sensor.obi.discovery.mode=optIn requires a non-empty sensor.obi.discovery.namespaces — with no instrument entries the opt-in selector is never rendered and OBI falls back to its own discovery defaults." }}
+{{- end }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -21,13 +30,14 @@ data:
     # built-in defaults.
     discovery:
       instrument:
-        {{- $mode := .Values.sensor.obi.discovery.mode | default "optOut" }}
+        {{- if eq $mode "optIn" }}
+        # optIn: uprobes attach only to deliberately-labeled workloads —
+        # each entry ANDs its namespace with the opt-in label (glob values,
+        # full-string match in OBI v0.9.0).
+        {{- end }}
         {{- range .Values.sensor.obi.discovery.namespaces }}
         - k8s_namespace: {{ . | quote }}
           {{- if eq $mode "optIn" }}
-          # optIn: uprobes only for deliberately-labeled workloads. Selector
-          # keys within one entry AND together. Verify the instrument-side
-          # namespace+label combo against the pinned OBI v0.9.0.
           k8s_pod_labels:
             {{ $.Values.sensor.collection.optOutLabel | quote }}: "true"
           {{- end }}

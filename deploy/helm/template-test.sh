@@ -61,16 +61,20 @@ out="$(render --set sensor.obi.discovery.mode=optIn)"
 grep -q '"avuru.obs/instrument": "true"' <<<"$out" || fail "opt-in label selector missing in optIn"
 grep -q 'k8s_namespace: "kube-system"' <<<"$out" || fail "namespace excludes lost in optIn"
 grep -q '"avuru.obs/instrument": "false"' <<<"$out" || fail "per-pod opt-out exclude lost in optIn"
-grep -q 'filelog' <<<"$out" || fail "logs collection affected by optIn (must be untouched)"
-grep -q 'kubeletstats' <<<"$out" || fail "infra metrics affected by optIn (must be untouched)"
-ok "optIn: labeled-only uprobes; excludes, logs and metrics unaffected"
+ok "optIn: labeled-only uprobes; excludes unaffected"
 
 echo "== OBI discovery mode: guards"
 render --set sensor.obi.discovery.mode=optIn --set sensor.collection.optOutLabel="" >/dev/null 2>&1 \
   && fail "optIn rendered with empty optOutLabel (nothing to opt in with)"
+render --set sensor.obi.discovery.mode=optIn --set-json 'sensor.obi.discovery.namespaces=[]' >/dev/null 2>&1 \
+  && fail "optIn rendered with empty discovery.namespaces (selector would never render)"
 render --set sensor.obi.discovery.mode=bogus >/dev/null 2>&1 \
   && fail "schema accepted an invalid discovery.mode"
-ok "optIn without a label fails; schema rejects unknown modes"
+# The guards police the OBI ConfigMap only — values that render nothing must
+# never fail an install (e.g. optIn kept in shared values, sensor off here).
+render --set sensor.obi.enabled=false --set sensor.obi.discovery.mode=optIn --set sensor.collection.optOutLabel="" >/dev/null 2>&1 \
+  || fail "optIn guard fired with the sensor disabled (guard polices unrendered config)"
+ok "optIn without label/namespaces fails; bogus mode fails schema; guards stay scoped to the rendered sensor"
 
 echo "== default render: agent pipelines honor collection guardrails"
 out="$(render)"

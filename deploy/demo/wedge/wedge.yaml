@@ -132,9 +132,9 @@ spec:
 # overhead is charged to THIS cgroup, not OBI's) under an aggressive
 # livenessProbe. Deployed BEFORE the platform; the e2e regression gate
 # asserts it stays Ready with 0 restarts through the post-install soak
-# (AEP 2026-07-17). If it flakes WITHOUT the sensor, the canary is
-# mis-tuned — loosen cpu to 50m, then timeoutSeconds to 2, in that order;
-# that failure surfaces at the pre-install `kubectl wait`, not at the gate.
+# (AEP 2026-07-17). If it flakes WITHOUT the sensor (at the pre-install
+# `kubectl wait`, or from install-time contention), the canary is mis-tuned —
+# loosen cpu to 50m, then timeoutSeconds to 2, in that order.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

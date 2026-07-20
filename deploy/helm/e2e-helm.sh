@@ -106,6 +106,15 @@ kubectl -n "$NS" rollout status deploy/avuruops-ui --timeout=180s
 kubectl -n "$NS" rollout status deploy/avuruops-gateway --timeout=180s
 kubectl -n "$NS" rollout status ds/avuruops-sensor --timeout=180s
 SENSOR_READY_UNIX=$(date +%s)
+# Pin the canary pod's identity at sensor-ready: the gate later asserts the
+# SAME pod survived — restartCount alone is blind to a kill-and-replace
+# (a fresh pod restarts at 0), which is exactly the regression to catch.
+CANARY_UID_T0=$(kubectl -n wedge-demo get pods -l app=probe-canary -o jsonpath='{.items[*].metadata.uid}')
+case "$CANARY_UID_T0" in
+  "") echo "probe-canary absent at sensor-ready — the gate lost its probe-sensitive coverage"; exit 1 ;;
+  *" "*) echo "expected one probe-canary pod at sensor-ready, got uids: $CANARY_UID_T0"
+         kubectl -n wedge-demo get pods -l app=probe-canary; exit 1 ;;
+esac
 kubectl -n "$NS" port-forward svc/avuruops-gateway 4318:4318 >/dev/null 2>&1 &
 PF_PIDS="$PF_PIDS $!"
 kubectl -n "$NS" port-forward svc/avuruops-ui 8081:80 >/dev/null 2>&1 &
@@ -146,21 +155,26 @@ fi
 echo "    all wedge-demo pods Ready with 0 restarts — install did no harm"
 
 # The generic sweep above covers every wedge pod, but the probe-sensitive
-# canary is the load-bearing subject (AEP 2026-07-17): assert it BY NAME so
-# renaming or dropping it can't silently gut the gate's safety coverage.
+# canary is the load-bearing subject (AEP 2026-07-17): assert it BY NAME (so
+# renaming or dropping it can't silently gut the gate) and BY UID (so a
+# kill-and-replace can't slip past restartCount, which resets on a new pod).
 echo "==> REGRESSION GATE: the probe-sensitive canary specifically (AEP 2026-07-17)"
-CANARY_COUNT=$(kubectl -n wedge-demo get pods -l app=probe-canary --no-headers 2>/dev/null | wc -l | tr -d ' ')
-if [ "$CANARY_COUNT" -lt 1 ]; then
-  echo "probe-canary absent — the gate lost its probe-sensitive coverage"
+CANARY_STATE=$(kubectl -n wedge-demo get pods -l app=probe-canary \
+  -o jsonpath='{range .items[*]}{.metadata.uid} {.status.containerStatuses[0].restartCount} {.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}')
+CANARY_ROW=$(printf '%s\n' "$CANARY_STATE" | grep "^$CANARY_UID_T0 " || true)
+if [ -z "$CANARY_ROW" ]; then
+  echo "REGRESSION: the probe-canary pod was REPLACED during the soak (uid $CANARY_UID_T0 is gone) — a kill/eviction, not a survival"
+  kubectl -n wedge-demo get pods -l app=probe-canary
   exit 1
 fi
-CANARY_READY=$(kubectl -n wedge-demo get pods -l app=probe-canary -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}')
-CANARY_RESTARTS=$(kubectl -n wedge-demo get pods -l app=probe-canary -o jsonpath='{.items[0].status.containerStatuses[0].restartCount}')
+read -r _ CANARY_RESTARTS CANARY_READY <<EOF
+$CANARY_ROW
+EOF
 if [ "$CANARY_READY" != "True" ] || [ "$CANARY_RESTARTS" != "0" ]; then
-  echo "REGRESSION: probe-canary Ready=$CANARY_READY restarts=$CANARY_RESTARTS after ${SOAK}s under the sensor"
+  echo "REGRESSION: probe-canary Ready=$CANARY_READY restarts=$CANARY_RESTARTS after the ${SOAK}s soak since the platform install"
   kubectl -n wedge-demo describe pod -l app=probe-canary | tail -30
   exit 1
 fi
-echo "    probe-canary Ready with 0 restarts — tight-CPU-limit workload survived the sensor"
+echo "    probe-canary survived: same pod, Ready, 0 restarts through the soak with the sensor attached"
 
 rm -f "$E2E_BIN" "$SEED_BIN"
