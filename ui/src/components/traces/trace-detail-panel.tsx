@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { GitCompare, Maximize2, Minimize2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/ui/copy-button";
 import { CenteredSpinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/cn";
 import { useLocalStorageNumber } from "@/hooks/use-local-storage-number";
@@ -135,7 +136,15 @@ export function TraceDetailPanel({
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-neutral bg-base-200">
       <header className="flex flex-wrap items-center gap-2 border-b border-neutral px-3 py-2">
-        <span className="truncate font-mono text-xs font-semibold">{traceId}</span>
+        <span className="group inline-flex min-w-0 items-center gap-1">
+          <span className="truncate font-mono text-xs font-semibold">{traceId}</span>
+          <CopyButton
+            value={traceId}
+            ariaLabel="Copy trace id"
+            iconClass="h-3 w-3"
+            className="invisible group-hover:visible"
+          />
+        </span>
 
         <div className="ml-auto flex items-center gap-1.5">
           {!comparing && (

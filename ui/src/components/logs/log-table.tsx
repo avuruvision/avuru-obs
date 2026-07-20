@@ -3,10 +3,17 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/ui/copy-button";
 import { CenteredSpinner, Spinner } from "@/components/ui/spinner";
 import { SeverityBadge } from "./severity-badge";
 import { formatTime, utcTooltip } from "@/lib/format";
 import type { LogRecord } from "@/lib/api-types";
+
+// A paste-friendly one-line rendering of a log record for the copy button.
+function logLine(l: LogRecord): string {
+  const parts = [l.timestamp, l.severity, l.service, l.body].filter(Boolean);
+  return l.traceId ? `${parts.join(" ")} trace=${l.traceId}` : parts.join(" ");
+}
 
 export function LogTable({
   pages,
@@ -49,7 +56,7 @@ export function LogTable({
           {logs.map((l, i) => (
             <tr
               key={`${l.timestamp}-${l.spanId}-${i}`}
-              className="border-b border-neutral/40 align-top transition-colors last:border-0 hover:bg-base-300/50"
+              className="group border-b border-neutral/40 align-top transition-colors last:border-0 hover:bg-base-300/50"
             >
               <td className="whitespace-nowrap font-mono text-xs" title={utcTooltip(l.timestamp)}>
                 {formatTime(l.timestamp)}
@@ -58,7 +65,17 @@ export function LogTable({
                 <SeverityBadge severity={l.severity} />
               </td>
               <td className="whitespace-nowrap font-medium text-primary">{l.service}</td>
-              <td className="font-mono text-xs">{l.body}</td>
+              <td className="font-mono text-xs">
+                <span className="flex items-start gap-1">
+                  <span className="min-w-0 break-all">{l.body}</span>
+                  <CopyButton
+                    value={logLine(l)}
+                    ariaLabel="Copy log line"
+                    iconClass="h-3 w-3"
+                    className="invisible mt-0.5 group-hover:visible"
+                  />
+                </span>
+              </td>
               <td className="text-right">
                 {l.traceId ? (
                   <Link
