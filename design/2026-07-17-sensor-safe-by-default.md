@@ -2,7 +2,7 @@
 
 - **Date:** 2026-07-17
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted
 
 ## Summary
 
@@ -135,7 +135,7 @@ it is a chart-surface + CI change plus one new values field.
 
 ## Roadmap
 
-- [ ] AEP accepted
+- [x] AEP accepted
 - [ ] `sensor.obi.discovery.mode` (values + schema + OBI discovery config)
 - [ ] Probe-sensitive workload added to `deploy/demo/wedge/wedge.yaml`
 - [ ] `e2e-helm.sh` regression gate asserts it survives the sensor
