@@ -319,6 +319,9 @@ func TestServiceMapMergesNetworkEdges(t *testing.T) {
 			{Source: "A", Target: "B", Bytes: 1024, Provenance: "flow"},
 			{Source: "C", Target: "D", Bytes: 2048, Provenance: "flow"},
 		},
+		NetEdgeHealth: []storage.NetworkEdgeHealth{
+			{Source: "A", Target: "B", RTTMs: 42, FailedConnections: 3},
+		},
 	}
 	mux := newMux(fake) // zero-value Config → all modules on → infra-metrics active
 
@@ -343,6 +346,9 @@ func TestServiceMapMergesNetworkEdges(t *testing.T) {
 	if ab.Provenance != "both" || ab.Bytes == 0 || ab.Calls != 3 {
 		t.Errorf("A->B = %+v, want provenance=both, bytes>0, calls=3", ab)
 	}
+	if ab.RTTMs != 42 || ab.FailedConnections != 3 {
+		t.Errorf("A->B health = rtt %v/failed %d, want 42/3", ab.RTTMs, ab.FailedConnections)
+	}
 	cd := byPair["C->D"]
 	if cd.Provenance != "flow" || cd.Bytes == 0 {
 		t.Errorf("C->D = %+v, want provenance=flow, bytes>0", cd)
@@ -355,8 +361,9 @@ func TestServiceMapMergesNetworkEdges(t *testing.T) {
 // "trace".
 func TestServiceMapSkipsNetworkEdgesWithoutInfraMetrics(t *testing.T) {
 	fake := &storagetest.Fake{
-		Edges:    []storage.ServiceEdge{{Source: "A", Target: "B", Count: 3}},
-		NetEdges: []storage.ServiceEdge{{Source: "C", Target: "D", Bytes: 2048}},
+		Edges:         []storage.ServiceEdge{{Source: "A", Target: "B", Count: 3}},
+		NetEdges:      []storage.ServiceEdge{{Source: "C", Target: "D", Bytes: 2048}},
+		NetEdgeHealth: []storage.NetworkEdgeHealth{{Source: "A", Target: "B", RTTMs: 99, FailedConnections: 9}},
 	}
 	set, err := modules.Parse("core") // infra-metrics off
 	if err != nil {
@@ -377,6 +384,9 @@ func TestServiceMapSkipsNetworkEdgesWithoutInfraMetrics(t *testing.T) {
 	}
 	if len(resp.Edges) != 1 || resp.Edges[0].Source != "A" || resp.Edges[0].Provenance != "trace" {
 		t.Errorf("edges = %+v, want only A->B with provenance=trace", resp.Edges)
+	}
+	if resp.Edges[0].RTTMs != 0 || resp.Edges[0].FailedConnections != 0 {
+		t.Errorf("network health must be absent without infra-metrics: %+v", resp.Edges[0])
 	}
 }
 

@@ -38,6 +38,10 @@ export interface ServiceEdge {
   calls: number;
   errorCount: number;
   errorRate: number;
+  bytes?: number; // network flow bytes (flow/both edges)
+  provenance?: string; // "trace" | "flow" | "both"
+  rttMs?: number; // OBI TCP RTT p95 (network-health edges)
+  failedConnections?: number; // OBI failed/reset TCP connections
 }
 
 export interface ServiceMapResponse {

@@ -105,10 +105,11 @@ These milestone tags (`M1`–`M5`) are referenced throughout the codebase and
   receivers alongside OTLP, plus forwarding exporters (OTLP/Kafka) so
   avuru-obs can dual-write during a migration. Extends the drop-in promise
   beyond OTLP and keeps the door open in both directions.
-- **Network health on the service map:** per-edge RTT, retransmissions and
-  resets delivered via OBI's built-in `network` feature (upstream OpenTelemetry
-  eBPF Instrumentation) — connection-level health without traces, SDKs, or app
-  changes.
+- **Network health on the service map:** per-edge **RTT** and **failed/reset
+  connections** from OBI's TCP-stats metrics (upstream OpenTelemetry eBPF
+  Instrumentation) — connection-level health without traces, SDKs, or app
+  changes, surfaced on the map edges. (Retransmissions were dropped — OBI does
+  not emit them; see the [AEP](design/2026-07-19-network-health.md).)
 - **Richer auto-tagging:** map Kubernetes labels/annotations to business tags
   and filter by them across every signal.
 - **Deeper profiling:** off-CPU and memory profiles as the upstream OTel eBPF

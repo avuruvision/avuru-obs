@@ -263,6 +263,12 @@ sensor:
     # so OBI can observe node flows. Verify the key surface against OBI v0.9.0.
     network:
       enabled: false
+      # Per-edge connection health from OBI's TCP-stats metrics —
+      # obi.stat.tcp.rtt (RTT) and obi.stat.tcp.failed.connections (resets/
+      # failures) — surfaced on the service-map edges. Only effective when
+      # network.enabled. Default on with network; verify the exact OBI v0.9.0
+      # stats-feature key + attribute surface (folded into the e2e-helm run).
+      stats: true
     resources:
       requests:
         cpu: 50m

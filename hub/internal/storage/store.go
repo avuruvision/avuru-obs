@@ -53,6 +53,18 @@ type ServiceEdge struct {
 	Provenance string // "trace", "flow", or "both"
 }
 
+// NetworkEdgeHealth is per-edge connection health from OBI's TCP-stats metrics
+// (obi.stat.tcp.rtt histogram + obi.stat.tcp.failed.connections counter), keyed
+// by the same k8s owner endpoints as the flow edges. RTTMs is the p95 over the
+// window; FailedConnections is the summed failure count. Reads the
+// otel_metrics_* tables, so callers must gate on the infra-metrics module.
+type NetworkEdgeHealth struct {
+	Source            string
+	Target            string
+	RTTMs             float64
+	FailedConnections uint64
+}
+
 // ServiceLabel carries a service's dominant grouping labels, resolved from
 // ResourceAttributes over entry spans (argMax by span volume — a service whose
 // spans disagree collapses to its single most common value). Used by the
@@ -455,6 +467,9 @@ type Store interface {
 	// (otel_metrics_sum). It reads the metrics tables, so callers must gate it
 	// on the infra-metrics module being active (the tables exist only then).
 	NetworkEdges(ctx context.Context, q ServiceQuery) ([]ServiceEdge, error)
+	// NetworkEdgeHealth returns per-edge RTT p95 + failed-connection counts from
+	// OBI's TCP-stats metrics. Same infra-metrics gating as NetworkEdges.
+	NetworkEdgeHealth(ctx context.Context, q ServiceQuery) ([]NetworkEdgeHealth, error)
 	TraceOverview(ctx context.Context, q OverviewQuery) ([]OperationStats, error)
 	SearchTraces(ctx context.Context, q TraceQuery) (TracePage, error)
 	GetTrace(ctx context.Context, tenant, traceID string) (Trace, error)

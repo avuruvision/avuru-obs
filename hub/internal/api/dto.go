@@ -23,13 +23,15 @@ type servicesResponse struct {
 }
 
 type serviceEdgeDTO struct {
-	Source     string  `json:"source"`
-	Target     string  `json:"target"`
-	Calls      uint64  `json:"calls"`
-	ErrorCount uint64  `json:"errorCount"`
-	ErrorRate  float64 `json:"errorRate"`
-	Bytes      uint64  `json:"bytes,omitempty"` // network flow bytes (flow/both edges)
-	Provenance string  `json:"provenance"`      // "trace", "flow", or "both"
+	Source            string  `json:"source"`
+	Target            string  `json:"target"`
+	Calls             uint64  `json:"calls"`
+	ErrorCount        uint64  `json:"errorCount"`
+	ErrorRate         float64 `json:"errorRate"`
+	Bytes             uint64  `json:"bytes,omitempty"`             // network flow bytes (flow/both edges)
+	Provenance        string  `json:"provenance"`                  // "trace", "flow", or "both"
+	RTTMs             float64 `json:"rttMs,omitempty"`             // OBI TCP RTT p95 (network-health edges)
+	FailedConnections uint64  `json:"failedConnections,omitempty"` // OBI failed/reset TCP connections
 }
 
 type serviceMapResponse struct {

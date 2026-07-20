@@ -162,4 +162,22 @@ grep -q 'AVURUOPS_ALERTS_CONFIG' <<<"$out" && fail "alerts env survived module o
 grep -q 'test-avuruops-alerts' <<<"$out" && fail "alerts ConfigMap survived module off"
 ok "no module entry, ConfigMap, env or mount when disabled"
 
+echo "== OBI network stats: off by default"
+out="$(render)"
+grep -q 'obi_stat_tcp_rtt' <<<"$out" && fail "OBI stats config rendered without sensor.obi.network.enabled"
+ok "no TCP-stats config by default"
+
+echo "== OBI network stats: enabled with the network feature (+ infra-metrics)"
+out="$(render --set sensor.obi.network.enabled=true)"
+grep -q 'stats:' <<<"$out" || fail "OBI stats feature not enabled with network on"
+grep -q 'obi_stat_tcp_rtt' <<<"$out" || fail "obi_stat_tcp_rtt attribute selection missing"
+grep -q 'obi_stat_tcp_failed_connections' <<<"$out" || fail "obi_stat_tcp_failed_connections attribute selection missing"
+ok "stats feature + k8s-owner attribute selection render"
+
+echo "== OBI network stats: can be turned off while keeping flow bytes"
+out="$(render --set sensor.obi.network.enabled=true --set sensor.obi.network.stats=false)"
+grep -q 'obi_stat_tcp_rtt' <<<"$out" && fail "stats config survived network.stats=false"
+grep -qE 'network:' <<<"$out" || fail "network flow config missing"
+ok "flow bytes without TCP stats"
+
 echo "ALL TEMPLATE ASSERTIONS PASSED"
