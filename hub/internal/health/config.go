@@ -19,10 +19,11 @@ const (
 	TierT0 Tier = "T0"
 	TierT1 Tier = "T1"
 	TierT2 Tier = "T2"
+	TierT3 Tier = "T3"
 )
 
 // knownTiers is the closed set accepted by Validate.
-var knownTiers = map[Tier]bool{TierT0: true, TierT1: true, TierT2: true}
+var knownTiers = map[Tier]bool{TierT0: true, TierT1: true, TierT2: true, TierT3: true}
 
 // Selector matches services into a group. A service matches if its name is in
 // Services, or its namespace (k8s.namespace.name, falling back to
@@ -119,7 +120,7 @@ func ParseConfig(data []byte) (Config, error) {
 // non-empty selectors — the mistakes that would otherwise misgroup silently.
 func (c Config) Validate() error {
 	if !knownTiers[c.DefaultTier] {
-		return fmt.Errorf("invalid defaultTier %q (known: T0, T1, T2)", c.DefaultTier)
+		return fmt.Errorf("invalid defaultTier %q (known: T0, T1, T2, T3)", c.DefaultTier)
 	}
 	seen := map[string]bool{}
 	for i, g := range c.Groups {
@@ -131,7 +132,7 @@ func (c Config) Validate() error {
 		}
 		seen[g.Name] = true
 		if !knownTiers[g.Tier] {
-			return fmt.Errorf("group %q has invalid tier %q (known: T0, T1, T2)", g.Name, g.Tier)
+			return fmt.Errorf("group %q has invalid tier %q (known: T0, T1, T2, T3)", g.Name, g.Tier)
 		}
 		if len(g.Selector.Namespaces) == 0 && len(g.Selector.Services) == 0 {
 			return fmt.Errorf("group %q has an empty selector (needs namespaces or services)", g.Name)

@@ -174,6 +174,13 @@ func run() error {
 		return err
 	}
 
+	// One notifier shared by the evaluator and the channels test endpoint, so
+	// the SSRF policy is identical on both paths.
+	var notifier alerting.Notifier
+	if active.Enabled(modules.Alerting) {
+		notifier = alerting.NewWebhookNotifier(5*time.Second, 3, webhookAllowCIDRs())
+	}
+
 	// Hub is API-only: the UI is a separate deployable (its own nginx pod),
 	// reached single-origin via the gateway/ingress. See agent_docs/architecture.md.
 	mux := http.NewServeMux()
@@ -186,12 +193,12 @@ func run() error {
 		Modules:               active,
 		GroupsConfig:          groupsConfig,
 		AlertsConfig:          alertsConfig,
+		Notifier:              notifier,
 	})
 
 	// The alerting evaluator is a single background loop (see runAlertingEvaluator);
 	// started only when the module is active.
 	if active.Enabled(modules.Alerting) {
-		notifier := alerting.NewWebhookNotifier(5*time.Second, 3, webhookAllowCIDRs())
 		go runAlertingEvaluator(ctx, provider, groupsConfig, alertsConfig, notifier, splitCSV(envOr("AVURUOPS_PROJECTS", "")))
 	}
 

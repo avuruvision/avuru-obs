@@ -26,6 +26,7 @@ var Ordered = []string{
 	"0006_errors.sql",
 	"0007_errors_from_logs.sql",
 	"0008_alerts.sql",
+	"0009_alert_channels.sql",
 }
 
 // ByModule tags each migration with the module(s) whose schema it owns; the
@@ -46,4 +47,6 @@ var ByModule = map[string][]modules.Name{
 	"0007_errors_from_logs.sql": {modules.ErrorTracking, modules.Logs},
 	// alert_state + alert_history — the evaluator's durable state.
 	"0008_alerts.sql": {modules.Alerting},
+	// alert_channel — UI-managed delivery channels.
+	"0009_alert_channels.sql": {modules.Alerting},
 }

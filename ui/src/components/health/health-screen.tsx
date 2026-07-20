@@ -17,6 +17,7 @@ const TIER_LANES: { tier: string; title: string; subtitle?: string }[] = [
   { tier: "T0", title: "Tier 0", subtitle: "Critical" },
   { tier: "T1", title: "Tier 1" },
   { tier: "T2", title: "Tier 2" },
+  { tier: "T3", title: "Tier 3", subtitle: "Degradable" },
 ];
 
 // Board of consolidated group health, laid out in tier lanes. Members roll up

@@ -118,26 +118,22 @@ func ParseConfig(data []byte) (Config, error) {
 }
 
 // Validate rejects the mistakes that would otherwise misfire or silently drop
-// alerts: bad intervals, unknown conditions, empty selectors, and rules
-// referencing an undeclared or non-webhook channel with a bad URL.
+// alerts: bad intervals, unknown conditions, empty selectors, and malformed
+// channels. A rule may reference a channel NOT declared here — channels can be
+// UI-managed (stored) and resolved at delivery time; unresolvable references
+// are warn-logged by the evaluator, not config errors.
 func (c Config) Validate() error {
 	if c.EvalIntervalSec < 0 || c.WindowMinutes < 0 {
 		return fmt.Errorf("evalIntervalSec and windowMinutes must be non-negative")
 	}
 	channels := map[string]bool{}
 	for i, ch := range c.Channels {
-		if strings.TrimSpace(ch.Name) == "" {
-			return fmt.Errorf("channel #%d has an empty name", i)
-		}
 		if channels[ch.Name] {
 			return fmt.Errorf("duplicate channel name %q", ch.Name)
 		}
 		channels[ch.Name] = true
-		if ch.Type != "webhook" {
-			return fmt.Errorf("channel %q has unsupported type %q (only webhook)", ch.Name, ch.Type)
-		}
-		if err := validateWebhookURL(ch.URL); err != nil {
-			return fmt.Errorf("channel %q: %w", ch.Name, err)
+		if err := ValidateChannel(ch); err != nil {
+			return fmt.Errorf("channel #%d: %w", i, err)
 		}
 	}
 	seen := map[string]bool{}
@@ -158,14 +154,31 @@ func (c Config) Validate() error {
 		if r.For < 0 {
 			return fmt.Errorf("rule %q has a negative for", r.Name)
 		}
-		if !channels[r.Channel] {
-			return fmt.Errorf("rule %q references undeclared channel %q", r.Name, r.Channel)
+		if strings.TrimSpace(r.Channel) == "" {
+			return fmt.Errorf("rule %q has an empty channel", r.Name)
 		}
 	}
 	return nil
 }
 
-func validateWebhookURL(raw string) error {
+// ValidateChannel checks one channel's shape — the single source of truth for
+// both file-config channels (Config.Validate) and UI-managed channels (the
+// channels API). The SSRF policy is separate and enforced at dial time.
+func ValidateChannel(ch Channel) error {
+	if strings.TrimSpace(ch.Name) == "" {
+		return fmt.Errorf("channel has an empty name")
+	}
+	if ch.Type != "webhook" {
+		return fmt.Errorf("channel %q has unsupported type %q (only webhook)", ch.Name, ch.Type)
+	}
+	if err := ValidateWebhookURL(ch.URL); err != nil {
+		return fmt.Errorf("channel %q: %w", ch.Name, err)
+	}
+	return nil
+}
+
+// ValidateWebhookURL checks a webhook URL is a well-formed http(s) URL.
+func ValidateWebhookURL(raw string) error {
 	if strings.TrimSpace(raw) == "" {
 		return fmt.Errorf("empty url")
 	}

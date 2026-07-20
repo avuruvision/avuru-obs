@@ -57,4 +57,7 @@ export const queryKeys = {
     [p, "health", "groups", { ...t, includeAux }] as const,
   alerts: (p: string) => [p, "alerts", "list"] as const,
   alertRules: (p: string) => [p, "alerts", "rules"] as const,
+  // Channels are instance-global delivery endpoints (no project element,
+  // like systemStatus) — the notification payload carries the tenant.
+  alertChannels: ["alerts", "channels"] as const,
 };

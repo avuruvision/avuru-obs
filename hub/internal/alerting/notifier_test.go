@@ -31,7 +31,7 @@ func loopbackAllow(t *testing.T) []*net.IPNet {
 }
 
 func testNote() Notification {
-	return Notification{Rule: "r", Target: "group:payments", Kind: KindFired, Status: "down", Reason: "boom", At: time.Unix(0, 0).UTC()}
+	return Notification{Rule: "r", Target: "group:payments", Kind: KindFired, Status: "down", Reason: "boom", Tenant: "prod-eu", At: time.Unix(0, 0).UTC()}
 }
 
 func TestWebhookSendSuccessAndSignature(t *testing.T) {
@@ -51,6 +51,9 @@ func TestWebhookSendSuccessAndSignature(t *testing.T) {
 	}
 	if !strings.Contains(string(gotBody), `"kind":"fired"`) || strings.Contains(string(gotBody), "s3cr3t") {
 		t.Errorf("payload wrong or leaked secret: %s", gotBody)
+	}
+	if !strings.Contains(string(gotBody), `"tenant":"prod-eu"`) {
+		t.Errorf("payload missing tenant: %s", gotBody)
 	}
 	mac := hmac.New(sha256.New, []byte("s3cr3t"))
 	mac.Write(gotBody)

@@ -48,6 +48,10 @@ type Fake struct {
 	SavedAlertStates      [][]storage.AlertState
 	AppendedHistory       [][]storage.AlertHistoryEntry
 	LastAlertHistoryQuery storage.AlertHistoryQuery
+	Channels              []storage.AlertChannel
+	ChannelsErr           error
+	SavedChannels         []storage.AlertChannel
+	DeletedChannels       []string
 
 	// Last*Query record the most recent inputs for asserting parameter parsing.
 	LastTraceQuery       storage.TraceQuery
@@ -227,4 +231,36 @@ func (f *Fake) AppendAlertHistory(_ context.Context, entries []storage.AlertHist
 func (f *Fake) ListAlertHistory(_ context.Context, q storage.AlertHistoryQuery) ([]storage.AlertHistoryEntry, error) {
 	f.LastAlertHistoryQuery = q
 	return f.AlertHistoryRows, nil
+}
+
+func (f *Fake) ListAlertChannels(_ context.Context) ([]storage.AlertChannel, error) {
+	if f.ChannelsErr != nil {
+		return nil, f.ChannelsErr
+	}
+	return f.Channels, nil
+}
+
+// SaveAlertChannel mirrors the ReplacingMergeTree upsert: replace by name or
+// append, so ListAlertChannels reflects the write within a test.
+func (f *Fake) SaveAlertChannel(_ context.Context, ch storage.AlertChannel) error {
+	f.SavedChannels = append(f.SavedChannels, ch)
+	for i := range f.Channels {
+		if f.Channels[i].Name == ch.Name {
+			f.Channels[i] = ch
+			return nil
+		}
+	}
+	f.Channels = append(f.Channels, ch)
+	return nil
+}
+
+func (f *Fake) DeleteAlertChannel(_ context.Context, name string) error {
+	f.DeletedChannels = append(f.DeletedChannels, name)
+	for i := range f.Channels {
+		if f.Channels[i].Name == name {
+			f.Channels = append(f.Channels[:i], f.Channels[i+1:]...)
+			return nil
+		}
+	}
+	return storage.ErrNotFound
 }

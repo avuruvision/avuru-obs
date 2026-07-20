@@ -82,3 +82,28 @@ func TestParseConfigValid(t *testing.T) {
 		t.Errorf("critical override not indexed")
 	}
 }
+
+func TestParseConfigAcceptsT3(t *testing.T) {
+	const cfg = `{
+	  "defaultTier": "T3",
+	  "groups": [
+	    {"name":"ai","tier":"T3","selector":{"services":["ai-svc"]}}
+	  ],
+	  "thresholds": {
+	    "tiers": {"T3": {"errorRateCrit":0.2}}
+	  }
+	}`
+	c, err := ParseConfig([]byte(cfg))
+	if err != nil {
+		t.Fatalf("ParseConfig error: %v", err)
+	}
+	if c.DefaultTier != TierT3 {
+		t.Errorf("defaultTier: got %q want T3", c.DefaultTier)
+	}
+	if c.Groups[0].Tier != TierT3 {
+		t.Errorf("group tier: got %q want T3", c.Groups[0].Tier)
+	}
+	if got := c.ResolveThresholds("ai-svc", TierT3); got.ErrorRateCrit != 0.2 {
+		t.Errorf("T3 tier threshold: got %v want 0.2", got.ErrorRateCrit)
+	}
+}

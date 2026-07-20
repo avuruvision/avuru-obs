@@ -27,6 +27,7 @@ type webhookPayload struct {
 	Kind    string `json:"kind"`   // fired | resolved
 	Status  string `json:"status"` // health status
 	Reason  string `json:"reason"`
+	Tenant  string `json:"tenant"` // project the alert evaluated in (e.g. production/staging)
 	FiredAt string `json:"firedAt"`
 }
 
@@ -55,7 +56,8 @@ func NewWebhookNotifier(timeout time.Duration, maxRetries int, allow []*net.IPNe
 func (w *webhookNotifier) Send(ctx context.Context, ch Channel, n Notification) error {
 	body, err := json.Marshal(webhookPayload{
 		Rule: n.Rule, Target: n.Target, Kind: n.Kind,
-		Status: n.Status, Reason: n.Reason, FiredAt: n.At.UTC().Format(time.RFC3339),
+		Status: n.Status, Reason: n.Reason, Tenant: n.Tenant,
+		FiredAt: n.At.UTC().Format(time.RFC3339),
 	})
 	if err != nil {
 		return fmt.Errorf("marshal webhook payload: %w", err)

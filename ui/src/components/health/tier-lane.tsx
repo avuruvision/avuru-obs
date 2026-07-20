@@ -13,7 +13,7 @@ function laneStatus(groups: HealthGroup[]): HealthStatus {
   return worst;
 }
 
-// One tier lane (T0/T1/T2/Unassigned): a header with the lane's worst status
+// One tier lane (T0/T1/T2/T3/Unassigned): a header with the lane's worst status
 // and a responsive grid of its group cards.
 export function TierLane({
   title,

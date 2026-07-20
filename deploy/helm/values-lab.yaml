@@ -1,0 +1,210 @@
+# Homelab overrides: ONE avuruops install watching BOTH Avuru environments
+# (prod = avuru-services, staging = avuru-services-staging) on the shared
+# cluster. Environment separation is the tenant/project axis: the gateway maps
+# each namespace to its project, the UI project switcher separates the views,
+# and alert webhooks carry `tenant` so the receiver routes prod≠staging.
+#
+# Service groups/tiers implement §9.1 of the pilotage runbook (canonical
+# classification: tiers T0-T3 + priorities P1-P3). Groups are named
+# <scope>-<role> and grouped so each alert rule maps to one incident priority.
+# image.registry is injected by deploy.jenkinsfile, so it is NOT set here.
+
+gateway:
+  # Fallback for telemetry with no mapped namespace (node metrics, profiling,
+  # off-cluster SDKs) — lands in the production project where ops look first.
+  tenant: production
+  tenantByNamespace:
+    avuru-services: production
+    avuru-services-staging: staging
+
+# UI project switcher = environment. Data-observed tenants merge in anyway;
+# declaring them keeps the switcher stable when one env is quiet.
+projects:
+  - production
+  - staging
+
+sensor:
+  priorityClass:
+    create: true
+  obi:
+    discovery:
+      # Scope L7 instrumentation to the Avuru workloads (both envs + Temporal's
+      # infrastructure namespace) — keeps uprobe overhead off unrelated
+      # homelab workloads sharing the cluster.
+      namespaces:
+        - avuru-services
+        - avuru-services-staging
+        - avuru-infrastructure
+
+clickhouse:
+  persistence:
+    # Pin a BLOCK StorageClass here before installing. The cluster default
+    # (main-provisioner) is NFS-backed — a poor fit for ClickHouse merges.
+    storageClassName: ""
+    size: 30Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+
+retention:
+  traces: 7
+  logs: 3
+
+hub:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 96Mi
+    limits:
+      memory: 384Mi
+
+ui:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      memory: 96Mi
+
+ingress:
+  enabled: true
+  className: nginx
+  host: avuruops.devops.lab
+  # Auth is enforced at the ingress (oauth2-proxy / Keycloak), not in the chart.
+  annotations: {}
+
+# --- §9.1 classification -> health groups -------------------------------------
+# Groups apply per tenant, so production and staging each get the same tiering
+# over their own telemetry. Selectors use the k8s deployment names (what OBI
+# reports as service.name); reconcile against the Services page after install.
+serviceGroups:
+  defaultTier: T2
+  groups:
+    # T0 — authentication: everything is behind it. P1.
+    - name: core-auth
+      tier: T0
+      selector:
+        services: [auth-server]
+    # T0 — shared entry/identity infrastructure (Keycloak has no fallback,
+    # APISIX is the only way in). P1. Names to verify post-install.
+    - name: infra-t0
+      tier: T0
+      selector:
+        services: [keycloak-service, apisix]
+    # T1 — the product core: financial (the product), profil (auth depends on
+    # it via Feign), asset. P1.
+    - name: product-core
+      tier: T1
+      selector:
+        services: [valife-financial, valife-profil, valife-asset]
+    # T1 — sagas (signup, GDPR, admin). P2 normally, P1 during acquisition
+    # campaigns — the rule stays P2; escalate manually in campaign windows.
+    - name: orchestration
+      tier: T1
+      selector:
+        services: [avuru-orchestrator]
+    # T2 — degraded-mode services users notice quickly. P2.
+    # valife-batch is headless: RED health reads `idle`, silent failure is
+    # NOT caught here — the S6 n8n synthetic covers it (runbook §9.2).
+    - name: product-support
+      tier: T2
+      selector:
+        services: [avuru-notification, valife-report, valife-batch, avuru-billing]
+    # Transverse — audit trail consumption (compliance promise). P2. The real
+    # SLI is consumer lag; RED on the consumer spans is the proxy here.
+    - name: transverse-audit
+      tier: T2
+      selector:
+        services: [avuru-audit-history]
+    # T2 — sections that can be masked. P3.
+    - name: product-secondary
+      tier: T2
+      selector:
+        services: [valife-consumption, valife-filestorage, valife-need, valife-todoist]
+    # T3 — graceful degradation by design: the app must be 100% functional
+    # without AI. P3.
+    - name: ai-degradable
+      tier: T3
+      selector:
+        services: [avuru-ai-service]
+    # T2 — async backbone: Kafka buffers (outbox — nothing lost), Temporal
+    # pauses signups (orchestrator survives via SmartLifecycle retry). P2.
+    - name: infra-messaging
+      tier: T2
+      selector:
+        services: [kafka]
+        namespaces: [avuru-infrastructure]
+  thresholds:
+    tiers:
+      T0: { errorRateWarn: 0.005, errorRateCrit: 0.02, latencyP95ObjectiveMs: 300 }
+      T1: { errorRateWarn: 0.01, errorRateCrit: 0.05, latencyP95ObjectiveMs: 500 }
+      T2: { errorRateWarn: 0.02, errorRateCrit: 0.10, latencyP95ObjectiveMs: 1500 }
+      T3: { errorRateWarn: 0.05, errorRateCrit: 0.20, latencyP95ObjectiveMs: 5000 }
+  criticalEdges:
+    # Runbook KE-9 coupling: signups/GDPR pause when Temporal is down even
+    # though Temporal is T2. Verify the discovered service name post-install.
+    - { from: avuru-orchestrator, to: temporal }
+
+# --- §9.1 priorities -> alert rules -------------------------------------------
+# Channels p1/p2/p3 are created FROM THE UI (Alerts page > Notification
+# channels) — rules may reference them before they exist (warn-logged until
+# then). The webhook payload carries `tenant`, so the receiver pages on
+# production and downgrades staging. Add the cluster service CIDR to
+# webhookAllow for an in-cluster receiver (n8n) — private IPs are SSRF-blocked
+# by default.
+alerting:
+  evalIntervalSec: 30
+  windowMinutes: 5
+  webhookAllow: []
+  #  - 10.96.0.0/12
+  channels: []
+  rules:
+    # P1 — T0 down means nobody can log in / nothing gets through.
+    - name: t0-down
+      when: down
+      for: 2m
+      selector: { tiers: [T0] }
+      channel: p1
+    - name: t0-degraded
+      when: degraded
+      for: 5m
+      selector: { tiers: [T0] }
+      channel: p2
+    # P1 — the product core IS the product.
+    - name: core-down
+      when: down
+      for: 5m
+      selector: { groups: [product-core] }
+      channel: p1
+    - name: core-degraded
+      when: degraded
+      for: 10m
+      selector: { groups: [product-core] }
+      channel: p2
+    # P2 — signups pause with a clean message; existing users unaffected.
+    - name: orchestration-unhealthy
+      when: not-healthy
+      for: 10m
+      selector: { groups: [orchestration] }
+      channel: p2
+    # P2 — degraded modes users notice + the audit promise + async backbone.
+    - name: support-down
+      when: down
+      for: 10m
+      selector: { groups: [product-support, transverse-audit, infra-messaging] }
+      channel: p2
+    # P3 — maskable sections.
+    - name: secondary-down
+      when: down
+      for: 15m
+      selector: { groups: [product-secondary] }
+      channel: p3
+    # P3 — AI must degrade gracefully; this checks the degradation IS graceful.
+    - name: ai-down
+      when: down
+      for: 15m
+      selector: { groups: [ai-degradable] }
+      channel: p3

@@ -1,6 +1,6 @@
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { AlertRule, AlertChannel } from "@/lib/api-types";
+import type { AlertRule } from "@/lib/api-types";
 
 function targets(r: AlertRule): string {
   const parts: string[] = [];
@@ -10,9 +10,9 @@ function targets(r: AlertRule): string {
   return parts.join(" · ") || "—";
 }
 
-// Read-only view of the configured rules and channels (edited in the ConfigMap,
-// not here). Channel secrets are never sent by the API.
-export function RulesList({ rules, channels }: { rules: AlertRule[]; channels: AlertChannel[] }) {
+// Read-only view of the configured rules (edited in the ConfigMap, not here).
+// Channels live in the ChannelsPanel, where they are UI-managed.
+export function RulesList({ rules }: { rules: AlertRule[] }) {
   return (
     <Card className="overflow-hidden">
       <CardHeader>
@@ -35,18 +35,6 @@ export function RulesList({ rules, channels }: { rules: AlertRule[]; channels: A
             </li>
           ))}
         </ul>
-      )}
-      {channels.length > 0 && (
-        <div className="border-t border-neutral px-4 py-2 text-xs text-base-content/55">
-          Channels:{" "}
-          {channels.map((c, i) => (
-            <span key={c.name}>
-              {i > 0 && ", "}
-              <span className="font-mono">{c.name}</span>
-              {c.hasAuth && <span className="text-base-content/40"> (signed)</span>}
-            </span>
-          ))}
-        </div>
       )}
     </Card>
   );

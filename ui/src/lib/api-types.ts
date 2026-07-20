@@ -420,9 +420,24 @@ export interface AlertChannel {
   type: string;
   url: string;
   hasAuth: boolean;
+  /** Where the channel is managed: "config" (ConfigMap, read-only) or "ui" (editable). */
+  source?: "config" | "ui";
+  /** A config channel superseded by a same-name UI channel at delivery time. */
+  shadowed?: boolean;
 }
 
 export interface AlertRulesResponse {
   rules: AlertRule[];
   channels: AlertChannel[];
+}
+
+export interface AlertChannelsResponse {
+  channels: AlertChannel[];
+}
+
+export interface AlertChannelInput {
+  name: string;
+  type: "webhook";
+  url: string;
+  secret?: string;
 }

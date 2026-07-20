@@ -119,6 +119,7 @@ func evaluateOnce(ctx context.Context, provider api.StoreProvider, gcfg health.C
 		return fmt.Errorf("store unavailable")
 	}
 	now := time.Now().UTC()
+	resolve := channelResolver(ctx, store, acfg)
 	for _, tenant := range tenantsToEvaluate(ctx, store, projects) {
 		report, err := computeHealth(ctx, store, gcfg, tenant, now, acfg.Window())
 		if err != nil {
@@ -131,7 +132,10 @@ func evaluateOnce(ctx context.Context, provider api.StoreProvider, gcfg health.C
 			continue
 		}
 		next, notes := alerting.Evaluate(acfg, report, toEvalState(prev), now)
-		deliver(ctx, notifier, acfg, notes)
+		for i := range notes {
+			notes[i].Tenant = tenant
+		}
+		deliver(ctx, notifier, resolve, notes)
 		if err := store.SaveAlertStates(ctx, diffToSave(tenant, toEvalState(prev), next, now)); err != nil {
 			slog.Warn("alerting: save state failed", "tenant", tenant, "error", err)
 		}
@@ -181,9 +185,30 @@ func tenantsToEvaluate(ctx context.Context, store storage.Store, projects []stri
 	return out
 }
 
-func deliver(ctx context.Context, notifier alerting.Notifier, acfg alerting.Config, notes []alerting.Notification) {
+// channelResolver merges UI-stored channels (which win on name collision) over
+// file-config channels, loaded once per tick — channels are global, not
+// per-tenant. Store errors degrade to config-only resolution (logged).
+func channelResolver(ctx context.Context, store storage.Store, acfg alerting.Config) func(string) (alerting.Channel, bool) {
+	stored, err := store.ListAlertChannels(ctx)
+	if err != nil {
+		slog.Warn("alerting: list stored channels failed, using config channels only", "error", err)
+		stored = nil
+	}
+	byName := make(map[string]alerting.Channel, len(stored))
+	for _, ch := range stored {
+		byName[ch.Name] = alerting.Channel{Name: ch.Name, Type: ch.Type, URL: ch.URL, Secret: ch.Secret}
+	}
+	return func(name string) (alerting.Channel, bool) {
+		if ch, ok := byName[name]; ok {
+			return ch, true
+		}
+		return acfg.ChannelByName(name)
+	}
+}
+
+func deliver(ctx context.Context, notifier alerting.Notifier, resolve func(string) (alerting.Channel, bool), notes []alerting.Notification) {
 	for _, n := range notes {
-		ch, ok := acfg.ChannelByName(n.Channel)
+		ch, ok := resolve(n.Channel)
 		if !ok {
 			slog.Warn("alerting: rule references unknown channel", "channel", n.Channel, "rule", n.Rule)
 			continue

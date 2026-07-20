@@ -32,6 +32,10 @@
       "properties": {
         "replicas": { "type": "integer", "minimum": 1 },
         "tenant": { "type": "string" },
+        "tenantByNamespace": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        },
         "sentry": {
           "type": "object",
           "properties": {
@@ -115,7 +119,7 @@
                 "properties": {
                   "groups": { "type": "array", "items": { "type": "string", "minLength": 1 } },
                   "services": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-                  "tiers": { "type": "array", "items": { "type": "string", "enum": ["T0", "T1", "T2"] } }
+                  "tiers": { "type": "array", "items": { "type": "string", "enum": ["T0", "T1", "T2", "T3"] } }
                 }
               }
             },
@@ -127,14 +131,14 @@
     "serviceGroups": {
       "type": "object",
       "properties": {
-        "defaultTier": { "type": "string", "enum": ["T0", "T1", "T2"] },
+        "defaultTier": { "type": "string", "enum": ["T0", "T1", "T2", "T3"] },
         "groups": {
           "type": "array",
           "items": {
             "type": "object",
             "properties": {
               "name": { "type": "string", "minLength": 1 },
-              "tier": { "type": "string", "enum": ["T0", "T1", "T2"] },
+              "tier": { "type": "string", "enum": ["T0", "T1", "T2", "T3"] },
               "selector": {
                 "type": "object",
                 "properties": {

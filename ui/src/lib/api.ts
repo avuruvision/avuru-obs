@@ -68,6 +68,39 @@ export async function apiPost<T>(
   return handleJSON<T>(res);
 }
 
+// apiPut mirrors apiPost with PUT (used by channel edits).
+export async function apiPut<T>(
+  path: string,
+  body: unknown,
+  opts?: { project?: string },
+): Promise<T> {
+  const url = new URL(apiBase() + path, window.location.origin);
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+  if (opts?.project && opts.project !== "default") {
+    headers["X-Avuru-Tenant"] = opts.project;
+  }
+  const res = await fetch(url, { method: "PUT", headers, body: JSON.stringify(body) });
+  return handleJSON<T>(res);
+}
+
+// apiDelete issues a DELETE; a 204 resolves to undefined (no body to parse).
+export async function apiDelete(
+  path: string,
+  opts?: { project?: string },
+): Promise<void> {
+  const url = new URL(apiBase() + path, window.location.origin);
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (opts?.project && opts.project !== "default") {
+    headers["X-Avuru-Tenant"] = opts.project;
+  }
+  const res = await fetch(url, { method: "DELETE", headers });
+  if (res.status === 204) return;
+  await handleJSON<unknown>(res);
+}
+
 async function handleJSON<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let message = res.statusText;

@@ -43,6 +43,10 @@ type Config struct {
 	// Read-only endpoint use only; the evaluator lives in cmd/hub. nil →
 	// alerting.Default().
 	AlertsConfig func() alerting.Config
+	// Notifier delivers channel test notifications (POST
+	// /api/v1/alerts/channels/{name}/test). Shared with the evaluator so the
+	// SSRF policy is identical. nil → test endpoint answers 503.
+	Notifier alerting.Notifier
 }
 
 // API holds handler dependencies.
@@ -116,6 +120,11 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 	if active.Enabled(modules.Alerting) {
 		mux.Handle("GET /api/v1/alerts", handle(a.handleAlerts))
 		mux.Handle("GET /api/v1/alerts/rules", handle(a.handleAlertRules))
+		mux.Handle("GET /api/v1/alerts/channels", handle(a.handleListAlertChannels))
+		mux.Handle("POST /api/v1/alerts/channels", handle(a.handleCreateAlertChannel))
+		mux.Handle("PUT /api/v1/alerts/channels/{name}", handle(a.handleUpdateAlertChannel))
+		mux.Handle("DELETE /api/v1/alerts/channels/{name}", handle(a.handleDeleteAlertChannel))
+		mux.Handle("POST /api/v1/alerts/channels/{name}/test", handle(a.handleTestAlertChannel))
 	}
 }
 

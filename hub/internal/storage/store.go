@@ -500,6 +500,21 @@ type Store interface {
 	SaveAlertStates(ctx context.Context, states []AlertState) error
 	AppendAlertHistory(ctx context.Context, entries []AlertHistoryEntry) error
 	ListAlertHistory(ctx context.Context, q AlertHistoryQuery) ([]AlertHistoryEntry, error)
+	// UI-managed alert channels (global, not per-tenant — the notification
+	// payload carries the tenant). SaveAlertChannel upserts by Name;
+	// DeleteAlertChannel returns ErrNotFound when no live channel has the name.
+	ListAlertChannels(ctx context.Context) ([]AlertChannel, error)
+	SaveAlertChannel(ctx context.Context, ch AlertChannel) error
+	DeleteAlertChannel(ctx context.Context, name string) error
+}
+
+// AlertChannel is a UI-managed delivery channel (global, not per-tenant).
+type AlertChannel struct {
+	Name      string
+	Type      string // "webhook" (v1)
+	URL       string
+	Secret    string
+	UpdatedAt time.Time
 }
 
 // AlertState is the evaluator's durable memory for one rule×target: whether it

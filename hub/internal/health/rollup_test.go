@@ -162,6 +162,35 @@ func TestPropagationCriticalDependencyDown(t *testing.T) {
 	}
 }
 
+func TestPropagationT3DependencyNotCritical(t *testing.T) {
+	// A down T3 dependency must NOT worsen its dependents — only T0 targets
+	// (or criticalEdges overrides) are critical. Locks the propagation rule
+	// as T3 joins the tier set.
+	cfg := Config{
+		DefaultTier: TierT2,
+		Groups: []Group{
+			{Name: "ai", Tier: TierT3, Selector: Selector{Services: []string{"ai-svc"}}},
+		},
+		Thresholds: ThresholdConfig{Defaults: builtinDefaults},
+	}
+	stats := []storage.ServiceStats{
+		stat("web", 100, 0, 100),    // healthy, T2
+		stat("ai-svc", 100, 20, 100), // 20% errors -> down, T3
+	}
+	edges := []storage.ServiceEdge{edge("web", "ai-svc")}
+	r := Rollup(cfg, testWindow, stats, nil, edges)
+
+	web, _ := memberOf(r, "web")
+	if web.EffectiveStatus != StatusHealthy {
+		t.Errorf("web effective = %q, want healthy (T3 dep is not critical)", web.EffectiveStatus)
+	}
+	for _, d := range web.Dependencies {
+		if d.Service == "ai-svc" && d.Critical {
+			t.Error("ai-svc (T3) must not be a critical dependency")
+		}
+	}
+}
+
 func TestPropagationCycleTerminates(t *testing.T) {
 	// a <-> b, both T0; a is down. Reading base (never effective) must make
 	// this a single terminating pass.

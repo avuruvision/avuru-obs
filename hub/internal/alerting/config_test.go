@@ -24,7 +24,7 @@ func TestParseConfigFailLoud(t *testing.T) {
 	}{
 		{"unknown when", `{"channels":[{"name":"c","type":"webhook","url":"https://x"}],"rules":[{"name":"r","when":"flapping","selector":{"groups":["g"]},"channel":"c"}]}`},
 		{"empty selector", `{"channels":[{"name":"c","type":"webhook","url":"https://x"}],"rules":[{"name":"r","when":"down","selector":{},"channel":"c"}]}`},
-		{"undeclared channel", `{"rules":[{"name":"r","when":"down","selector":{"groups":["g"]},"channel":"nope"}]}`},
+		{"empty rule channel", `{"rules":[{"name":"r","when":"down","selector":{"groups":["g"]},"channel":""}]}`},
 		{"non-webhook channel", `{"channels":[{"name":"c","type":"slack","url":"https://x"}]}`},
 		{"bad url", `{"channels":[{"name":"c","type":"webhook","url":"ftp://x"}]}`},
 		{"empty url", `{"channels":[{"name":"c","type":"webhook","url":""}]}`},
@@ -49,7 +49,8 @@ func TestParseConfigValid(t *testing.T) {
 	  "channels": [{"name":"ops","type":"webhook","url":"https://hooks.example.com/x","secret":"s3cr3t"}],
 	  "rules": [
 	    {"name":"payments-down","when":"down","for":"5m","selector":{"groups":["payments"]},"channel":"ops"},
-	    {"name":"t0-degraded","when":"not-healthy","selector":{"tiers":["T0"]},"channel":"ops"}
+	    {"name":"t0-degraded","when":"not-healthy","selector":{"tiers":["T0"]},"channel":"ops"},
+	    {"name":"ui-channel-ref","when":"down","selector":{"groups":["payments"]},"channel":"p1"}
 	  ]
 	}`
 	c, err := ParseConfig([]byte(cfg))
@@ -59,8 +60,13 @@ func TestParseConfigValid(t *testing.T) {
 	if c.Interval() != 15*time.Second || c.Window() != 10*time.Minute {
 		t.Errorf("interval/window = %v/%v", c.Interval(), c.Window())
 	}
-	if len(c.Rules) != 2 || c.Rules[0].For.Std() != 5*time.Minute {
+	if len(c.Rules) != 3 || c.Rules[0].For.Std() != 5*time.Minute {
 		t.Errorf("rules parsed wrong: %+v", c.Rules)
+	}
+	// A rule may reference a channel not declared in the file — channels can
+	// be UI-managed and are resolved at delivery time.
+	if c.Rules[2].Channel != "p1" {
+		t.Errorf("ui-managed channel reference should parse, got %+v", c.Rules[2])
 	}
 	if ch, ok := c.ChannelByName("ops"); !ok || ch.Secret != "s3cr3t" {
 		t.Errorf("channel not found")

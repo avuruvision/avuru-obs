@@ -33,16 +33,49 @@ data:
         {{- end }}
     {{- end }}
     processors:
+    {{- if .Values.gateway.tenantByNamespace }}
+      # Per-namespace project mapping: stamps avuru.tenant from the sender's
+      # k8s.namespace.name resource attribute (set by the sensor), so ONE
+      # shared-cluster install splits environments into projects. Runs before
+      # resource/tenant, which becomes the fallback for unmatched telemetry
+      # (node metrics, SDKs without k8s attributes).
+      transform/tenant:
+        error_mode: ignore
+      {{- $stmts := list }}
+      {{- range $ns, $tenant := .Values.gateway.tenantByNamespace }}
+      {{- $stmts = append $stmts (printf "set(attributes[\"avuru.tenant\"], %q) where attributes[\"k8s.namespace.name\"] == %q" $tenant $ns) }}
+      {{- end }}
+        trace_statements:
+          - context: resource
+            statements:
+            {{- range $stmts }}
+              - {{ . | quote }}
+            {{- end }}
+        log_statements:
+          - context: resource
+            statements:
+            {{- range $stmts }}
+              - {{ . | quote }}
+            {{- end }}
+        metric_statements:
+          - context: resource
+            statements:
+            {{- range $stmts }}
+              - {{ . | quote }}
+            {{- end }}
+    {{- end }}
     {{- if .Values.gateway.tenant }}
       # Everything through this gateway belongs to one project/environment
       # (one project per cluster). `upsert` makes the gateway the
       # authority; senders stay untouched (drop-in OTLP). Use action `insert`
-      # instead if trusted senders must pick their own tenant.
+      # instead if trusted senders must pick their own tenant. When
+      # tenantByNamespace is set this becomes `insert` automatically so the
+      # per-namespace stamp above is never clobbered.
       resource/tenant:
         attributes:
           - key: avuru.tenant
             value: {{ .Values.gateway.tenant | quote }}
-            action: upsert
+            action: {{ if .Values.gateway.tenantByNamespace }}insert{{ else }}upsert{{ end }}
     {{- end }}
       batch:
         send_batch_size: 4096
@@ -67,7 +100,8 @@ data:
       extensions: [health_check]
       pipelines:
     {{- $tenantStage := "" }}
-    {{- if .Values.gateway.tenant }}{{ $tenantStage = "resource/tenant, " }}{{ end }}
+    {{- if .Values.gateway.tenantByNamespace }}{{ $tenantStage = "transform/tenant, " }}{{ end }}
+    {{- if .Values.gateway.tenant }}{{ $tenantStage = printf "%sresource/tenant, " $tenantStage }}{{ end }}
     {{- /* A module's pipeline is dropped when the module is off: its tables
            don't exist, so accepting the signal would only produce export
            errors. `traces` is core and always present, so the collector

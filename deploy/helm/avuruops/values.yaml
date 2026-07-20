@@ -52,6 +52,17 @@ gateway:
   # ingest header). "" = everything lands in the `default` project. Senders
   # never change — this is server-side tagging (drop-in OTLP stays true).
   tenant: ""
+  # Per-namespace project mapping for shared clusters hosting several
+  # environments: stamps `avuru.tenant` from the sender's k8s.namespace.name
+  # resource attribute (set by the sensor). Unmatched telemetry (node metrics,
+  # SDKs without k8s attributes) falls back to `tenant` above. Requires the
+  # avuruops gateway image with the transform processor (the stock
+  # otel/opentelemetry-collector-contrib fallback image also ships it).
+  # NOTE: profiling bypasses the gateway (direct hub ingest) and stays on the
+  # static `tenant`.
+  tenantByNamespace: {}
+  #  avuru-services: production
+  #  avuru-services-staging: staging
   # Sentry SDK ingest (error-tracking module). OFF by default: it opens a
   # network surface (:4319) for browser/app error reporting. Needs the
   # error-tracking AND logs modules (events are stored as log records). Expose
@@ -91,7 +102,7 @@ modules:
   errorTracking:
     enabled: true
   # Service health: rolls per-service RED health up into consolidated group
-  # health with criticality tiers (T0/T1/T2) and dependency propagation.
+  # health with criticality tiers (T0/T1/T2/T3) and dependency propagation.
   # Derived from trace data you already send — owns no schema. See
   # serviceGroups below for the grouping/tier configuration.
   serviceHealth:
@@ -134,7 +145,7 @@ alerting:
 # defaultTier. Edit and `helm upgrade`, OR `kubectl edit` the rendered
 # ConfigMap — the hub hot-reloads it within ~15s, no restart or redeploy.
 serviceGroups:
-  # Tier applied to services not matched by any group below. T0|T1|T2.
+  # Tier applied to services not matched by any group below. T0|T1|T2|T3.
   defaultTier: T2
   # Named groups override the namespace auto-grouping. A service matches by
   # explicit name or by namespace.

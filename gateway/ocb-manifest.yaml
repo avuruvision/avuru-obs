@@ -27,6 +27,11 @@ processors:
   # resource/tenant: stamps avuru.tenant per environment (gateway.tenant in
   # the chart) — the ingest half of the per-project model.
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.154.0
+  # transform/tenant: maps k8s.namespace.name -> avuru.tenant
+  # (gateway.tenantByNamespace in the chart) so one shared-cluster install can
+  # split environments into projects; resource/tenant stays the static
+  # fallback for unmatched telemetry.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.154.0
   # tailsamplingprocessor added when the sampling knob ships (post-v0.1 default is 100% ingest)
 
 exporters:

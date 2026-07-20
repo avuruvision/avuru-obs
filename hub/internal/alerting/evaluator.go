@@ -43,6 +43,7 @@ type Notification struct {
 	Kind    string // fired | resolved
 	Status  string // health status at the time
 	Reason  string
+	Tenant  string // stamped by the runner (Evaluate itself is tenant-agnostic)
 	At      time.Time
 	Channel string
 }
