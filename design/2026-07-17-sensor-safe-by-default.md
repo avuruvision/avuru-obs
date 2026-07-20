@@ -140,5 +140,5 @@ it is a chart-surface + CI change plus one new values field.
 - [x] Probe-sensitive workload added to `deploy/demo/wedge/wedge.yaml`
 - [x] `e2e-helm.sh` regression gate asserts it survives the sensor
 - [x] `template-test.sh` covers `optIn` / `optOut`
-- [ ] Staged-rollout runbook (`docs/runbooks/sensor-rollout.md`)
+- [x] Staged-rollout runbook (`docs/runbooks/sensor-rollout.md`)
 - [ ] Flip `sensor.enabled: true` in LAN once the gate is green

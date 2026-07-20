@@ -96,3 +96,10 @@ Deleting the namespace removes the sensor DaemonSet (all eBPF attach), the
 gateway, and ClickHouse (and its PVC) in one stroke — all four candidate
 causes at once, which is why it "works" but tells you nothing. Use the
 bisection ladder instead so the fix can be permanent and targeted.
+
+## Re-enabling after this incident
+
+Do not flip `sensor.enabled: true` fleet-wide in one step — follow the staged
+path in [sensor-rollout](sensor-rollout.md): canary node pool, soak, widen,
+with the targeted excludes above (or `sensor.obi.discovery.mode=optIn`) as the
+first response to any regression.
