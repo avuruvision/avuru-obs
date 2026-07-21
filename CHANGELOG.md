@@ -64,6 +64,16 @@ When a release is cut, that block is renamed to the version with its date.
   stats key still needs confirmation in a real eBPF environment before prod
   use. See
   [`design/2026-07-19-network-health.md`](design/2026-07-19-network-health.md).
+- **The sensor is now provably safe to leave on.** The e2e wedge gate keeps a
+  probe-sensitive canary — tight CPU limit, aggressive liveness probe, real
+  traffic — Ready with zero restarts through a soak with the sensor attached,
+  so "installing avuru-obs does no harm" is CI-enforced where it actually
+  bites. For cautious fleets, `sensor.obi.discovery.mode=optIn` attaches
+  uprobes only to pods labeled `avuru.obs/instrument: "true"` (logs, infra
+  metrics and the inventory keep flowing), and a staged-rollout runbook
+  (`docs/runbooks/sensor-rollout.md`) covers canary node pools, soak, and the
+  escape-hatch ladder. See
+  [`design/2026-07-17-sensor-safe-by-default.md`](design/2026-07-17-sensor-safe-by-default.md).
 
 ### Changed
 

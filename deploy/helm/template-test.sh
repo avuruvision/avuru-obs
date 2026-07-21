@@ -51,6 +51,31 @@ grep -q 'k8s_namespace: "payments"' <<<"$out" || fail "extra OBI exclude namespa
 grep -q 'k8s_namespace: "billing"' <<<"$out" || fail "extra OBI exclude namespace missing"
 ok "sensor.obi.discovery.excludeNamespaces extends the shared list"
 
+echo "== OBI discovery mode: default optOut"
+out="$(render)"
+grep -q '"avuru.obs/instrument": "true"' <<<"$out" && fail "opt-in selector rendered in default optOut mode"
+ok "optOut default: instrument-all, no opt-in selector"
+
+echo "== OBI discovery mode: optIn narrows uprobes, nothing else"
+out="$(render --set sensor.obi.discovery.mode=optIn)"
+grep -q '"avuru.obs/instrument": "true"' <<<"$out" || fail "opt-in label selector missing in optIn"
+grep -q 'k8s_namespace: "kube-system"' <<<"$out" || fail "namespace excludes lost in optIn"
+grep -q '"avuru.obs/instrument": "false"' <<<"$out" || fail "per-pod opt-out exclude lost in optIn"
+ok "optIn: labeled-only uprobes; excludes unaffected"
+
+echo "== OBI discovery mode: guards"
+render --set sensor.obi.discovery.mode=optIn --set sensor.collection.optOutLabel="" >/dev/null 2>&1 \
+  && fail "optIn rendered with empty optOutLabel (nothing to opt in with)"
+render --set sensor.obi.discovery.mode=optIn --set-json 'sensor.obi.discovery.namespaces=[]' >/dev/null 2>&1 \
+  && fail "optIn rendered with empty discovery.namespaces (selector would never render)"
+render --set sensor.obi.discovery.mode=bogus >/dev/null 2>&1 \
+  && fail "schema accepted an invalid discovery.mode"
+# The guards police the OBI ConfigMap only — values that render nothing must
+# never fail an install (e.g. optIn kept in shared values, sensor off here).
+render --set sensor.obi.enabled=false --set sensor.obi.discovery.mode=optIn --set sensor.collection.optOutLabel="" >/dev/null 2>&1 \
+  || fail "optIn guard fired with the sensor disabled (guard polices unrendered config)"
+ok "optIn without label/namespaces fails; bogus mode fails schema; guards stay scoped to the rendered sensor"
+
 echo "== default render: agent pipelines honor collection guardrails"
 out="$(render)"
 grep -q '/var/log/pods/kube-system_\*' <<<"$out" || fail "kube-system filelog exclude glob missing"

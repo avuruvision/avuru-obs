@@ -2,7 +2,7 @@
 
 - **Date:** 2026-07-17
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted
 
 ## Summary
 
@@ -135,10 +135,10 @@ it is a chart-surface + CI change plus one new values field.
 
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] `sensor.obi.discovery.mode` (values + schema + OBI discovery config)
-- [ ] Probe-sensitive workload added to `deploy/demo/wedge/wedge.yaml`
-- [ ] `e2e-helm.sh` regression gate asserts it survives the sensor
-- [ ] `template-test.sh` covers `optIn` / `optOut`
-- [ ] Staged-rollout runbook (`docs/runbooks/sensor-rollout.md`)
+- [x] AEP accepted
+- [x] `sensor.obi.discovery.mode` (values + schema + OBI discovery config)
+- [x] Probe-sensitive workload added to `deploy/demo/wedge/wedge.yaml`
+- [x] `e2e-helm.sh` regression gate asserts it survives the sensor
+- [x] `template-test.sh` covers `optIn` / `optOut`
+- [x] Staged-rollout runbook (`docs/runbooks/sensor-rollout.md`)
 - [ ] Flip `sensor.enabled: true` in LAN once the gate is green

@@ -201,6 +201,7 @@
             "discovery": {
               "type": "object",
               "properties": {
+                "mode": { "type": "string", "enum": ["optOut", "optIn"] },
                 "namespaces": { "type": "array", "items": { "type": "string", "minLength": 1 } },
                 "excludeNamespaces": { "type": "array", "items": { "type": "string", "minLength": 1 } }
               }

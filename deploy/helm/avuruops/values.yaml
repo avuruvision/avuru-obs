@@ -264,6 +264,10 @@ sensor:
     # L7 instrumentation is scoped down. Also consider priorityClass and moving
     # ClickHouse off the app nodes (runbook cause #2).
     discovery:
+      # optOut (default): instrument everything in `namespaces` minus the
+      # excludes. optIn: uprobes ONLY on pods labeled <optOutLabel>="true";
+      # logs/metrics/inventory unaffected (docs/runbooks/sensor-rollout.md).
+      mode: optOut
       namespaces: ["*"]
       excludeNamespaces: []
     # Network flows (OBI `network` feature): kernel L4 topology + per-edge
