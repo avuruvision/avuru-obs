@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -179,6 +180,25 @@ func TestRateLimitIsPerIP(t *testing.T) {
 	}
 	if _, _, err := svc.Login(ctx, "a@x.io", "pw", "B"); err != nil {
 		t.Fatalf("ip B should be unaffected by A's failures: got %v", err)
+	}
+}
+
+// TestRateLimitPerIPCap proves the second (per-IP) axis: an attacker who
+// sprays a UNIQUE, never-seen email on every request never trips the
+// per-account "email|ip" window (each key is fresh), yet must still be
+// capped — otherwise they get one free bcrypt hash per request forever from
+// a single IP.
+func TestRateLimitPerIPCap(t *testing.T) {
+	f := &storagetest.Fake{}
+	svc := testService(f)
+	ctx := context.Background()
+
+	for i := 0; i < maxLoginAttemptsPerIP; i++ {
+		email := fmt.Sprintf("spray%d@x.io", i)
+		_, _, _ = svc.Login(ctx, email, "wrong", "shared-ip")
+	}
+	if _, _, err := svc.Login(ctx, "yet-another@x.io", "wrong", "shared-ip"); err != ErrTooManyAttempts {
+		t.Fatalf("after %d unique-email failures from one ip: got %v, want ErrTooManyAttempts", maxLoginAttemptsPerIP, err)
 	}
 }
 

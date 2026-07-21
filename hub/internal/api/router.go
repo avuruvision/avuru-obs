@@ -98,6 +98,15 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 	mux.Handle("GET /api/v1/spans/{spanId}", a.secured(auth.RoleViewer, a.handleGetSpan))
 	mux.Handle("GET /api/v1/metrics/red", a.secured(auth.RoleViewer, a.handleREDSeries))
 
+	// /auth/config is always registered, auth on or off — the SPA's login
+	// page needs a straight answer, not a 404 it has to special-case.
+	mux.Handle("GET /api/v1/auth/config", handle(a.handleAuthConfig))
+	if cfg.Auth != nil {
+		mux.Handle("POST /api/v1/auth/login", handle(a.handleLogin))
+		mux.Handle("POST /api/v1/auth/logout", a.authenticated(a.handleLogout))
+		mux.Handle("GET /api/v1/auth/me", a.authenticated(a.handleMe))
+	}
+
 	if active.Enabled(modules.Logs) {
 		mux.Handle("GET /api/v1/logs", a.secured(auth.RoleViewer, a.handleSearchLogs))
 		mux.Handle("GET /api/v1/traces/{traceId}/logs", a.secured(auth.RoleViewer, a.handleLogsForTrace))

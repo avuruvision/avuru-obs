@@ -257,7 +257,7 @@ func (a *API) handleSetErrorIssueStatus(w http.ResponseWriter, r *http.Request) 
 	}
 	var body setStatusRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
-		return badRequest("invalid body")
+		return decodeJSONError(err)
 	}
 	if !validTriageStatus[body.Status] {
 		return badRequest("invalid status %q (want unresolved|resolved|ignored)", body.Status)

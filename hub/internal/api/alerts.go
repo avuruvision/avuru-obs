@@ -76,7 +76,8 @@ func (a *API) handleAlerts(w http.ResponseWriter, r *http.Request) error {
 }
 
 // alertRuleDTO mirrors a configured rule for the UI. The channel URL is shown
-// but its Secret is NEVER serialized.
+// but its Secret is NEVER serialized, and the URL itself is redacted to
+// scheme+host for non-admin identities (see redactWebhookURL).
 type alertRuleDTO struct {
 	Name     string   `json:"name"`
 	When     string   `json:"when"`
@@ -208,7 +209,7 @@ func (a *API) handleListAlertChannels(w http.ResponseWriter, r *http.Request) er
 func decodeChannelInput(w http.ResponseWriter, r *http.Request) (alertChannelInput, error) {
 	var in alertChannelInput
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&in); err != nil {
-		return in, badRequest("invalid body")
+		return in, decodeJSONError(err)
 	}
 	if in.Type == "" {
 		in.Type = "webhook"

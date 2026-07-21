@@ -56,7 +56,7 @@ func (s *Service) st() (storage.Store, error) {
 // rate limiter together with the email.
 func (s *Service) Login(ctx context.Context, email, password, ip string) (string, Identity, error) {
 	key := email + "|" + ip
-	if s.limiter.blocked(key) {
+	if s.limiter.blocked(key, ip) {
 		return "", Identity{}, ErrTooManyAttempts
 	}
 	st, err := s.st()
@@ -66,7 +66,7 @@ func (s *Service) Login(ctx context.Context, email, password, ip string) (string
 	u, err := st.GetAuthUserByEmail(ctx, email)
 	if errors.Is(err, storage.ErrNotFound) {
 		CheckDummy(password) // constant-shape timing
-		s.limiter.fail(key)
+		s.limiter.fail(key, ip)
 		return "", Identity{}, ErrInvalidCredentials
 	}
 	if err != nil {
@@ -75,7 +75,7 @@ func (s *Service) Login(ctx context.Context, email, password, ip string) (string
 	// CheckPassword runs BEFORE the Disabled check so a disabled account
 	// answers in the same ~bcrypt time as a wrong password (no status oracle).
 	if !CheckPassword(u.PasswordHash, password) || u.Disabled {
-		s.limiter.fail(key)
+		s.limiter.fail(key, ip)
 		return "", Identity{}, ErrInvalidCredentials
 	}
 	id, err := s.identityFor(ctx, st, u)

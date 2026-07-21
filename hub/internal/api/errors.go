@@ -32,6 +32,18 @@ func forbidden(format string, args ...any) error {
 
 var errStoreUnavailable = &apiError{status: http.StatusServiceUnavailable, message: "telemetry store unavailable"}
 
+// decodeJSONError classifies a json.Decode error against a MaxBytesReader-
+// wrapped body: an oversized body's *http.MaxBytesError is returned as-is so
+// handle() maps it to 413, everything else (syntax errors, EOF) becomes a
+// plain 400.
+func decodeJSONError(err error) error {
+	var mbe *http.MaxBytesError
+	if errors.As(err, &mbe) {
+		return err
+	}
+	return badRequest("invalid body")
+}
+
 type errorBody struct {
 	Error struct {
 		Code    int    `json:"code"`
@@ -49,9 +61,12 @@ func handle(fn func(w http.ResponseWriter, r *http.Request) error) http.HandlerF
 		}
 		status, msg := http.StatusInternalServerError, "internal error"
 		var ae *apiError
+		var mbe *http.MaxBytesError
 		switch {
 		case errors.As(err, &ae):
 			status, msg = ae.status, ae.message
+		case errors.As(err, &mbe):
+			status, msg = http.StatusRequestEntityTooLarge, "request body too large"
 		case errors.Is(err, storage.ErrNotFound):
 			status, msg = http.StatusNotFound, "not found"
 		default:

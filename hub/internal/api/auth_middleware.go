@@ -44,6 +44,26 @@ func (a *API) secured(min auth.Role, fn func(http.ResponseWriter, *http.Request)
 	})
 }
 
+// authenticated requires a valid identity but NO role floor — for routes a
+// zero-grant user must still reach (their own logout and /auth/me; a user
+// whose grants were all revoked can otherwise neither sign out nor see why).
+func (a *API) authenticated(fn func(http.ResponseWriter, *http.Request) error) http.Handler {
+	return handle(func(w http.ResponseWriter, r *http.Request) error {
+		if a.cfg.Auth == nil { // auth disabled — pre-auth behavior
+			return fn(w, r)
+		}
+		if err := checkOrigin(r); err != nil {
+			return err
+		}
+		id, err := a.requestIdentity(w, r)
+		if err != nil {
+			return err
+		}
+		ctx := context.WithValue(r.Context(), identityKey{}, id)
+		return fn(w, r.WithContext(ctx))
+	})
+}
+
 // securedAdmin requires a global admin ("*" admin grant).
 func (a *API) securedAdmin(fn func(http.ResponseWriter, *http.Request) error) http.Handler {
 	return handle(func(w http.ResponseWriter, r *http.Request) error {
