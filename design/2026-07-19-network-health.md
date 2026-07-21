@@ -2,7 +2,7 @@
 
 - **Date:** 2026-07-19
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted
 
 ## Summary
 
@@ -188,11 +188,11 @@ cytoscape edge data.
 
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] Sensor: OBI StatsO11y flag + attribute selection (Helm value, infra-metrics-gated)
-- [ ] Hub: `NetworkEdgeHealth` query (histogram p95 + failed sum) + edge merge
-- [ ] API: `serviceEdgeDTO` rttMs/failedConnections
-- [ ] UI: edge tooltip + health styling; extend `ServiceEdge` type
+- [x] AEP accepted
+- [x] Sensor: OBI StatsO11y flag + attribute selection (Helm value, infra-metrics-gated)
+- [x] Hub: `NetworkEdgeHealth` query (histogram p95 + failed sum) + edge merge
+- [x] API: `serviceEdgeDTO` rttMs/failedConnections
+- [x] UI: edge tooltip + health styling; extend `ServiceEdge` type
 - [x] Storage p95-from-histogram SQL validated against real ClickHouse (integration test)
 - [ ] **Confirm the OBI stats key + per-edge attribution in a kind/eBPF env** (blocks prod use)
 - [ ] Docs (service-map page, network-health config) via docs-align

@@ -2,7 +2,7 @@
 
 - **Date:** 2026-07-18
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted
 
 ## Summary
 
@@ -208,13 +208,13 @@ optional per-group tenant allowlist for shared-ClickHouse installs is a later it
 
 ## Roadmap
 
-- [ ] AEP accepted
+- [x] AEP accepted
 - [x] Hub: `service-health` module registry entry + `ServiceLabels` seam + the
   `hub/internal/health` logic package
 - [x] Hub: `GET /api/v1/health/groups[/{name}]` + hot-reloadable config loader
 - [x] Helm: `modules.serviceHealth`, `serviceGroups` ConfigMap, env/mount, schema,
   template-test
 - [x] UI: `/health` tier-lane board + member detail + dependency chain, module-gated
-- [ ] e2e (compose + seeded fixtures) + Playwright coverage
+- [x] e2e (compose + seeded fixtures) + Playwright coverage
 - [ ] Docs: signal/module page (EN/FR), configuration reference, API reference,
   ROADMAP + docs-site roadmap

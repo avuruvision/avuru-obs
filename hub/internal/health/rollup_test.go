@@ -174,7 +174,7 @@ func TestPropagationT3DependencyNotCritical(t *testing.T) {
 		Thresholds: ThresholdConfig{Defaults: builtinDefaults},
 	}
 	stats := []storage.ServiceStats{
-		stat("web", 100, 0, 100),    // healthy, T2
+		stat("web", 100, 0, 100),     // healthy, T2
 		stat("ai-svc", 100, 20, 100), // 20% errors -> down, T3
 	}
 	edges := []storage.ServiceEdge{edge("web", "ai-svc")}
