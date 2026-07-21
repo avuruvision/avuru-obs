@@ -4,6 +4,8 @@ package storagetest
 
 import (
 	"context"
+	"sort"
+	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
@@ -52,6 +54,14 @@ type Fake struct {
 	ChannelsErr           error
 	SavedChannels         []storage.AlertChannel
 	DeletedChannels       []string
+
+	// Auth fakes. Users is keyed by ID, UsersByEmail by email (both hold the
+	// same values); Grants by user ID; Sessions by token hash.
+	Users        map[string]storage.AuthUser
+	UsersByEmail map[string]storage.AuthUser
+	Grants       map[string][]storage.AuthGrant
+	Sessions     map[string]storage.AuthSession
+	SavedUsers   []storage.AuthUser
 
 	// Last*Query record the most recent inputs for asserting parameter parsing.
 	LastTraceQuery       storage.TraceQuery
@@ -263,4 +273,102 @@ func (f *Fake) DeleteAlertChannel(_ context.Context, name string) error {
 		}
 	}
 	return storage.ErrNotFound
+}
+
+func (f *Fake) CountAuthUsers(context.Context) (uint64, error) {
+	return uint64(len(f.Users)), nil
+}
+
+func (f *Fake) GetAuthUser(_ context.Context, id string) (storage.AuthUser, error) {
+	u, ok := f.Users[id]
+	if !ok {
+		return storage.AuthUser{}, storage.ErrNotFound
+	}
+	return u, nil
+}
+
+func (f *Fake) GetAuthUserByEmail(_ context.Context, email string) (storage.AuthUser, error) {
+	u, ok := f.UsersByEmail[email]
+	if !ok {
+		return storage.AuthUser{}, storage.ErrNotFound
+	}
+	return u, nil
+}
+
+// ListAuthUsers returns all users ordered by Email, matching the real
+// ClickHouse implementation's ORDER BY — map iteration order is random, and
+// handler tests that don't sort themselves would otherwise be flaky.
+func (f *Fake) ListAuthUsers(context.Context) ([]storage.AuthUser, error) {
+	out := make([]storage.AuthUser, 0, len(f.Users))
+	for _, u := range f.Users {
+		out = append(out, u)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Email < out[j].Email })
+	return out, nil
+}
+
+// SaveAuthUser mirrors the ReplacingMergeTree upsert-by-Id: it updates both
+// maps (keyed by ID and by email) and records the write in SavedUsers. If the
+// user's email changed since the last save, the stale UsersByEmail entry is
+// removed so a lookup by the old address correctly misses.
+func (f *Fake) SaveAuthUser(_ context.Context, u storage.AuthUser) error {
+	if f.Users == nil {
+		f.Users = make(map[string]storage.AuthUser)
+	}
+	if f.UsersByEmail == nil {
+		f.UsersByEmail = make(map[string]storage.AuthUser)
+	}
+	if old, ok := f.Users[u.ID]; ok && old.Email != u.Email {
+		delete(f.UsersByEmail, old.Email)
+	}
+	f.Users[u.ID] = u
+	f.UsersByEmail[u.Email] = u
+	f.SavedUsers = append(f.SavedUsers, u)
+	return nil
+}
+
+// ListAuthGrants returns a Scope-sorted copy of the user's grants (matching
+// the real implementation's ORDER BY), so callers can't mutate the fake's
+// backing slice through the returned value.
+func (f *Fake) ListAuthGrants(_ context.Context, userID string) ([]storage.AuthGrant, error) {
+	src := f.Grants[userID]
+	out := make([]storage.AuthGrant, len(src))
+	copy(out, src)
+	sort.Slice(out, func(i, j int) bool { return out[i].Scope < out[j].Scope })
+	return out, nil
+}
+
+// ReplaceAuthGrants overwrites the user's grant slice wholesale, mirroring the
+// tombstone-then-write semantics of the ClickHouse implementation from the
+// caller's point of view (only the live set is ever visible).
+func (f *Fake) ReplaceAuthGrants(_ context.Context, userID string, grants []storage.AuthGrant) error {
+	if f.Grants == nil {
+		f.Grants = make(map[string][]storage.AuthGrant)
+	}
+	f.Grants[userID] = grants
+	return nil
+}
+
+func (f *Fake) CreateAuthSession(_ context.Context, s storage.AuthSession) error {
+	if f.Sessions == nil {
+		f.Sessions = make(map[string]storage.AuthSession)
+	}
+	f.Sessions[s.TokenHash] = s
+	return nil
+}
+
+func (f *Fake) GetAuthSession(_ context.Context, tokenHash string) (storage.AuthSession, error) {
+	s, ok := f.Sessions[tokenHash]
+	if !ok || time.Now().After(s.ExpiresAt) {
+		return storage.AuthSession{}, storage.ErrNotFound
+	}
+	return s, nil
+}
+
+func (f *Fake) RevokeAuthSession(_ context.Context, tokenHash string) error {
+	if _, ok := f.Sessions[tokenHash]; !ok {
+		return storage.ErrNotFound
+	}
+	delete(f.Sessions, tokenHash)
+	return nil
 }

@@ -453,6 +453,34 @@ type ErrorHistogramPoint struct {
 	Count uint64
 }
 
+// AuthUser is one local or SSO user (auth core). PasswordHash is bcrypt and
+// empty for SSO-only users.
+type AuthUser struct {
+	ID           string
+	Email        string
+	Name         string
+	PasswordHash string
+	Origin       string // "local" | "oidc"
+	Disabled     bool
+	UpdatedAt    time.Time
+}
+
+// AuthGrant is role-on-scope for one user. Scope is a project name or "*".
+type AuthGrant struct {
+	UserID string
+	Scope  string
+	Role   string // "admin" | "editor" | "viewer"
+}
+
+// AuthSession is one server-side session. TokenHash is hex(sha256(token)):
+// the raw token exists only in the cookie.
+type AuthSession struct {
+	TokenHash string
+	UserID    string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
 // Store is the telemetry query seam implemented by storage backends.
 type Store interface {
 	Ping(ctx context.Context) error
@@ -506,6 +534,24 @@ type Store interface {
 	ListAlertChannels(ctx context.Context) ([]AlertChannel, error)
 	SaveAlertChannel(ctx context.Context, ch AlertChannel) error
 	DeleteAlertChannel(ctx context.Context, name string) error
+	// Auth (core): local users, per-project grants, server-side sessions.
+	// GetAuthUserByEmail/GetAuthUser return ErrNotFound for unknown users;
+	// disabled users ARE returned (callers decide). SaveAuthUser upserts by
+	// ID. ReplaceAuthGrants replaces the user's grant set (tombstone missing
+	// scopes, upsert the rest). GetAuthSession returns ErrNotFound for
+	// unknown, revoked or expired sessions. RevokeAuthSession likewise
+	// returns ErrNotFound for a token that is unknown, already revoked, or
+	// already expired.
+	CountAuthUsers(ctx context.Context) (uint64, error)
+	GetAuthUser(ctx context.Context, id string) (AuthUser, error)
+	GetAuthUserByEmail(ctx context.Context, email string) (AuthUser, error)
+	ListAuthUsers(ctx context.Context) ([]AuthUser, error)
+	SaveAuthUser(ctx context.Context, u AuthUser) error
+	ListAuthGrants(ctx context.Context, userID string) ([]AuthGrant, error)
+	ReplaceAuthGrants(ctx context.Context, userID string, grants []AuthGrant) error
+	CreateAuthSession(ctx context.Context, s AuthSession) error
+	GetAuthSession(ctx context.Context, tokenHash string) (AuthSession, error)
+	RevokeAuthSession(ctx context.Context, tokenHash string) error
 }
 
 // AlertChannel is a UI-managed delivery channel (global, not per-tenant).
