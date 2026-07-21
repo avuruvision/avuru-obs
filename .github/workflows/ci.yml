@@ -22,7 +22,10 @@ jobs:
         uses: golangci/golangci-lint-action@v8   # v8 targets golangci-lint v2 (matches hub/.golangci.yml `version: "2"`)
         with:
           working-directory: hub
-          version: latest
+          # Pinned: `latest` resolves the version via the GitHub API at run
+          # time, which rate-limits on shared runners (observed failing a
+          # docs-only PR) and silently drifts lint rules between runs.
+          version: v2.12.2
 
   ui:
     runs-on: ubuntu-latest
