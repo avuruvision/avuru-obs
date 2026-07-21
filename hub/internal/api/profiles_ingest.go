@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/storage/profilesadapter"
 )
 
@@ -34,7 +35,14 @@ func (a *API) handleProfilesIngest(w http.ResponseWriter, r *http.Request) error
 		return badRequest("profiles payload exceeds %d bytes", maxProfilesBody)
 	}
 
-	samples, err := profilesadapter.ParseProto(body, tenant(r))
+	// No identity in context here (this route bypasses secured()/securedAdmin()
+	// — see the router comment), so project() just trusts the header, matching
+	// the pre-auth behavior this machine-ingest path has always had.
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
+	samples, err := profilesadapter.ParseProto(body, tenant)
 	if err != nil {
 		return badRequest("invalid profiles payload: %v", err)
 	}

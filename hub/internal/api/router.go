@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/avuru/avuru-obs/hub/internal/alerting"
+	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/health"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
@@ -47,6 +48,12 @@ type Config struct {
 	// /api/v1/alerts/channels/{name}/test). Shared with the evaluator so the
 	// SSRF policy is identical. nil → test endpoint answers 503.
 	Notifier alerting.Notifier
+	// Auth enables authentication when non-nil; nil keeps the pre-auth open
+	// behavior (auth.enabled=false).
+	Auth *auth.Service
+	// AnonymousIdentity, when non-nil, is served to requests without a valid
+	// session (demo mode: a Viewer scoped to listed projects).
+	AnonymousIdentity *auth.Identity
 }
 
 // API holds handler dependencies.
@@ -75,56 +82,60 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 
 	// core — never disableable (the wedge: service map + traces + RED).
 	mux.HandleFunc("GET /healthz", handleHealthz)
-	mux.Handle("GET /api/v1/status", handle(a.handleStatus))
-	mux.Handle("GET /api/v1/capabilities", handle(a.handleCapabilities))
-	mux.Handle("GET /api/v1/projects", handle(a.handleProjects))
-	mux.Handle("GET /api/v1/system/status", handle(a.handleSystemStatus))
-	mux.Handle("GET /api/v1/services", handle(a.handleServices))
-	mux.Handle("GET /api/v1/service-map", handle(a.handleServiceMap))
-	mux.Handle("GET /api/v1/traces", handle(a.handleSearchTraces))
-	mux.Handle("GET /api/v1/traces/overview", handle(a.handleTraceOverview))
-	mux.Handle("GET /api/v1/traces/heatmap", handle(a.handleHeatmap))
-	mux.Handle("GET /api/v1/traces/{traceId}", handle(a.handleGetTrace))
-	mux.Handle("GET /api/v1/spans/{spanId}", handle(a.handleGetSpan))
-	mux.Handle("GET /api/v1/metrics/red", handle(a.handleREDSeries))
+	mux.Handle("GET /api/v1/status", a.secured(auth.RoleViewer, a.handleStatus))
+	mux.Handle("GET /api/v1/capabilities", a.secured(auth.RoleViewer, a.handleCapabilities))
+	mux.Handle("GET /api/v1/projects", a.secured(auth.RoleViewer, a.handleProjects))
+	// system/status is instance-wide (disk capacity, retained-row counts) —
+	// not project data, so a single-project viewer or the anonymous demo
+	// identity has no business seeing it. Global admin only.
+	mux.Handle("GET /api/v1/system/status", a.securedAdmin(a.handleSystemStatus))
+	mux.Handle("GET /api/v1/services", a.secured(auth.RoleViewer, a.handleServices))
+	mux.Handle("GET /api/v1/service-map", a.secured(auth.RoleViewer, a.handleServiceMap))
+	mux.Handle("GET /api/v1/traces", a.secured(auth.RoleViewer, a.handleSearchTraces))
+	mux.Handle("GET /api/v1/traces/overview", a.secured(auth.RoleViewer, a.handleTraceOverview))
+	mux.Handle("GET /api/v1/traces/heatmap", a.secured(auth.RoleViewer, a.handleHeatmap))
+	mux.Handle("GET /api/v1/traces/{traceId}", a.secured(auth.RoleViewer, a.handleGetTrace))
+	mux.Handle("GET /api/v1/spans/{spanId}", a.secured(auth.RoleViewer, a.handleGetSpan))
+	mux.Handle("GET /api/v1/metrics/red", a.secured(auth.RoleViewer, a.handleREDSeries))
 
 	if active.Enabled(modules.Logs) {
-		mux.Handle("GET /api/v1/logs", handle(a.handleSearchLogs))
-		mux.Handle("GET /api/v1/traces/{traceId}/logs", handle(a.handleLogsForTrace))
+		mux.Handle("GET /api/v1/logs", a.secured(auth.RoleViewer, a.handleSearchLogs))
+		mux.Handle("GET /api/v1/traces/{traceId}/logs", a.secured(auth.RoleViewer, a.handleLogsForTrace))
 	}
 	if active.Enabled(modules.Profiling) {
-		mux.Handle("GET /api/v1/profiles/services", handle(a.handleProfiledServices))
-		mux.Handle("GET /api/v1/profiles/flamegraph", handle(a.handleFlamegraph))
+		mux.Handle("GET /api/v1/profiles/services", a.secured(auth.RoleViewer, a.handleProfiledServices))
+		mux.Handle("GET /api/v1/profiles/flamegraph", a.secured(auth.RoleViewer, a.handleFlamegraph))
+		// Machine ingest — session auth does not apply; ingest keys (Plan C) will.
 		// OTLP profiles ingest (alpha signal) — deliberately NOT under
 		// /api/v1; this is the otlphttp exporter's default profiles path.
 		mux.Handle("POST /v1development/profiles", handle(a.handleProfilesIngest))
 	}
 	if active.Enabled(modules.InfraMetrics) {
-		mux.Handle("GET /api/v1/infra/nodes", handle(a.handleInfraNodes))
-		mux.Handle("GET /api/v1/infra/pods", handle(a.handleInfraPods))
+		mux.Handle("GET /api/v1/infra/nodes", a.secured(auth.RoleViewer, a.handleInfraNodes))
+		mux.Handle("GET /api/v1/infra/pods", a.secured(auth.RoleViewer, a.handleInfraPods))
 		// The sensor inventory reads collector self-metrics from the metrics
 		// tables, so it lives with infra-metrics (see the module AEP).
-		mux.Handle("GET /api/v1/agents", handle(a.handleAgents))
+		mux.Handle("GET /api/v1/agents", a.secured(auth.RoleViewer, a.handleAgents))
 	}
 	if active.Enabled(modules.ErrorTracking) {
-		mux.Handle("GET /api/v1/errors/issues", handle(a.handleSearchErrorIssues))
-		mux.Handle("GET /api/v1/errors/issues/{fingerprint}", handle(a.handleGetErrorIssue))
-		mux.Handle("GET /api/v1/errors/issues/{fingerprint}/events", handle(a.handleListErrorEvents))
-		mux.Handle("GET /api/v1/errors/issues/{fingerprint}/histogram", handle(a.handleErrorIssueHistogram))
-		mux.Handle("POST /api/v1/errors/issues/{fingerprint}/status", handle(a.handleSetErrorIssueStatus))
+		mux.Handle("GET /api/v1/errors/issues", a.secured(auth.RoleViewer, a.handleSearchErrorIssues))
+		mux.Handle("GET /api/v1/errors/issues/{fingerprint}", a.secured(auth.RoleViewer, a.handleGetErrorIssue))
+		mux.Handle("GET /api/v1/errors/issues/{fingerprint}/events", a.secured(auth.RoleViewer, a.handleListErrorEvents))
+		mux.Handle("GET /api/v1/errors/issues/{fingerprint}/histogram", a.secured(auth.RoleViewer, a.handleErrorIssueHistogram))
+		mux.Handle("POST /api/v1/errors/issues/{fingerprint}/status", a.secured(auth.RoleEditor, a.handleSetErrorIssueStatus))
 	}
 	if active.Enabled(modules.ServiceHealth) {
-		mux.Handle("GET /api/v1/health/groups", handle(a.handleHealthGroups))
-		mux.Handle("GET /api/v1/health/groups/{name}", handle(a.handleHealthGroup))
+		mux.Handle("GET /api/v1/health/groups", a.secured(auth.RoleViewer, a.handleHealthGroups))
+		mux.Handle("GET /api/v1/health/groups/{name}", a.secured(auth.RoleViewer, a.handleHealthGroup))
 	}
 	if active.Enabled(modules.Alerting) {
-		mux.Handle("GET /api/v1/alerts", handle(a.handleAlerts))
-		mux.Handle("GET /api/v1/alerts/rules", handle(a.handleAlertRules))
-		mux.Handle("GET /api/v1/alerts/channels", handle(a.handleListAlertChannels))
-		mux.Handle("POST /api/v1/alerts/channels", handle(a.handleCreateAlertChannel))
-		mux.Handle("PUT /api/v1/alerts/channels/{name}", handle(a.handleUpdateAlertChannel))
-		mux.Handle("DELETE /api/v1/alerts/channels/{name}", handle(a.handleDeleteAlertChannel))
-		mux.Handle("POST /api/v1/alerts/channels/{name}/test", handle(a.handleTestAlertChannel))
+		mux.Handle("GET /api/v1/alerts", a.secured(auth.RoleViewer, a.handleAlerts))
+		mux.Handle("GET /api/v1/alerts/rules", a.secured(auth.RoleViewer, a.handleAlertRules))
+		mux.Handle("GET /api/v1/alerts/channels", a.secured(auth.RoleViewer, a.handleListAlertChannels))
+		mux.Handle("POST /api/v1/alerts/channels", a.securedAdmin(a.handleCreateAlertChannel))
+		mux.Handle("PUT /api/v1/alerts/channels/{name}", a.securedAdmin(a.handleUpdateAlertChannel))
+		mux.Handle("DELETE /api/v1/alerts/channels/{name}", a.securedAdmin(a.handleDeleteAlertChannel))
+		mux.Handle("POST /api/v1/alerts/channels/{name}/test", a.securedAdmin(a.handleTestAlertChannel))
 	}
 }
 

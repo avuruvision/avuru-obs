@@ -22,6 +22,14 @@ func badRequest(format string, args ...any) error {
 	return &apiError{status: http.StatusBadRequest, message: fmt.Sprintf(format, args...)}
 }
 
+func unauthorized() error {
+	return &apiError{status: http.StatusUnauthorized, message: "authentication required"}
+}
+
+func forbidden(format string, args ...any) error {
+	return &apiError{status: http.StatusForbidden, message: fmt.Sprintf(format, args...)}
+}
+
 var errStoreUnavailable = &apiError{status: http.StatusServiceUnavailable, message: "telemetry store unavailable"}
 
 type errorBody struct {

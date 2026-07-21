@@ -3,9 +3,11 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/alerting"
+	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
@@ -40,7 +42,10 @@ func (a *API) handleAlerts(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	tenant := tenant(r)
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
 	states, err := store.LoadAlertStates(r.Context(), tenant)
 	if err != nil {
 		return err
@@ -101,9 +106,11 @@ type alertRulesResponse struct {
 }
 
 // handleAlertRules returns the loaded rules/channels so the UI can show what is
-// configured. Secrets are redacted.
-func (a *API) handleAlertRules(w http.ResponseWriter, _ *http.Request) error {
+// configured. Secrets are redacted; channel URLs are redacted too (see
+// redactWebhookURL).
+func (a *API) handleAlertRules(w http.ResponseWriter, r *http.Request) error {
 	cfg := a.alertsConfig()
+	id := identityFrom(r.Context())
 	resp := alertRulesResponse{Rules: []alertRuleDTO{}, Channels: []alertChannelDTO{}}
 	for _, ru := range cfg.Rules {
 		resp.Rules = append(resp.Rules, alertRuleDTO{
@@ -113,11 +120,30 @@ func (a *API) handleAlertRules(w http.ResponseWriter, _ *http.Request) error {
 	}
 	for _, ch := range cfg.Channels {
 		resp.Channels = append(resp.Channels, alertChannelDTO{
-			Name: ch.Name, Type: ch.Type, URL: ch.URL, HasAuth: ch.Secret != "",
+			Name: ch.Name, Type: ch.Type, URL: redactWebhookURL(ch.URL, id), HasAuth: ch.Secret != "",
 		})
 	}
 	writeJSON(w, http.StatusOK, resp)
 	return nil
+}
+
+// redactWebhookURL hides the full destination URL from non-admin identities.
+// For incoming-webhook channels (Slack/Discord/Teams/generic webhook), the
+// URL itself is the credential — it embeds the delivery token in its path or
+// query. Admins (and a nil identity: auth disabled) see the full URL;
+// everyone else gets scheme+host only, so the destination is still visible
+// without leaking the token. A URL that fails to parse is dropped entirely
+// rather than risk it round-tripping to a non-admin caller unredacted.
+func redactWebhookURL(rawURL string, id *auth.Identity) string {
+	if id == nil || id.IsAdmin() {
+		return rawURL
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	hostOnly := url.URL{Scheme: u.Scheme, Host: u.Host}
+	return hostOnly.String()
 }
 
 // --- UI-managed channels (create/edit/delete delivery endpoints from the UI).
@@ -168,6 +194,12 @@ func (a *API) handleListAlertChannels(w http.ResponseWriter, r *http.Request) er
 	}
 	for _, ch := range a.alertsConfig().Channels {
 		resp.Channels = append(resp.Channels, toChannelDTO(ch, "config", uiNames[ch.Name]))
+	}
+	// The URL is the secret for incoming-webhook channels — redact it for
+	// non-admins the same way /rules does.
+	id := identityFrom(r.Context())
+	for i := range resp.Channels {
+		resp.Channels[i].URL = redactWebhookURL(resp.Channels[i].URL, id)
 	}
 	writeJSON(w, http.StatusOK, resp)
 	return nil
@@ -305,10 +337,14 @@ func (a *API) handleTestAlertChannel(w http.ResponseWriter, r *http.Request) err
 	if !found {
 		return storage.ErrNotFound
 	}
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
 	note := alerting.Notification{
 		Rule: "test", Target: "channel:" + name, Kind: "test",
 		Status: "healthy", Reason: "test notification from the Avuru Obs UI",
-		Tenant: tenant(r), At: time.Now().UTC(),
+		Tenant: tenant, At: time.Now().UTC(),
 	}
 	if err := a.cfg.Notifier.Send(r.Context(), ch, note); err != nil {
 		return &apiError{status: http.StatusBadGateway, message: "delivery failed: " + err.Error()}

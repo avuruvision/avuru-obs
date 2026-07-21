@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
@@ -63,8 +64,12 @@ func (a *API) handleInfraNodes(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
 	nodes, err := store.ListNodeStats(r.Context(), storage.InfraQuery{
-		Tenant: tenant(r),
+		Tenant: tenant,
 		Range:  tr,
 		Points: points,
 	})
@@ -103,8 +108,12 @@ func (a *API) handleInfraPods(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
 	pods, err := store.ListPodStats(r.Context(), storage.InfraQuery{
-		Tenant: tenant(r),
+		Tenant: tenant,
 		Range:  tr,
 		Node:   r.URL.Query().Get("node"),
 		Limit:  limit,

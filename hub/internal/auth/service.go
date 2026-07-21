@@ -42,6 +42,9 @@ func NewService(store func() storage.Store, sessionTTL time.Duration) *Service {
 	return &Service{store: store, ttl: sessionTTL, limiter: newRateLimiter()}
 }
 
+// SessionTTL exposes the configured session lifetime (cookie Max-Age mirrors it).
+func (s *Service) SessionTTL() time.Duration { return s.ttl }
+
 func (s *Service) st() (storage.Store, error) {
 	if st := s.store(); st != nil {
 		return st, nil

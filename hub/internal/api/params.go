@@ -134,12 +134,3 @@ func parseCursor(r *http.Request) (*storage.TraceCursor, error) {
 		TraceID:   parts[2],
 	}, nil
 }
-
-// tenant resolves the request tenant (single-tenant in OSS; header is the
-// enterprise seam).
-func tenant(r *http.Request) string {
-	if t := r.Header.Get("X-Avuru-Tenant"); t != "" {
-		return t
-	}
-	return storage.DefaultTenant
-}

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
@@ -46,8 +47,12 @@ func (a *API) handleREDSeries(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
 	q := storage.REDQuery{
-		Tenant:     tenant(r),
+		Tenant:     tenant,
 		Range:      tr,
 		Service:    r.URL.Query().Get("service"),
 		Points:     points,
