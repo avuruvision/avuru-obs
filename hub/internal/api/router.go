@@ -105,6 +105,12 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("POST /api/v1/auth/login", handle(a.handleLogin))
 		mux.Handle("POST /api/v1/auth/logout", a.authenticated(a.handleLogout))
 		mux.Handle("GET /api/v1/auth/me", a.authenticated(a.handleMe))
+
+		// Users admin API — global admin only (creates/edits credentials and
+		// grants for OTHER users, unlike /auth/me which is self-service).
+		mux.Handle("GET /api/v1/users", a.securedAdmin(a.handleListUsers))
+		mux.Handle("POST /api/v1/users", a.securedAdmin(a.handleCreateUser))
+		mux.Handle("PUT /api/v1/users/{id}", a.securedAdmin(a.handleUpdateUser))
 	}
 
 	if active.Enabled(modules.Logs) {

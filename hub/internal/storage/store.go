@@ -552,6 +552,12 @@ type Store interface {
 	CreateAuthSession(ctx context.Context, s AuthSession) error
 	GetAuthSession(ctx context.Context, tokenHash string) (AuthSession, error)
 	RevokeAuthSession(ctx context.Context, tokenHash string) error
+	// RevokeAuthSessionsForUser revokes every live session belonging to
+	// userID in one operation (keyed by user, not by token) — used on
+	// password rotation, so a compromised account's existing cookies stop
+	// working the moment the password changes. A no-op (nil error) when the
+	// user has no live sessions.
+	RevokeAuthSessionsForUser(ctx context.Context, userID string) error
 }
 
 // AlertChannel is a UI-managed delivery channel (global, not per-tenant).

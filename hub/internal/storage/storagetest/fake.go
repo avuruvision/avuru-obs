@@ -372,3 +372,16 @@ func (f *Fake) RevokeAuthSession(_ context.Context, tokenHash string) error {
 	delete(f.Sessions, tokenHash)
 	return nil
 }
+
+// RevokeAuthSessionsForUser deletes every session belonging to userID —
+// mirrors the ClickHouse tombstone-write from the caller's point of view
+// (only live sessions are ever observable via GetAuthSession), without
+// needing to model the revoked-but-still-present row.
+func (f *Fake) RevokeAuthSessionsForUser(_ context.Context, userID string) error {
+	for hash, s := range f.Sessions {
+		if s.UserID == userID {
+			delete(f.Sessions, hash)
+		}
+	}
+	return nil
+}

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
@@ -219,6 +220,58 @@ func (s *Store) RevokeAuthSession(ctx context.Context, tokenHash string) error {
 	}
 	if err := batch.Append(tokenHash, sess.UserID, sess.CreatedAt, sess.ExpiresAt, uint8(1)); err != nil {
 		return fmt.Errorf("append auth_session revoke: %w", err)
+	}
+	return batch.Send()
+}
+
+// RevokeAuthSessionsForUser revokes every live (unexpired, not already
+// revoked) session for userID in one batch — used on password rotation, so a
+// compromised account's existing cookies stop working the moment the
+// password changes, rather than surviving until each session's own TTL. Each
+// rewritten row preserves its own CreatedAt/ExpiresAt, the same TTL safety
+// contract documented on RevokeAuthSession: the table's TTL is keyed off
+// ExpiresAt, so a tombstone that changed it would let the row outlive (or
+// die before) the original session's TTL. A no-op when the user has no live
+// sessions.
+func (s *Store) RevokeAuthSessionsForUser(ctx context.Context, userID string) error {
+	rows, err := s.conn.Query(ctx, `
+SELECT TokenHash, CreatedAt, ExpiresAt
+FROM auth_session FINAL
+WHERE UserId = ? AND Revoked = 0 AND ExpiresAt > now64(3)`, userID)
+	if err != nil {
+		return fmt.Errorf("list live auth sessions: %w", err)
+	}
+	defer rows.Close()
+
+	type liveSession struct {
+		tokenHash string
+		createdAt time.Time
+		expiresAt time.Time
+	}
+	var live []liveSession
+	for rows.Next() {
+		var ls liveSession
+		if err := rows.Scan(&ls.tokenHash, &ls.createdAt, &ls.expiresAt); err != nil {
+			return fmt.Errorf("scan auth session: %w", err)
+		}
+		live = append(live, ls)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(live) == 0 {
+		return nil
+	}
+
+	batch, err := s.conn.PrepareBatch(ctx,
+		"INSERT INTO auth_session (TokenHash, UserId, CreatedAt, ExpiresAt, Revoked)")
+	if err != nil {
+		return fmt.Errorf("prepare auth_session batch: %w", err)
+	}
+	for _, ls := range live {
+		if err := batch.Append(ls.tokenHash, userID, ls.createdAt, ls.expiresAt, uint8(1)); err != nil {
+			return fmt.Errorf("append auth_session revoke: %w", err)
+		}
 	}
 	return batch.Send()
 }

@@ -259,6 +259,47 @@ func TestAuthRoundtrip(t *testing.T) {
 		}
 	})
 
+	t.Run("RevokeSessionsForUser", func(t *testing.T) {
+		userA := "u8"
+		userB := "u9"
+		if err := store.SaveAuthUser(ctx, storage.AuthUser{ID: userA, Email: "henry@example.com", Name: "Henry", Origin: "local"}); err != nil {
+			t.Fatalf("SaveAuthUser userA: %v", err)
+		}
+		if err := store.SaveAuthUser(ctx, storage.AuthUser{ID: userB, Email: "iris@example.com", Name: "Iris", Origin: "local"}); err != nil {
+			t.Fatalf("SaveAuthUser userB: %v", err)
+		}
+
+		now := time.Now().UTC().Truncate(time.Millisecond)
+		sessions := []storage.AuthSession{
+			{TokenHash: "revoke-a1", UserID: userA, CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+			{TokenHash: "revoke-a2", UserID: userA, CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+			{TokenHash: "revoke-b1", UserID: userB, CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+		}
+		for _, sess := range sessions {
+			if err := store.CreateAuthSession(ctx, sess); err != nil {
+				t.Fatalf("CreateAuthSession %s: %v", sess.TokenHash, err)
+			}
+		}
+
+		if err := store.RevokeAuthSessionsForUser(ctx, userA); err != nil {
+			t.Fatalf("RevokeAuthSessionsForUser: %v", err)
+		}
+
+		if _, err := store.GetAuthSession(ctx, "revoke-a1"); err != storage.ErrNotFound {
+			t.Errorf("revoke-a1 after RevokeAuthSessionsForUser: want ErrNotFound, got %v", err)
+		}
+		if _, err := store.GetAuthSession(ctx, "revoke-a2"); err != storage.ErrNotFound {
+			t.Errorf("revoke-a2 after RevokeAuthSessionsForUser: want ErrNotFound, got %v", err)
+		}
+		got, err := store.GetAuthSession(ctx, "revoke-b1")
+		if err != nil {
+			t.Fatalf("revoke-b1 (other user) should still resolve: %v", err)
+		}
+		if got.UserID != userB {
+			t.Errorf("revoke-b1 UserID = %q, want %q", got.UserID, userB)
+		}
+	})
+
 	t.Run("ReplaceGrantsSameScopeRoleChange", func(t *testing.T) {
 		userID := "u7"
 		if err := store.SaveAuthUser(ctx, storage.AuthUser{ID: userID, Email: "grace@example.com", Name: "Grace", Origin: "local"}); err != nil {

@@ -15,6 +15,15 @@ import (
 //     without this second axis they could force one bcrypt hash per request
 //     forever from a single IP — the per-account limiter alone doesn't
 //     bound that cost.
+//
+// Both axes key on Login's ip argument, which is deliberately RemoteAddr,
+// not a spoofable proxy header (see handleLogin) — so behind an ingress
+// every client shares the proxy's IP, and the per-IP cap degenerates to a
+// single GLOBAL failed-login cap for the whole deployment. Accepted: it
+// only throttles failed attempts (existing sessions and successful logins
+// are unaffected) and self-heals every loginWindow. A trusted-proxy option
+// (trust X-Forwarded-For from a configured ingress CIDR, to restore true
+// per-client accounting) is Plan C.
 const (
 	maxLoginAttempts      = 5
 	maxLoginAttemptsPerIP = 30

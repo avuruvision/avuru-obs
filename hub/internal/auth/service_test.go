@@ -183,22 +183,36 @@ func TestRateLimitIsPerIP(t *testing.T) {
 	}
 }
 
-// TestRateLimitPerIPCap proves the second (per-IP) axis: an attacker who
-// sprays a UNIQUE, never-seen email on every request never trips the
-// per-account "email|ip" window (each key is fresh), yet must still be
-// capped — otherwise they get one free bcrypt hash per request forever from
-// a single IP.
-func TestRateLimitPerIPCap(t *testing.T) {
-	f := &storagetest.Fake{}
-	svc := testService(f)
-	ctx := context.Background()
+// TestRateLimiterPerIPCap proves the second (per-IP) axis DIRECTLY against
+// the limiter: an attacker who sprays a UNIQUE, never-seen email on every
+// request never trips the per-account "email|ip" window (each key is
+// fresh), yet must still be capped — otherwise they get one free bcrypt
+// hash per request forever from a single IP. It also proves the per-IP
+// block self-heals once loginWindow elapses, via the injectable clock.
+//
+// Going straight to the limiter (no Login, no bcrypt) keeps this suite fast.
+// Scope of what's actually pinned: the per-ACCOUNT axis's wiring through
+// Login IS covered elsewhere — TestRateLimitIsPerIP at the service level,
+// TestLoginRateLimit429 at the HTTP level. Login's wiring of ip into THIS
+// (per-IP) axis is NOT separately pinned by any test that goes through
+// Login — on record as a real gap, not asserted away by this test's name.
+func TestRateLimiterPerIPCap(t *testing.T) {
+	l := newRateLimiter()
+	fakeNow := time.Now()
+	l.now = func() time.Time { return fakeNow }
 
 	for i := 0; i < maxLoginAttemptsPerIP; i++ {
 		email := fmt.Sprintf("spray%d@x.io", i)
-		_, _, _ = svc.Login(ctx, email, "wrong", "shared-ip")
+		l.fail(email+"|shared-ip", "shared-ip")
 	}
-	if _, _, err := svc.Login(ctx, "yet-another@x.io", "wrong", "shared-ip"); err != ErrTooManyAttempts {
-		t.Fatalf("after %d unique-email failures from one ip: got %v, want ErrTooManyAttempts", maxLoginAttemptsPerIP, err)
+	if !l.blocked("fresh@x.io|shared-ip", "shared-ip") {
+		t.Fatalf("after %d unique-email failures from one ip: not blocked, want blocked", maxLoginAttemptsPerIP)
+	}
+
+	// The block self-heals once loginWindow elapses (fixed-window cap).
+	fakeNow = fakeNow.Add(loginWindow + time.Second)
+	if l.blocked("fresh@x.io|shared-ip", "shared-ip") {
+		t.Fatal("per-ip block should clear after loginWindow elapses")
 	}
 }
 
