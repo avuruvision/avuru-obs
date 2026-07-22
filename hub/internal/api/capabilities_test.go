@@ -36,7 +36,7 @@ func TestCapabilitiesDefaultAllModules(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	want := []string{"core", "logs", "infra-metrics", "profiling", "error-tracking", "service-health", "alerting"}
+	want := []string{"core", "logs", "infra-metrics", "profiling", "error-tracking", "service-health", "alerting", "green"}
 	if !reflect.DeepEqual(resp.Modules, want) {
 		t.Errorf("modules = %v, want %v", resp.Modules, want)
 	}
@@ -67,6 +67,9 @@ func TestModuleRouteGating(t *testing.T) {
 		"/api/v1/health/groups/payments",
 		"/api/v1/alerts",
 		"/api/v1/alerts/rules",
+		"/api/v1/green/summary",
+		"/api/v1/green/budgets",
+		"/api/v1/green/report",
 	} {
 		if rec := get(t, mux, path); rec.Code != http.StatusNotFound {
 			t.Errorf("%s: got %d, want 404 with module disabled", path, rec.Code)
@@ -80,6 +83,28 @@ func TestModuleRouteGating(t *testing.T) {
 	}
 	if !reflect.DeepEqual(resp.Modules, []string{"core"}) {
 		t.Errorf("modules = %v, want [core]", resp.Modules)
+	}
+}
+
+// TestGreenRoutesWhenEnabled proves the module-on side of the green contract:
+// with green (and its infra-metrics dependency) active, the routes exist and
+// capabilities reports the module.
+func TestGreenRoutesWhenEnabled(t *testing.T) {
+	mux := muxWithModules(t, "green,infra-metrics")
+
+	for _, path := range []string{"/api/v1/green/summary", "/api/v1/green/budgets", "/api/v1/green/report"} {
+		if rec := get(t, mux, path); rec.Code == http.StatusNotFound {
+			t.Errorf("%s: green route missing (404) with green enabled", path)
+		}
+	}
+
+	var resp capabilitiesResponse
+	rec := get(t, mux, "/api/v1/capabilities")
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !reflect.DeepEqual(resp.Modules, []string{"core", "infra-metrics", "green"}) {
+		t.Errorf("modules = %v, want [core infra-metrics green]", resp.Modules)
 	}
 }
 
