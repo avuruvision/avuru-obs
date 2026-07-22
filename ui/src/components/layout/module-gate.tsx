@@ -13,6 +13,7 @@ const HELM_VALUE: Record<Exclude<ModuleName, "core">, string> = {
   "error-tracking": "modules.errorTracking.enabled",
   "service-health": "modules.serviceHealth.enabled",
   alerting: "modules.alerting.enabled",
+  green: "modules.green.enabled",
 };
 
 const LABEL: Record<Exclude<ModuleName, "core">, string> = {
@@ -22,6 +23,7 @@ const LABEL: Record<Exclude<ModuleName, "core">, string> = {
   "error-tracking": "Error tracking",
   "service-health": "Service health",
   alerting: "Alerting",
+  green: "Energy & carbon",
 };
 
 // Renders `children` unless this install doesn't run `module`, in which case

@@ -11,7 +11,8 @@ export type ModuleName =
   | "profiling"
   | "error-tracking"
   | "service-health"
-  | "alerting";
+  | "alerting"
+  | "green";
 
 export interface CapabilitiesResponse {
   version: string;
