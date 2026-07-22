@@ -173,6 +173,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	greenConfig, err := loadGreenConfig(ctx)
+	if err != nil {
+		return err
+	}
 
 	// One notifier shared by the evaluator and the channels test endpoint, so
 	// the SSRF policy is identical on both paths.
@@ -194,6 +198,7 @@ func run() error {
 		GroupsConfig:          groupsConfig,
 		AlertsConfig:          alertsConfig,
 		Notifier:              notifier,
+		GreenConfig:           greenConfig,
 	})
 
 	// The alerting evaluator is a single background loop (see runAlertingEvaluator);
