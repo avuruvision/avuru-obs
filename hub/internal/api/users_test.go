@@ -19,7 +19,7 @@ func adminMux(t *testing.T) (*http.ServeMux, *http.Cookie, *storagetest.Fake) {
 	t.Helper()
 	f := &storagetest.Fake{}
 	svc := auth.NewService(func() storage.Store { return f }, time.Hour)
-	if err := svc.Bootstrap(context.Background(), "root-pw"); err != nil {
+	if _, err := svc.Bootstrap(context.Background(), "root-pw"); err != nil {
 		t.Fatal(err)
 	}
 	token, _, err := svc.Login(context.Background(), "admin", "root-pw", "test")

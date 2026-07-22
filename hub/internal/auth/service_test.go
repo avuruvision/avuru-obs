@@ -100,8 +100,12 @@ func TestBootstrapCreatesAdminOnce(t *testing.T) {
 	f := &storagetest.Fake{}
 	svc := testService(f)
 	ctx := context.Background()
-	if err := svc.Bootstrap(ctx, "root-pw"); err != nil {
+	created, err := svc.Bootstrap(ctx, "root-pw")
+	if err != nil {
 		t.Fatalf("bootstrap: %v", err)
+	}
+	if !created {
+		t.Fatalf("first bootstrap: created=false, want true")
 	}
 	if len(f.SavedUsers) != 1 || f.SavedUsers[0].Email != "admin" {
 		t.Fatalf("saved: %+v", f.SavedUsers)
@@ -110,8 +114,12 @@ func TestBootstrapCreatesAdminOnce(t *testing.T) {
 		t.Fatalf("admin grants: %+v", g)
 	}
 	// Second call is a no-op (users exist).
-	if err := svc.Bootstrap(ctx, "other"); err != nil {
+	created, err = svc.Bootstrap(ctx, "other")
+	if err != nil {
 		t.Fatalf("re-bootstrap: %v", err)
+	}
+	if created {
+		t.Fatalf("re-bootstrap: created=true, want false (users exist)")
 	}
 	if len(f.SavedUsers) != 1 {
 		t.Fatalf("re-bootstrap created a user: %+v", f.SavedUsers)
@@ -139,8 +147,8 @@ func TestStoreUnavailable(t *testing.T) {
 	if err := svc.Logout(ctx, "tok"); !errors.Is(err, ErrStoreUnavailable) {
 		t.Fatalf("Logout: got %v, want ErrStoreUnavailable", err)
 	}
-	if err := svc.Bootstrap(ctx, "pw"); !errors.Is(err, ErrStoreUnavailable) {
-		t.Fatalf("Bootstrap: got %v, want ErrStoreUnavailable", err)
+	if created, err := svc.Bootstrap(ctx, "pw"); !errors.Is(err, ErrStoreUnavailable) || created {
+		t.Fatalf("Bootstrap: got created=%v err=%v, want false, ErrStoreUnavailable", created, err)
 	}
 }
 

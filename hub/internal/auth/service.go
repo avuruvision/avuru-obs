@@ -133,37 +133,40 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 }
 
 // Bootstrap creates the global-admin `admin` user when no users exist. Called
-// once at startup, after the store connects.
-func (s *Service) Bootstrap(ctx context.Context, adminPassword string) error {
+// once at startup, after the store connects. created reports whether THIS
+// call is the one that created the admin (false, nil means a user already
+// existed) — callers that generate a random password need this to know
+// whether to disclose it.
+func (s *Service) Bootstrap(ctx context.Context, adminPassword string) (created bool, err error) {
 	st, err := s.st()
 	if err != nil {
-		return err
+		return false, err
 	}
 	n, err := st.CountAuthUsers(ctx)
 	if err != nil {
-		return fmt.Errorf("counting users: %w", err)
+		return false, fmt.Errorf("counting users: %w", err)
 	}
 	if n > 0 {
-		return nil
+		return false, nil
 	}
 	hash, err := HashPassword(adminPassword)
 	if err != nil {
-		return err
+		return false, err
 	}
 	// Grant first: if we crash between the writes, the next boot still sees
 	// zero users and retries; an orphan grant row is harmless.
 	if err := st.ReplaceAuthGrants(ctx, bootstrapAdminID, []storage.AuthGrant{
 		{UserID: bootstrapAdminID, Scope: "*", Role: string(RoleAdmin)},
 	}); err != nil {
-		return fmt.Errorf("granting admin: %w", err)
+		return false, fmt.Errorf("granting admin: %w", err)
 	}
 	u := storage.AuthUser{ID: bootstrapAdminID, Email: "admin", Name: "Administrator",
 		PasswordHash: hash, Origin: "local"}
 	if err := st.SaveAuthUser(ctx, u); err != nil {
-		return fmt.Errorf("creating admin: %w", err)
+		return false, fmt.Errorf("creating admin: %w", err)
 	}
 	slog.Info("bootstrap: created admin user", "email", "admin")
-	return nil
+	return true, nil
 }
 
 func (s *Service) identityFor(ctx context.Context, st storage.Store, u storage.AuthUser) (Identity, error) {
