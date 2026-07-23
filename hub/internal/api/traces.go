@@ -85,6 +85,11 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 	for _, e := range edges {
 		resp.Edges = append(resp.Edges, toServiceEdgeDTO(e))
 	}
+	// Energy overlay (module green): per-service Wh/gCO2e as a map lens.
+	// Best-effort — the map renders even if the energy read fails.
+	if a.modules.Enabled(modules.Green) {
+		a.stampServiceEnergy(r.Context(), store, q.Tenant, tr, resp.Services)
+	}
 	resp.Edges = applyEdgeHealth(resp.Edges, health)
 	writeJSON(w, http.StatusOK, resp)
 	return nil

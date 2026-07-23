@@ -37,6 +37,7 @@ type Fake struct {
 
 	ServiceEnergies []storage.ServiceEnergy
 	NodeEnergies    []storage.NodeEnergy
+	GreenErr        error
 
 	Issues       []storage.ErrorIssue
 	Issue        storage.ErrorIssue
@@ -214,11 +215,17 @@ func (f *Fake) SetErrorIssueStatus(_ context.Context, tenant string, fingerprint
 
 func (f *Fake) ServiceEnergy(_ context.Context, q storage.GreenQuery) ([]storage.ServiceEnergy, error) {
 	f.LastGreenQuery = q
+	if f.GreenErr != nil {
+		return nil, f.GreenErr
+	}
 	return f.ServiceEnergies, nil
 }
 
 func (f *Fake) NodeEnergy(_ context.Context, q storage.GreenQuery) ([]storage.NodeEnergy, error) {
 	f.LastGreenQuery = q
+	if f.GreenErr != nil {
+		return nil, f.GreenErr
+	}
 	return f.NodeEnergies, nil
 }
 

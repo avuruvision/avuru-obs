@@ -16,6 +16,13 @@ package green
 // it must stay consistent with the 2023/2024 vintage stated above.
 const intensityDataset = "Ember 2023/24"
 
+// IntensityDataset is the bundled factor table's identifier, exported so the
+// API's summary factors block can name the dataset the bundled defaults come
+// from. It is the provenance of the bundled table only — the authoritative
+// provenance of the number actually used is EffectiveIntensity's source label
+// (which reads "operator-set" when the operator overrode the factor).
+const IntensityDataset = intensityDataset
+
 // regionWorld is the pseudo-region for the global average — the fallback when
 // no region is configured (also accepted explicitly as region: "WORLD").
 const regionWorld = "WORLD"

@@ -63,6 +63,11 @@ const (
 	defaultBudgetCheckIntervalSec = 300
 )
 
+// DefaultWarnRatio is the warn threshold (fraction of budget) applied to a
+// budget that sets none. Exported so the API's fallback for direct-constructed
+// configs references this single source instead of re-hardcoding 0.8.
+const DefaultWarnRatio = defaultWarnRatio
+
 // defaultMetrics are the rebooted-Kepler (v0.11.x) names from the AEP's
 // metric-name table — the single source of truth both the sensor keep-regex
 // and these defaults must match.
