@@ -84,8 +84,10 @@ through the SAME ladder: canary pool → soak → widen. Green-specific points:
   `ls /sys/class/powercap/intel-rapl*` (empty or absent = no RAPL = no energy
   data from that node). A canary pool of RAPL-less nodes proves only that
   Kepler does no harm — it says nothing about the data path. Mixed fleets are
-  fine and expected: `/green`'s coverage ratio makes the RAPL-less share
-  visible; it is not a rollout failure.
+  fine and expected — RAPL-less nodes just contribute no energy, so their
+  workloads show none in `/green`; that absence is not a rollout failure.
+  (The coverage ratio measures attribution of *measured* energy, not RAPL
+  reach — it will not flag the RAPL-less share.)
 - **Kepler has no probes by design**, so it can never flap the sensor pod —
   during the soak, watch the *sensor* pods stay Ready and the kepler container
   for crash loops (`kubectl logs ds/<release>-sensor -c kepler`); a

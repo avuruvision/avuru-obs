@@ -31,12 +31,16 @@ RAPL/powercap, which is why the container is **born off** — a default-on
 energy collector would silently flip on for every install on upgrade. On a
 node without RAPL, Kepler simply measures nothing: v1 reports only what was
 measured (no TDP estimation), `/green` shows a teaching empty state, and the
-preflight initContainer prints a loud warning. Partial fleets (some nodes with
-RAPL, some without) surface as a coverage ratio in every export rather than as
-an error. To keep a RAPL-less Kepler from ever destabilizing collection, the
-container carries **no liveness/readiness/startup probes** — it may sit idle
-or unhealthy, but it can never flap the sensor pod (the "do no harm"
-probe-canary gate in `deploy/helm/e2e-helm.sh` enforces exactly this, with the
-fake-cpu-meter producing energy during the soak). CI environments without RAPL
-use `sensor.green.fakeCpuMeter=true` (Kepler's dev fake meter) — never enable
-it where real hardware exists, it fabricates measurements.
+preflight initContainer prints a loud warning. On partial fleets (some nodes
+with RAPL, some without) the RAPL-less share is simply absent energy —
+workloads on those nodes report nothing. The export's coverage ratio measures
+how much of the *measured* energy was attributed to workloads, not RAPL reach;
+node-level coverage from the collected node counters is a planned follow-up
+(see the design AEP). To keep a RAPL-less Kepler from ever destabilizing
+collection, the container carries **no liveness/readiness/startup probes** —
+it may sit idle or unhealthy, but it can never flap the sensor pod (the
+"do no harm" probe-canary gate in `deploy/helm/e2e-helm.sh` enforces exactly
+this, with the fake-cpu-meter producing energy during the soak). CI
+environments without RAPL use `sensor.green.fakeCpuMeter=true` (Kepler's dev
+fake meter) — never enable it where real hardware exists, it fabricates
+measurements.

@@ -147,10 +147,12 @@ gauge read is the kubeletstats pod→workload join — `k8s.pod.cpu.usage`
 ResourceAttributes — not Kepler watts, which v1 never queries), the
 service-health / network-health precedent: Wh = Δjoules ÷ 3600 from the
 cumulative counters per pod over the window, summed to the workload via the
-kubeletstats join. Node energy minus attributed pod energy is reported as an
-explicit **unattributed** bucket, and attributed ÷ node is the **coverage
-ratio** the methodology block cites. Metrics retention already covers the data;
-no migration, no rollup jobs.
+kubeletstats join. Measured pod energy the join cannot place is reported as an
+explicit **unattributed** bucket, and attributed ÷ measured is the **coverage
+ratio** the methodology block cites — an *attribution* ratio over what was
+measured: a RAPL-less node emits no counters at all, so it moves neither side
+of the ratio (see the degradation story below). Metrics retention already
+covers the data; no migration, no rollup jobs.
 
 ### CO2e factors — static config, computed at query time
 
@@ -201,8 +203,12 @@ merges its next-state into the existing tick's next-state **before**
 Most public-cloud VMs expose no powercap/RAPL — v1 targets bare-metal / metal
 instances. On clusters without RAPL: a **teaching empty state** in `/green` and
 a **preflight warning**, never a block; the Kepler container (no probes) must
-not affect the sensor pod's health. Partial coverage (some nodes with RAPL,
-some without) is exactly what the coverage ratio makes visible.
+not affect the sensor pod's health. On a partial fleet (some nodes with RAPL,
+some without) the RAPL-less share is *absent* energy — workloads there simply
+report nothing, and the coverage ratio (attribution over measured energy)
+cannot reveal it. Node-based coverage — nodes reporting energy vs known nodes,
+from the already-collected node counters — is the follow-up that makes that
+gap explicit (see roadmap follow-ups).
 
 ### Upholds the enterprise seam
 
@@ -254,8 +260,10 @@ today (per-tenant factors couple to the auth seam later); storage stays behind
 - `make helm-check` — `green` in `AVURUOPS_MODULES`, the sensor container and
   scrape config render only when opted in, the `{{ fail }}` guard fires without
   `infra-metrics`, everything disappears when disabled.
-- `make e2e` (compose + seeded Kepler metrics) — dashboard, budgets, export,
-  and a budget webhook landing on the sink.
+- `make e2e` (compose + seeded Kepler metrics) — dashboard, budgets, export;
+  the budgets endpoint surfaces the seeded budget over the mounted config
+  (the seeded usage never crosses a threshold, so no webhook fires — delivery
+  is covered by the unit tests and channel validation).
 - `make e2e-ui` — Playwright: `/green` renders from seed; disabled-module path.
 - `make e2e-helm` — Kepler runs with its **dev fake-cpu-meter**; `kepler%` rows
   polled in ClickHouse; the **TTV and probe-canary gates unchanged**.
@@ -275,11 +283,25 @@ today (per-tenant factors couple to the auth seam later); storage stays behind
 - [x] API `/api/v1/green/*` + UI `/green` + service-map overlay + CSRD export
 - [x] Deploy: `modules.green` + `sensor.green` values, `{{ fail }}` guard,
       schema, template-test
-- [ ] e2e (seeded) + Playwright + e2e-helm fake-cpu-meter leg (TTV + canary
-      gates untouched) — Go e2e + e2e-helm leg done; Playwright specs pending
+- [x] e2e (seeded) + Playwright + e2e-helm fake-cpu-meter leg (TTV + canary
+      gates untouched)
 - [ ] **Confirm Kepler config keys, metric names/labels, port and RBAC on real
       RAPL hardware** (blocks prod use)
 - [ ] Docs (module page, factors/budgets configuration, methodology) via
       docs-align
 - [ ] Post-v1: TDP estimation for RAPL-less nodes, hourly intensity, per-endpoint
       attribution, CRUD budgets + RBAC via the auth module
+
+### Post-v1 follow-ups (from the branch review)
+
+- Per-budget deliverability signal on the budgets DTO — the UI footnote
+  currently gates on alerting-off only, not on whether the budget's channel
+  can actually deliver.
+- Extract a generic hot-reload config loader — green's loader is the third
+  copy of the groups.go pattern.
+- Warn at runtime when a budget names a serviceGroups group that doesn't
+  exist.
+- Node-based coverage: `NodeEnergy()` is collected (and e2e-helm pins the
+  rows land) but not yet queried by the API — expose nodes-reporting vs
+  known-nodes so a RAPL-less share becomes visible, not just unattributed
+  energy.

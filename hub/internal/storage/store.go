@@ -547,9 +547,11 @@ type Store interface {
 	// attribution reads kubeletstats resource attributes). ServiceEnergy
 	// returns per-service Wh totals + bucketed series over the window,
 	// heaviest first; a row with empty Service is the unattributed bucket.
-	// NodeEnergy is the per-node equivalent from the node counters. Storage
-	// returns energy only (Wh) — carbon factors never enter SQL; gCO2e is
-	// computed by callers.
+	// NodeEnergy is the per-node equivalent from the node counters. It is not
+	// yet queried by the API — kept for the node-coverage follow-up (the
+	// sensor collects the node counters and e2e-helm pins that they land).
+	// Storage returns energy only (Wh) — carbon factors never enter SQL;
+	// gCO2e is computed by callers.
 	ServiceEnergy(ctx context.Context, q GreenQuery) ([]ServiceEnergy, error)
 	NodeEnergy(ctx context.Context, q GreenQuery) ([]NodeEnergy, error)
 	// Alerting (module alerting).
