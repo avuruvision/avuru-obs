@@ -42,7 +42,7 @@ export function Sidebar() {
       >
         <Hexagon className="h-5 w-5 shrink-0 text-primary" aria-hidden />
         {!collapsed && (
-          <span className="text-sm font-bold tracking-tight">avuru obs</span>
+          <span className="text-sm font-bold tracking-tight">Avuru Obs</span>
         )}
       </Link>
 
