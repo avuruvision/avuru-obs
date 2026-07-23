@@ -205,4 +205,76 @@ grep -q 'obi_stat_tcp_rtt' <<<"$out" && fail "stats config survived network.stat
 grep -qE 'network:' <<<"$out" || fail "network flow config missing"
 ok "flow bytes without TCP stats"
 
+echo "== green: born opt-off -> no energy surface at all"
+out="$(render)"
+grep -q 'name: kepler' <<<"$out" && fail "kepler container rendered without opt-in"
+grep -q 'prometheus/green' <<<"$out" && fail "green receiver rendered without opt-in"
+grep -q 'metrics/green' <<<"$out" && fail "green pipeline rendered without opt-in"
+grep -q 'AVURUOPS_GREEN_CONFIG' <<<"$out" && fail "green env rendered without opt-in"
+grep -q 'green.json' <<<"$out" && fail "green ConfigMap rendered without opt-in"
+grep -A1 'name: AVURUOPS_MODULES' <<<"$out" | grep -qE ',green[,"]' && fail "green in AVURUOPS_MODULES without opt-in"
+ok "no container, receiver, pipeline, ConfigMap, env or module entry by default"
+
+echo "== green: module + sensor on -> full surface, and NO probes on Kepler"
+out="$(render --set modules.green.enabled=true --set sensor.green.enabled=true)"
+grep -q 'name: kepler' <<<"$out" || fail "kepler container missing"
+grep -q 'prometheus/green:' <<<"$out" || fail "prometheus/green receiver missing"
+grep -q 'metrics/green:' <<<"$out" || fail "metrics/green pipeline missing"
+grep -q 'kepler_(node|pod)_cpu_(watts|joules_total)' <<<"$out" || fail "keep-regex missing or diverged from the AEP metric table"
+grep -q 'name: test-avuruops-green' <<<"$out" || fail "green (hub factors/budgets) ConfigMap missing"
+grep -q 'name: test-avuruops-sensor-kepler' <<<"$out" || fail "kepler config ConfigMap missing"
+grep -q 'AVURUOPS_GREEN_CONFIG' <<<"$out" || fail "AVURUOPS_GREEN_CONFIG env missing"
+grep -q 'core,logs,infra-metrics,profiling,error-tracking,service-health,alerting,green' <<<"$out" || fail "green missing from AVURUOPS_MODULES"
+grep -q '127.0.0.1:28282' <<<"$out" || fail "Kepler loopback bind/scrape target missing"
+# Prometheus scrape-report series (up, scrape_*) bypass metric_relabel_configs;
+# the pipeline must drop them or they pollute the shared otel_metrics_gauge.
+grep -qF 'IsMatch(name, "^(up|scrape_.+)$")' <<<"$out" || fail "scrape-meta drop condition (filter/green) missing"
+grep -qE 'processors: \[memory_limiter, filter/green, transform/green, groupbyattrs/green, resource/green, k8sattributes, filter/collection, batch\]' <<<"$out" \
+  || fail "filter/green not wired into the metrics/green pipeline"
+# The "do no harm" clause: a RAPL-less Kepler must never flap the sensor pod,
+# so the container must carry NO liveness/readiness/startup probe.
+kepler_block="$(sed -n '/- name: kepler$/,/resources:/p' <<<"$out")"
+[ -n "$kepler_block" ] || fail "could not isolate the kepler container block"
+grep -qE 'livenessProbe|readinessProbe|startupProbe' <<<"$kepler_block" \
+  && fail "Kepler container has a probe — a RAPL-less node would flap the sensor pod (do-no-harm gate)"
+ok "container + receiver + pipeline + ConfigMaps + env + module entry; Kepler carries no probes"
+
+echo "== green: guards"
+render --set modules.green.enabled=true --set modules.infraMetrics.enabled=false >/dev/null 2>&1 \
+  && fail "green module rendered without infra-metrics (the pod→workload join source)"
+render --set modules.green.enabled=true --set sensor.green.enabled=true --set sensor.agent.enabled=false >/dev/null 2>&1 \
+  && fail "green collection rendered without the otel-agent (nothing would scrape Kepler)"
+# Values that render nothing must never fail an install (obi/profiler precedent:
+# the sensor flag without its module no-ops instead of failing).
+render --set sensor.green.enabled=true >/dev/null 2>&1 \
+  || fail "sensor.green without modules.green failed instead of no-opping"
+out="$(render --set sensor.green.enabled=true)"
+grep -q 'name: kepler' <<<"$out" && fail "kepler rendered with the green module off"
+ok "module-without-infra-metrics and collect-without-agent fail; sensor-without-module no-ops"
+
+echo "== green: module on without the sensor -> hub config only"
+out="$(render --set modules.green.enabled=true)"
+grep -q 'AVURUOPS_GREEN_CONFIG' <<<"$out" || fail "green env missing with module on"
+grep -q 'name: test-avuruops-green' <<<"$out" || fail "green ConfigMap missing with module on"
+grep -q 'name: kepler' <<<"$out" && fail "kepler rendered without sensor.green.enabled"
+ok "hub reads factors/budgets; no collection until sensor.green opts in"
+
+echo "== green: privileged=false renders the capability path"
+out="$(render --set modules.green.enabled=true --set sensor.green.enabled=true --set sensor.green.privileged=false)"
+kepler_block="$(sed -n '/- name: kepler$/,/resources:/p' <<<"$out")"
+[ -n "$kepler_block" ] || fail "could not isolate the kepler container block"
+grep -q 'privileged: true' <<<"$kepler_block" && fail "privileged rendered with sensor.green.privileged=false"
+for cap in DAC_READ_SEARCH SYS_PTRACE PERFMON; do
+  grep -q "$cap" <<<"$kepler_block" || fail "capability $cap missing from the non-privileged path"
+done
+grep -qE '^ +- ALL' <<<"$kepler_block" || fail "drop: ALL missing from the non-privileged path"
+ok "cap set DAC_READ_SEARCH/SYS_PTRACE/PERFMON with drop ALL (the verify-on-hardware path)"
+
+echo "== green: fake-cpu-meter is opt-in for CI only"
+out="$(render --set modules.green.enabled=true --set sensor.green.enabled=true)"
+grep -q 'fake-cpu-meter' <<<"$out" && fail "fake-cpu-meter rendered without opt-in"
+out="$(render --set modules.green.enabled=true --set sensor.green.enabled=true --set sensor.green.fakeCpuMeter=true)"
+grep -q 'fake-cpu-meter' <<<"$out" || fail "fake-cpu-meter missing when set"
+ok "fake energy only when explicitly requested"
+
 echo "ALL TEMPLATE ASSERTIONS PASSED"

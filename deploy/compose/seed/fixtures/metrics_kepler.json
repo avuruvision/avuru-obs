@@ -1,0 +1,86 @@
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [
+          { "key": "k8s.node.name", "value": { "stringValue": "seed-node-1" } }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "avuru-seed-kepler", "version": "1" },
+          "metrics": [
+            {
+              "name": "kepler_pod_cpu_joules_total",
+              "description": "cumulative pod CPU energy (joules) — seeded Kepler fixture",
+              "unit": "J",
+              "sum": {
+                "aggregationTemporality": 2,
+                "isMonotonic": true,
+                "dataPoints": [
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asDouble": 1000,
+                    "attributes": [
+                      { "key": "pod_name", "value": { "stringValue": "seed-checkout-0" } },
+                      { "key": "pod_namespace", "value": { "stringValue": "shop" } }
+                    ]
+                  },
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "60000000000",
+                    "asDouble": 1720,
+                    "attributes": [
+                      { "key": "pod_name", "value": { "stringValue": "seed-checkout-0" } },
+                      { "key": "pod_namespace", "value": { "stringValue": "shop" } }
+                    ]
+                  },
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asDouble": 2000,
+                    "attributes": [
+                      { "key": "pod_name", "value": { "stringValue": "seed-payments-0" } },
+                      { "key": "pod_namespace", "value": { "stringValue": "shop" } }
+                    ]
+                  },
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "60000000000",
+                    "asDouble": 5600,
+                    "attributes": [
+                      { "key": "pod_name", "value": { "stringValue": "seed-payments-0" } },
+                      { "key": "pod_namespace", "value": { "stringValue": "shop" } }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "name": "kepler_node_cpu_joules_total",
+              "description": "cumulative node CPU energy (joules) — seeded Kepler fixture",
+              "unit": "J",
+              "sum": {
+                "aggregationTemporality": 2,
+                "isMonotonic": true,
+                "dataPoints": [
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asDouble": 10000
+                  },
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "60000000000",
+                    "asDouble": 28000
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -25,6 +25,10 @@ rules:
     resources: ["replicasets", "deployments"]
     verbs: ["get", "list", "watch"]
   # kubeletstats: read-only node/pod stats via this node's kubelet API.
+  # Green/Kepler (kube pod-informer, kubelet mode) reuses this same surface —
+  # it needs pods + nodes (get/list/watch, already granted above) and
+  # nodes/proxy (get, granted here) for the kubelet /pods endpoint. No extra
+  # rule is required; confirm against the pinned Kepler on RAPL hardware (AEP).
   - apiGroups: [""]
     resources: ["nodes/stats", "nodes/proxy"]
     verbs: ["get"]

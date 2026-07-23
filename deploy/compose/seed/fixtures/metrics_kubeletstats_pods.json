@@ -1,0 +1,60 @@
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [
+          { "key": "k8s.pod.name", "value": { "stringValue": "seed-checkout-0" } },
+          { "key": "k8s.namespace.name", "value": { "stringValue": "shop" } },
+          { "key": "k8s.deployment.name", "value": { "stringValue": "seed-checkout" } },
+          { "key": "k8s.node.name", "value": { "stringValue": "seed-node-1" } }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "avuru-seed-kubeletstats", "version": "1" },
+          "metrics": [
+            {
+              "name": "k8s.pod.cpu.usage",
+              "description": "pod CPU usage — seeded kubeletstats fixture (pod→workload join source)",
+              "unit": "{cpu}",
+              "gauge": {
+                "dataPoints": [
+                  { "timeUnixNano": "0", "asDouble": 0.12 },
+                  { "timeUnixNano": "60000000000", "asDouble": 0.15 }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "k8s.pod.name", "value": { "stringValue": "seed-payments-0" } },
+          { "key": "k8s.namespace.name", "value": { "stringValue": "shop" } },
+          { "key": "k8s.deployment.name", "value": { "stringValue": "seed-payments" } },
+          { "key": "k8s.node.name", "value": { "stringValue": "seed-node-1" } }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "avuru-seed-kubeletstats", "version": "1" },
+          "metrics": [
+            {
+              "name": "k8s.pod.cpu.usage",
+              "description": "pod CPU usage — seeded kubeletstats fixture (pod→workload join source)",
+              "unit": "{cpu}",
+              "gauge": {
+                "dataPoints": [
+                  { "timeUnixNano": "0", "asDouble": 0.31 },
+                  { "timeUnixNano": "60000000000", "asDouble": 0.28 }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
