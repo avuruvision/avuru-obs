@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"sort"
 	"time"
@@ -93,29 +94,17 @@ func monthToDate(now time.Time) storage.TimeRange {
 // Every configured budget appears, including ones whose group matches no live
 // service (used=0): the operator must see them.
 func buildGreenBudgets(cfg green.Config, groups health.Config, f greenFactors, rows []storage.ServiceEnergy, stats []storage.ServiceStats, labels []storage.ServiceLabel, now time.Time) []greenBudgetDTO {
-	// Energy can exist outside the RED population (batch workloads emitting
-	// no entry spans). Assign only covers the stats set, so synthesize a
-	// zero-stats row per energy-only service — otherwise its carbon would
-	// silently vanish from every budget.
-	pop := append([]storage.ServiceStats(nil), stats...)
-	seen := make(map[string]bool, len(pop))
-	for _, s := range pop {
-		seen[s.Name] = true
-	}
-	for _, row := range rows {
-		if row.Service != "" && !seen[row.Service] {
-			pop = append(pop, storage.ServiceStats{Name: row.Service})
-			seen[row.Service] = true
-		}
-	}
-	assigned := health.Assign(groups, pop, labels)
+	assigned := assignEnergy(groups, rows, stats, labels)
+	usedByGroup := usedKgByGroup(f, assigned, rows)
 
 	monthStart := monthStartUTC(now)
 	monthFrac := elapsedMonthFraction(monthStart, now)
 
 	out := make([]greenBudgetDTO, 0, len(cfg.Budgets))
 	for _, b := range cfg.Budgets {
-		var usedWh float64
+		// Same carbon roll-up the alerting tick fires on (usedKgByGroup); the
+		// per-budget bucket loop below adds only the UI burn-down series.
+		used := usedByGroup[b.Group]
 		buckets := map[time.Time]float64{}
 		for _, row := range rows {
 			// The unattributed bucket never counts toward a budget: it has no
@@ -123,19 +112,17 @@ func buildGreenBudgets(cfg green.Config, groups health.Config, f greenFactors, r
 			if row.Service == "" || assigned[row.Service].Group != b.Group {
 				continue
 			}
-			usedWh += row.WattHours
 			for _, p := range row.Points {
 				buckets[p.Time.UTC()] += p.WattHours
 			}
 		}
-		used := f.gco2e(usedWh) / 1000 // budgets are kg
 		dto := greenBudgetDTO{
 			Name:            b.Name,
 			Group:           b.Group,
 			MonthlyKgCO2e:   b.MonthlyKgCO2e,
 			UsedKgCO2e:      used,
 			ProjectedKgCO2e: used,
-			Status:          "ok",
+			Status:          green.StatusOK,
 			BurnDown:        burnDown(buckets, f),
 		}
 		if monthFrac > 0 {
@@ -150,13 +137,79 @@ func buildGreenBudgets(cfg green.Config, groups health.Config, f greenFactors, r
 		}
 		switch {
 		case dto.Ratio >= 1:
-			dto.Status = "exceeded"
+			dto.Status = green.StatusOver
 		case dto.Ratio >= warn:
-			dto.Status = "warn"
+			dto.Status = green.StatusWarn
 		}
 		out = append(out, dto)
 	}
 	return out
+}
+
+// assignEnergy maps every energy-bearing service to its service-health group.
+// Energy can exist outside the RED population (batch workloads emitting no entry
+// spans), so it synthesises a zero-stats row per energy-only service before
+// health.Assign — otherwise that carbon would silently vanish from every group.
+func assignEnergy(groups health.Config, rows []storage.ServiceEnergy, stats []storage.ServiceStats, labels []storage.ServiceLabel) map[string]health.Assignment {
+	pop := append([]storage.ServiceStats(nil), stats...)
+	seen := make(map[string]bool, len(pop))
+	for _, s := range pop {
+		seen[s.Name] = true
+	}
+	for _, row := range rows {
+		if row.Service != "" && !seen[row.Service] {
+			pop = append(pop, storage.ServiceStats{Name: row.Service})
+			seen[row.Service] = true
+		}
+	}
+	return health.Assign(groups, pop, labels)
+}
+
+// usedKgByGroup rolls energy up to per-group kgCO2e — the single carbon roll-up
+// shared by the budgets endpoint (buildGreenBudgets) and the alerting tick
+// (BudgetUsageByGroup), so both compute and fire on identical numbers. The
+// unattributed bucket (empty Service) has no group and never counts.
+func usedKgByGroup(f greenFactors, assigned map[string]health.Assignment, rows []storage.ServiceEnergy) map[string]float64 {
+	whByGroup := map[string]float64{}
+	for _, row := range rows {
+		if row.Service == "" {
+			continue
+		}
+		g := assigned[row.Service].Group
+		if g == "" {
+			continue
+		}
+		whByGroup[g] += row.WattHours
+	}
+	out := make(map[string]float64, len(whByGroup))
+	for g, wh := range whByGroup {
+		out[g] = f.gco2e(wh) / 1000 // budgets are kg
+	}
+	return out
+}
+
+// BudgetUsageByGroup computes one tenant's month-to-date used kgCO2e per
+// serviceGroups group, composing the store reads (energy + population + labels)
+// with the same roll-up the budgets endpoint uses. It is the alerting tick's
+// usage source for green budget evaluation, kept here so the carbon math has
+// exactly one implementation. now is injected (no clock read); factors never
+// enter SQL — storage returns Wh, the conversion happens in Go (the AEP).
+func BudgetUsageByGroup(ctx context.Context, store storage.Store, cfg green.Config, groups health.Config, tenant string, now time.Time) (map[string]float64, error) {
+	tr := monthToDate(now)
+	rows, err := store.ServiceEnergy(ctx, greenQuery(cfg, tenant, tr, 0))
+	if err != nil {
+		return nil, err
+	}
+	sq := storage.ServiceQuery{Tenant: tenant, Range: tr, ExcludeAux: true}
+	stats, err := store.ListServices(ctx, sq)
+	if err != nil {
+		return nil, err
+	}
+	labels, err := store.ServiceLabels(ctx, sq)
+	if err != nil {
+		return nil, err
+	}
+	return usedKgByGroup(resolveFactors(cfg), assignEnergy(groups, rows, stats, labels), rows), nil
 }
 
 // elapsedMonthFraction is how far through the calendar month now is, in [0,1].

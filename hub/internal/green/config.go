@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Metrics names the Kepler series and attributes the read path queries.
@@ -211,6 +212,20 @@ func (c Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+// BudgetCheckInterval is how often the alerting tick recomputes the SQL-backed
+// month-to-date usage roll-up for budget evaluation (0 → the 300 s default).
+// Budget state advances only when usage is recomputed, so BOTH fire and resolve
+// latency are bounded by this interval — unlike health alerts, which re-evaluate
+// every tick. Health alerting on the same tick is unaffected; only this usage
+// recompute is throttled.
+func (c Config) BudgetCheckInterval() time.Duration {
+	s := c.BudgetCheckIntervalSec
+	if s <= 0 {
+		s = defaultBudgetCheckIntervalSec
+	}
+	return time.Duration(s) * time.Second
 }
 
 // EffectiveIntensity returns the grid intensity (gCO2e/kWh) the carbon math

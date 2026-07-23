@@ -12,7 +12,9 @@ import (
 
 	"github.com/avuru/avuru-obs/hub/internal/alerting"
 	"github.com/avuru/avuru-obs/hub/internal/api"
+	"github.com/avuru/avuru-obs/hub/internal/green"
 	"github.com/avuru/avuru-obs/hub/internal/health"
+	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
@@ -99,26 +101,32 @@ func webhookAllowCIDRs() []*net.IPNet {
 // persisted state, delivers notifications, and writes state + history back.
 // v1 assumes ONE active evaluator (hub replicas default to 1); >1 would
 // duplicate notifications (documented, HA leader election is v2).
-func runAlertingEvaluator(ctx context.Context, provider api.StoreProvider, groupsCfg func() health.Config, alertsCfg func() alerting.Config, notifier alerting.Notifier, projects []string) {
+func runAlertingEvaluator(ctx context.Context, provider api.StoreProvider, groupsCfg func() health.Config, alertsCfg func() alerting.Config, greenCfg func() green.Config, notifier alerting.Notifier, projects []string, active modules.Set) {
 	slog.Info("alerting evaluator started (single active evaluator)")
+	// Green budgets ride this same tick (never a second ticker) so they share
+	// the diffToSave/deliver path and cannot race it. nil unless both modules
+	// are active; the per-tenant usage cache lives here, across ticks.
+	gb := newGreenBudgets(active, greenCfg, newBudgetUsageCache(defaultBudgetUsage))
+	if gb != nil {
+		slog.Info("green budgets evaluated in the alerting tick")
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(alertsCfg().Interval()):
 		}
-		if err := evaluateOnce(ctx, provider, groupsCfg(), alertsCfg(), notifier, projects); err != nil {
+		if err := evaluateOnce(ctx, provider, groupsCfg(), alertsCfg(), notifier, projects, gb, time.Now().UTC()); err != nil {
 			slog.Warn("alerting evaluation tick failed", "error", err)
 		}
 	}
 }
 
-func evaluateOnce(ctx context.Context, provider api.StoreProvider, gcfg health.Config, acfg alerting.Config, notifier alerting.Notifier, projects []string) error {
+func evaluateOnce(ctx context.Context, provider api.StoreProvider, gcfg health.Config, acfg alerting.Config, notifier alerting.Notifier, projects []string, gb *greenBudgets, now time.Time) error {
 	store := provider()
 	if store == nil {
 		return fmt.Errorf("store unavailable")
 	}
-	now := time.Now().UTC()
 	resolve := channelResolver(ctx, store, acfg)
 	for _, tenant := range tenantsToEvaluate(ctx, store, projects) {
 		report, err := computeHealth(ctx, store, gcfg, tenant, now, acfg.Window())
@@ -126,17 +134,22 @@ func evaluateOnce(ctx context.Context, provider api.StoreProvider, gcfg health.C
 			slog.Warn("alerting: health compute failed", "tenant", tenant, "error", err)
 			continue
 		}
-		prev, err := store.LoadAlertStates(ctx, tenant)
+		prevRows, err := store.LoadAlertStates(ctx, tenant)
 		if err != nil {
 			slog.Warn("alerting: load state failed", "tenant", tenant, "error", err)
 			continue
 		}
-		next, notes := alerting.Evaluate(acfg, report, toEvalState(prev), now)
+		// One prev snapshot feeds health, green, and diffToSave — green budget
+		// keys live in the same alert_state, and their next-state must land in
+		// `next` before diffToSave so a firing budget is not superseded by ok.
+		prev := toEvalState(prevRows)
+		next, notes := alerting.Evaluate(acfg, report, prev, now)
+		notes = evalGreenBudgets(ctx, store, gcfg, gb, tenant, now, prev, next, notes)
 		for i := range notes {
 			notes[i].Tenant = tenant
 		}
 		deliver(ctx, notifier, resolve, notes)
-		if err := store.SaveAlertStates(ctx, diffToSave(tenant, toEvalState(prev), next, now)); err != nil {
+		if err := store.SaveAlertStates(ctx, diffToSave(tenant, prev, next, now)); err != nil {
 			slog.Warn("alerting: save state failed", "tenant", tenant, "error", err)
 		}
 		if hist := toHistory(tenant, notes); len(hist) > 0 {
@@ -208,6 +221,14 @@ func channelResolver(ctx context.Context, store storage.Store, acfg alerting.Con
 
 func deliver(ctx context.Context, notifier alerting.Notifier, resolve func(string) (alerting.Channel, bool), notes []alerting.Notification) {
 	for _, n := range notes {
+		if strings.TrimSpace(n.Channel) == "" {
+			// A channel-less notification is a green budget with no delivery
+			// channel configured — the AEP's dashboard-only degradation, not an
+			// error, so skip delivery silently (state + history still record the
+			// crossing). Alerting's own rules reject an empty channel at config
+			// parse, so this can only be a green budget: nothing to warn about.
+			continue
+		}
 		ch, ok := resolve(n.Channel)
 		if !ok {
 			slog.Warn("alerting: rule references unknown channel", "channel", n.Channel, "rule", n.Rule)
