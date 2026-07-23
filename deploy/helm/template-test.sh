@@ -277,4 +277,28 @@ out="$(render --set modules.green.enabled=true --set sensor.green.enabled=true -
 grep -q 'fake-cpu-meter' <<<"$out" || fail "fake-cpu-meter missing when set"
 ok "fake energy only when explicitly requested"
 
+echo "== green: existing agent pipelines unchanged by the green opt-in"
+out="$(render --set modules.green.enabled=true --set sensor.green.enabled=true)"
+# metrics/green is deliberately its OWN pipeline: turning green on must leave
+# the kubeletstats metrics pipeline and the logs pipeline byte-identical.
+grep -Eq 'processors: \[memory_limiter, k8sattributes, filter/collection, batch\]' <<<"$out" \
+  || fail "kubeletstats metrics pipeline changed by the green opt-in"
+grep -Eq 'processors: \[memory_limiter, k8sattributes, filter/collection, transform/service_name, batch\]' <<<"$out" \
+  || fail "logs pipeline changed by the green opt-in"
+grep -q 'receivers: \[kubeletstats\]' <<<"$out" || fail "kubeletstats receiver lost with green on"
+ok "kubeletstats + logs pipelines identical with green on"
+
+echo "== green: coexists with obi.network (hostNetwork) — both surfaces render"
+out="$(render --set modules.green.enabled=true --set sensor.green.enabled=true --set sensor.obi.network.enabled=true)"
+grep -q 'hostNetwork: true' <<<"$out" || fail "hostNetwork missing with obi.network on"
+grep -q 'name: kepler' <<<"$out" || fail "kepler container lost next to obi.network"
+grep -q 'prometheus/green:' <<<"$out" || fail "green receiver lost next to obi.network"
+grep -q 'metrics/green:' <<<"$out" || fail "green pipeline lost next to obi.network"
+grep -q 'obi_stat_tcp_rtt' <<<"$out" || fail "OBI TCP-stats config lost next to green"
+# Under hostNetwork the Kepler bind hits the HOST loopback (values.yaml
+# caveat) — it must still be 127.0.0.1, never a pod/host-wide address.
+grep -q '127.0.0.1:28282' <<<"$out" || fail "Kepler loopback bind lost under hostNetwork"
+grep -q '0.0.0.0:28282' <<<"$out" && fail "Kepler bound beyond loopback under hostNetwork"
+ok "green + obi.network render together; Kepler stays loopback-bound"
+
 echo "ALL TEMPLATE ASSERTIONS PASSED"
