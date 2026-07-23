@@ -45,6 +45,24 @@ sensor:
   priorityClass:
     create: true
 
+# Green energy/carbon STAYS OFF in production until Kepler's metric names,
+# config keys, port and RBAC are verified on this fleet's real RAPL hardware —
+# a documented v1 limitation (design/2026-07-22-green-carbon.md) that blocks
+# prod use; CI only validates the path with the dev fake meter. After that
+# verification, enable via the staged rollout in
+# docs/runbooks/sensor-rollout.md (canary pool → soak → widen) by uncommenting:
+#modules:
+#  green:
+#    enabled: true
+#sensor:
+#  green:
+#    enabled: true    # merge into the sensor block above
+#green:
+#  gridIntensity: 0   # your provider's factor (gCO2e/kWh), or set region: "FR"
+#  pue: 0             # your facility's measured PUE
+# NEVER set sensor.green.fakeCpuMeter here — it fabricates measurements and
+# exists for RAPL-less CI only.
+
 ingress:
   enabled: true
   className: nginx

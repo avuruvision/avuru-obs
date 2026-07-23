@@ -64,6 +64,27 @@ When a release is cut, that block is renamed to the version with its date.
   stats key still needs confirmation in a real eBPF environment before prod
   use. See
   [`design/2026-07-19-network-health.md`](design/2026-07-19-network-health.md).
+- **Green energy & carbon** — a new module (`modules.green.enabled`, **off by
+  default**: the signal depends on RAPL/powercap hardware). Per-service energy
+  (Wh) and carbon (gCO2e) computed from the energy counters of CNCF Kepler —
+  an opt-in fourth sensor container (`sensor.green.enabled`), pinned like every
+  upstream we reuse — correlated with the pod→workload map the platform
+  already collects: zero code changes, no data leaves the cluster, no external
+  API. Ships monthly carbon budgets per service group (warn at 80%, exceeded
+  at 100%, month-end projection) delivered through the existing alerting
+  channels, per-request carbon intensity, a `/green` dashboard with a
+  service-map energy overlay, and a CSRD-ready CSV/JSON export whose
+  methodology block states the formula, factor provenance and measurement
+  coverage — numbers an auditor can reproduce. Grid-intensity factors are
+  bundled per-country annual averages with operator overrides (air-gap
+  friendly); all math runs at query time over tables that already exist, so
+  there is no migration. On nodes without RAPL the module reports honestly
+  instead of estimating (coverage ratio + a teaching empty state), and the
+  Kepler container carries no probes so it can never destabilize the sensor
+  pod. Kepler's metric names, config keys and port are CI-validated against
+  the pinned image but **must be confirmed on real RAPL hardware before
+  production use**. See
+  [`design/2026-07-22-green-carbon.md`](design/2026-07-22-green-carbon.md).
 - **The sensor is now provably safe to leave on.** The e2e wedge gate keeps a
   probe-sensitive canary — tight CPU limit, aggressive liveness probe, real
   traffic — Ready with zero restarts through a soak with the sensor attached,

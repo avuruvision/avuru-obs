@@ -265,18 +265,18 @@ today (per-tenant factors couple to the auth seam later); storage stays behind
 ## Roadmap
 
 - [ ] AEP accepted
-- [ ] Sensor: Kepler (pinned v0.11.x) as 4th DaemonSet container + prometheus
+- [x] Sensor: Kepler (pinned v0.11.x) as 4th DaemonSet container + prometheus
       scrape + keep-regex, opt-in, no probes
-- [ ] Hub: `green` module registry entry + `infra-metrics` dependency in
+- [x] Hub: `green` module registry entry + `infra-metrics` dependency in
       `modules.Parse`
-- [ ] Hub: read-time energy/carbon queries + factor + budget config (hot-reload)
-- [ ] Hub: budget evaluator merged into the alerting tick (reusing
+- [x] Hub: read-time energy/carbon queries + factor + budget config (hot-reload)
+- [x] Hub: budget evaluator merged into the alerting tick (reusing
       `alert_state`/`alert_history`/`Notifier`; zero `internal/alerting` edits)
-- [ ] API `/api/v1/green/*` + UI `/green` + service-map overlay + CSRD export
-- [ ] Deploy: `modules.green` + `sensor.green` values, `{{ fail }}` guard,
+- [x] API `/api/v1/green/*` + UI `/green` + service-map overlay + CSRD export
+- [x] Deploy: `modules.green` + `sensor.green` values, `{{ fail }}` guard,
       schema, template-test
 - [ ] e2e (seeded) + Playwright + e2e-helm fake-cpu-meter leg (TTV + canary
-      gates untouched)
+      gates untouched) — Go e2e + e2e-helm leg done; Playwright specs pending
 - [ ] **Confirm Kepler config keys, metric names/labels, port and RBAC on real
       RAPL hardware** (blocks prod use)
 - [ ] Docs (module page, factors/budgets configuration, methodology) via
