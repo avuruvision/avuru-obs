@@ -2,7 +2,7 @@
 
 - **Date:** 2026-07-22
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted
 
 ## Summary
 
@@ -272,7 +272,7 @@ today (per-tenant factors couple to the auth seam later); storage stays behind
 
 ## Roadmap
 
-- [ ] AEP accepted
+- [x] AEP accepted
 - [x] Sensor: Kepler (pinned v0.11.x) as 4th DaemonSet container + prometheus
       scrape + keep-regex, opt-in, no probes
 - [x] Hub: `green` module registry entry + `infra-metrics` dependency in
