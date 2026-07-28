@@ -125,8 +125,16 @@ correct one service's tier without renaming its group.
 
 **Conflict rule.** Members of one *(domain, environment)* may declare different
 tiers. **Most critical wins** — a group containing a T0 service is a T0 group.
-Understating criticality is the dangerous direction. `GroupHealth.Source`
-extends from `"config" | "auto"` to `"config" | "declared" | "auto"`.
+Understating criticality is the dangerous direction.
+
+Tier provenance gets its **own** field rather than extending `Source`.
+`Source` describes how *group membership* resolved (`"config"` = matched a
+selector, `"auto"` = derived from a namespace/domain), and a group formed from a
+declared `service.namespace` is still `"auto"`. Overloading it with
+`"declared"` would leave `source: "declared"` ambiguous between a declared group
+and a declared tier. So a new `TierSource` carries
+`"override" | "config" | "declared" | "default"`, and `Source` keeps its
+existing two values unchanged.
 
 ### Validation: config fails loud, declarations fail soft
 
@@ -142,7 +150,8 @@ defensive posture the storage layer already takes toward ingested data.
 
 ### Components touched
 
-- **Storage** — `ServiceLabel` gains `Environment` and `Tier`. `ServiceLabels`
+- **Storage** — `ServiceLabel` gains `Environment` and `DeclaredTier` (raw
+  string; the health package validates it). `ServiceLabels`
   already resolves dominant values via `argMax(value, count())`; this is two
   more columns in the same subquery. No new query, no migration; the
   `ResourceAttributes` bloom indexes from migration 0001 already cover it. All
@@ -150,19 +159,43 @@ defensive posture the storage layer already takes toward ingested data.
   decision 3).
 - **Health** — `resolve` reads declared tier; `groupAndRoll` keys on the pair
   and applies the conflict rule; `Config` gains `tierOverrides`.
-- **API** — `HealthGroup` gains `environment`; response gains `warnings`.
-- **UI** — env badge on group cards, `declared` source badge, warning
-  affordance. Tier lanes unchanged.
+- **API** — `HealthGroup` gains `environment` and `tierSource`; response gains
+  `warnings`.
+- **UI** — env badge on group cards, tier-provenance affordance from
+  `tierSource`, warnings affordance. Tier lanes unchanged.
 - **Chart** — `serviceGroups.tierOverrides` in values and `values.schema.json`.
 
-### Alerting
+### Name-keyed consumers of group identity
 
-`alerting.rules[].selector` targets groups by name. With group identity now a
-pair, a rule naming `valife-financial` would match every environment. A selector
-**without** an environment matches all of them (backward-compatible: existing
-rules keep firing on the same set), plus an optional `environments: [prod]` to
-narrow. Called out because an existing rule's blast radius changes the moment
-services start declaring an environment.
+Three call sites address a group **by name**, and all three must agree once
+identity becomes a pair:
+
+| Consumer | Today | With environments |
+|---|---|---|
+| `GET /api/v1/health/groups/{name}` | first `g.Name == name` | matches all envs; optional `?environment=` narrows |
+| `alerting.rules[].selector.groups` | name match | matches all envs; optional `environments: [prod]` |
+| `green.budgets[].group` (via `health.Assign` → `usedKgByGroup`) | name-keyed map | matches all envs; optional `environment:` |
+
+The uniform rule: **`GroupHealth.Name` stays the domain** and a new
+`Environment` field carries the dimension. Uniqueness and sort order use a
+derived key (`name` when env is empty, `name[env]` otherwise), but *matching*
+is by name. A selector that names no environment therefore matches every
+environment — existing rules and budgets keep firing on the same set, which is
+what backward compatibility demands.
+
+Called out because a rule's or budget's blast radius widens the moment services
+start declaring an environment: `valife-financial` becomes two groups, and an
+unnarrowed rule now watches both. This is the correct default (silently
+dropping the new group would be worse), but it is a behavior change worth
+noting in the changelog.
+
+**Alerting needs more than a match rule.** `buildTargets` keys addressable
+targets by `"group:"+Name` into a **map**, so two environments of one domain
+would collide and one environment's alerts would vanish silently. Group targets
+therefore key on the composite identity — `group:payments[prod]` — while an
+environment-less group keeps its bare `group:payments` key so existing rules and
+stored `alert_state` rows stay valid. Selector matching splits the name back out
+and applies the environment narrowing to it.
 
 ### Tension with locked decisions
 
@@ -237,6 +270,8 @@ no hub config; an operator can override any declaration.
 - [ ] API: `environment` on `HealthGroup`, `warnings` on the response
 - [ ] UI: env badge, `declared` source badge, warnings affordance
 - [ ] Chart: `serviceGroups.tierOverrides` + `values.schema.json`
-- [ ] Alerting: optional `environments` in the rule selector
+- [ ] Name-keyed consumers: `?environment=` on the group-detail endpoint,
+      optional `environments` in the alerting rule selector, optional
+      `environment` on green budgets
 - [ ] Docs: declared-attribute contract in `deploy/helm/README.md`; supersession
       note on [AEP 2026-07-18](2026-07-18-service-health-groups.md)
