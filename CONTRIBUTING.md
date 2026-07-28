@@ -8,8 +8,27 @@
   [Avuru Enhancement Proposal](./design/README.md) first.
 - Read [AGENTS.md](./AGENTS.md) — the canonical developer **and** agent guide
   (yes, even humans). It has the repo map, branch model, and validation commands.
-- By contributing you agree to the [Code of Conduct](./CODE_OF_CONDUCT.md) and
-  to license your work under [AGPL-3.0](./LICENSE).
+- By contributing you agree to the [Code of Conduct](./CODE_OF_CONDUCT.md)
+  and sign the [Contributor License Agreement](./CLA.md) on your first PR
+  (automated, one-time). Your work ships under [AGPL-3.0](./LICENSE).
+
+## Contributor License Agreement (CLA)
+
+All contributions require a one-time signature of the
+[Individual CLA](./CLA.md) — a bot prompts you on your first pull request;
+signing is a single comment.
+
+Why a CLA instead of plain AGPL inbound=outbound: the Project intends to
+sustain itself the way Grafana, Coroot, and SigNoz do — a fully open AGPL
+community edition, plus commercially licensed enterprise capabilities behind
+the [enterprise seam](./agent_docs/architecture.md#enterprise-seam-do-not-bypass).
+Offering a commercial license requires the project to hold sufficient rights
+in its codebase, which is exactly what the CLA grants. In exchange, the CLA
+pledges (§2.2) that everything you contribute stays available under AGPL-3.0
+forever — your work can never be made closed-only.
+
+Contributing on your employer's time or equipment? Check §4 of the CLA; a
+corporate CLA is available on request.
 
 ## Workflow
 
