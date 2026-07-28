@@ -1,0 +1,26 @@
+{{- if and .Values.auth.oidc.enabled (not .Values.auth.enabled) }}
+{{- fail "auth.oidc.enabled requires auth.enabled — SSO mints hub sessions, and with authentication off there is no session store to mint into (the hub would ignore the mounted OIDC config)." }}
+{{- end }}
+{{- if and .Values.auth.oidc.enabled (or (not .Values.auth.oidc.issuer) (not .Values.auth.oidc.clientId)) }}
+{{- fail "auth.oidc.enabled requires auth.oidc.issuer and auth.oidc.clientId — the hub refuses an OIDC config without them (fail-loud at startup), which would crash-loop the rollout." }}
+{{- end }}
+{{- if include "avuruops.oidcEnabled" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "avuruops.fullname" . }}-oidc
+  labels:
+    {{- include "avuruops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hub
+data:
+  # The hub parses this as YAML (schema: hub/internal/auth/oidcconfig.go) and
+  # hot-reloads it within ~15s — a `kubectl edit` re-runs IdP discovery and
+  # re-installs the group→grant mapping without a pod restart (a bad edit is
+  # logged and the last good config stays live; only the FIRST load is
+  # fail-loud). The client secret is deliberately NOT in this file — it
+  # reaches the hub as AVURUOPS_AUTH_OIDC_CLIENT_SECRET from a Secret — and
+  # the chart-only knobs (enabled/clientSecret/existingSecret/publicUrl) are
+  # omitted with it.
+  oidc.yaml: |
+    {{- omit .Values.auth.oidc "enabled" "clientSecret" "existingSecret" "publicUrl" | toYaml | nindent 4 }}
+{{- end }}

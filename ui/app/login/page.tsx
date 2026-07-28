@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { Hexagon } from "lucide-react";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CenteredSpinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/cn";
 import type { AuthConfig, Me } from "@/lib/api-types";
 
 // Config is always answerable (/auth/config is registered even with auth off),
@@ -82,7 +83,12 @@ export default function LoginPage() {
   const inputClass =
     "h-9 w-full rounded-lg border border-neutral bg-base-100 px-3 text-sm focus-visible:outline-2 focus-visible:outline-primary";
 
-  const showLocal = config?.methods.includes("local");
+  // SSO is offered whenever the hub advertises an OIDC provider. forceSSO
+  // suppresses the local form entirely (only meaningful with OIDC present, so
+  // guard on it too — a stray forceSSO must never lock every method out).
+  const showOIDC = !!config?.methods.includes("oidc");
+  const showLocal =
+    !!config?.methods.includes("local") && !(config?.forceSSO && showOIDC);
 
   return (
     // Full-screen overlay: the login screen owns the viewport, above the shell.
@@ -95,56 +101,82 @@ export default function LoginPage() {
         <Card className="p-6">
           {!config || !config.enabled ? (
             <CenteredSpinner />
-          ) : showLocal ? (
-            <form onSubmit={submit} className="flex flex-col gap-4">
+          ) : (
+            <div className="flex flex-col gap-4">
               <div>
                 <h1 className="text-base font-semibold">Sign in</h1>
                 <p className="mt-1 text-xs text-base-content/60">
                   Sign in to reach your observability workspace.
                 </p>
               </div>
-              <label className="flex flex-col gap-1 text-xs text-base-content/60">
-                Email or username
-                <input
-                  className={inputClass}
-                  type="text"
-                  autoComplete="username"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com or admin"
-                  required
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-base-content/60">
-                Password
-                <input
-                  className={inputClass}
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                />
-              </label>
-              {error && (
-                <p className="text-xs text-error" role="alert">
-                  {error}
+
+              {showLocal && (
+                <form onSubmit={submit} className="flex flex-col gap-4">
+                  <label className="flex flex-col gap-1 text-xs text-base-content/60">
+                    Email or username
+                    <input
+                      className={inputClass}
+                      type="text"
+                      autoComplete="username"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@example.com or admin"
+                      required
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs text-base-content/60">
+                    Password
+                    <input
+                      className={inputClass}
+                      type="password"
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                    />
+                  </label>
+                  {error && (
+                    <p className="text-xs text-error" role="alert">
+                      {error}
+                    </p>
+                  )}
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    className="w-full"
+                    disabled={busy}
+                  >
+                    {busy ? "Signing in…" : "Sign in"}
+                  </Button>
+                </form>
+              )}
+
+              {showLocal && showOIDC && (
+                <div className="flex items-center gap-3 text-[10px] font-medium uppercase tracking-wide text-base-content/40">
+                  <span className="h-px flex-1 bg-neutral" />
+                  or
+                  <span className="h-px flex-1 bg-neutral" />
+                </div>
+              )}
+
+              {showOIDC && (
+                // Plain full-page navigation (NOT a fetch): the browser must
+                // follow the hub's 302 out to the IdP and the redirects back.
+                <a
+                  href="/api/v1/auth/oidc/start"
+                  className={cn(buttonVariants({ variant: "secondary" }), "w-full")}
+                >
+                  Sign in with SSO
+                </a>
+              )}
+
+              {!showLocal && !showOIDC && (
+                <p className="text-sm text-base-content/60">
+                  No sign-in method is configured for this workspace.
                 </p>
               )}
-              <Button
-                type="submit"
-                variant="primary"
-                className="w-full"
-                disabled={busy}
-              >
-                {busy ? "Signing in…" : "Sign in"}
-              </Button>
-            </form>
-          ) : (
-            <p className="text-sm text-base-content/60">
-              No sign-in method is configured for this workspace.
-            </p>
+            </div>
           )}
         </Card>
       </div>

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/storage"
@@ -36,7 +37,16 @@ type Service struct {
 	store   func() storage.Store
 	ttl     time.Duration
 	limiter *rateLimiter
+	// mapper turns an SSO user's IdP groups into grants at read time. Stored
+	// as a pointer so it hot-reloads when OIDC config changes; nil until an
+	// OIDC provider is wired up. See CompleteSSO / identityFor.
+	mapper atomic.Pointer[func(groups []string) []Grant]
 }
+
+// SetGroupMapper installs (or replaces) the OIDC group→grants mapper. Grants
+// for SSO users are derived from their stored groups on every identity read, so
+// a mapping change takes effect on the next request without rewriting any rows.
+func (s *Service) SetGroupMapper(m func(groups []string) []Grant) { s.mapper.Store(&m) }
 
 func NewService(store func() storage.Store, sessionTTL time.Duration) *Service {
 	return &Service{store: store, ttl: sessionTTL, limiter: newRateLimiter()}
@@ -82,18 +92,68 @@ func (s *Service) Login(ctx context.Context, email, password, ip string) (string
 	if err != nil {
 		return "", Identity{}, err
 	}
-	token, hash, err := newToken()
+	token, err := s.mintSession(ctx, st, u.ID)
 	if err != nil {
 		return "", Identity{}, err
 	}
+	return token, id, nil
+}
+
+// mintSession creates a session row for userID and returns the raw cookie token.
+func (s *Service) mintSession(ctx context.Context, st storage.Store, userID string) (string, error) {
+	token, hash, err := newToken()
+	if err != nil {
+		return "", err
+	}
 	sess := storage.AuthSession{
 		TokenHash: hash,
-		UserID:    u.ID,
+		UserID:    userID,
 		CreatedAt: time.Now().UTC(),
 		ExpiresAt: time.Now().UTC().Add(s.ttl),
 	}
 	if err := st.CreateAuthSession(ctx, sess); err != nil {
-		return "", Identity{}, fmt.Errorf("creating session: %w", err)
+		return "", fmt.Errorf("creating session: %w", err)
+	}
+	return token, nil
+}
+
+// ExternalIdentity is the normalized result of an OIDC login.
+type ExternalIdentity struct {
+	Subject string
+	Email   string
+	Name    string
+	Groups  []string
+}
+
+// CompleteSSO upserts the SSO user (origin=oidc, groups refreshed), then mints
+// the same session a local login would. Grants are NOT written here — identityFor
+// derives mapped grants from the stored groups + current mapper, so manual grants
+// stay intact.
+func (s *Service) CompleteSSO(ctx context.Context, ext ExternalIdentity) (string, Identity, error) {
+	st, err := s.st()
+	if err != nil {
+		return "", Identity{}, err
+	}
+	uid := "oidc|" + ext.Subject
+	u := storage.AuthUser{ID: uid, Email: ext.Email, Name: ext.Name, Origin: "oidc", OidcGroups: ext.Groups}
+	if existing, err := st.GetAuthUser(ctx, uid); err == nil {
+		u.Disabled = existing.Disabled
+	} else if !errors.Is(err, storage.ErrNotFound) {
+		return "", Identity{}, fmt.Errorf("looking up sso user: %w", err)
+	}
+	if u.Disabled {
+		return "", Identity{}, ErrInvalidCredentials
+	}
+	if err := st.SaveAuthUser(ctx, u); err != nil {
+		return "", Identity{}, fmt.Errorf("saving sso user: %w", err)
+	}
+	id, err := s.identityFor(ctx, st, u)
+	if err != nil {
+		return "", Identity{}, err
+	}
+	token, err := s.mintSession(ctx, st, uid)
+	if err != nil {
+		return "", Identity{}, err
 	}
 	return token, id, nil
 }
@@ -179,6 +239,11 @@ func (s *Service) identityFor(ctx context.Context, st storage.Store, u storage.A
 		if r, ok := ParseRole(g.Role); ok {
 			id.Grants = append(id.Grants, Grant{Scope: g.Scope, Role: r})
 		}
+	}
+	// SSO users get their group-mapped grants derived at read time, so a
+	// mapping change hot-reloads and manual grants (above) stay independent.
+	if m := s.mapper.Load(); m != nil && len(u.OidcGroups) > 0 {
+		id.Grants = append(id.Grants, (*m)(u.OidcGroups)...)
 	}
 	return id, nil
 }

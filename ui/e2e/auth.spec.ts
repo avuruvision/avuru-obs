@@ -78,3 +78,34 @@ test.describe("auth", () => {
     ).toBeVisible();
   });
 });
+
+// OIDC SSO on the login screen — OPT-IN: the default `make e2e-ui` stack has
+// no IdP, so these run only when OIDC_E2E=1 against the `oidc-e2e` compose
+// profile + override file (deploy/compose/docker-compose.oidc-e2e.yaml).
+// The SSO control is an <a> (a full-page navigation to /api/v1/auth/oidc/start,
+// NOT a fetch), hence getByRole("link").
+test.describe("auth: oidc", () => {
+  test.skip(!process.env.OIDC_E2E, "OIDC_E2E not set — mock-IdP stack not running");
+
+  test("offers Sign in with SSO on the login page", async ({ page }) => {
+    await page.goto("/login");
+    await expect(
+      page.getByRole("link", { name: "Sign in with SSO" }),
+    ).toBeVisible();
+  });
+
+  test("forceSSO suppresses the password form — SSO only", async ({ page }) => {
+    // Needs forceSSO: true in deploy/compose/oidc-e2e.yaml (shipped false so
+    // the local-form tests above keep working; the hub hot-reloads the flip
+    // within ~15s), signalled here via a second env gate.
+    test.skip(
+      !process.env.OIDC_FORCE_SSO,
+      "OIDC_FORCE_SSO not set — oidc-e2e.yaml ships forceSSO: false",
+    );
+    await page.goto("/login");
+    await expect(
+      page.getByRole("link", { name: "Sign in with SSO" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Password")).toHaveCount(0);
+  });
+});

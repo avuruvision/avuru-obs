@@ -90,8 +90,18 @@ Disabling a module never drops existing tables; it stops managing them.
 ## Enterprise seam (do not bypass)
 
 - Auth: `hub/internal/auth` (sessions, local users, fixed roles × per-project
-  grants, anonymous demo identity) — shipped; OIDC joins behind the same
-  `auth.Service` seam (AEP 2026-07-21)
+  grants, anonymous demo identity) — shipped; OIDC SSO shipped behind the same
+  `auth.Service` seam (AEP 2026-07-21). The hub itself runs the
+  authorization-code + PKCE flow (`GET /api/v1/auth/oidc/start` → IdP →
+  `GET /api/v1/auth/oidc/callback`) and mints the same server-side session as
+  a local login; IdP groups → grants mapping is applied at **read time** on
+  every request (group moves re-scope access without re-login). Config is a
+  mounted YAML file (`AVURUOPS_AUTH_OIDC_CONFIG`, hot-reloaded ~15s; client
+  secret separately via `AVURUOPS_AUTH_OIDC_CLIENT_SECRET`); IdP discovery is
+  fail-loud at startup, and `AVURUOPS_PUBLIC_URL` must be the install's
+  external base URL — it builds the absolute redirect_uri IdPs require.
+  `forceSSO` only hides the UI's password form; the local admin API login
+  remains as break-glass
 - Tenancy: every ClickHouse table carries a `tenant` column (default `default`)
 - Retention: per-signal TTL policy objects, not hardcoded TTLs
 

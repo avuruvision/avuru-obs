@@ -63,4 +63,14 @@ Login: user `admin`. Retrieve the bootstrap password with:
 NOTE: if you front the hub with your own proxy, it must preserve the Host
 header (e.g. nginx `proxy_set_header Host $host`) — the CSRF origin check
 compares Origin against Host and rejects browser writes on mismatch.
+{{- if include "avuruops.oidcEnabled" . }}
+
+SSO: OIDC ENABLED against {{ .Values.auth.oidc.issuer }}. Register this
+redirect URL with the IdP:
+  {{ .Values.auth.oidc.publicUrl | default "<auth.oidc.publicUrl is UNSET — most IdPs will reject the login>" }}/api/v1/auth/oidc/callback
+{{- if .Values.auth.oidc.forceSSO }}
+forceSSO is on: the UI hides the password form; the local admin login above
+still works via the API as break-glass.
+{{- end }}
+{{- end }}
 {{- end }}

@@ -25,8 +25,26 @@ When a release is cut, that block is renamed to the version with its date.
   project list only — a public demo can share one project while every other
   project stays invisible. Sessions are server-side (revocation is
   immediate); logins are rate-limited; state lives in ClickHouse — no new
-  components. OIDC/SSO and per-project ingest keys land next on the same
-  seam (AEP `design/2026-07-21-auth-oidc-rbac.md`).
+  components. Per-project ingest keys land next on the same seam
+  (AEP `design/2026-07-21-auth-oidc-rbac.md`).
+- **Enterprise SSO via OpenID Connect.** Any OIDC IdP works — Keycloak, Entra,
+  Okta, Google, Dex (LDAP/AD by federating through the IdP) — and it ships in
+  OSS, not behind an enterprise tier. The hub runs the authorization-code +
+  PKCE flow itself (`/api/v1/auth/oidc/start` → IdP →
+  `/api/v1/auth/oidc/callback`) — no oauth2-proxy, no extra pod — and an SSO
+  login ends in the same server-side session as a local one, so revocation
+  stays immediate. IdP groups map to per-project grants declaratively
+  (`auth.oidc.mapping`: group → role on projects, plus a `defaultRole`
+  fallback), applied at **read time** on every request — moving a user between
+  IdP groups re-scopes their access on their next request, no re-login.
+  `forceSSO` hides the local password form for IdP-only fleets (the local
+  admin API login stays available as break-glass). Configured entirely from
+  Helm values (`auth.oidc.*`; the client secret comes from your own Secret or
+  a chart-managed one, never the config file): the mapping is hot-reloaded
+  (~15s, no restart), and IdP discovery is fail-loud at hub startup so a wrong
+  issuer stops the rollout instead of shipping a broken login. An opt-in e2e
+  profile drives the full flow against a real mock IdP through the compose
+  stack (`deploy/compose/docker-compose.oidc-e2e.yaml`).
 - **Module framework — pick your signals.** One switch per signal family
   (`modules.<name>.enabled`) gates it end to end: its ClickHouse schema
   (`hub migrate` skips the DDL), its Hub API routes (404 when off), its gateway

@@ -1,0 +1,32 @@
+# Hub OIDC config for the OPT-IN `oidc-e2e` compose profile (schema:
+# hub/internal/auth/oidcconfig.go — issuer/clientId/groupsClaim/mapping/
+# defaultRole/defaultProjects/forceSSO). Mounted into the hub by
+# docker-compose.oidc-e2e.yaml as AVURUOPS_AUTH_OIDC_CONFIG; the client
+# secret comes from AVURUOPS_AUTH_OIDC_CLIENT_SECRET, never from this file.
+#
+# issuer is the mock IdP AS REACHABLE FROM THE HUB CONTAINER (compose service
+# DNS). mock-oauth2-server derives the issuer in discovery documents and
+# tokens from the request Host header, so this exact value is what the hub's
+# ID-token verifier sees.
+#
+# The mock's token callback (JSON_CONFIG in docker-compose.yaml) always
+# returns groups: ["obs-e2e-viewers"], so the mapping below yields exactly
+# one grant — viewer on staging — which e2e/oidc_test.go asserts verbatim.
+#
+# forceSSO stays false so the local admin login (the e2e suite's TestMain)
+# keeps a visible form in the UI; flip it to true (hot-reloaded by the hub
+# within ~15s) to drive the OIDC_FORCE_SSO Playwright assertion in
+# ui/e2e/auth.spec.ts.
+issuer: http://mock-oidc:8080/default
+clientId: avuru-obs-e2e
+groupsClaim: groups
+mapping:
+  - group: obs-e2e-viewers
+    role: viewer
+    projects: ["staging"]
+  # Never matched by the mock's fixed claims — proves the mapping is
+  # selective, not grant-everything.
+  - group: obs-e2e-admins
+    role: admin
+    projects: ["*"]
+forceSSO: false

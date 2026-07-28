@@ -67,5 +67,23 @@ ingress:
   enabled: true
   className: nginx
   host: avuruops.example.com
-  # Auth is enforced at the ingress (oauth2-proxy / Keycloak), not in the chart.
   annotations: {}
+
+# Auth is built into the hub (auth.enabled defaults true) — no oauth2-proxy at
+# the ingress. Uncomment to add SSO via your OIDC IdP (disabled by default);
+# in production always use existingSecret, never the in-values clientSecret:
+#auth:
+#  oidc:
+#    enabled: true
+#    issuer: https://keycloak.example.com/realms/avuru
+#    clientId: avuru-obs
+#    existingSecret: avuruops-oidc   # key: oidc-client-secret
+#    publicUrl: https://avuruops.example.com
+#    mapping:
+#      - group: obs-admins
+#        role: admin
+#        projects: ["*"]
+#      - group: obs-devs
+#        role: viewer
+#        projects: [production]
+#    forceSSO: false                 # flip after the IdP round-trip is proven

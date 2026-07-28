@@ -45,6 +45,25 @@ Write or update tests **alongside** the implementation, not after.
 | E2E Helm (kind install smoke: traces + correlated logs) | `make e2e-helm` (owns the kind lifecycle) |
 | Everything CI runs | `make check` |
 
+## Opt-in: OIDC SSO e2e
+
+The SSO round trip (hub → mock IdP → callback → session → mapped grants) runs
+only against the `oidc-e2e` compose profile — the default stacks have no IdP,
+and both test gates default OFF, so `make e2e` / `make e2e-ui` are unaffected.
+
+```bash
+AVURUOPS_AUTH_ADMIN_PASSWORD=e2e-admin-pw docker compose \
+  -f deploy/compose/docker-compose.yaml \
+  -f deploy/compose/docker-compose.oidc-e2e.yaml \
+  --profile oidc-e2e up -d --build --wait hub mock-oidc
+cd e2e && AVURUOPS_E2E_OIDC=1 go test -tags=e2e -count=1 -run OIDC ./...
+cd ui  && OIDC_E2E=1 npx playwright test e2e/auth.spec.ts   # login-page SSO assertions
+```
+
+Fixtures are pinned across three files that must agree: the mock's claims
+(`JSON_CONFIG` in `deploy/compose/docker-compose.yaml`), the hub's mapping
+(`deploy/compose/oidc-e2e.yaml`), and the assertions (`e2e/oidc_test.go`).
+
 ## Rules
 
 - A bug fix lands with the test that would have caught it.

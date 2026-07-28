@@ -59,6 +59,11 @@ type Config struct {
 	// (hot-reloaded, like GroupsConfig). nil → green.Default(). Unread until
 	// the green read path lands; declared now so the cmd/hub wiring is stable.
 	GreenConfig func() green.Config
+	// OIDC returns the current OIDC provider or nil (hot-reloaded; nil until
+	// discovery succeeds / when OIDC unconfigured).
+	OIDC func() *auth.OIDCProvider
+	// OIDCSettings returns the current parsed OIDC config (nil when unset).
+	OIDCSettings func() *auth.OIDCConfig
 }
 
 // API holds handler dependencies.
@@ -110,6 +115,13 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("POST /api/v1/auth/login", handle(a.handleLogin))
 		mux.Handle("POST /api/v1/auth/logout", a.authenticated(a.handleLogout))
 		mux.Handle("GET /api/v1/auth/me", a.authenticated(a.handleMe))
+
+		// OIDC SSO — unauthenticated (they establish the session): start the
+		// auth-code flow and handle the IdP redirect back. Registered even when
+		// no provider is wired yet (nil → 400 "OIDC is not configured"), so the
+		// route set is stable and the SPA gets a straight answer.
+		mux.Handle("GET /api/v1/auth/oidc/start", handle(a.handleOIDCStart))
+		mux.Handle("GET /api/v1/auth/oidc/callback", handle(a.handleOIDCCallback))
 
 		// Users admin API — global admin only (creates/edits credentials and
 		// grants for OTHER users, unlike /auth/me which is self-service).

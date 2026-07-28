@@ -4,6 +4,7 @@ package clickhouse
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -327,4 +328,32 @@ func TestAuthRoundtrip(t *testing.T) {
 			t.Fatalf("role-changed grant wrong: %+v", got)
 		}
 	})
+}
+
+// TestAuthUserOidcGroups pins the OidcGroups Array(String) <-> []string round
+// trip: an SSO user's raw IdP groups, captured at login, survive SaveAuthUser
+// and a FINAL read back through GetAuthUser.
+func TestAuthUserOidcGroups(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	groups := []string{"team-payments", "obs-admins"}
+	u := storage.AuthUser{
+		ID:         "u10",
+		Email:      "judy@example.com",
+		Name:       "Judy",
+		Origin:     "oidc",
+		OidcGroups: groups,
+	}
+	if err := store.SaveAuthUser(ctx, u); err != nil {
+		t.Fatalf("SaveAuthUser: %v", err)
+	}
+
+	got, err := store.GetAuthUser(ctx, "u10")
+	if err != nil {
+		t.Fatalf("GetAuthUser: %v", err)
+	}
+	if !slices.Equal(got.OidcGroups, groups) {
+		t.Errorf("OidcGroups = %v, want %v (Array(String) round trip)", got.OidcGroups, groups)
+	}
 }

@@ -462,6 +462,7 @@ type AuthUser struct {
 	PasswordHash string
 	Origin       string // "local" | "oidc"
 	Disabled     bool
+	OidcGroups   []string // raw IdP groups from last SSO login; empty for local
 	UpdatedAt    time.Time
 }
 

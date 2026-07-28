@@ -42,7 +42,8 @@ No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale.
 | `gateway.sentry.enabled` / `ingress.sentryHost` | `false` / `""` | Accept existing Sentry SDKs (needs the error-tracking + logs modules); give the ingest its own host |
 | `retention.traces` / `retention.logs` | `7` / `3` | Per-signal TTL in days |
 | `ingress.enabled` / `ingress.host` | `false` / `avuruops.local` | Expose the hub UI |
-| `auth.enabled` | `false` | Forward placeholder — enforce auth at your ingress (OIDC is v0.2) |
+| `auth.enabled` | `true` | Login + per-project RBAC, secure by default (bootstrap `admin` password in the release Secret — see the install NOTES) |
+| `auth.oidc.enabled` | `false` | Enterprise SSO via any OIDC IdP: set `issuer`/`clientId`/`publicUrl`, the client secret via `existingSecret` (key `oidc-client-secret`) or `clientSecret`, and IdP-group → role-on-projects `mapping` rules; `forceSSO` hides the local login form |
 | `gateway.tenant` | `""` | Tag ALL telemetry through this gateway with a project/environment (see Projects) |
 | `projects` | `[]` | Declare the project list the hub advertises to the UI switcher |
 | `sensor.priorityClass.create` | `false` | Run the sensor below default priority ("do no harm") |

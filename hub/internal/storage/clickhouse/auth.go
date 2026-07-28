@@ -26,7 +26,7 @@ func (s *Store) CountAuthUsers(ctx context.Context) (uint64, error) {
 // returned — callers decide what disabled means for the request at hand.
 func (s *Store) GetAuthUser(ctx context.Context, id string) (storage.AuthUser, error) {
 	row := s.conn.QueryRow(ctx, `
-SELECT Id, Email, Name, PasswordHash, toString(Origin), Disabled, UpdatedAt
+SELECT Id, Email, Name, PasswordHash, toString(Origin), Disabled, OidcGroups, UpdatedAt
 FROM auth_user FINAL
 WHERE Id = ?`, id)
 	return scanAuthUser(row)
@@ -36,7 +36,7 @@ WHERE Id = ?`, id)
 // users ARE returned — callers decide.
 func (s *Store) GetAuthUserByEmail(ctx context.Context, email string) (storage.AuthUser, error) {
 	row := s.conn.QueryRow(ctx, `
-SELECT Id, Email, Name, PasswordHash, toString(Origin), Disabled, UpdatedAt
+SELECT Id, Email, Name, PasswordHash, toString(Origin), Disabled, OidcGroups, UpdatedAt
 FROM auth_user FINAL
 WHERE Email = ?`, email)
 	return scanAuthUser(row)
@@ -52,7 +52,7 @@ func scanAuthUser(row authUserRow) (storage.AuthUser, error) {
 		u        storage.AuthUser
 		disabled uint8
 	)
-	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.Origin, &disabled, &u.UpdatedAt)
+	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.Origin, &disabled, &u.OidcGroups, &u.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.AuthUser{}, storage.ErrNotFound
 	}
@@ -66,7 +66,7 @@ func scanAuthUser(row authUserRow) (storage.AuthUser, error) {
 // ListAuthUsers returns all users (including disabled), ordered by email.
 func (s *Store) ListAuthUsers(ctx context.Context) ([]storage.AuthUser, error) {
 	rows, err := s.conn.Query(ctx, `
-SELECT Id, Email, Name, PasswordHash, toString(Origin), Disabled, UpdatedAt
+SELECT Id, Email, Name, PasswordHash, toString(Origin), Disabled, OidcGroups, UpdatedAt
 FROM auth_user FINAL
 ORDER BY Email`)
 	if err != nil {
@@ -93,8 +93,8 @@ func (s *Store) SaveAuthUser(ctx context.Context, u storage.AuthUser) error {
 		disabled = 1
 	}
 	err := s.conn.Exec(ctx, `
-INSERT INTO auth_user (Id, Email, Name, PasswordHash, Origin, Disabled)
-VALUES (?, ?, ?, ?, ?, ?)`, u.ID, u.Email, u.Name, u.PasswordHash, u.Origin, disabled)
+INSERT INTO auth_user (Id, Email, Name, PasswordHash, Origin, Disabled, OidcGroups)
+VALUES (?, ?, ?, ?, ?, ?, ?)`, u.ID, u.Email, u.Name, u.PasswordHash, u.Origin, disabled, u.OidcGroups)
 	if err != nil {
 		return fmt.Errorf("save auth user: %w", err)
 	}
