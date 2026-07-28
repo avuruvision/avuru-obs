@@ -43,3 +43,41 @@ func TestParseOIDCConfigRequiresIssuerAndClient(t *testing.T) {
 		t.Fatal("missing issuer should error")
 	}
 }
+
+// grantsEqual compares two grant sets ignoring order.
+func grantsEqual(a, b []Grant) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	counts := make(map[Grant]int, len(a))
+	for _, g := range a {
+		counts[g]++
+	}
+	for _, g := range b {
+		counts[g]--
+		if counts[g] < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func TestMapGroups(t *testing.T) {
+	c := &OIDCConfig{
+		Mapping: []GroupMap{
+			{Group: "obs-admins", Role: RoleAdmin, Projects: []string{"*"}},
+			{Group: "team-payments", Role: RoleEditor, Projects: []string{"payments"}},
+		},
+		DefaultRole: RoleViewer, DefaultProjects: []string{"public"},
+	}
+	if got := c.MapGroups([]string{"team-payments"}); !grantsEqual(got, []Grant{{Scope: "payments", Role: RoleEditor}}) {
+		t.Fatalf("matched: %v", got)
+	}
+	if got := c.MapGroups([]string{"unknown"}); !grantsEqual(got, []Grant{{Scope: "public", Role: RoleViewer}}) {
+		t.Fatalf("default: %v", got)
+	}
+	c.DefaultProjects = nil
+	if got := c.MapGroups([]string{"unknown"}); len(got) != 0 {
+		t.Fatalf("empty default: %v", got)
+	}
+}

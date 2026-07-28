@@ -75,3 +75,37 @@ func ParseOIDCConfig(body []byte, clientSecret string) (*OIDCConfig, error) {
 	}
 	return c, nil
 }
+
+// MapGroups turns a user's IdP groups into grants. Every project listed on a
+// matched rule becomes one grant; when NO rule matches, the defaultRole is
+// granted on defaultProjects (possibly none). Deduplicated by (scope, role).
+func (c *OIDCConfig) MapGroups(groups []string) []Grant {
+	inGroups := make(map[string]bool, len(groups))
+	for _, g := range groups {
+		inGroups[g] = true
+	}
+	var out []Grant
+	seen := make(map[string]bool)
+	add := func(scope string, role Role) {
+		k := scope + "|" + string(role)
+		if !seen[k] {
+			seen[k] = true
+			out = append(out, Grant{Scope: scope, Role: role})
+		}
+	}
+	matched := false
+	for _, m := range c.Mapping {
+		if inGroups[m.Group] {
+			matched = true
+			for _, p := range m.Projects {
+				add(p, m.Role)
+			}
+		}
+	}
+	if !matched && c.DefaultRole != "" {
+		for _, p := range c.DefaultProjects {
+			add(p, c.DefaultRole)
+		}
+	}
+	return out
+}
