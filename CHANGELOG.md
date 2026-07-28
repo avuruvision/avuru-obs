@@ -13,6 +13,20 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **Authentication & per-project access control (secure by default).** The hub
+  now requires login: local users with fixed roles — Admin, Editor, Viewer —
+  granted per project (or `*` for all), enforced server-side on every API
+  route. The `X-Avuru-Tenant` header is validated against the caller's grants,
+  turning projects into a real security boundary: a user granted only
+  `staging` gets 403 anywhere else and a switcher that lists only `staging`.
+  Fresh installs bootstrap an `admin` user (password in the release Secret —
+  see the install NOTES); `auth.enabled=false` restores the previous open
+  behavior. Opt-in **anonymous access** grants visitors a role on an explicit
+  project list only — a public demo can share one project while every other
+  project stays invisible. Sessions are server-side (revocation is
+  immediate); logins are rate-limited; state lives in ClickHouse — no new
+  components. OIDC/SSO and per-project ingest keys land next on the same
+  seam (AEP `design/2026-07-21-auth-oidc-rbac.md`).
 - **Module framework — pick your signals.** One switch per signal family
   (`modules.<name>.enabled`) gates it end to end: its ClickHouse schema
   (`hub migrate` skips the DDL), its Hub API routes (404 when off), its gateway

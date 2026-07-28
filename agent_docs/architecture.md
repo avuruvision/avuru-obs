@@ -88,8 +88,9 @@ Disabling a module never drops existing tables; it stops managing them.
 
 ## Enterprise seam (do not bypass)
 
-- Auth: `hub/internal/auth.Provider` interface; v0.1 ships local admin
-  password; OIDC lands v0.2 behind the same interface
+- Auth: `hub/internal/auth` (sessions, local users, fixed roles × per-project
+  grants, anonymous demo identity) — shipped; OIDC joins behind the same
+  `auth.Service` seam (AEP 2026-07-21)
 - Tenancy: every ClickHouse table carries a `tenant` column (default `default`)
 - Retention: per-signal TTL policy objects, not hardcoded TTLs
 

@@ -124,7 +124,9 @@ The hub stays stateless — no PVC, no SQLite, no new deps.
 ### Sessions and request auth
 
 - Login sets an HttpOnly, `SameSite=Lax`, `Secure`-when-TLS cookie; tokens are
-  random 256-bit values stored hashed; idle/absolute expiry (7d/30d defaults).
+  random 256-bit values stored hashed. v1 ships a single absolute TTL
+  (default 7d) — strictly tighter than the idle+absolute scheme, which would
+  cost a ClickHouse write per request; idle-refresh is deferred.
 - Server-side revocation: disabling a user or removing a grant bites on the
   **next request**, not at token expiry (why not JWTs — see Alternatives).
 - CSRF: non-GET requests must present a matching `Origin`. Login is
