@@ -275,3 +275,80 @@ func TestGroupRollupAndOverall(t *testing.T) {
 		t.Errorf("overall = %q, want down", r.Overall)
 	}
 }
+
+// TestGroupsSplitByEnvironment: one domain declared in two environments becomes
+// two groups, each keeping its own tier. Name stays the domain; Environment
+// carries the dimension.
+func TestGroupsSplitByEnvironment(t *testing.T) {
+	cfg := Config{DefaultTier: TierT2}
+	stats := []storage.ServiceStats{
+		{Name: "pay-prod", SpanCount: 100},
+		{Name: "pay-stg", SpanCount: 100},
+	}
+	labels := []storage.ServiceLabel{
+		{Service: "pay-prod", ServiceNamespace: "payments", Environment: "prod", DeclaredTier: "T0"},
+		{Service: "pay-stg", ServiceNamespace: "payments", Environment: "staging", DeclaredTier: "T2"},
+	}
+
+	rep := Rollup(cfg, time.Minute, stats, labels, nil)
+	if len(rep.Groups) != 2 {
+		t.Fatalf("got %d groups, want 2: %+v", len(rep.Groups), rep.Groups)
+	}
+	byEnv := map[string]GroupHealth{}
+	for _, g := range rep.Groups {
+		if g.Name != "payments" {
+			t.Errorf("group name = %q, want payments", g.Name)
+		}
+		byEnv[g.Environment] = g
+	}
+	if byEnv["prod"].Tier != TierT0 {
+		t.Errorf("prod tier = %q, want T0", byEnv["prod"].Tier)
+	}
+	if byEnv["staging"].Tier != TierT2 {
+		t.Errorf("staging tier = %q, want T2", byEnv["staging"].Tier)
+	}
+}
+
+// TestGroupTierMostCriticalWins: members of one group declaring different tiers
+// roll up to the most critical, regardless of iteration order.
+func TestGroupTierMostCriticalWins(t *testing.T) {
+	cfg := Config{DefaultTier: TierT2}
+	stats := []storage.ServiceStats{
+		{Name: "a", SpanCount: 10}, {Name: "b", SpanCount: 10}, {Name: "c", SpanCount: 10},
+	}
+	labels := []storage.ServiceLabel{
+		{Service: "a", ServiceNamespace: "shop", DeclaredTier: "T3"},
+		{Service: "b", ServiceNamespace: "shop", DeclaredTier: "T0"},
+		{Service: "c", ServiceNamespace: "shop", DeclaredTier: "T2"},
+	}
+
+	rep := Rollup(cfg, time.Minute, stats, labels, nil)
+	if len(rep.Groups) != 1 {
+		t.Fatalf("got %d groups, want 1", len(rep.Groups))
+	}
+	if rep.Groups[0].Tier != TierT0 {
+		t.Errorf("group tier = %q, want T0 (most critical member)", rep.Groups[0].Tier)
+	}
+}
+
+// TestNoEnvironmentKeepsTodaysShape: declaring nothing yields exactly one group
+// per namespace with an empty Environment — the backward-compatibility gate.
+func TestNoEnvironmentKeepsTodaysShape(t *testing.T) {
+	cfg := Config{DefaultTier: TierT2}
+	stats := []storage.ServiceStats{{Name: "web", SpanCount: 10}, {Name: "api", SpanCount: 10}}
+	labels := []storage.ServiceLabel{
+		{Service: "web", K8sNamespace: "shop"},
+		{Service: "api", K8sNamespace: "shop"},
+	}
+
+	rep := Rollup(cfg, time.Minute, stats, labels, nil)
+	if len(rep.Groups) != 1 {
+		t.Fatalf("got %d groups, want 1", len(rep.Groups))
+	}
+	if rep.Groups[0].Name != "shop" || rep.Groups[0].Environment != "" {
+		t.Errorf("group = %q env %q, want shop with empty env", rep.Groups[0].Name, rep.Groups[0].Environment)
+	}
+	if len(rep.Groups[0].Members) != 2 {
+		t.Errorf("members = %d, want 2", len(rep.Groups[0].Members))
+	}
+}
