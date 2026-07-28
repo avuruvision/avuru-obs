@@ -1,16 +1,16 @@
-import { Topbar } from "@/components/layout/topbar";
-import { UsersPanel } from "@/components/settings/users-panel";
+"use client";
 
-// Admin-only user administration. Reachable from the Settings tab bar (shown
-// only to admins) or directly; a non-admin who lands here sees the panel's
-// load error since the hub answers 403 on /api/v1/users.
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { CenteredSpinner } from "@/components/ui/spinner";
+
+// User administration now lives as an in-place tab on the Settings screen
+// (/settings?tab=users) so the tab bar never disappears. This route is kept as
+// a redirect so old links and bookmarks still resolve.
 export default function UsersPage() {
-  return (
-    <>
-      <Topbar />
-      <main className="flex-1 overflow-y-auto p-5">
-        <UsersPanel />
-      </main>
-    </>
-  );
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/settings?tab=users");
+  }, [router]);
+  return <CenteredSpinner />;
 }
