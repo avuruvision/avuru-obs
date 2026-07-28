@@ -187,6 +187,10 @@
             "required": ["name", "tier"]
           }
         },
+        "tierOverrides": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "enum": ["T0", "T1", "T2", "T3"] }
+        },
         "thresholds": {
           "type": "object",
           "properties": {
