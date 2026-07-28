@@ -34,6 +34,23 @@ spec:
             - name: AVURUOPS_PROJECTS
               value: {{ join "," .Values.projects | quote }}
             {{- end }}
+            - name: AVURUOPS_AUTH_ENABLED
+              value: {{ .Values.auth.enabled | quote }}
+            {{- if .Values.auth.enabled }}
+            - name: AVURUOPS_AUTH_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-auth" (include "avuruops.fullname" .)) }}
+                  key: admin-password
+            - name: AVURUOPS_AUTH_SESSION_TTL_HOURS
+              value: {{ .Values.auth.sessionTTLHours | quote }}
+            {{- if .Values.auth.anonymous.role }}
+            - name: AVURUOPS_AUTH_ANONYMOUS_ROLE
+              value: {{ .Values.auth.anonymous.role | quote }}
+            - name: AVURUOPS_AUTH_ANONYMOUS_PROJECTS
+              value: {{ join "," .Values.auth.anonymous.projects | quote }}
+            {{- end }}
+            {{- end }}
           ports:
             - name: http
               containerPort: 8080

@@ -324,6 +324,23 @@ clickhouse:
 # (matching each cluster's gateway.tenant) on a shared-ClickHouse install.
 projects: []
 
+# Authentication + project-scoped RBAC. Secure by default (v0.2): the hub
+# rejects unauthenticated requests to every route except /healthz and the
+# login endpoints. See the bootstrap password in the install NOTES.
+auth:
+  # Secure by default. `false` restores the fully-open pre-v0.2 behavior.
+  enabled: true
+  # Bootstrap admin password. Empty → a random one is generated into the
+  # release Secret on first install and REUSED on upgrades (lookup).
+  adminPassword: ""
+  # Or bring your own Secret (key: admin-password); wins over adminPassword.
+  existingSecret: ""
+  sessionTTLHours: 168
+  # Anonymous, project-scoped read access (public demo). Both must be set.
+  anonymous:
+    role: ""        # "viewer" to enable
+    projects: []    # explicit list — never implicit "*"
+
 # Per-signal retention in DAYS, applied as ClickHouse TTL by `hub migrate`.
 retention:
   traces: 7
@@ -344,11 +361,6 @@ ingress:
   sentryHost: ""
   annotations: {}
   tls: []
-
-# Auth is a forward placeholder: the UI ships open in v0.1; OIDC is v0.2.
-# Enforce auth at your ingress (oauth2-proxy / Keycloak) downstream.
-auth:
-  enabled: false
 
 service:
   type: ClusterIP

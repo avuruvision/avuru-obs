@@ -1,10 +1,14 @@
-//go:build e2e
+//go:build e2e || e2ehelm
 
-// Auth helpers for the compose e2e suite: the hub has auth enabled by
-// default (Task 8), so every legacy test now needs a session. TestMain
-// (dropin_test.go) logs in as admin once and swaps apiClient; loginAs is
-// also used directly by auth_test.go to mint the project-scoped viewer
-// session for the isolation story.
+// Auth helpers shared by both e2e suites: the hub has auth enabled by
+// default (Task 8), so every legacy test now needs a session. In the compose
+// suite TestMain (dropin_test.go) logs in as admin once and swaps apiClient,
+// and auth_test.go uses loginAs directly to mint the project-scoped viewer
+// session for the isolation story. The kind/helm suite (helm_test.go, build
+// tag e2ehelm) reuses loginAs the same way — the chart is installed with
+// --set auth.adminPassword=e2e-admin-pw, matching adminPassword below.
+// loginAs targets the package-level hubURL, which each suite defines for its
+// own port (compose: dropin_test.go; helm: helm_test.go).
 package e2e
 
 import (
@@ -14,9 +18,11 @@ import (
 	"strings"
 )
 
-// adminPassword mirrors AVURUOPS_AUTH_ADMIN_PASSWORD as set by the
-// Makefile's `e2e` target — a fixed, known password so the harness can log
-// in deterministically (the normal dev path leaves it empty/generated).
+// adminPassword mirrors AVURUOPS_AUTH_ADMIN_PASSWORD as pinned by both
+// harnesses — the Makefile's `e2e` target (compose) and e2e-helm.sh's
+// `--set auth.adminPassword=e2e-admin-pw` (kind/helm) — a fixed, known
+// password so the suites can log in deterministically (the normal dev path
+// leaves it empty/generated).
 const adminPassword = "e2e-admin-pw"
 
 // loginAs authenticates against the hub and returns a client whose cookie jar

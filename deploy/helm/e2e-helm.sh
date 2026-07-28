@@ -81,10 +81,14 @@ WEDGE_T0_UNIX=$(date +%s)
 export WEDGE_T0_UNIX
 # pullPolicy stays IfNotPresent (default): the loaded hub/ui images are present,
 # so they are never pulled; ClickHouse image pulls from the registry.
+# auth is ON by default (secure-by-default). Pin a known bootstrap password so
+# the test binary can log in deterministically (loginAs → e2e-admin-pw), the
+# same contract as the compose suite's Makefile `e2e` target.
 helm install avuruops deploy/helm/avuruops -n "$NS" --create-namespace \
   --set hub.repository=avuru-obs-hub --set hub.tag=local \
   --set ui.repository=avuru-obs-ui --set ui.tag=local \
   --set gateway.image.repository=avuru-obs-gateway --set gateway.image.tag=local \
+  --set auth.adminPassword=e2e-admin-pw \
   --set clickhouse.persistence.enabled=false \
   --set clickhouse.resources.requests.cpu=200m \
   --set clickhouse.resources.requests.memory=512Mi \

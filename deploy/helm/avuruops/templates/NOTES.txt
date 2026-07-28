@@ -57,3 +57,10 @@ ClickHouse: in-chart single-node StatefulSet (persistence {{ if .Values.clickhou
 NOTE: the UI ships open (no auth). Enforce authentication at your ingress
 (oauth2-proxy / Keycloak) before exposing it beyond a trusted network.
 {{- end }}
+{{- if .Values.auth.enabled }}
+Login: user `admin`. Retrieve the bootstrap password with:
+  kubectl -n {{ .Release.Namespace }} get secret {{ .Values.auth.existingSecret | default (printf "%s-auth" (include "avuruops.fullname" .)) }} -o jsonpath='{.data.admin-password}' | base64 -d
+NOTE: if you front the hub with your own proxy, it must preserve the Host
+header (e.g. nginx `proxy_set_header Host $host`) — the CSRF origin check
+compares Origin against Host and rejects browser writes on mismatch.
+{{- end }}
