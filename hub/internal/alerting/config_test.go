@@ -72,3 +72,20 @@ func TestParseConfigValid(t *testing.T) {
 		t.Errorf("channel not found")
 	}
 }
+
+// TestSelectorEnvironments: a selector naming no environment matches every
+// environment (existing rules keep their blast radius); naming one narrows.
+func TestSelectorEnvironments(t *testing.T) {
+	all := Selector{Groups: []string{"payments"}}
+	if !all.matchesEnvironment("prod") || !all.matchesEnvironment("staging") || !all.matchesEnvironment("") {
+		t.Error("a selector with no environments should match every environment")
+	}
+
+	narrowed := Selector{Groups: []string{"payments"}, Environments: []string{"prod"}}
+	if !narrowed.matchesEnvironment("prod") {
+		t.Error("narrowed selector should match its own environment")
+	}
+	if narrowed.matchesEnvironment("staging") {
+		t.Error("narrowed selector should not match another environment")
+	}
+}

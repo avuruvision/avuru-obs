@@ -146,3 +146,46 @@ func TestEvaluateResolvesWhenTargetVanishes(t *testing.T) {
 		t.Fatalf("vanished firing target must resolve: %+v", notes)
 	}
 }
+
+// TestBuildTargetsPerEnvironment: two environments of one domain must be TWO
+// targets. Keying by bare name would let the second overwrite the first and
+// silently drop an environment's alerts.
+func TestBuildTargetsPerEnvironment(t *testing.T) {
+	rep := health.Report{Groups: []health.GroupHealth{
+		{Name: "payments", Environment: "prod", Tier: health.TierT0, Status: health.StatusDown, Reason: "prod is down"},
+		{Name: "payments", Environment: "staging", Tier: health.TierT2, Status: health.StatusHealthy, Reason: "ok"},
+		{Name: "legacy", Status: health.StatusHealthy, Reason: "ok"},
+	}}
+
+	got := buildTargets(rep)
+	if got["group:payments[prod]"].status != health.StatusDown {
+		t.Errorf("group:payments[prod] = %+v, want down", got["group:payments[prod]"])
+	}
+	if got["group:payments[staging]"].status != health.StatusHealthy {
+		t.Errorf("group:payments[staging] = %+v, want healthy", got["group:payments[staging]"])
+	}
+	// An environment-less group keeps its bare key: existing rules and stored
+	// alert state must not be invalidated.
+	if got["group:legacy"].status != health.StatusHealthy {
+		t.Errorf("group:legacy = %+v, want healthy", got["group:legacy"])
+	}
+}
+
+// TestSelectorMatchesEnvironmentScopedTarget: a rule naming the domain matches
+// every environment of it; adding environments narrows to one.
+func TestSelectorMatchesEnvironmentScopedTarget(t *testing.T) {
+	all := Selector{Groups: []string{"payments"}}
+	for _, target := range []string{"group:payments", "group:payments[prod]", "group:payments[staging]"} {
+		if !selectorMatches(all, target) {
+			t.Errorf("unnarrowed selector should match %q", target)
+		}
+	}
+
+	narrowed := Selector{Groups: []string{"payments"}, Environments: []string{"prod"}}
+	if !selectorMatches(narrowed, "group:payments[prod]") {
+		t.Error("narrowed selector should match its own environment")
+	}
+	if selectorMatches(narrowed, "group:payments[staging]") {
+		t.Error("narrowed selector should not match another environment")
+	}
+}
