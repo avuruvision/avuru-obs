@@ -294,6 +294,11 @@ serviceGroups:
   #    selector:
   #      namespaces: [payments]
   #      services: []
+  # Per-service tier, set by the operator. Wins over a service's declared
+  # avuru.tier AND over a matched group's tier — the way to correct one
+  # service's criticality without moving it into a different group.
+  tierOverrides: {}
+  #  valife-financial-staging: T1
   # SLO-lite thresholds. Precedence: services > tiers > defaults > built-in.
   thresholds:
     defaults: {}

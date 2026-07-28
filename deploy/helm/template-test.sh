@@ -287,6 +287,14 @@ grep -q 'service-health' <<<"$out" && fail "service-health surface survived modu
 grep -q 'AVURUOBS_GROUPS_CONFIG' <<<"$out" && fail "groups env survived module off"
 ok "no module entry, ConfigMap, env or mount when disabled"
 
+echo "== service-health: tierOverrides reach the ConfigMap and are schema-checked"
+out="$(render --set serviceGroups.tierOverrides.checkout=T0)"
+grep -q 'tierOverrides.*checkout.*T0' <<<"$out" || fail "tierOverrides missing from the groups ConfigMap"
+if render --set serviceGroups.tierOverrides.checkout=T9 >/dev/null 2>&1; then
+  fail "schema accepted an invalid tierOverrides tier"
+fi
+ok "tierOverrides rendered; schema rejects a bad tier"
+
 echo "== alerting: on by default -> module, ConfigMap, env, mount"
 out="$(render)"
 grep -q 'core,logs,infra-metrics,profiling,error-tracking,service-health,alerting' <<<"$out" || fail "alerting missing from AVURUOBS_MODULES"
