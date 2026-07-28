@@ -460,3 +460,24 @@ export interface Me {
   user: { id: string; email: string; name: string; anonymous: boolean };
   grants: AuthGrant[];
 }
+
+// User administration (Plan A; admin only). Mirrors hub/internal/api/users.go.
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  origin: string;
+  disabled: boolean;
+  grants: AuthGrant[];
+}
+
+export interface UsersResponse {
+  users: AdminUser[];
+}
+
+export interface CreateUserRequest {
+  email: string;
+  name: string;
+  password: string;
+  grants: AuthGrant[];
+}
