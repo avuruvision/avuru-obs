@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/health"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
@@ -106,8 +107,12 @@ func (a *API) buildHealthReport(r *http.Request) (health.Report, storage.TimeRan
 	if err != nil {
 		return health.Report{}, storage.TimeRange{}, err
 	}
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return health.Report{}, storage.TimeRange{}, err
+	}
 	q := storage.ServiceQuery{
-		Tenant:     tenant(r),
+		Tenant:     tenant,
 		Range:      tr,
 		ExcludeAux: !parseBool(r, "includeAux", false),
 	}

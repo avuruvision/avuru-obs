@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
@@ -104,8 +105,12 @@ func (a *API) handleSearchErrorIssues(w http.ResponseWriter, r *http.Request) er
 	if err != nil {
 		return err
 	}
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
 	issues, err := store.SearchErrorIssues(r.Context(), storage.ErrorIssueQuery{
-		Tenant:  tenant(r),
+		Tenant:  tenant,
 		Range:   tr,
 		Status:  r.URL.Query().Get("status"),
 		Service: r.URL.Query().Get("service"),
@@ -133,7 +138,11 @@ func (a *API) handleGetErrorIssue(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	issue, err := store.GetErrorIssue(r.Context(), tenant(r), fp)
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
+	issue, err := store.GetErrorIssue(r.Context(), tenant, fp)
 	if err != nil {
 		return err
 	}
@@ -158,8 +167,12 @@ func (a *API) handleListErrorEvents(w http.ResponseWriter, r *http.Request) erro
 	if err != nil {
 		return err
 	}
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
 	page, err := store.ListErrorEvents(r.Context(), storage.ErrorEventQuery{
-		Tenant:      tenant(r),
+		Tenant:      tenant,
 		Fingerprint: fp,
 		Limit:       limit,
 		Cursor:      cursor,
@@ -208,7 +221,11 @@ func (a *API) handleErrorIssueHistogram(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		return err
 	}
-	buckets, err := store.ErrorIssueHistogram(r.Context(), tenant(r), fp, tr, points)
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
+	buckets, err := store.ErrorIssueHistogram(r.Context(), tenant, fp, tr, points)
 	if err != nil {
 		return err
 	}
@@ -240,12 +257,15 @@ func (a *API) handleSetErrorIssueStatus(w http.ResponseWriter, r *http.Request) 
 	}
 	var body setStatusRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
-		return badRequest("invalid body")
+		return decodeJSONError(err)
 	}
 	if !validTriageStatus[body.Status] {
 		return badRequest("invalid status %q (want unresolved|resolved|ignored)", body.Status)
 	}
-	t := tenant(r)
+	t, err := a.project(r, auth.RoleEditor)
+	if err != nil {
+		return err
+	}
 	if err := store.SetErrorIssueStatus(r.Context(), t, fp, body.Status); err != nil {
 		return err
 	}

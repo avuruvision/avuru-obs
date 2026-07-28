@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
@@ -47,8 +48,12 @@ func (a *API) handleProfiledServices(w http.ResponseWriter, r *http.Request) err
 	if err != nil {
 		return err
 	}
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
 	services, err := store.ListProfiledServices(r.Context(), storage.ProfileQuery{
-		Tenant: tenant(r),
+		Tenant: tenant,
 		Range:  tr,
 	})
 	if err != nil {
@@ -76,8 +81,12 @@ func (a *API) handleFlamegraph(w http.ResponseWriter, r *http.Request) error {
 	if service == "" {
 		return badRequest("service is required")
 	}
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
 	root, err := store.ProfileFlamegraph(r.Context(), storage.ProfileQuery{
-		Tenant:  tenant(r),
+		Tenant:  tenant,
 		Range:   tr,
 		Service: service,
 	})

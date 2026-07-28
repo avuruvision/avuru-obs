@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
@@ -16,8 +17,12 @@ func (a *API) handleServices(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
 	services, err := store.ListServices(r.Context(), storage.ServiceQuery{
-		Tenant:     tenant(r),
+		Tenant:     tenant,
 		Range:      tr,
 		ExcludeAux: !parseBool(r, "includeAux", false),
 	})
@@ -43,8 +48,12 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
 	q := storage.ServiceQuery{
-		Tenant:     tenant(r),
+		Tenant:     tenant,
 		Range:      tr,
 		ExcludeAux: !parseBool(r, "includeAux", false),
 	}
@@ -158,8 +167,12 @@ func (a *API) handleTraceOverview(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
 	ops, err := store.TraceOverview(r.Context(), storage.OverviewQuery{
-		Tenant:     tenant(r),
+		Tenant:     tenant,
 		Range:      tr,
 		Service:    r.URL.Query().Get("service"),
 		ExcludeAux: !parseBool(r, "includeAux", false),
@@ -211,8 +224,12 @@ func (a *API) handleSearchTraces(w http.ResponseWriter, r *http.Request) error {
 		return badRequest("invalid order: must be newest, oldest or slowest")
 	}
 
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
 	page, err := store.SearchTraces(r.Context(), storage.TraceQuery{
-		Tenant:      tenant(r),
+		Tenant:      tenant,
 		Range:       tr,
 		Service:     r.URL.Query().Get("service"),
 		Operation:   r.URL.Query().Get("operation"),
@@ -245,7 +262,11 @@ func (a *API) handleGetTrace(w http.ResponseWriter, r *http.Request) error {
 	if traceID == "" {
 		return badRequest("missing traceId")
 	}
-	trace, err := store.GetTrace(r.Context(), tenant(r), traceID)
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
+	trace, err := store.GetTrace(r.Context(), tenant, traceID)
 	if err != nil {
 		return err
 	}
@@ -264,7 +285,11 @@ func (a *API) handleGetSpan(w http.ResponseWriter, r *http.Request) error {
 	if spanID == "" {
 		return badRequest("missing spanId")
 	}
-	traceID, err := store.FindSpanTrace(r.Context(), tenant(r), spanID)
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
+	traceID, err := store.FindSpanTrace(r.Context(), tenant, spanID)
 	if err != nil {
 		return err
 	}
@@ -289,8 +314,12 @@ func (a *API) handleHeatmap(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
 	hm, err := store.TraceHeatmap(r.Context(), storage.HeatmapQuery{
-		Tenant:          tenant(r),
+		Tenant:          tenant,
 		Range:           tr,
 		Service:         r.URL.Query().Get("service"),
 		Operation:       r.URL.Query().Get("operation"),

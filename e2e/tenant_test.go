@@ -30,7 +30,7 @@ func getJSONTenant(path, tenant string, out any) (int, error) {
 	if tenant != "" {
 		req.Header.Set("X-Avuru-Tenant", tenant)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := apiClient.Do(req)
 	if err != nil {
 		return 0, err
 	}

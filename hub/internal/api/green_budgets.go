@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/green"
 	"github.com/avuru/avuru-obs/hub/internal/health"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
@@ -53,7 +54,10 @@ func (a *API) handleGreenBudgets(w http.ResponseWriter, r *http.Request) error {
 	cfg := a.greenConfig()
 	now := time.Now().UTC()
 	tr := monthToDate(now)
-	ten := tenant(r)
+	ten, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
 	// Daily buckets: one query serves both the used totals and the burn-down.
 	rows, err := store.ServiceEnergy(r.Context(), greenQuery(cfg, ten, tr, 24*time.Hour))
 	if err != nil {

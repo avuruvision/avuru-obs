@@ -1,7 +1,8 @@
 // Package migrations holds the hub-owned ClickHouse DDL, embedded into the
 // binary so `hub migrate` is the single schema mechanism in compose AND k8s
-// (see agent_docs/architecture.md and the M2 design spec). Retention/TTL is
-// NOT in these files — it is applied env-driven by the migrator.
+// (see agent_docs/architecture.md and the M2 design spec). Retention/TTL for
+// signal data is NOT in these files — it is applied env-driven by the migrator;
+// fixed housekeeping TTLs (e.g. session GC in 0010) are the deliberate exception.
 package migrations
 
 import (
@@ -27,6 +28,7 @@ var Ordered = []string{
 	"0007_errors_from_logs.sql",
 	"0008_alerts.sql",
 	"0009_alert_channels.sql",
+	"0010_auth.sql",
 }
 
 // ByModule tags each migration with the module(s) whose schema it owns; the
@@ -49,4 +51,6 @@ var ByModule = map[string][]modules.Name{
 	"0008_alerts.sql": {modules.Alerting},
 	// alert_channel — UI-managed delivery channels.
 	"0009_alert_channels.sql": {modules.Alerting},
+	// Local users, grants, sessions — auth gates everything, so core.
+	"0010_auth.sql": {modules.Core},
 }
