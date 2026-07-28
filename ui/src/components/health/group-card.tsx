@@ -31,6 +31,11 @@ export function GroupCard({
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="truncate text-sm font-semibold">{group.name}</span>
+              {group.environment && (
+                <span className="rounded bg-primary/15 px-1 text-[10px] text-primary">
+                  {group.environment}
+                </span>
+              )}
               {group.source === "auto" && (
                 <span className="rounded bg-base-300 px-1 text-[10px] text-base-content/50">auto</span>
               )}
