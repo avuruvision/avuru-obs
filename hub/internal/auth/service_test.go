@@ -238,6 +238,108 @@ func TestIdentityDropsInvalidRole(t *testing.T) {
 	}
 }
 
+func TestCompleteSSOUpsertsUserAndMapsGrants(t *testing.T) {
+	f := &storagetest.Fake{}
+	svc := testService(f)
+	svc.SetGroupMapper(func(groups []string) []Grant {
+		for _, g := range groups {
+			if g == "obs-admins" {
+				return []Grant{{Scope: "*", Role: RoleAdmin}}
+			}
+		}
+		return nil
+	})
+	ctx := context.Background()
+
+	ext := ExternalIdentity{Subject: "kc|1", Email: "sso@x.io", Name: "SSO User", Groups: []string{"obs-admins"}}
+	token, id, err := svc.CompleteSSO(ctx, ext)
+	if err != nil {
+		t.Fatalf("CompleteSSO: %v", err)
+	}
+	if token == "" {
+		t.Fatal("expected a non-empty session token")
+	}
+	if !id.IsAdmin() {
+		t.Fatalf("mapped grants missing admin: %+v", id.Grants)
+	}
+
+	// The minted session is the same kind a local login mints: the raw token
+	// resolves back to the mapped identity.
+	got, err := svc.IdentityFromToken(ctx, token)
+	if err != nil {
+		t.Fatalf("token→identity: %v", err)
+	}
+	if !got.IsAdmin() {
+		t.Fatalf("resolved identity lost mapped admin grant: %+v", got.Grants)
+	}
+
+	// Idempotent upsert: a second SSO login reuses the same user row (fixed
+	// oidc| id), so exactly one user carries this email.
+	if _, _, err := svc.CompleteSSO(ctx, ext); err != nil {
+		t.Fatalf("second CompleteSSO: %v", err)
+	}
+	users, err := f.ListAuthUsers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, u := range users {
+		if u.Email == ext.Email {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly one user with email %q, got %d", ext.Email, count)
+	}
+}
+
+// TestCompleteSSOKeepsManualGrantsIndependent proves mapped grants are derived
+// at read time (identityFor) rather than persisted: a manual grant added out of
+// band survives an SSO re-login, and the mapped grant is NOT written to storage.
+func TestCompleteSSOKeepsManualGrantsIndependent(t *testing.T) {
+	f := &storagetest.Fake{}
+	svc := testService(f)
+	svc.SetGroupMapper(func(groups []string) []Grant {
+		for _, g := range groups {
+			if g == "obs-admins" {
+				return []Grant{{Scope: "*", Role: RoleAdmin}}
+			}
+		}
+		return nil
+	})
+	ctx := context.Background()
+	ext := ExternalIdentity{Subject: "kc|9", Email: "sso@x.io", Name: "SSO", Groups: []string{"obs-admins"}}
+
+	if _, _, err := svc.CompleteSSO(ctx, ext); err != nil {
+		t.Fatalf("CompleteSSO: %v", err)
+	}
+	uid := "oidc|" + ext.Subject
+	// A manual, admin-assigned grant on a specific project.
+	if err := f.ReplaceAuthGrants(ctx, uid, []storage.AuthGrant{{UserID: uid, Scope: "demo", Role: "editor"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, id, err := svc.CompleteSSO(ctx, ext)
+	if err != nil {
+		t.Fatalf("re-login: %v", err)
+	}
+	// Both the manual editor-on-demo and the mapped admin-on-* are present.
+	if !id.IsAdmin() {
+		t.Fatalf("mapped admin missing after re-login: %+v", id.Grants)
+	}
+	if r, ok := id.RoleFor("demo"); !ok || r != RoleAdmin {
+		t.Fatalf("manual demo grant clobbered: role=%v ok=%v grants=%+v", r, ok, id.Grants)
+	}
+	// The mapped grant is not persisted — storage still holds only the manual one.
+	stored, err := f.ListAuthGrants(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 || stored[0].Scope != "demo" {
+		t.Fatalf("mapped grant leaked into storage: %+v", stored)
+	}
+}
+
 func TestRateLimitWindowExpiry(t *testing.T) {
 	f := &storagetest.Fake{}
 	seedUser(t, f, "a@x.io", "pw", nil)
