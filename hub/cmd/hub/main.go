@@ -353,10 +353,7 @@ func bootstrapAdmin(ctx context.Context, svc *auth.Service, provider api.StorePr
 		password = auth.NewID()
 	}
 
-	for {
-		if provider() != nil {
-			break
-		}
+	for provider() == nil {
 		select {
 		case <-ctx.Done():
 			return
