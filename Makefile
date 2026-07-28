@@ -1,6 +1,6 @@
 # Thin root dispatcher ONLY — build logic lives in each component
 # (agent_docs/development.md). Keep it that way.
-.PHONY: hub ui ui-image gateway-image check helm-check e2e e2e-helm e2e-ui dev dev-clean version version-set
+.PHONY: hub ui ui-image gateway-image check helm-check e2e e2e-helm e2e-ui dev dev-clean version version-set notices
 
 COMPOSE := docker compose -f deploy/compose/docker-compose.yaml
 
@@ -19,6 +19,11 @@ version-set:
 	@perl -i -pe 's/^appVersion: .*/appVersion: "$(V)"/ && ($$done=1) if !$$done' deploy/helm/avuruops/Chart.yaml
 	@perl -i -pe 's{(avuru-obs-(?:hub|ui|gateway)):\S+}{$$1:$(V)}g' deploy/helm/avuruops/Chart.yaml
 	@echo "version set to $(V) (VERSION, ui/package.json, Chart.yaml)"
+
+# Regenerates THIRD-PARTY-NOTICES.md (Apache §4 attribution for bundled
+# dependencies) — required fresh before every release (RELEASE-CHECKLIST.md).
+notices:
+	bash tools/notices/generate.sh
 
 hub:
 	$(MAKE) -C hub build

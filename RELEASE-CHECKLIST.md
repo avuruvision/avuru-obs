@@ -10,6 +10,7 @@ process and the branch/version model.
 - [ ] [CHANGELOG.md](CHANGELOG.md): `Unreleased` finalized into `## [X.Y.Z] — <date>`, with a fresh empty `Unreleased` above it.
 - [ ] `make version-set V=X.Y.Z` applied (no `-SNAPSHOT`); `make version` prints `X.Y.Z`.
 - [ ] Component versions agree: `ui/package.json` reads `X.Y.Z`.
+- [ ] `make notices` run — [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) regenerated and committed (Apache §4 attribution for bundled dependencies).
 - [ ] Release commit is **signed** (`git log --show-signature -1`).
 
 ## Cut
