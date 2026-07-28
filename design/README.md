@@ -47,6 +47,7 @@ only if the design needs to be pinned down before coding.
 | [2026-07-19](2026-07-19-network-health.md) | Network health on the service map — per-edge RTT + connection failures | Accepted |
 | [2026-07-20](2026-07-20-endpoint-checks.md) | Endpoint checks — health when there is no traffic | Draft |
 | [2026-07-22](2026-07-22-green-carbon.md) | Green — per-service energy and carbon attribution (Kepler) | Accepted |
+| [2026-07-28](2026-07-28-green-tdp-estimation.md) | Green TDP estimation — modeled energy for RAPL-less nodes | Draft |
 
 ## Conventions
 
