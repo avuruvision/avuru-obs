@@ -19,12 +19,18 @@ func (s *Store) ServiceLabels(ctx context.Context, q storage.ServiceQuery) ([]st
 SELECT
     ServiceName,
     argMax(k8sns, w) AS k8s_namespace,
-    argMax(svcns, w) AS service_namespace
+    argMax(svcns, w) AS service_namespace,
+    argMax(env, w)   AS environment,
+    argMax(tier, w)  AS declared_tier
 FROM (
     SELECT
         ServiceName,
         ResourceAttributes['k8s.namespace.name'] AS k8sns,
         ResourceAttributes['service.namespace']  AS svcns,
+        if(ResourceAttributes['deployment.environment.name'] != '',
+           ResourceAttributes['deployment.environment.name'],
+           ResourceAttributes['deployment.environment']) AS env,
+        ResourceAttributes['avuru.tier']         AS tier,
         count()                                   AS w
     FROM otel_traces
     WHERE Tenant = ?
@@ -35,7 +41,7 @@ FROM (
 		query += auxExclusion("")
 	}
 	query += `
-    GROUP BY ServiceName, k8sns, svcns
+    GROUP BY ServiceName, k8sns, svcns, env, tier
 )
 GROUP BY ServiceName`
 
@@ -48,7 +54,7 @@ GROUP BY ServiceName`
 	var out []storage.ServiceLabel
 	for rows.Next() {
 		var l storage.ServiceLabel
-		if err := rows.Scan(&l.Service, &l.K8sNamespace, &l.ServiceNamespace); err != nil {
+		if err := rows.Scan(&l.Service, &l.K8sNamespace, &l.ServiceNamespace, &l.Environment, &l.DeclaredTier); err != nil {
 			return nil, fmt.Errorf("scanning service label row: %w", err)
 		}
 		out = append(out, l)

@@ -13,6 +13,8 @@
 **Test commands:**
 - Hub unit: `cd hub && go test -race ./internal/health/...`
 - Hub integration: `cd hub && go test -tags=integration ./internal/storage/clickhouse/...`
+  (on Colima, prefix `TESTCONTAINERS_RYUK_DISABLED=true` — the reaper cannot
+  bind-mount the Colima docker socket)
 - Everything: `make check`
 - Chart: `make helm-check`
 
@@ -24,8 +26,7 @@
 |---|---|---|
 | `hub/internal/storage/store.go` | `ServiceLabel` DTO | Modify (2 fields) |
 | `hub/internal/storage/clickhouse/service_labels.go` | dominant-label SQL | Modify |
-| `hub/internal/storage/clickhouse/integration_test.go` | `testSpan` fixture | Modify (resource attrs) |
-| `hub/internal/storage/clickhouse/labels_integration_test.go` | ServiceLabels integration test | Create |
+| `hub/internal/storage/clickhouse/labels_integration_test.go` | ServiceLabels integration test + local span fixture | Create |
 | `hub/internal/health/config.go` | config shape, tier validation, `TierOverrides` | Modify |
 | `hub/internal/health/tier.go` | tier criticality ordering | Create |
 | `hub/internal/health/resolve.go` | assignment, tier precedence, warnings | Modify |
@@ -49,37 +50,16 @@
 - Modify: `hub/internal/storage/clickhouse/integration_test.go:163-196`
 - Test: `hub/internal/storage/clickhouse/labels_integration_test.go`
 
-- [ ] **Step 1: Let test spans carry resource attributes**
+> **Revised during execution.** The original Step 1 widened the shared
+> `testSpan` with a `resAttrs` field. That breaks every **positional** literal
+> of the type, and there are 30 of them in `integration_test.go` plus 5 in
+> `errors_integration_test.go` — a large diff in tests this change does not
+> otherwise touch, with real transcription risk. The fixture is instead local to
+> the new file. `testSpan` and `insertSpans` are left untouched.
 
-In `integration_test.go`, add a field to `testSpan` (line 163) and merge it in `insertSpans`:
+- [x] **Step 1: (dropped — no shared-fixture change needed)**
 
-```go
-type testSpan struct {
-	ts       time.Time
-	traceID  string
-	spanID   string
-	parentID string
-	name     string
-	kind     string
-	service  string
-	duration time.Duration
-	status   string
-	resAttrs map[string]string // merged over {"service.name": service}
-}
-```
-
-In `insertSpans`, replace the hardcoded `map[string]string{"service.name": sp.service}` argument with a built map. Insert this immediately after `for _, sp := range spans {`:
-
-```go
-		res := map[string]string{"service.name": sp.service}
-		for k, v := range sp.resAttrs {
-			res[k] = v
-		}
-```
-
-and change the `batch.Append` argument from `map[string]string{"service.name": sp.service}` to `res`.
-
-- [ ] **Step 2: Write the failing integration test**
+- [ ] **Step 2: Write the failing integration test with a local fixture**
 
 Create `hub/internal/storage/clickhouse/labels_integration_test.go`:
 
