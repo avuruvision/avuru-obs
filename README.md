@@ -110,6 +110,7 @@ sandbox) lands with the [M1–M2 milestones](ROADMAP.md).
 | [GOVERNANCE.md](GOVERNANCE.md) | How decisions are made; becoming a maintainer |
 | [MAINTAINERS.md](MAINTAINERS.md) | Who maintains what |
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community standards |
+| [CLA.md](CLA.md) | Contributor License Agreement — signed automatically on your first PR |
 | [SECURITY.md](SECURITY.md) | Reporting vulnerabilities (privately) |
 | [AI_POLICY.md](AI_POLICY.md) | Using AI tools when contributing |
 | [COMMIT-SIGNING-SETUP.md](COMMIT-SIGNING-SETUP.md) | Required signed-commit setup |
@@ -118,6 +119,20 @@ sandbox) lands with the [M1–M2 milestones](ROADMAP.md).
 
 New here? Look for **good first issue** labels, and open an issue or
 [discussion](CONTRIBUTING.md) before non-trivial work.
+
+## Support the project
+
+Avuru Obs is independent open-source software: AGPL-licensed, self-hosted,
+no telemetry phoning home. If it replaces a per-host observability bill for
+your team, consider funding the work that keeps it moving — CI, eBPF test
+hardware across kernels, and signed multi-arch releases:
+
+- **[GitHub Sponsors](https://github.com/sponsors/avuruvision)** — monthly or
+  one-time, directly through GitHub
+- **[Open Collective](https://opencollective.com/avuru-obs)** — fully
+  transparent budget; companies get proper invoices they can expense
+
+Organizations sponsoring at a sustained tier get their logo featured here.
 
 ## License
 
