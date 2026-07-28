@@ -97,6 +97,14 @@ type ServiceLabel struct {
 	Service          string
 	K8sNamespace     string // ResourceAttributes['k8s.namespace.name']
 	ServiceNamespace string // ResourceAttributes['service.namespace']
+	// Environment is the declared deployment environment: the current semconv
+	// key deployment.environment.name, falling back to the deprecated
+	// deployment.environment. "" = no environment dimension.
+	Environment string
+	// DeclaredTier is the raw ResourceAttributes['avuru.tier'] value. It is NOT
+	// validated here: application telemetry is untrusted input, so the health
+	// package validates it and falls back on garbage rather than failing.
+	DeclaredTier string
 }
 
 // OverviewQuery filters TraceOverview.
