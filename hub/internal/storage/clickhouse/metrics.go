@@ -28,6 +28,16 @@ const (
 // the sensor's k8sattributes adds it to pod metrics.
 const nodeAttr = "ResourceAttributes['k8s.node.name']"
 
+// workloadExpr resolves a pod's owning workload from kubeletstats resource
+// attributes — owner precedence deployment > statefulset > daemonset, the
+// empty string when the pod has no recognized owner. Shared by ListPodStats
+// and the green energy attribution join (workload name IS the service name).
+const workloadExpr = `multiIf(
+        ResourceAttributes['k8s.deployment.name'] != '', ResourceAttributes['k8s.deployment.name'],
+        ResourceAttributes['k8s.statefulset.name'] != '', ResourceAttributes['k8s.statefulset.name'],
+        ResourceAttributes['k8s.daemonset.name'] != '', ResourceAttributes['k8s.daemonset.name'],
+        '')`
+
 // ListNodeStats returns per-node latest utilization, network rates averaged
 // over the range, pod counts, and short CPU/memory series for sparklines.
 func (s *Store) ListNodeStats(ctx context.Context, q storage.InfraQuery) ([]storage.NodeStat, error) {
@@ -215,11 +225,7 @@ SELECT
     ResourceAttributes['k8s.pod.name'] AS pod,
     ResourceAttributes['k8s.namespace.name'] AS ns,
     anyLast(` + nodeAttr + `) AS node,
-    anyLast(multiIf(
-        ResourceAttributes['k8s.deployment.name'] != '', ResourceAttributes['k8s.deployment.name'],
-        ResourceAttributes['k8s.statefulset.name'] != '', ResourceAttributes['k8s.statefulset.name'],
-        ResourceAttributes['k8s.daemonset.name'] != '', ResourceAttributes['k8s.daemonset.name'],
-        '')) AS workload,
+    anyLast(` + workloadExpr + `) AS workload,
     argMaxIf(Value, TimeUnix, MetricName = ?) AS cpu,
     argMaxIf(Value, TimeUnix, MetricName = ?) AS mem
 FROM otel_metrics_gauge

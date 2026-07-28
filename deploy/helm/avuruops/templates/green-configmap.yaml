@@ -1,0 +1,15 @@
+{{- if .Values.modules.green.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "avuruops.fullname" . }}-green
+  labels:
+    {{- include "avuruops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hub
+data:
+  # The hub parses this as JSON (fail-loud on invalid content — a bad factor or
+  # metric name crashes startup rather than silently misreporting carbon). green
+  # is authored as YAML in values.yaml; toJson renders it for the hub, which
+  # hot-reloads on change so `kubectl edit` applies without a pod restart.
+  green.json: {{ .Values.green | toJson | quote }}
+{{- end }}

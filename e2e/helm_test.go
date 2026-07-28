@@ -10,14 +10,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"testing"
 	"time"
 )
 
-const (
-	helmHubURL    = "http://localhost:8080"
-	helmSeedTrace = "aaaa1111bbbb2222cccc3333dddd4444"
-)
+// The port-forwarded hub. Env-overridable because a dev machine may have
+// localhost:8080 taken by an unrelated process — deploy/helm/e2e-helm.sh
+// forwards HUB_PORT_LOCAL and exports the matching URL; CI keeps the default.
+var helmHubURL = func() string {
+	if v := os.Getenv("AVURUOPS_E2E_HUB_URL"); v != "" {
+		return v
+	}
+	return "http://localhost:8080"
+}()
+
+const helmSeedTrace = "aaaa1111bbbb2222cccc3333dddd4444"
 
 func helmGetJSON(path string, out any) error {
 	resp, err := http.Get(helmHubURL + path)

@@ -13,17 +13,29 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"testing"
 	"time"
 )
 
-const (
-	hubURL    = "http://localhost:8080"
-	hotrodURL = "http://localhost:8088"
-	chURL     = "http://localhost:8123"
-
-	seededTraceID = "aaaa1111bbbb2222cccc3333dddd4444"
+// Endpoints default to the compose stack's published ports; each is
+// env-overridable so a shared dev machine can run the suite against an
+// isolated compose project with remapped host ports (the Playwright
+// AVURUOPS_BASE_URL precedent). CI sets nothing and keeps the defaults.
+var (
+	hubURL    = envOr("AVURUOPS_E2E_HUB_URL", "http://localhost:8080")
+	hotrodURL = envOr("AVURUOPS_E2E_HOTROD_URL", "http://localhost:8088")
+	chURL     = envOr("AVURUOPS_E2E_CH_URL", "http://localhost:8123")
 )
+
+const seededTraceID = "aaaa1111bbbb2222cccc3333dddd4444"
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
 
 // poll retries fn until it returns nil or the deadline passes (never sleep
 // blindly — agent_docs/testing.md).

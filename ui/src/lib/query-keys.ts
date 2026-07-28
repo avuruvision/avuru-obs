@@ -57,6 +57,10 @@ export const queryKeys = {
     [p, "health", "groups", { ...t, includeAux }] as const,
   alerts: (p: string) => [p, "alerts", "list"] as const,
   alertRules: (p: string) => [p, "alerts", "rules"] as const,
+  // Green (module green). Summary is windowed; budgets are always the current
+  // UTC calendar month, so their key carries no time.
+  greenSummary: (p: string, t: TimeParams) => [p, "green", "summary", t] as const,
+  greenBudgets: (p: string) => [p, "green", "budgets"] as const,
   // Channels are instance-global delivery endpoints (no project element,
   // like systemStatus) — the notification payload carries the tenant.
   alertChannels: ["alerts", "channels"] as const,

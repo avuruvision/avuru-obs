@@ -28,10 +28,15 @@ const (
 	// It owns the alert_state/alert_history tables (0008) and is the hub's only
 	// module that makes an outbound call. Inert until rules are configured.
 	Alerting Name = "alerting"
+	// Green derives per-service energy (Wh) and carbon (gCO2e) from Kepler
+	// metrics at query time. It owns no schema/migration (it reads the existing
+	// otel_metrics_* tables) but requires infra-metrics: the pod→workload join
+	// reads the kubeletstats attributes. See design/2026-07-22-green-carbon.md.
+	Green Name = "green"
 )
 
 // All lists every known module in registry (display) order.
-var All = []Name{Core, Logs, InfraMetrics, Profiling, ErrorTracking, ServiceHealth, Alerting}
+var All = []Name{Core, Logs, InfraMetrics, Profiling, ErrorTracking, ServiceHealth, Alerting, Green}
 
 // Set is a resolved active-module set; Core is always present.
 type Set map[Name]bool
@@ -83,6 +88,10 @@ func Parse(v string) (Set, error) {
 			return nil, fmt.Errorf("unknown module %q (known: %s)", part, strings.Join(AllSet().Names(), ", "))
 		}
 		s[m] = true
+	}
+	// Green's hard dependency (see the Green const doc) must fail the deploy loudly.
+	if s[Green] && !s[InfraMetrics] {
+		return nil, fmt.Errorf("module %q requires %q — add it to AVURUOPS_MODULES", Green, InfraMetrics)
 	}
 	return s, nil
 }

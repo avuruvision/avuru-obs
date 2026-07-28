@@ -14,6 +14,10 @@ NS=avuruops
 HUB_IMG=avuru-obs-hub:local
 UI_IMG=avuru-obs-ui:local
 GW_IMG=avuru-obs-gateway:local
+# Local port the hub is forwarded to. Overridable for dev machines where an
+# unrelated process holds 8080; the test binary follows via AVURUOPS_E2E_HUB_URL.
+HUB_PORT_LOCAL="${HUB_PORT_LOCAL:-8080}"
+export AVURUOPS_E2E_HUB_URL="http://localhost:${HUB_PORT_LOCAL}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
@@ -48,6 +52,18 @@ SENSOR_IMGS=(
 PLATFORM="linux/$(docker version -f '{{.Server.Arch}}')"
 for img in "${DEMO_IMGS[@]}" "${SENSOR_IMGS[@]}"; do docker pull -q --platform "$PLATFORM" "$img" >/dev/null; done
 
+# Kepler (green module — keep in sync with values.yaml sensor.green pins).
+# Upstream publishes linux/amd64 only (no arm64 manifest as of v0.11.4), so on
+# an arm64 dev host fall back to the amd64 image: kind runs it through the
+# host's binfmt emulation (Rosetta/qemu). CI runners are amd64-native.
+KEPLER_IMG=quay.io/sustainable_computing_io/kepler:v0.11.4
+KEPLER_PLATFORM="$PLATFORM"
+if ! docker pull -q --platform "$KEPLER_PLATFORM" "$KEPLER_IMG" >/dev/null 2>&1; then
+  KEPLER_PLATFORM=linux/amd64
+  echo "    NOTE: $KEPLER_IMG has no $PLATFORM manifest — using $KEPLER_PLATFORM via binfmt emulation"
+  docker pull -q --platform "$KEPLER_PLATFORM" "$KEPLER_IMG" >/dev/null
+fi
+
 echo "==> creating kind cluster '$CLUSTER'"
 kind create cluster --name "$CLUSTER" --wait 120s
 kind load docker-image "$HUB_IMG" --name "$CLUSTER"
@@ -69,6 +85,14 @@ for img in "${DEMO_IMGS[@]}" "${SENSOR_IMGS[@]}"; do
   kind load image-archive "$tar" --name "$CLUSTER"
   rm -f "$tar"
 done
+# Kepler loads with ITS platform (may differ from $PLATFORM, see the pull above).
+tar="$(mktemp -t wedge-img.XXXXXX).tar"
+if docker save --platform "$KEPLER_PLATFORM" -o "$tar" "$KEPLER_IMG" 2>/dev/null; then
+  kind load image-archive "$tar" --name "$CLUSTER"
+else
+  echo "    NOTE: not pre-loading $KEPLER_IMG (no $KEPLER_PLATFORM archive) — the cluster will pull it"
+fi
+rm -f "$tar"
 
 # The wedge promise is about a cluster ALREADY RUNNING apps: the demo goes
 # in first (it needs nothing from the platform).
@@ -81,6 +105,10 @@ WEDGE_T0_UNIX=$(date +%s)
 export WEDGE_T0_UNIX
 # pullPolicy stays IfNotPresent (default): the loaded hub/ui images are present,
 # so they are never pulled; ClickHouse image pulls from the registry.
+# Green rides the SAME install (born-off in the chart; this leg opts in): the
+# pinned Kepler joins the sensor DaemonSet with its dev fake-cpu-meter so kind
+# — which has no RAPL — proves do-no-harm with energy actually flowing. The
+# TTV wedge gate and the probe-canary gate below run UNCHANGED against it.
 helm install avuruops deploy/helm/avuruops -n "$NS" --create-namespace \
   --set hub.repository=avuru-obs-hub --set hub.tag=local \
   --set ui.repository=avuru-obs-ui --set ui.tag=local \
@@ -90,11 +118,14 @@ helm install avuruops deploy/helm/avuruops -n "$NS" --create-namespace \
   --set clickhouse.resources.requests.memory=512Mi \
   --set clickhouse.resources.limits.memory=1536Mi \
   --set gateway.resources.requests.memory=128Mi \
-  --set hub.resources.requests.memory=64Mi
+  --set hub.resources.requests.memory=64Mi \
+  --set modules.green.enabled=true \
+  --set sensor.green.enabled=true \
+  --set sensor.green.fakeCpuMeter=true
 
 echo "==> waiting for the hub to answer (inside the wedge clock)"
 kubectl -n "$NS" wait --for=condition=Available deploy/avuruops-hub --timeout=240s
-kubectl -n "$NS" port-forward svc/avuruops-hub 8080:80 >/dev/null 2>&1 &
+kubectl -n "$NS" port-forward svc/avuruops-hub "${HUB_PORT_LOCAL}:80" >/dev/null 2>&1 &
 PF_PIDS="$PF_PIDS $!"
 sleep 2
 
@@ -132,6 +163,34 @@ echo "    ui / -> 200"
 
 echo "==> asserting seeded traces + correlated logs via the hub API"
 ( cd e2e && "$E2E_BIN" -test.v -test.timeout 5m -test.run 'TestSeededViaHelm' )
+
+# GREEN: the fake-cpu-meter Kepler leg. The seeded fixtures also carry
+# kepler_* rows (ScopeName avuru-seed-kepler), so the poll EXCLUDES seeded
+# scopes: only rows the sensor's prometheus receiver scraped from the real
+# pinned Kepler count. This empirically pins the STORED metric names against
+# the pinned image (an AEP verify item) — a Kepler rename would fail here, not
+# silently return an empty /green. Runs before the soak sleep so the poll
+# reuses otherwise-dead soak time; the soak/canary gates below are unchanged.
+echo "==> GREEN: polling ClickHouse for Kepler energy rows scraped from the pinned image"
+KEPLER_SQL="SELECT countIf(MetricName = 'kepler_node_cpu_joules_total'), countIf(MetricName = 'kepler_pod_cpu_joules_total') FROM otel.otel_metrics_sum WHERE MetricName LIKE 'kepler%' AND ScopeName NOT LIKE 'avuru-seed%'"
+KEPLER_DEADLINE=$(( $(date +%s) + 240 ))
+while :; do
+  counts=$(kubectl -n "$NS" exec avuruops-clickhouse-0 -- \
+    clickhouse-client -u avuru --password avuru -q "$KEPLER_SQL" 2>/dev/null || echo "")
+  node_rows=$(awk '{print $1}' <<<"$counts")
+  pod_rows=$(awk '{print $2}' <<<"$counts")
+  if [ "${node_rows:-0}" -gt 0 ] 2>/dev/null && [ "${pod_rows:-0}" -gt 0 ] 2>/dev/null; then
+    echo "    kepler rows in otel_metrics_sum (scraped, non-seeded): node=$node_rows pod=$pod_rows"
+    break
+  fi
+  if [ "$(date +%s)" -ge "$KEPLER_DEADLINE" ]; then
+    echo "GREEN: no scraped kepler_(node|pod)_cpu_joules_total rows within 240s (node=${node_rows:-?} pod=${pod_rows:-?})"
+    kubectl -n "$NS" logs ds/avuruops-sensor -c kepler --tail=30 || true
+    kubectl -n "$NS" logs ds/avuruops-sensor -c otel-agent --tail=15 || true
+    exit 1
+  fi
+  sleep 5
+done
 
 # REGRESSION GATE (docs/runbooks/app-probe-failures.md): installing avuru-obs
 # must not destabilize apps that were already running. The wedge demo predates
