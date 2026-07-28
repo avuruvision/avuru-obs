@@ -29,6 +29,7 @@ var Ordered = []string{
 	"0008_alerts.sql",
 	"0009_alert_channels.sql",
 	"0010_auth.sql",
+	"0011_auth_oidc_groups.sql",
 }
 
 // ByModule tags each migration with the module(s) whose schema it owns; the
@@ -53,4 +54,6 @@ var ByModule = map[string][]modules.Name{
 	"0009_alert_channels.sql": {modules.Alerting},
 	// Local users, grants, sessions — auth gates everything, so core.
 	"0010_auth.sql": {modules.Core},
+	// OidcGroups column on auth_user — captured at SSO login, part of core auth.
+	"0011_auth_oidc_groups.sql": {modules.Core},
 }
