@@ -183,6 +183,13 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// OIDC is hot-reloaded like the other mounted configs; nil accessors when
+	// AVURUOPS_AUTH_OIDC_CONFIG is unset (or auth is disabled). Installs the
+	// SSO group→grant mapper on authSvc as a side effect.
+	oidcProvider, oidcSettings, err := loadOIDCConfig(ctx, authSvc)
+	if err != nil {
+		return err
+	}
 
 	// One notifier shared by the evaluator and the channels test endpoint, so
 	// the SSRF policy is identical on both paths.
@@ -207,6 +214,8 @@ func run() error {
 		Auth:                  authSvc,
 		AnonymousIdentity:     anonID,
 		GreenConfig:           greenConfig,
+		OIDC:                  oidcProvider,
+		OIDCSettings:          oidcSettings,
 	})
 
 	// The alerting evaluator is a single background loop (see runAlertingEvaluator);
