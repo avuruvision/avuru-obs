@@ -141,5 +141,50 @@ services:
     depends_on:
       - gateway
 
+  # Mock OIDC IdP for the OPT-IN SSO e2e — never part of the default stack
+  # (compose profiles: plain `docker compose up` ignores it entirely). The
+  # hub-side wiring (env + config mount) lives in docker-compose.oidc-e2e.yaml;
+  # see that file's header for the full recipe.
+  #
+  # JSON_CONFIG (schema: navikt/mock-oauth2-server OAuth2Config):
+  #   - interactiveLogin=false — /authorize 302s straight back with a code
+  #     (the image's standalone default is true, which serves a login form;
+  #     e2e/oidc_test.go handles that form defensively anyway).
+  #   - the token callback pins the identity minted on the code exchange:
+  #     `aud` MUST equal the clientId in oidc-e2e.yaml (the hub verifies the
+  #     ID token's audience — the mock's fallback aud would fail it), and
+  #     `groups` drives the group→grant mapping asserted via /api/v1/auth/me.
+  mock-oidc:
+    image: ghcr.io/navikt/mock-oauth2-server:4.0.1
+    profiles: ["oidc-e2e"]
+    environment:
+      JSON_CONFIG: |
+        {
+          "interactiveLogin": false,
+          "tokenCallbacks": [
+            {
+              "issuerId": "default",
+              "requestMappings": [
+                {
+                  "requestParam": "code",
+                  "match": "*",
+                  "claims": {
+                    "sub": "e2e-sso-user",
+                    "aud": ["avuru-obs-e2e"],
+                    "email": "sso-user@e2e",
+                    "name": "E2E SSO User",
+                    "groups": ["obs-e2e-viewers"]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+    ports:
+      # Published for the host-side e2e client, which follows the hub's
+      # authorize redirect after rewriting mock-oidc:8080 → localhost:18089
+      # (the container-internal issuer host does not resolve on the host).
+      - "127.0.0.1:18089:8080"
+
 volumes:
   clickhouse-data:
