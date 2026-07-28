@@ -104,14 +104,14 @@ export default function LoginPage() {
                 </p>
               </div>
               <label className="flex flex-col gap-1 text-xs text-base-content/60">
-                Email
+                Email or username
                 <input
                   className={inputClass}
-                  type="email"
+                  type="text"
                   autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  placeholder="you@example.com or admin"
                   required
                 />
               </label>
