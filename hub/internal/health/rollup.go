@@ -52,17 +52,20 @@ type GroupHealth struct {
 	Members     []Member
 }
 
-// Report is the whole tenant's group health for a window.
+// Report is the whole tenant's group health for a window. Warnings carry
+// declarations the hub could not honour (e.g. an invalid avuru.tier); they are
+// informational and never block the report.
 type Report struct {
-	Overall string
-	Groups  []GroupHealth
+	Overall  string
+	Groups   []GroupHealth
+	Warnings []string
 }
 
 // Rollup computes group health from the RED population (stats), grouping
 // labels, and dependency edges, over a window. It is pure: no I/O, no clock.
 // The window is used only to derive per-second rates.
 func Rollup(cfg Config, window time.Duration, stats []storage.ServiceStats, labels []storage.ServiceLabel, edges []storage.ServiceEdge) Report {
-	assign, _ := resolve(cfg, stats, labels)
+	assign, warnings := resolve(cfg, stats, labels)
 	statByService := make(map[string]storage.ServiceStats, len(stats))
 	for _, s := range stats {
 		statByService[s.Name] = s
@@ -83,7 +86,7 @@ func Rollup(cfg Config, window time.Duration, stats []storage.ServiceStats, labe
 	members := buildMembers(assign, statByService, base, effective, effReason, deps, window)
 	groups := groupAndRoll(assign, members)
 
-	return Report{Overall: overallStatus(groups), Groups: groups}
+	return Report{Overall: overallStatus(groups), Groups: groups, Warnings: warnings}
 }
 
 // propagate applies the golden rule: an edge s→t is critical iff t is T0 (or a

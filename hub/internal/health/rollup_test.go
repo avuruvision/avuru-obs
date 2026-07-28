@@ -352,3 +352,19 @@ func TestNoEnvironmentKeepsTodaysShape(t *testing.T) {
 		t.Errorf("members = %d, want 2", len(rep.Groups[0].Members))
 	}
 }
+
+// TestRollupSurfacesWarnings: a bad declaration reaches the report so the API
+// can show it, without failing the rollup.
+func TestRollupSurfacesWarnings(t *testing.T) {
+	cfg := Config{DefaultTier: TierT2}
+	stats := []storage.ServiceStats{{Name: "rogue", SpanCount: 10}}
+	labels := []storage.ServiceLabel{{Service: "rogue", ServiceNamespace: "apps", DeclaredTier: "nonsense"}}
+
+	rep := Rollup(cfg, time.Minute, stats, labels, nil)
+	if len(rep.Warnings) != 1 {
+		t.Fatalf("Warnings = %v, want 1", rep.Warnings)
+	}
+	if len(rep.Groups) != 1 || rep.Groups[0].Tier != TierT2 {
+		t.Errorf("rollup should still produce a T2 group, got %+v", rep.Groups)
+	}
+}
