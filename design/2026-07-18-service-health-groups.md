@@ -4,6 +4,11 @@
 - **Author(s):** Berny ryders
 - **Status:** Accepted
 
+> **Amended by [AEP 2026-07-28](2026-07-28-declared-service-metadata.md)**:
+> services may declare their own domain, environment, and tier, and group
+> identity became the pair (domain, environment). The hybrid auto+config model
+> below is unchanged for installs that declare nothing.
+
 ## Summary
 
 Add a **service-health** module that rolls per-service **RED** health up into
