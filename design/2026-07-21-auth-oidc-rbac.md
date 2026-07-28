@@ -281,12 +281,14 @@ granted project, and flipping `enforce` rejects unkeyed OTLP.
 ## Roadmap
 
 - [ ] AEP accepted
-- [ ] `hub/internal/auth`: stores, sessions, middleware, local provider,
+- [x] `hub/internal/auth`: stores, sessions, middleware, local provider,
       bootstrap admin
-- [ ] RBAC enforcement on existing routes + granted-projects filtering
-- [ ] Auth HTTP surface + login UI + 401 interception + Settings→Users
-- [ ] Anonymous demo mode
-- [ ] OIDC provider + group mapping (+ Keycloak e2e against a real realm)
+- [x] RBAC enforcement on existing routes + granted-projects filtering
+- [x] Auth HTTP surface + login UI + 401 interception + Settings→Users
+- [x] Anonymous demo mode
+- [x] OIDC provider + group mapping (e2e runs opt-in against a real mock IdP
+      through the compose stack — `docker-compose.oidc-e2e.yaml`; a
+      Keycloak-realm pass is still open)
 - [ ] Ingest keys: store, admin UI, static chart keys, sensor key wiring
 - [ ] Gateway `avuruingestauth` extension + `mode: off|log|enforce`
 - [ ] Helm: secrets (admin, internal token, sensor key), values, upgrade notes

@@ -34,6 +34,10 @@ hub (Go binary: API + OpAMP config plane)   ◄── UI (static SPA, own pod)
 - **One store**: ClickHouse for traces, metrics, logs, profiles, and flows.
 - **Drop-in**: already on OTLP/Jaeger? Point your exporter at the gateway —
   no SDK or code changes (a hard product requirement).
+- **Secure by default**: login + per-project RBAC out of the box, and
+  enterprise SSO via any OIDC IdP (Keycloak, Entra, Okta, ...) in OSS — IdP
+  groups map to per-project roles, `forceSSO` for IdP-only fleets — with no
+  extra components (no oauth2-proxy, no Dex).
 
 ## Quickstart
 
