@@ -11,6 +11,19 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.2.0] — 2026-07-28
+
+**Depth and control.** v0.1 proved the wedge — a live service map in under
+five minutes with zero app changes. v0.2 makes that install safe to run for
+real teams: the hub is **secure by default** (login, roles, per-project
+grants, OIDC SSO), signals are **modular** (a traces-only install carries no
+log or profile weight), the sensor is **provably safe to leave on**, and four
+new modules — error tracking, service health groups, alerting, and green
+energy/carbon — turn the data you already collect into triage, status and
+accountability. The project is now licensed AGPL-3.0.
+
 ### Added
 
 - **Authentication & per-project access control (secure by default).** The hub
@@ -250,6 +263,7 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
 
 <!--
 Release links:
-[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/avuruvision/avuru-obs/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/avuruvision/avuru-obs/releases/tag/v0.1.0
 -->

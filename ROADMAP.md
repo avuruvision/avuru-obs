@@ -44,90 +44,64 @@ These milestone tags (`M1`–`M5`) are referenced throughout the codebase and
 | **M4** | UI depth | Trace waterfall/flamegraph/diff, split workspace; continuous profiling (ingest seam → flame-graph API → icicle UI) |
 | **M5** | Gateway build & TTV gate | OCB-built minimal collector distro; kind-based time-to-value gate (uninstrumented wedge demo, <300 s service-map assertion) in CI |
 
-## v0.2 (directional)
+## v0.2 — depth and control — ALL SHIPPED (v0.2.0)
 
-- **Auth:** OIDC behind the existing `hub/internal/auth.Provider`
-  interface. The
-  [enterprise seam](agent_docs/architecture.md#enterprise-seam-do-not-bypass)
-  — auth provider, `tenant` column, retention policy objects — is built in from
-  v0.1 so this lands without a rewrite.
-- **v0.2 — runtime collection control plane:** v0.1 controls collection through
-  Helm values (per-signal, per-namespace, per-pod label, per-node label — see
-  `deploy/helm/README.md`) with a read-only agent inventory in Settings →
-  Collection. v0.2 makes the same knobs switchable from the UI: the hub
-  persists a bounded, schema-validated collection overlay and patches the
-  sensor ConfigMaps (rollout via the existing config checksum), gated by a
+Everything below shipped in v0.2.0; the full detail lives in
+[CHANGELOG.md](CHANGELOG.md) and the linked AEPs.
+
+| Theme | Shipped |
+|---|---|
+| **Auth & access control** | Secure-by-default login: local users, Admin/Editor/Viewer roles granted per project, server-side enforcement, anonymous access opt-in; **OIDC SSO** (any IdP — PKCE flow in the hub, group→role mapping, `forceSSO`) — [AEP](design/2026-07-21-auth-oidc-rbac.md) |
+| **Module framework** | One switch per signal family (`modules.<name>.enabled`) gates schema, API, pipeline, collection and UI together; capabilities endpoint drives the sidebar — [AEP](design/2026-07-15-module-framework.md) |
+| **Error tracking** | Deduplicated, triageable issues derived in-database from spans and logs, plus an opt-in Sentry-protocol ingest endpoint (browser SDKs report by changing a DSN) — [AEP](design/2026-07-16-error-tracking.md) |
+| **Service health groups** | Group health with criticality tiers (T0/T1/T2), critical-dependency propagation, hot-reloadable config, `/health` tier-lane board — [AEP](design/2026-07-18-service-health-groups.md) |
+| **Alerting** | Webhook notifications on service-health transitions: declarative rules, firing/resolved lifecycle, SSRF-guarded outbound, `/alerts` history — [AEP](design/2026-07-19-alerting.md) |
+| **Network health** | Per-edge RTT + failed/reset connections from OBI TCP stats on the service-map edges (exact OBI stats key still to be confirmed in a real eBPF environment) — [AEP](design/2026-07-19-network-health.md) |
+| **Green — energy & carbon** | Per-service Wh/gCO2e from Kepler (RAPL), carbon budgets, CSRD-ready export; off by default, honest no-RAPL reporting (real-RAPL validation still pending) — [AEP](design/2026-07-22-green-carbon.md) |
+| **Sensor safe by default** | CI-enforced do-no-harm soak (probe-sensitive canary), `optIn` discovery mode, staged-rollout runbook — [AEP](design/2026-07-17-sensor-safe-by-default.md) |
+| **Topology from OBI flows** | Service-map edges from OBI network-flow data; the cancelled Rust L4 tracer removed |
+| **License** | Relicensed Apache-2.0 → **AGPL-3.0** |
+
+## v0.3 (directional)
+
+Each of the larger items already has a draft AEP — design work done, awaiting
+implementation.
+
+- **Projects completion:** per-project **API keys** at ingest (replaces
+  topology-based trust of `avuru.tenant` and the tenancy header — the auth
+  seam it needs shipped in v0.2), project CRUD (config-defined entries stay
+  read-only), per-project retention, per-project system status, and chart
+  component toggles so secondary clusters install gateway(+sensor)-only
+  against a shared ClickHouse. See the
+  [AEP](design/2026-07-27-projects-completion.md).
+- **Runtime collection control plane:** the Helm collection knobs (per-signal,
+  per-namespace, per-pod label, per-node label) become switchable from the UI:
+  the hub persists a bounded, schema-validated collection overlay and patches
+  the sensor ConfigMaps (rollout via the existing config checksum), gated by a
   default-off flag and a namespace-scoped Role on the named resources only.
   OpAMP remains the destination — status reporting first, remote-config once
-  OBI grows a client (AEP when it lands). Query-time filtering was rejected:
-  it saves no collection or storage cost.
-- **Projects (per environment):** v0.1 ships config-defined projects +
-  auto-discovery from data (`projects`/`gateway.tenant` chart values, sidebar
-  switcher, `?project=` links). Later: per-project **API keys** at ingest
-  (needs v0.2 auth — replaces topology-based trust of `avuru.tenant` and the
-  tenancy header), project CRUD (config-defined entries stay read-only),
-  per-project retention (per-tenant TTL is its own design), per-project
-  system status, and chart component toggles so secondary clusters install
-  gateway(+sensor)-only against a shared ClickHouse.
-- **Modules — pick your signals:** one switch per signal family
-  (`modules.<name>.enabled`) gates its schema, API, pipeline, collection and UI
-  together, so a traces-only install carries no log/profile weight. Everything
-  is on by default; `core` (service map + traces + RED) always is. Shipped as
-  the seam that new signals plug into — see the
-  [AEP](design/2026-07-15-module-framework.md).
-- **Error tracking (new module):** exceptions already reach us as span events
-  and ERROR logs, but only as counts. This groups them into deduplicated
-  issues with a stack trace, an occurrence timeline, links to the originating
-  trace, and a triage lifecycle (resolved/ignored, plus regression detection
-  when a resolved issue recurs). Two ways in, no code change either way:
-  derived in-database from the OTLP you already send, and a Sentry-protocol
-  ingest endpoint so existing SDKs — browser JS especially, the one signal
-  eBPF cannot reach — point at avuru-obs by changing a DSN. Later: alerting,
-  release tracking, source maps.
-- **Service health (new module):** rolls per-service RED health up into
-  consolidated **group** health with criticality **tiers** (T0/T1/T2) and a
-  dependency-propagation rule — a service can't read green while a critical (T0)
-  dependency is red. Derived from trace data you already send (no probing, no new
-  schema); grouping is hybrid — config selectors plus automatic grouping by
-  Kubernetes namespace — and the tier/threshold config hot-reloads from a
-  ConfigMap without a redeploy. The read-side status model a future alerting
-  layer fires on. See the [AEP](design/2026-07-18-service-health-groups.md).
-- **Alerting (new module):** a background evaluator in the hub watches
-  service-health status and fires a generic webhook — into any incoming-webhook
-  target — when a rule's group/service/tier crosses into a bad state for a
-  configured duration, and again when it recovers. Config-defined rules and
-  channels (a hot-reloadable ConfigMap, like service health); alert state
-  persists in ClickHouse. The hub's first outbound path, treated as a security
-  surface (SSRF guard, bounded retries, secret redaction). Later: RED/error
-  triggers, native Slack/email, silences, UI-authored rules, HA. See the
-  [AEP](design/2026-07-19-alerting.md).
+  OBI grows a client. Query-time filtering was rejected: it saves no
+  collection or storage cost. See the
+  [AEP](design/2026-07-27-collection-control-plane.md).
 - **Wider ingest compatibility:** Jaeger, Zipkin, Prometheus and Loki push
   receivers alongside OTLP, plus forwarding exporters (OTLP/Kafka) so
   avuru-obs can dual-write during a migration. Extends the drop-in promise
-  beyond OTLP and keeps the door open in both directions.
-- **Network health on the service map:** per-edge **RTT** and **failed/reset
-  connections** from OBI's TCP-stats metrics (upstream OpenTelemetry eBPF
-  Instrumentation) — connection-level health without traces, SDKs, or app
-  changes, surfaced on the map edges. (Retransmissions were dropped — OBI does
-  not emit them; see the [AEP](design/2026-07-19-network-health.md).)
-- **Green (new module) — energy & carbon attribution:** per-pod energy measured
-  by CNCF Kepler (RAPL), attributed to the services on the map you already have:
-  Wh and gCO2e per service and per request, monthly carbon budgets per group
-  with webhook alerts, and a CSRD-ready export that states its methodology.
-  Carbon factors are static operator-set config with bundled country averages —
-  no external API, nothing leaves the cluster. Off by default (needs
-  RAPL-capable hardware, e.g. bare metal). See the
-  [AEP](design/2026-07-22-green-carbon.md). Next for green: **TDP-modeled
-  estimation for RAPL-less nodes** — VMs expose no RAPL, so a power model
-  (`P_idle + u × (P_max − P_idle)`) produces per-service numbers explicitly
-  labeled *estimated*, never blended with measured joules; see the
-  [draft AEP](design/2026-07-28-green-tdp-estimation.md).
+  beyond OTLP and keeps the door open in both directions. See the
+  [AEP](design/2026-07-27-wider-ingest-compat.md).
 - **Richer auto-tagging:** map Kubernetes labels/annotations to business tags
-  and filter by them across every signal.
+  and filter by them across every signal. See the
+  [AEP](design/2026-07-27-auto-tagging.md).
+- **More clients:** the Hub API is the client-agnostic contract; the SPA is one
+  thin client. A **Grafana** data source and a **CLI** are planned. See the
+  [AEP](design/2026-07-27-clients-grafana-cli.md).
+- **Green TDP estimation:** VMs expose no RAPL, so a power model
+  (`P_idle + u × (P_max − P_idle)`) produces per-service numbers explicitly
+  labeled *estimated*, never blended with measured joules. See the
+  [draft AEP](design/2026-07-28-green-tdp-estimation.md).
+- **Endpoint checks:** health when there is no traffic. See the
+  [draft AEP](design/2026-07-20-endpoint-checks.md).
 - **Deeper profiling:** off-CPU and memory profiles as the upstream OTel eBPF
   profiler grows them.
-- **More clients:** the Hub API is the client-agnostic contract; the SPA is one
-  thin client. A **Grafana** data source and a **CLI** are planned.
 - **Storage re-evaluation:** ClickHouse stays behind `storage.Store`; GreptimeDB
   is slated for re-evaluation mid-2027 without changing Hub code.
 
