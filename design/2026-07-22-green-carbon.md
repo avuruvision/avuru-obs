@@ -66,7 +66,8 @@ the module framework gates the whole surface.
 - **CRUD budgets** — budgets are config-defined like alerting rules; UI
   authoring wants the auth seam.
 - **TDP-based estimation for RAPL-less nodes** — a post-v1 roadmap item; v1
-  reports honestly only what was measured.
+  reports honestly only what was measured. Now designed in
+  [AEP 2026-07-28](2026-07-28-green-tdp-estimation.md).
 - **RBAC on carbon data** — rides the auth/OIDC module when it lands (roadmap
   note); v1 exposes green data to any hub user like every other module.
 
@@ -289,8 +290,10 @@ today (per-tenant factors couple to the auth seam later); storage stays behind
       RAPL hardware** (blocks prod use)
 - [ ] Docs (module page, factors/budgets configuration, methodology) via
       docs-align
-- [ ] Post-v1: TDP estimation for RAPL-less nodes, hourly intensity, per-endpoint
-      attribution, CRUD budgets + RBAC via the auth module
+- [ ] Post-v1: TDP estimation for RAPL-less nodes
+      ([AEP 2026-07-28](2026-07-28-green-tdp-estimation.md), Draft), hourly
+      intensity, per-endpoint attribution, CRUD budgets + RBAC via the auth
+      module
 
 ### Post-v1 follow-ups (from the branch review)
 

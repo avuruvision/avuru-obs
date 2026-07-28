@@ -117,7 +117,11 @@ These milestone tags (`M1`–`M5`) are referenced throughout the codebase and
   Carbon factors are static operator-set config with bundled country averages —
   no external API, nothing leaves the cluster. Off by default (needs
   RAPL-capable hardware, e.g. bare metal). See the
-  [AEP](design/2026-07-22-green-carbon.md).
+  [AEP](design/2026-07-22-green-carbon.md). Next for green: **TDP-modeled
+  estimation for RAPL-less nodes** — VMs expose no RAPL, so a power model
+  (`P_idle + u × (P_max − P_idle)`) produces per-service numbers explicitly
+  labeled *estimated*, never blended with measured joules; see the
+  [draft AEP](design/2026-07-28-green-tdp-estimation.md).
 - **Richer auto-tagging:** map Kubernetes labels/annotations to business tags
   and filter by them across every signal.
 - **Deeper profiling:** off-CPU and memory profiles as the upstream OTel eBPF
