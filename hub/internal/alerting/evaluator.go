@@ -133,6 +133,27 @@ func candidateTargets(rule Rule, targets map[string]targetInfo, prev State) []st
 	return out
 }
 
+// groupTargetKey addresses a group. An environment-less group keeps the bare
+// "group:<name>" key so existing rules and stored alert state stay valid; a
+// declared environment gets its own key, because two environments of one domain
+// are two targets — keying both by name would let one silently overwrite the
+// other in the targets map.
+func groupTargetKey(g health.GroupHealth) string {
+	if g.Environment == "" {
+		return "group:" + g.Name
+	}
+	return "group:" + g.Name + "[" + g.Environment + "]"
+}
+
+// splitGroupTarget splits "payments[prod]" into ("payments", "prod"), and
+// "payments" into ("payments", "").
+func splitGroupTarget(s string) (name, env string) {
+	if i := strings.LastIndex(s, "["); i >= 0 && strings.HasSuffix(s, "]") {
+		return s[:i], s[i+1 : len(s)-1]
+	}
+	return s, ""
+}
+
 // buildTargets flattens a health report into addressable targets: one per
 // group, one per service (member), and one synthetic per tier (worst-of that
 // tier's groups).
@@ -140,7 +161,7 @@ func buildTargets(report health.Report) map[string]targetInfo {
 	out := map[string]targetInfo{}
 	tierWorst := map[string]targetInfo{}
 	for _, g := range report.Groups {
-		out["group:"+g.Name] = targetInfo{g.Status, g.Reason}
+		out[groupTargetKey(g)] = targetInfo{g.Status, g.Reason}
 		for _, m := range g.Members {
 			out["service:"+m.Service] = targetInfo{m.EffectiveStatus, m.Reason}
 		}
@@ -148,7 +169,11 @@ func buildTargets(report health.Report) map[string]targetInfo {
 			tk := string(g.Tier)
 			cur, ok := tierWorst[tk]
 			if !ok || severity(g.Status) > severity(cur.status) {
-				tierWorst[tk] = targetInfo{g.Status, g.Name + " is " + g.Status}
+				label := g.Name
+				if g.Environment != "" {
+					label += " [" + g.Environment + "]"
+				}
+				tierWorst[tk] = targetInfo{g.Status, label + " is " + g.Status}
 			}
 		}
 	}
@@ -161,7 +186,8 @@ func buildTargets(report health.Report) map[string]targetInfo {
 func selectorMatches(sel Selector, target string) bool {
 	switch {
 	case strings.HasPrefix(target, "group:"):
-		return contains(sel.Groups, strings.TrimPrefix(target, "group:"))
+		name, env := splitGroupTarget(strings.TrimPrefix(target, "group:"))
+		return contains(sel.Groups, name) && sel.matchesEnvironment(env)
 	case strings.HasPrefix(target, "service:"):
 		return contains(sel.Services, strings.TrimPrefix(target, "service:"))
 	case strings.HasPrefix(target, "tier:"):
