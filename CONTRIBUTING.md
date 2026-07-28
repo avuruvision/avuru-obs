@@ -19,7 +19,7 @@ All contributions require a one-time signature of the
 signing is a single comment.
 
 Why a CLA instead of plain AGPL inbound=outbound: the Project intends to
-sustain itself the way Grafana, Coroot, and SigNoz do — a fully open AGPL
+sustain itself the way Grafana and Elastic do — a fully open AGPL
 community edition, plus commercially licensed enterprise capabilities behind
 the [enterprise seam](./agent_docs/architecture.md#enterprise-seam-do-not-bypass).
 Offering a commercial license requires the project to hold sufficient rights
