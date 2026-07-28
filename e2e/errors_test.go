@@ -109,7 +109,7 @@ func TestTriageStatus(t *testing.T) {
 	fp := resp.Issues[0].Fingerprint
 
 	body := bytes.NewReader([]byte(`{"status":"resolved"}`))
-	r, err := http.Post(hubURL+"/api/v1/errors/issues/"+fp+"/status", "application/json", body)
+	r, err := apiClient.Post(hubURL+"/api/v1/errors/issues/"+fp+"/status", "application/json", body)
 	if err != nil {
 		t.Fatalf("POST status: %v", err)
 	}
