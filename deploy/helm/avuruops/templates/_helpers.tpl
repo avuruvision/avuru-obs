@@ -86,6 +86,7 @@ otel
 {{- if .Values.modules.errorTracking.enabled -}}{{- $mods = append $mods "error-tracking" -}}{{- end -}}
 {{- if .Values.modules.serviceHealth.enabled -}}{{- $mods = append $mods "service-health" -}}{{- end -}}
 {{- if .Values.modules.alerting.enabled -}}{{- $mods = append $mods "alerting" -}}{{- end -}}
+{{- if .Values.modules.green.enabled -}}{{- $mods = append $mods "green" -}}{{- end -}}
 {{- join "," $mods -}}
 {{- end -}}
 
@@ -152,6 +153,33 @@ otel
 {{- end }}
 {{- end -}}
 
+{{/* Green energy/carbon config: env + volume + mount, in its OWN dir so it
+     never collides with the service-groups or alerts mounts. Carries the carbon
+     factors, metric-name overrides and budgets the hub reads (hot-reloaded).
+     Emitted only when the green module is on. */}}
+{{- define "avuruops.greenEnv" -}}
+{{- if .Values.modules.green.enabled }}
+- name: AVURUOPS_GREEN_CONFIG
+  value: /etc/avuruops-green/green.json
+{{- end }}
+{{- end -}}
+
+{{- define "avuruops.greenVolume" -}}
+{{- if .Values.modules.green.enabled }}
+- name: green-config
+  configMap:
+    name: {{ include "avuruops.fullname" . }}-green
+{{- end }}
+{{- end -}}
+
+{{- define "avuruops.greenVolumeMount" -}}
+{{- if .Values.modules.green.enabled }}
+- name: green-config
+  mountPath: /etc/avuruops-green
+  readOnly: true
+{{- end }}
+{{- end -}}
+
 {{/* Effective collection switches: a module gates its own collection, so a
      disabled module never collects regardless of the sensor knob. These emit
      "true" or the empty string — a rendered "false" would be a non-empty
@@ -167,6 +195,15 @@ otel
 
 {{- define "avuruops.collectProfiles" -}}
 {{- if and .Values.modules.profiling.enabled .Values.sensor.profiler.enabled -}}true{{- end -}}
+{{- end -}}
+
+{{/* Green energy collection is live only when BOTH the green module and the
+     sensor's green (Kepler) container are on. Same true/"" contract as the
+     sibling collect* helpers — consume via `if include`, never compare to
+     "false". The pod→workload join it feeds also needs infra-metrics, but that
+     is a hard dependency enforced by a {{ fail }} guard, not folded in here. */}}
+{{- define "avuruops.collectGreen" -}}
+{{- if and .Values.modules.green.enabled .Values.sensor.green.enabled -}}true{{- end -}}
 {{- end -}}
 
 {{/* Sentry SDK ingest is live only when the flag AND both modules it leans on

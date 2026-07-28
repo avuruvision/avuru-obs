@@ -1,6 +1,21 @@
 {{- if and .Values.sensor.obi.network.enabled (not .Values.modules.infraMetrics.enabled) }}
 {{- fail "sensor.obi.network.enabled requires modules.infraMetrics.enabled — OBI network flows are stored in the otel_metrics_* tables owned by the infra-metrics module." }}
 {{- end }}
+{{- /* Green's hard dependency, mirroring the hub's modules.Parse: the
+       pod→workload energy join reads the kubeletstats resource attributes the
+       infra-metrics module owns. Fire on the MODULE flag (unconditional, like
+       the obi.network guard above) so a green install without infra-metrics
+       fails at template time instead of crash-looping the hub. */}}
+{{- if and .Values.modules.green.enabled (not .Values.modules.infraMetrics.enabled) }}
+{{- fail "modules.green.enabled requires modules.infraMetrics.enabled — per-service energy attribution joins Kepler pods to workloads via the kubeletstats attributes stored in the otel_metrics_* tables owned by the infra-metrics module." }}
+{{- end }}
+{{- /* Collecting energy needs the otel-agent: the Kepler exporter is scraped by
+       a prometheus receiver that lives in the agent container. Gated by
+       sensor.enabled so values that render nothing (sensor off) never fail an
+       install — the same discipline as the OBI optIn guards. */}}
+{{- if and .Values.sensor.enabled (include "avuruops.collectGreen" .) (not .Values.sensor.agent.enabled) }}
+{{- fail "sensor.green.enabled requires sensor.agent.enabled — Kepler's energy metrics are scraped by a prometheus receiver in the otel-agent; with the agent off nothing collects them." }}
+{{- end }}
 {{- if and .Values.sensor.enabled .Values.sensor.obi.enabled }}
 {{- /* optIn guards live INSIDE the render gate: values that produce no
        manifests must never fail an install (e.g. optIn kept in a shared
@@ -95,7 +110,7 @@ data:
 {{- end }}
 {{- /* The agent needs >=1 active pipeline or the collector crash-loops. A
        module gates its own collection (see avuruops.collect* helpers). */}}
-{{- $agentActive := and .Values.sensor.enabled .Values.sensor.agent.enabled (or (include "avuruops.collectLogs" .) (include "avuruops.collectInfraMetrics" .)) }}
+{{- $agentActive := and .Values.sensor.enabled .Values.sensor.agent.enabled (or (include "avuruops.collectLogs" .) (include "avuruops.collectInfraMetrics" .) (include "avuruops.collectGreen" .)) }}
 {{- if $agentActive }}
 ---
 apiVersion: v1
@@ -140,6 +155,27 @@ data:
         collection_interval: {{ .Values.sensor.agent.kubeletstats.interval }}
         metric_groups: [node, pod]
     {{- end }}
+    {{- if include "avuruops.collectGreen" . }}
+      # Scrapes the same-pod Kepler exporter over loopback (Kepler binds
+      # 127.0.0.1 — never exposed on the pod network; see the hostNetwork
+      # caveat on sensor.green.port in values.yaml). The keep relabel drops
+      # every SCRAPED series except the four Kepler energy metrics (the AEP
+      # metric table). Prometheus's synthetic scrape-report series (up,
+      # scrape_*) bypass metric_relabel_configs by design — filter/green in
+      # the pipeline drops those. The pod→workload join happens later, at hub
+      # query time, via the kubeletstats resource attributes.
+      prometheus/green:
+        config:
+          scrape_configs:
+            - job_name: kepler
+              scrape_interval: {{ .Values.sensor.green.scrapeInterval }}
+              static_configs:
+                - targets: ["127.0.0.1:{{ .Values.sensor.green.port }}"]
+              metric_relabel_configs:
+                - source_labels: [__name__]
+                  regex: {{ .Values.sensor.green.metrics.keep | quote }}
+                  action: keep
+    {{- end }}
     processors:
       memory_limiter:
         check_interval: 1s
@@ -167,6 +203,17 @@ data:
           - sources:
               - from: resource_attribute
                 name: k8s.pod.uid
+          {{- if include "avuruops.collectGreen" . }}
+          # Kepler energy carries no pod UID — associate on its promoted
+          # k8s.pod.name/k8s.namespace.name (see groupbyattrs/green) so the
+          # opt-out label reaches energy too. Ordered AFTER the UID rule, which
+          # still wins for logs/kubeletstats (the first full match is used).
+          - sources:
+              - from: resource_attribute
+                name: k8s.namespace.name
+              - from: resource_attribute
+                name: k8s.pod.name
+          {{- end }}
       {{- if or .Values.sensor.collection.excludeNamespaces .Values.sensor.collection.optOutLabel }}
       # Collection guardrails: drop pod-scoped telemetry from excluded
       # namespaces and opted-out pods. Node-level metrics carry no
@@ -201,6 +248,47 @@ data:
               - set(attributes["service.name"], attributes["k8s.statefulset.name"]) where attributes["service.name"] == nil
               - set(attributes["service.name"], attributes["k8s.daemonset.name"]) where attributes["service.name"] == nil
               - set(attributes["service.name"], attributes["k8s.container.name"]) where attributes["service.name"] == nil
+      {{- if include "avuruops.collectGreen" . }}
+      # Prometheus's synthetic scrape-report series (up, scrape_duration_seconds,
+      # scrape_samples_scraped, scrape_samples_post_metric_relabeling,
+      # scrape_series_added) are generated AFTER metric_relabel_configs, so the
+      # receiver's keep relabel cannot drop them — without this they would land
+      # in the shared otel_metrics_gauge (~5 series per node per scrape) that
+      # the infra views query. Only Kepler energy may leave this pipeline.
+      filter/green:
+        error_mode: ignore
+        metrics:
+          metric:
+            - IsMatch(name, "^(up|scrape_.+)$")
+      # Green energy shaping. Kepler labels each pod datapoint pod_name/
+      # pod_namespace (which the hub reads VERBATIM off the datapoint). Copy
+      # them to the standard k8s.* keys so the shared k8sattributes and
+      # filter/collection can govern energy the same way they govern logs and
+      # kubeletstats. The originals are left in place for the hub read.
+      transform/green:
+        error_mode: ignore
+        metric_statements:
+          - context: datapoint
+            statements:
+              - set(attributes["k8s.pod.name"], attributes[{{ .Values.green.metrics.podNameAttr | quote }}]) where attributes[{{ .Values.green.metrics.podNameAttr | quote }}] != nil
+              - set(attributes["k8s.namespace.name"], attributes[{{ .Values.green.metrics.podNamespaceAttr | quote }}]) where attributes[{{ .Values.green.metrics.podNamespaceAttr | quote }}] != nil
+      # Promote the standard keys to resource attributes so k8sattributes can
+      # associate the pod and filter/collection can match the namespace. The
+      # datapoint keeps pod_name/pod_namespace (not listed here) for the hub.
+      # Node energy (no pod attrs) simply groups on its own.
+      groupbyattrs/green:
+        keys:
+          - k8s.pod.name
+          - k8s.namespace.name
+      # Node energy joins on ResourceAttributes['k8s.node.name'] — the key the
+      # whole infra view relies on; upsert it from the node this sensor runs on.
+      # Harmless on pod energy (queried by pod identity, not node).
+      resource/green:
+        attributes:
+          - key: k8s.node.name
+            value: ${env:K8S_NODE_NAME}
+            action: upsert
+      {{- end }}
       batch:
         send_batch_size: 2048
         timeout: 2s
@@ -229,6 +317,17 @@ data:
           # metrics via k8s.pod.uid, for the pods panel.
           receivers: [kubeletstats]
           processors: [memory_limiter, k8sattributes{{ if $collectionFilter }}, filter/collection{{ end }}, batch]
+          exporters: [otlphttp]
+    {{- end }}
+    {{- if include "avuruops.collectGreen" . }}
+        metrics/green:
+          # Kepler energy on its OWN pipeline (separate from the kubeletstats
+          # `metrics` pipeline so neither receiver's attributes bleed into the
+          # other): scrape → standard-key shaping → shared k8sattributes +
+          # collection guardrails → gateway, onto the existing otel_metrics_*
+          # path. No new tables; the hub aggregates Wh/gCO2e at query time.
+          receivers: [prometheus/green]
+          processors: [memory_limiter, filter/green, transform/green, groupbyattrs/green, resource/green, k8sattributes{{ if $collectionFilter }}, filter/collection{{ end }}, batch]
           exporters: [otlphttp]
     {{- end }}
 {{- end }}
@@ -283,4 +382,42 @@ data:
           receivers: [profiling]
           processors: [memory_limiter]
           exporters: [otlphttp]
+{{- end }}
+{{- if and .Values.sensor.enabled (include "avuruops.collectGreen" .) }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "avuruops.fullname" . }}-sensor-kepler
+  labels:
+    {{- include "avuruops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sensor
+data:
+  # Kepler ({{ .Values.sensor.green.image.tag }}) — CPU energy from RAPL/powercap.
+  # Host sysfs/procfs are bind-mounted read-only under /host (see the DaemonSet).
+  # kube mode + the node name are passed on the CLI (--kube.enable
+  # --kube.node-name); the Prometheus endpoint is bound to loopback so only the
+  # same-pod otel-agent can reach it. These keys track the pinned Kepler and are
+  # a documented verify-on-hardware item (design AEP) — confirm against RAPL.
+  config.yaml: |
+    log:
+      level: info
+      format: text
+    host:
+      sysfs: /host/sys
+      procfs: /host/proc
+    exporter:
+      prometheus:
+        enabled: true
+    web:
+      listenAddresses:
+        - 127.0.0.1:{{ .Values.sensor.green.port }}
+    {{- if .Values.sensor.green.fakeCpuMeter }}
+    # No-RAPL environments (kind/CI, most cloud VMs): synthesise energy so the
+    # do-no-harm path can be proven with energy actually flowing (e2e-helm).
+    # NEVER enable where real RAPL exists — it would fabricate measurements.
+    dev:
+      fake-cpu-meter:
+        enabled: true
+    {{- end }}
 {{- end }}

@@ -5,6 +5,7 @@ import {
   Bug,
   Flame,
   Gauge,
+  Leaf,
   ListTree,
   Map as MapIcon,
   ScrollText,
@@ -44,6 +45,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/profiling", label: "Profiling", icon: Flame, module: "profiling" },
       { href: "/errors", label: "Errors", icon: Bug, module: "error-tracking" },
       { href: "/alerts", label: "Alerts", icon: BellRing, module: "alerting" },
+      { href: "/green", label: "Green", icon: Leaf, module: "green" },
     ],
   },
   {
