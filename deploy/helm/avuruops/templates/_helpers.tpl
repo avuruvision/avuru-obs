@@ -180,6 +180,56 @@ otel
 {{- end }}
 {{- end -}}
 
+{{/* OIDC SSO is live only when auth itself is on AND the oidc block opts in
+     (a guard in hub-oidc-configmap.yaml fails the contradictory combination).
+     Same true/"" contract as the collect* helpers — consume via `if include`,
+     never compare to "false". */}}
+{{- define "avuruops.oidcEnabled" -}}
+{{- if and .Values.auth.enabled .Values.auth.oidc.enabled -}}true{{- end -}}
+{{- end -}}
+
+{{/* OIDC config: env + volume + mount, in its OWN dir so it never collides
+     with the groups/alerts/green mounts. The config file is hot-reloaded by
+     the hub; the client secret arrives via env from a Secret (existingSecret >
+     chart-created — never in the config file); AVURUOPS_PUBLIC_URL builds the
+     absolute redirect_uri the IdP requires. With neither clientSecret nor
+     existingSecret set the secret env is omitted (public client attempt)
+     rather than referencing a Secret that does not exist. Emitted only when
+     SSO is on. */}}
+{{- define "avuruops.oidcEnv" -}}
+{{- if include "avuruops.oidcEnabled" . }}
+- name: AVURUOPS_AUTH_OIDC_CONFIG
+  value: /etc/avuruops-oidc/oidc.yaml
+{{- if or .Values.auth.oidc.clientSecret .Values.auth.oidc.existingSecret }}
+- name: AVURUOPS_AUTH_OIDC_CLIENT_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.auth.oidc.existingSecret | default (printf "%s-oidc" (include "avuruops.fullname" .)) }}
+      key: oidc-client-secret
+{{- end }}
+{{- if .Values.auth.oidc.publicUrl }}
+- name: AVURUOPS_PUBLIC_URL
+  value: {{ .Values.auth.oidc.publicUrl | quote }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{- define "avuruops.oidcVolume" -}}
+{{- if include "avuruops.oidcEnabled" . }}
+- name: oidc-config
+  configMap:
+    name: {{ include "avuruops.fullname" . }}-oidc
+{{- end }}
+{{- end -}}
+
+{{- define "avuruops.oidcVolumeMount" -}}
+{{- if include "avuruops.oidcEnabled" . }}
+- name: oidc-config
+  mountPath: /etc/avuruops-oidc
+  readOnly: true
+{{- end }}
+{{- end -}}
+
 {{/* Effective collection switches: a module gates its own collection, so a
      disabled module never collects regardless of the sensor knob. These emit
      "true" or the empty string — a rendered "false" would be a non-empty

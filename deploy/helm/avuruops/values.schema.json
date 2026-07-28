@@ -371,7 +371,44 @@
     "auth": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" }
+        "enabled": { "type": "boolean" },
+        "adminPassword": { "type": "string" },
+        "existingSecret": { "type": "string" },
+        "sessionTTLHours": { "type": "integer", "minimum": 1 },
+        "anonymous": {
+          "type": "object",
+          "properties": {
+            "role": { "type": "string", "enum": ["", "admin", "editor", "viewer"] },
+            "projects": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "oidc": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "issuer": { "type": "string" },
+            "clientId": { "type": "string" },
+            "clientSecret": { "type": "string" },
+            "existingSecret": { "type": "string" },
+            "groupsClaim": { "type": "string", "minLength": 1 },
+            "mapping": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "group": { "type": "string", "minLength": 1 },
+                  "role": { "type": "string", "enum": ["admin", "editor", "viewer"] },
+                  "projects": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+                },
+                "required": ["group", "role"]
+              }
+            },
+            "defaultRole": { "type": "string", "enum": ["", "admin", "editor", "viewer"] },
+            "defaultProjects": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "forceSSO": { "type": "boolean" },
+            "publicUrl": { "type": "string" }
+          }
+        }
       }
     }
   }

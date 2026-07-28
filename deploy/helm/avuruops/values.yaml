@@ -441,6 +441,55 @@ auth:
   anonymous:
     role: ""        # "viewer" to enable
     projects: []    # explicit list — never implicit "*"
+  # Enterprise SSO via any OpenID Connect IdP (Keycloak, Entra, Okta, Google,
+  # Dex, ...). The hub runs the authorization-code + PKCE flow itself — no
+  # oauth2-proxy, no extra pod. Register <publicUrl>/api/v1/auth/oidc/callback
+  # as the client's redirect URL at the IdP. Everything below except enabled/
+  # clientSecret/existingSecret/publicUrl is rendered into a ConfigMap the hub
+  # hot-reloads within ~15s (`kubectl edit` re-runs discovery and re-maps
+  # groups, no restart); IdP discovery is fail-loud at hub startup, so a wrong
+  # issuer stops the rollout instead of silently shipping a broken login.
+  # Requires auth.enabled (a chart guard enforces it).
+  oidc:
+    enabled: false
+    # IdP issuer URL, exactly as the IdP states it —
+    # <issuer>/.well-known/openid-configuration must resolve. Required.
+    issuer: ""
+    # OAuth2 client id registered with the IdP. Required.
+    clientId: ""
+    # Client secret in-values — labs only (it sits in your values in clear).
+    # Prefer existingSecret in production; ignored when that is set.
+    clientSecret: ""
+    # Or bring your own Secret (key: oidc-client-secret); wins over
+    # clientSecret. With NEITHER set the hub attempts a public (secret-less)
+    # client — most IdPs refuse that for the code flow, so set one of the two.
+    existingSecret: ""
+    # ID-token claim carrying the user's groups ("groups" fits Keycloak/Okta/
+    # Dex; Entra emits "roles" unless configured otherwise).
+    groupsClaim: groups
+    # IdP group → role-on-projects rules, applied at READ time on every
+    # request — moving a user between IdP groups re-scopes them on their next
+    # request, no re-login. Every matched rule contributes its grants.
+    mapping: []
+    #  - group: platform-team
+    #    role: admin          # admin | editor | viewer
+    #    projects: ["*"]      # explicit project list, or "*" for all
+    #  - group: developers
+    #    role: viewer
+    #    projects: [staging]
+    # Grants for an SSO user matching NO mapping rule: defaultRole on
+    # defaultProjects. "" = such a login succeeds but sees zero projects.
+    defaultRole: ""
+    defaultProjects: []
+    # Hide the local password form in the UI — SSO becomes the only visible
+    # way in. The local admin API login keeps working as break-glass; flip
+    # this only after the IdP round-trip is proven.
+    forceSSO: false
+    # External base URL of this install (e.g. https://obs.example.com — with
+    # ingress.enabled typically https://<ingress.host>). Builds the absolute
+    # redirect_uri the IdP requires (AVURUOPS_PUBLIC_URL); unset, the hub
+    # degrades to a relative URL most IdPs reject (loud warning in its log).
+    publicUrl: ""
 
 # Per-signal retention in DAYS, applied as ClickHouse TTL by `hub migrate`.
 retention:

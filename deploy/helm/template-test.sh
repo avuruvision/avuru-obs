@@ -301,4 +301,57 @@ grep -q '127.0.0.1:28282' <<<"$out" || fail "Kepler loopback bind lost under hos
 grep -q '0.0.0.0:28282' <<<"$out" && fail "Kepler bound beyond loopback under hostNetwork"
 ok "green + obi.network render together; Kepler stays loopback-bound"
 
+echo "== auth oidc: off by default -> no SSO surface"
+out="$(render)"
+grep -q 'AVURUOPS_AUTH_OIDC' <<<"$out" && fail "OIDC env rendered without auth.oidc.enabled"
+grep -q 'AVURUOPS_PUBLIC_URL' <<<"$out" && fail "AVURUOPS_PUBLIC_URL rendered without auth.oidc.enabled"
+grep -q 'test-avuruops-oidc' <<<"$out" && fail "oidc ConfigMap/Secret rendered without opt-in"
+grep -q 'oidc.yaml' <<<"$out" && fail "oidc config file rendered without opt-in"
+ok "no env, ConfigMap, Secret, volume or mount by default"
+
+oidc_on=(--set auth.oidc.enabled=true
+  --set auth.oidc.issuer=https://idp.example.com/realms/avuru
+  --set auth.oidc.clientId=avuru-obs)
+
+echo "== auth oidc: enabled -> ConfigMap + Secret + env + mount"
+out="$(render "${oidc_on[@]}" --set auth.oidc.clientSecret=s3cret \
+  --set auth.oidc.publicUrl=https://obs.example.com \
+  --set-json 'auth.oidc.mapping=[{"group":"obs-admins","role":"admin","projects":["*"]}]')"
+grep -q 'name: test-avuruops-oidc' <<<"$out" || fail "oidc ConfigMap missing"
+grep -q 'oidc.yaml: |' <<<"$out" || fail "oidc.yaml key missing from ConfigMap"
+grep -q 'issuer: https://idp.example.com/realms/avuru' <<<"$out" || fail "issuer missing from rendered config"
+grep -q 'group: obs-admins' <<<"$out" || fail "mapping rule missing from rendered config"
+# Chart-only knobs must never leak into the file the hub parses.
+cfg_block="$(sed -n '/oidc.yaml: |/,/^[^ ]/p' <<<"$out")"
+[ -n "$cfg_block" ] || fail "could not isolate the oidc.yaml block"
+grep -qE 'clientSecret|existingSecret|publicUrl|enabled' <<<"$cfg_block" \
+  && fail "chart-only knob leaked into oidc.yaml"
+grep -q 'value: /etc/avuruops-oidc/oidc.yaml' <<<"$out" || fail "AVURUOPS_AUTH_OIDC_CONFIG env missing"
+grep -q 'name: AVURUOPS_AUTH_OIDC_CLIENT_SECRET' <<<"$out" || fail "client-secret env missing"
+grep -q 'key: oidc-client-secret' <<<"$out" || fail "secretKeyRef key wrong"
+grep -q 'oidc-client-secret: "' <<<"$out" || fail "chart-created oidc Secret missing"
+grep -q 'value: "https://obs.example.com"' <<<"$out" || fail "AVURUOPS_PUBLIC_URL env missing"
+grep -q 'mountPath: /etc/avuruops-oidc' <<<"$out" || fail "oidc ConfigMap not mounted"
+ok "ConfigMap (secret-free), Secret, env, volume and mount all rendered"
+
+echo "== auth oidc: existingSecret wins and suppresses the chart Secret"
+out="$(render "${oidc_on[@]}" --set auth.oidc.clientSecret=s3cret --set auth.oidc.existingSecret=my-oidc)"
+grep -q 'name: my-oidc' <<<"$out" || fail "secretKeyRef not pointed at existingSecret"
+grep -q 'oidc-client-secret: "' <<<"$out" && fail "chart Secret rendered despite existingSecret"
+ok "existingSecret referenced; no chart-created Secret"
+
+echo "== auth oidc: no secret source -> secret env omitted (public client), no dangling ref"
+out="$(render "${oidc_on[@]}")"
+grep -q 'AVURUOPS_AUTH_OIDC_CONFIG' <<<"$out" || fail "oidc config env lost without a secret source"
+grep -q 'oidc-client-secret' <<<"$out" && fail "secret surface rendered with no secret source"
+grep -q 'name: AVURUOPS_AUTH_OIDC_CLIENT_SECRET' <<<"$out" && fail "secret env references a Secret that does not exist"
+ok "config still renders; nothing points at a nonexistent Secret"
+
+echo "== auth oidc: guards"
+render --set auth.oidc.enabled=true >/dev/null 2>&1 \
+  && fail "oidc rendered without issuer/clientId (hub would crash-loop fail-loud)"
+render "${oidc_on[@]}" --set auth.enabled=false >/dev/null 2>&1 \
+  && fail "oidc rendered with auth disabled (hub would silently ignore SSO)"
+ok "missing issuer/clientId fails; SSO-with-auth-off fails"
+
 echo "ALL TEMPLATE ASSERTIONS PASSED"
