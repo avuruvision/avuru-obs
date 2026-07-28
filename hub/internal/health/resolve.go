@@ -53,6 +53,29 @@ func resolve(cfg Config, stats []storage.ServiceStats, labels []storage.ServiceL
 	return out
 }
 
+// Assignment is the exported view of one service's resolved grouping, for
+// callers outside the rollup (the green module maps services→groups with it).
+type Assignment struct {
+	Service string
+	Group   string
+	Tier    Tier
+	Source  string // "config" (matched a group selector) or "auto" (by namespace)
+}
+
+// Assign resolves every service to its group exactly as the service-health
+// rollup does — config selectors win, unmatched services auto-group by
+// namespace. It is a thin exported wrapper over the internal resolve (zero
+// behavior change): the green module uses it so energy/carbon rolls up to the
+// same groups the operator already sees in service health.
+func Assign(cfg Config, stats []storage.ServiceStats, labels []storage.ServiceLabel) map[string]Assignment {
+	in := resolve(cfg, stats, labels)
+	out := make(map[string]Assignment, len(in))
+	for svc, a := range in {
+		out[svc] = Assignment(a)
+	}
+	return out
+}
+
 // matchGroup returns the first config group whose selector matches the service
 // by explicit name or by namespace.
 func matchGroup(cfg Config, service, namespace string) (Group, bool) {

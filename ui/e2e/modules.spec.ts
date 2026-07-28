@@ -5,7 +5,7 @@ import { test, expect } from "@playwright/test";
 // (sidebar filter + ModuleGate) without standing up a second stack.
 const CAPABILITIES = "**/api/v1/capabilities";
 
-const MODULE_LINKS = ["Logs", "Profiling", "Nodes"];
+const MODULE_LINKS = ["Logs", "Profiling", "Nodes", "Green"];
 
 test.describe("module gating", () => {
   test("shows every module entry on a full install", async ({ page }) => {
@@ -43,6 +43,12 @@ test.describe("module gating", () => {
     await page.goto("/logs");
     await expect(page.getByRole("heading", { name: /Logs module is off/ })).toBeVisible();
     await expect(page.getByText("modules.logs.enabled=true")).toBeVisible();
+
+    await page.goto("/green");
+    await expect(
+      page.getByRole("heading", { name: /Energy & carbon module is off/ }),
+    ).toBeVisible();
+    await expect(page.getByText("modules.green.enabled=true")).toBeVisible();
 
     // An active module still renders its screen, not the notice.
     await page.goto("/nodes");

@@ -481,6 +481,54 @@ type AuthSession struct {
 	ExpiresAt time.Time
 }
 
+// GreenQuery filters ServiceEnergy / NodeEnergy (module green). Metric names
+// and attribute keys come from the green module's config — the backend must
+// not hardcode Kepler naming (an AEP verify item; operators can rename
+// without a rebuild).
+type GreenQuery struct {
+	Tenant string
+	Range  TimeRange
+	// PodEnergyMetrics / NodeEnergyMetrics name the cumulative CPU-energy
+	// counters (joules). A query sums deltas across ALL named metrics because
+	// Kepler may split energy zones across several metrics.
+	PodEnergyMetrics  []string
+	NodeEnergyMetrics []string
+	// PodNameAttr / PodNamespaceAttr are the metric-attribute keys carrying
+	// pod identity on the energy series, joined to the kubeletstats resource
+	// attributes for workload attribution.
+	PodNameAttr      string
+	PodNamespaceAttr string
+	// Interval is the bucket width of the Points series (<=0 → backend
+	// default derived from Range). Deliberately a duration where sibling
+	// queries carry a Points count: the counter-delta math needs
+	// deterministic wall-clock bucket boundaries (toStartOfInterval), so a
+	// future "harmonize to Points" cleanup must not change this.
+	Interval time.Duration
+}
+
+// EnergyPoint is one time bucket of an energy series (Wh).
+type EnergyPoint struct {
+	Time      time.Time
+	WattHours float64
+}
+
+// ServiceEnergy is one service's energy over a window: the Wh total plus the
+// bucketed series. An empty Service is the unattributed bucket — energy whose
+// pod could not be mapped to a workload (the coverage-ratio denominator's
+// missing part, per the green AEP).
+type ServiceEnergy struct {
+	Service   string
+	WattHours float64
+	Points    []EnergyPoint
+}
+
+// NodeEnergy is one node's energy over a window (Wh total + bucketed series).
+type NodeEnergy struct {
+	Node      string
+	WattHours float64
+	Points    []EnergyPoint
+}
+
 // Store is the telemetry query seam implemented by storage backends.
 type Store interface {
 	Ping(ctx context.Context) error
@@ -523,6 +571,17 @@ type Store interface {
 	ErrorIssueHistogram(ctx context.Context, tenant string, fingerprint uint64, r TimeRange, points int) ([]ErrorHistogramPoint, error)
 	// SetErrorIssueStatus records a triage decision (unresolved|resolved|ignored).
 	SetErrorIssueStatus(ctx context.Context, tenant string, fingerprint uint64, status string) error
+	// Green energy (module green; requires infra-metrics — the pod→workload
+	// attribution reads kubeletstats resource attributes). ServiceEnergy
+	// returns per-service Wh totals + bucketed series over the window,
+	// heaviest first; a row with empty Service is the unattributed bucket.
+	// NodeEnergy is the per-node equivalent from the node counters. It is not
+	// yet queried by the API — kept for the node-coverage follow-up (the
+	// sensor collects the node counters and e2e-helm pins that they land).
+	// Storage returns energy only (Wh) — carbon factors never enter SQL;
+	// gCO2e is computed by callers.
+	ServiceEnergy(ctx context.Context, q GreenQuery) ([]ServiceEnergy, error)
+	NodeEnergy(ctx context.Context, q GreenQuery) ([]NodeEnergy, error)
 	// Alerting (module alerting).
 	LoadAlertStates(ctx context.Context, tenant string) ([]AlertState, error)
 	SaveAlertStates(ctx context.Context, states []AlertState) error

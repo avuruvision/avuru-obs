@@ -95,9 +95,17 @@ services:
       # behavior: auth stays enabled, and the admin password is generated and
       # logged once at first boot.
       AVURUOPS_AUTH_ADMIN_PASSWORD: ${AVURUOPS_AUTH_ADMIN_PASSWORD:-}
+      # Green energy/carbon config: explicit factors (deterministic gCO2e for
+      # e2e) + a budget over the seeded `payments` group, delivered via the
+      # `sink` alerting channel. green is auto-active here (the hub sets no
+      # AVURUOPS_MODULES, so all modules run) and owns no schema — it reads the
+      # otel_metrics_* tables seeded by metrics_kepler.json /
+      # metrics_kubeletstats_pods.json.
+      AVURUOPS_GREEN_CONFIG: /etc/avuruops-green/green.json
     volumes:
       - ./groups.json:/etc/avuruops/groups.json:ro
       - ./alerts.json:/etc/avuruops-alerts/alerts.json:ro
+      - ./green.json:/etc/avuruops-green/green.json:ro
     ports:
       - "18080:8080"
     depends_on:

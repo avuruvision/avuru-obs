@@ -16,6 +16,11 @@ type serviceDTO struct {
 	P50Ms      float64 `json:"p50Ms"`
 	P95Ms      float64 `json:"p95Ms"`
 	P99Ms      float64 `json:"p99Ms"`
+	// Energy overlay (module green): stamped by the service map only when the
+	// green module is active; omitted otherwise so non-green installs keep a
+	// byte-identical wire shape.
+	Wh    float64 `json:"wh,omitempty"`
+	GCO2e float64 `json:"gco2e,omitempty"`
 }
 
 type servicesResponse struct {

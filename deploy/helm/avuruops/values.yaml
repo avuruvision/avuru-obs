@@ -113,6 +113,15 @@ modules:
   # hub's only outbound call — guarded (SSRF, retries, HMAC).
   alerting:
     enabled: true
+  # Green: per-service energy (Wh) and carbon (gCO2e) derived from the Kepler
+  # energy metrics the sensor scrapes, correlated with the pod→workload map.
+  # Born OFF: the signal is hardware-dependent (RAPL/powercap), so a default-on
+  # module would silently flip on for every existing install on the next
+  # upgrade. REQUIRES modules.infraMetrics (the pod→workload join reads the
+  # kubeletstats attributes) — a chart guard enforces it. Collect energy by ALSO
+  # setting sensor.green.enabled; see the green: and sensor.green: blocks below.
+  green:
+    enabled: false
 
 # Alerting rules and channels. Rendered to a ConfigMap the hub reads (mounted at
 # AVURUOPS_ALERTS_CONFIG) when modules.alerting.enabled. No rules = nothing
@@ -169,6 +178,50 @@ serviceGroups:
   # Force specific edges critical even when the target isn't T0 (rare).
   criticalEdges: []
   #  - { from: web, to: legacy-billing }
+
+# Green energy/carbon configuration. Rendered to a ConfigMap the hub reads
+# (mounted at AVURUOPS_GREEN_CONFIG) when modules.green.enabled. gCO2e is
+# computed at query time as Wh × gridIntensity/1000 × PUE — energy never leaves
+# the cluster and no external API is called. The hub hot-reloads this within
+# ~15s on a `kubectl edit`, no restart. Metric names must match the Kepler
+# series the sensor keeps (sensor.green.metrics.keep); the single source of
+# truth is design/2026-07-22-green-carbon.md.
+green:
+  # ISO 3166-1 alpha-2 country selecting a bundled annual-average grid intensity
+  # (gCO2e/kWh). "" = world average. Ignored when gridIntensity is set; an
+  # unknown code with no gridIntensity fails the hub loud (no silent fallback).
+  region: ""
+  # Operator-set grid carbon intensity (gCO2e/kWh); wins over the bundled
+  # region/world average. 0 = use the bundled lookup.
+  gridIntensity: 0
+  # Power Usage Effectiveness of the facility (>= 1.0). 0 renders as the hub's
+  # conservative 1.5 default; set your datacenter's measured PUE.
+  pue: 0
+  # Kepler metric/label names the read path queries. Defaults are the pinned
+  # v0.11.x names from the AEP metric table; override ONLY to track a Kepler
+  # rename (a documented verify-on-hardware item), and keep them in step with
+  # sensor.green.metrics.keep.
+  metrics:
+    podEnergy:
+      - kepler_pod_cpu_joules_total
+    nodeEnergy:
+      - kepler_node_cpu_joules_total
+    podNameAttr: pod_name
+    podNamespaceAttr: pod_namespace
+  # Monthly gCO2e budgets per serviceGroups group: warn at warnRatio (default
+  # 0.8 = 80%), exceeded at 100%, with a month-end projection. Delivery reuses
+  # the alerting channels (alerting.channels above); with modules.alerting off,
+  # budgets degrade to dashboard status only (used/projected/ratio still shown).
+  # No budgets = the evaluator is inert.
+  budgets: []
+  #  - name: platform-monthly
+  #    group: payments
+  #    monthlyKgCO2e: 50      # kg CO2e per month for the group
+  #    warnRatio: 0.8         # warn threshold as a fraction of the budget
+  #    channel: ops           # an alerting.channels name
+  # How often the budget evaluator recomputes month-to-date usage, in seconds.
+  # 0 renders as the hub's 300s default.
+  budgetCheckIntervalSec: 0
 
 # Sensor: per-node DaemonSet for zero-code signal collection (eBPF). v0.1
 # wires OBI (zero-code traces + RED); the otel-agent (logs, kubeletstats) and
@@ -291,6 +344,54 @@ sensor:
       limits:
         cpu: "1"
         memory: 512Mi
+  # Green energy collection: CNCF Kepler (github.com/sustainable-computing-io/
+  # kepler) joins the DaemonSet as a fourth pinned upstream container, opt-in. A
+  # prometheus receiver in the otel-agent scrapes its energy endpoint onto the
+  # existing OTLP → gateway → otel_metrics_* path (no new tables). Deliberately
+  # module-named (unlike the component-named obi/profiler): it pairs with
+  # modules.green and carries green-specific scrape config. REQUIRES
+  # modules.green.enabled + modules.infraMetrics.enabled + sensor.agent.enabled;
+  # chart guards enforce all three. The container gets NO liveness/readiness
+  # probes on purpose — a RAPL-less node leaves Kepler idle/unhealthy, and it
+  # must never flap the sensor pod (the "do no harm" probe-canary gate).
+  green:
+    enabled: false
+    image:
+      repository: quay.io/sustainable_computing_io/kepler
+      # Pin exact — NEVER float to :latest. v0.11.x is the rebooted (Go) Kepler
+      # line whose metric names match the AEP table; verify metric names/labels,
+      # config keys and port on RAPL hardware before prod (design AEP limitation).
+      tag: "v0.11.4"
+    # Kepler's Prometheus port, bound to loopback (127.0.0.1) so only the
+    # same-pod otel-agent can scrape it — never exposed on the pod network.
+    # CAVEAT: with sensor.obi.network.enabled the sensor pod runs hostNetwork,
+    # so this binds the HOST loopback — reachable by host-local processes, and
+    # a host-side collision on the port crash-loops only the kepler container
+    # (no probes, the pod itself is unaffected).
+    port: 28282
+    # How often the otel-agent scrapes Kepler's endpoint.
+    scrapeInterval: 30s
+    # privileged=true is the reliable default for reading RAPL/powercap across
+    # runtimes and kernels. Set false to drop to a least-privilege capability
+    # set (DAC_READ_SEARCH/SYS_PTRACE/PERFMON) instead — VERIFY on RAPL hardware
+    # that those suffice for the powercap sysfs reads before relying on it.
+    privileged: true
+    # Kepler's dev fake-cpu-meter: synthesise energy where no RAPL exists (kind/
+    # CI, most cloud VMs). Default false — v1 reports only what was measured; the
+    # e2e-helm leg flips it true to prove do-no-harm with energy actually flowing.
+    fakeCpuMeter: false
+    metrics:
+      # Only these Kepler series are kept (prometheus receiver relabel_config).
+      # Matches the AEP metric table exactly; cpu_watts is collected for future
+      # use, joules_total is what v1 queries. Keep in step with green.metrics.
+      keep: "kepler_(node|pod)_cpu_(watts|joules_total)"
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
 
 # ClickHouse: single-node StatefulSet by default; flip external.enabled to BYO.
 clickhouse:

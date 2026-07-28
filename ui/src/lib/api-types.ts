@@ -11,7 +11,8 @@ export type ModuleName =
   | "profiling"
   | "error-tracking"
   | "service-health"
-  | "alerting";
+  | "alerting"
+  | "green";
 
 export interface CapabilitiesResponse {
   version: string;
@@ -26,6 +27,11 @@ export interface ServiceStats {
   p50Ms: number;
   p95Ms: number;
   p99Ms: number;
+  // Energy overlay (module green): the service map stamps these only when the
+  // green module is active; omitted (omitempty) otherwise — a non-green install
+  // returns a byte-identical service shape.
+  wh?: number;
+  gco2e?: number;
 }
 
 export interface ServicesResponse {
@@ -480,4 +486,70 @@ export interface CreateUserRequest {
   name: string;
   password: string;
   grants: AuthGrant[];
+}
+
+// Green — per-service energy & carbon (module green). Mirrors the Go DTOs in
+// hub/internal/api/green.go and green_budgets.go — field names are byte-exact
+// with the json tags there (e.g. gridIntensity/intensitySource, not
+// intensity/source; gco2e, not totalGCO2e; burnDown, not burndown).
+
+// Carbon conversion factors in force for this install.
+export interface GreenFactors {
+  gridIntensity: number; // gCO2e/kWh
+  intensitySource: string; // provenance ("operator-set" or bundled default label)
+  pue: number;
+  dataset: string; // the bundled factor table the defaults come from
+}
+
+export interface GreenTotals {
+  attributedWh: number;
+  unattributedWh: number;
+  coverage: number; // attributed / (attributed + unattributed), 0..1
+  gco2e: number; // carbon for attributed + unattributed energy
+}
+
+export interface GreenEnergyPoint {
+  time: string;
+  wh: number;
+}
+
+// One row of the per-service energy table. requests/mgCO2ePerRequest/points are
+// omitempty in Go: absent for the synthetic (other)/(unattributed) rows or a
+// service that saw no requests.
+export interface GreenServiceEnergy {
+  service: string;
+  wh: number;
+  gco2e: number;
+  requests?: number;
+  mgCO2ePerRequest?: number;
+  points?: GreenEnergyPoint[];
+}
+
+export interface GreenSummaryResponse {
+  window: { start: string; end: string };
+  factors: GreenFactors;
+  totals: GreenTotals;
+  services: GreenServiceEnergy[];
+}
+
+export interface GreenBurnPoint {
+  time: string;
+  kgCO2e: number; // cumulative, in the budget's own unit
+}
+
+// A carbon budget's month-to-date status. status is "ok" | "warn" | "exceeded".
+export interface GreenBudget {
+  name: string;
+  group: string;
+  monthlyKgCO2e: number;
+  usedKgCO2e: number;
+  projectedKgCO2e: number; // linear month-end projection
+  ratio: number;
+  status: "ok" | "warn" | "exceeded";
+  burnDown?: GreenBurnPoint[];
+}
+
+export interface GreenBudgetsResponse {
+  window: { start: string; end: string };
+  budgets: GreenBudget[];
 }

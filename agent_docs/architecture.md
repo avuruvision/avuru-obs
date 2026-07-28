@@ -79,6 +79,7 @@ default, so this is subtraction only — never install friction. See
 | `logs` | `otel_logs`, log search + trace correlation | |
 | `infra-metrics` | the `otel_metrics_*` tables, `/infra/*`, sensor inventory | The inventory reads collector self-metrics from these tables |
 | `profiling` | `profiling_*`, flame graphs, profiles ingest | |
+| `green` | `/api/v1/green/*`, `/green` UI, carbon budgets, CSRD export; owns **no tables** (read-time Wh/gCO2e aggregation over `otel_metrics_*`) | **Born off** — the energy signal needs RAPL hardware, so a default-on module would silently flip on across a fleet on upgrade. Requires `infra-metrics` (the pod→workload join); collection is a second opt-in (`sensor.green.enabled`, the Kepler container). See `design/2026-07-22-green-carbon.md` |
 
 Registry: `hub/internal/modules` (Go) mirrored in `ui/src/lib/api-types.ts`;
 migrations are tagged per module in `migrations.ByModule`. Clients discover the

@@ -1,0 +1,301 @@
+//go:build integration
+
+package clickhouse
+
+import (
+	"context"
+	"math"
+	"testing"
+	"time"
+
+	"github.com/avuru/avuru-obs/hub/internal/storage"
+)
+
+// Green fixtures use config-shaped names on purpose: the SQL must take metric
+// names and attribute keys from the query, never hardcode Kepler naming.
+const (
+	testPodEnergyA  = "kepler_pod_cpu_joules_total"
+	testPodEnergyB  = "kepler_pod_dram_joules_total" // second metric: zones split across metrics
+	testNodeEnergyA = "kepler_node_cpu_joules_total"
+	testNodeEnergyB = "kepler_node_dram_joules_total"
+)
+
+// greenQuery returns the default-config-shaped query over [start, end).
+func greenQuery(tenant string, start, end time.Time, interval time.Duration) storage.GreenQuery {
+	return storage.GreenQuery{
+		Tenant:            tenant,
+		Range:             storage.TimeRange{Start: start, End: end},
+		PodEnergyMetrics:  []string{testPodEnergyA, testPodEnergyB},
+		NodeEnergyMetrics: []string{testNodeEnergyA, testNodeEnergyB},
+		PodNameAttr:       "pod_name",
+		PodNamespaceAttr:  "pod_namespace",
+		Interval:          interval,
+	}
+}
+
+func podAttrs(pod, ns string, extra map[string]string) map[string]string {
+	m := map[string]string{"pod_name": pod, "pod_namespace": ns}
+	for k, v := range extra {
+		m[k] = v
+	}
+	return m
+}
+
+// greenBase returns a window start in the past aligned to interval multiples,
+// so toStartOfInterval bucket boundaries are deterministic in assertions.
+func greenBase(interval time.Duration) time.Time {
+	return time.Now().UTC().Add(-time.Hour).Truncate(interval)
+}
+
+func wantWh(t *testing.T, label string, got, wantJoules float64) {
+	t.Helper()
+	want := wantJoules / 3600
+	if math.Abs(got-want) > 1e-9 {
+		t.Errorf("%s = %v Wh, want %v Wh (%v J)", label, got, want, wantJoules)
+	}
+}
+
+// TestServiceEnergyDeltaMath is the counter-delta spec: deltas are computed
+// per unique series (metric + full attribute identity) per bucket and summed
+// after, so multi-zone and multi-metric series never cross-cancel; a counter
+// reset between buckets is contained by the per-bucket grouping (each
+// bucket's max−min is independent, so the post-reset bucket contributes its
+// own small delta and nothing goes negative — the greatest(…,0) clamp is
+// defensive-only and cannot fire since max ≥ min); the kubeletstats join
+// attributes pods to workloads with owner precedence deployment >
+// statefulset; and energy from a pod absent from the map lands in the
+// unattributed bucket (empty service).
+func TestServiceEnergyDeltaMath(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	interval := 5 * time.Minute
+	base := greenBase(interval)
+	end := base.Add(10 * time.Minute) // two 5-minute buckets
+	noRes := map[string]string{}      // Tenant defaults to "default"
+
+	// web-1 (deployment web), three series in bucket 1 that would cross-cancel
+	// if deltas were not per-series: zone attrs on metric A, plus metric B with
+	// IDENTICAL attributes (only MetricName separates the series).
+	insertSum(t, store, base.Add(1*time.Minute), testPodEnergyA, noRes, podAttrs("web-1", "shop", map[string]string{"zone": "package"}), 100)
+	insertSum(t, store, base.Add(4*time.Minute), testPodEnergyA, noRes, podAttrs("web-1", "shop", map[string]string{"zone": "package"}), 400) // Δ300
+	insertSum(t, store, base.Add(1*time.Minute), testPodEnergyA, noRes, podAttrs("web-1", "shop", map[string]string{"zone": "dram"}), 0)
+	insertSum(t, store, base.Add(4*time.Minute), testPodEnergyA, noRes, podAttrs("web-1", "shop", map[string]string{"zone": "dram"}), 150) // Δ150
+	insertSum(t, store, base.Add(1*time.Minute), testPodEnergyB, noRes, podAttrs("web-1", "shop", map[string]string{"zone": "package"}), 1000)
+	insertSum(t, store, base.Add(4*time.Minute), testPodEnergyB, noRes, podAttrs("web-1", "shop", map[string]string{"zone": "package"}), 1090) // Δ90
+	// web-1 bucket 2: only the package series advances.
+	insertSum(t, store, base.Add(6*time.Minute), testPodEnergyA, noRes, podAttrs("web-1", "shop", map[string]string{"zone": "package"}), 400)
+	insertSum(t, store, base.Add(9*time.Minute), testPodEnergyA, noRes, podAttrs("web-1", "shop", map[string]string{"zone": "package"}), 700) // Δ300
+
+	// cart-1 (statefulset cart): counter reset between buckets. Naive
+	// last-minus-first over the window would be 600-5000 < 0; per-bucket
+	// deltas give 2000 + 500. (Had the reset landed WITHIN one bucket, the
+	// bucket would OVERCOUNT — max keeps the pre-reset high-water mark — the
+	// documented approximation.)
+	insertSum(t, store, base.Add(1*time.Minute), testPodEnergyA, noRes, podAttrs("cart-1", "shop", nil), 5000)
+	insertSum(t, store, base.Add(4*time.Minute), testPodEnergyA, noRes, podAttrs("cart-1", "shop", nil), 7000)
+	insertSum(t, store, base.Add(6*time.Minute), testPodEnergyA, noRes, podAttrs("cart-1", "shop", nil), 100) // reset
+	insertSum(t, store, base.Add(9*time.Minute), testPodEnergyA, noRes, podAttrs("cart-1", "shop", nil), 600)
+
+	// ghost-1: energy but NO kubeletstats row — the unattributed bucket.
+	insertSum(t, store, base.Add(1*time.Minute), testPodEnergyA, noRes, podAttrs("ghost-1", "shop", nil), 0)
+	insertSum(t, store, base.Add(4*time.Minute), testPodEnergyA, noRes, podAttrs("ghost-1", "shop", nil), 3600)
+
+	// Decoys that must be pruned: out-of-window sample, other metric name.
+	insertSum(t, store, base.Add(30*time.Minute), testPodEnergyA, noRes, podAttrs("web-1", "shop", map[string]string{"zone": "package"}), 99999)
+	insertSum(t, store, base.Add(2*time.Minute), "k8s.node.network.io", noRes, podAttrs("web-1", "shop", nil), 77777)
+
+	// kubeletstats pod→workload map. web-1 carries BOTH deployment and
+	// statefulset owner attrs: deployment must win the precedence.
+	insertGauge(t, store, base.Add(2*time.Minute), metricPodCPU, map[string]string{
+		"k8s.pod.name": "web-1", "k8s.namespace.name": "shop",
+		"k8s.deployment.name": "web", "k8s.statefulset.name": "web-ss",
+	}, 0.2)
+	insertGauge(t, store, base.Add(2*time.Minute), metricPodCPU, map[string]string{
+		"k8s.pod.name": "cart-1", "k8s.namespace.name": "shop",
+		"k8s.statefulset.name": "cart",
+	}, 0.1)
+
+	got, err := store.ServiceEnergy(ctx, greenQuery("default", base, end, interval))
+	if err != nil {
+		t.Fatalf("ServiceEnergy: %v", err)
+	}
+	byService := map[string]storage.ServiceEnergy{}
+	for _, se := range got {
+		byService[se.Service] = se
+	}
+	if len(byService) != 3 {
+		t.Fatalf("got %d services %+v, want web, cart and the unattributed bucket", len(byService), got)
+	}
+
+	web := byService["web"]
+	wantWh(t, "web total", web.WattHours, 300+150+90+300)
+	if len(web.Points) != 2 {
+		t.Fatalf("web points = %+v, want 2 buckets", web.Points)
+	}
+	wantWh(t, "web bucket1", web.Points[0].WattHours, 540)
+	wantWh(t, "web bucket2", web.Points[1].WattHours, 300)
+
+	cart := byService["cart"]
+	wantWh(t, "cart total (reset must not cancel)", cart.WattHours, 2500)
+	for _, p := range cart.Points {
+		if p.WattHours < 0 {
+			t.Errorf("cart bucket %v went negative: %v", p.Time, p.WattHours)
+		}
+	}
+
+	unattributed := byService[""]
+	wantWh(t, "unattributed total", unattributed.WattHours, 3600)
+
+	// Ordering contract: heaviest first.
+	for i := 1; i < len(got); i++ {
+		if got[i-1].WattHours < got[i].WattHours {
+			t.Errorf("services not ordered by Wh desc: %+v", got)
+		}
+	}
+}
+
+// TestServiceEnergyBucketing pins bucket boundaries and the joules→Wh
+// conversion: samples land in their toStartOfInterval bucket, bucket
+// timestamps are the interval starts, and each bucket's Wh is its own
+// max−min delta / 3600 (delta across bucket boundaries is intentionally
+// dropped — the documented approximation).
+func TestServiceEnergyBucketing(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	interval := 2 * time.Minute
+	base := greenBase(interval)
+	end := base.Add(6 * time.Minute) // three 2-minute buckets
+	noRes := map[string]string{}
+
+	// Boundary samples repeat the previous value so no delta is lost and the
+	// expected numbers stay exact.
+	insertSum(t, store, base, testPodEnergyA, noRes, podAttrs("p-1", "apps", nil), 0)
+	insertSum(t, store, base.Add(1*time.Minute), testPodEnergyA, noRes, podAttrs("p-1", "apps", nil), 600) // bucket 0: Δ600
+	insertSum(t, store, base.Add(2*time.Minute), testPodEnergyA, noRes, podAttrs("p-1", "apps", nil), 600)
+	insertSum(t, store, base.Add(3*time.Minute), testPodEnergyA, noRes, podAttrs("p-1", "apps", nil), 1800) // bucket 1: Δ1200
+	insertSum(t, store, base.Add(4*time.Minute), testPodEnergyA, noRes, podAttrs("p-1", "apps", nil), 1800)
+	insertSum(t, store, base.Add(5*time.Minute), testPodEnergyA, noRes, podAttrs("p-1", "apps", nil), 5400) // bucket 2: Δ3600
+
+	insertGauge(t, store, base.Add(1*time.Minute), metricPodCPU, map[string]string{
+		"k8s.pod.name": "p-1", "k8s.namespace.name": "apps", "k8s.daemonset.name": "p",
+	}, 0.1)
+
+	got, err := store.ServiceEnergy(ctx, greenQuery("default", base, end, interval))
+	if err != nil {
+		t.Fatalf("ServiceEnergy: %v", err)
+	}
+	if len(got) != 1 || got[0].Service != "p" {
+		t.Fatalf("got %+v, want the single daemonset workload p", got)
+	}
+	wantWh(t, "p total", got[0].WattHours, 5400) // = 1.5 Wh
+	if len(got[0].Points) != 3 {
+		t.Fatalf("points = %+v, want 3 buckets", got[0].Points)
+	}
+	wantJ := []float64{600, 1200, 3600}
+	for i, p := range got[0].Points {
+		wantT := base.Add(time.Duration(i) * interval)
+		if !p.Time.Equal(wantT) {
+			t.Errorf("bucket %d time = %v, want %v", i, p.Time, wantT)
+		}
+		wantWh(t, "bucket", p.WattHours, wantJ[i])
+	}
+}
+
+// TestNodeEnergyIntegration: per-node totals/series from the node counters —
+// multiple node metrics sum per node, the node comes from the standard
+// k8s.node.name resource attribute, and rows without it are excluded.
+func TestNodeEnergyIntegration(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	interval := 10 * time.Minute
+	base := greenBase(interval)
+	end := base.Add(10 * time.Minute)
+	resA := map[string]string{"k8s.node.name": "node-a"}
+	resB := map[string]string{"k8s.node.name": "node-b"}
+
+	insertSum(t, store, base.Add(1*time.Minute), testNodeEnergyA, resA, map[string]string{}, 0)
+	insertSum(t, store, base.Add(4*time.Minute), testNodeEnergyA, resA, map[string]string{}, 1800) // Δ1800
+	insertSum(t, store, base.Add(1*time.Minute), testNodeEnergyB, resA, map[string]string{}, 100)
+	insertSum(t, store, base.Add(4*time.Minute), testNodeEnergyB, resA, map[string]string{}, 400) // Δ300
+	insertSum(t, store, base.Add(1*time.Minute), testNodeEnergyA, resB, map[string]string{}, 0)
+	insertSum(t, store, base.Add(4*time.Minute), testNodeEnergyA, resB, map[string]string{}, 7200) // Δ7200
+	// No node attribute: must not surface as a phantom node.
+	insertSum(t, store, base.Add(2*time.Minute), testNodeEnergyA, map[string]string{}, map[string]string{}, 500)
+
+	got, err := store.NodeEnergy(ctx, greenQuery("default", base, end, interval))
+	if err != nil {
+		t.Fatalf("NodeEnergy: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d nodes %+v, want node-a and node-b", len(got), got)
+	}
+	// Heaviest first: node-b (7200 J) before node-a (2100 J).
+	if got[0].Node != "node-b" || got[1].Node != "node-a" {
+		t.Fatalf("order wrong: %+v", got)
+	}
+	wantWh(t, "node-b total", got[0].WattHours, 7200) // = 2 Wh
+	wantWh(t, "node-a total", got[1].WattHours, 1800+300)
+	if len(got[1].Points) != 1 || !got[1].Points[0].Time.Equal(base) {
+		t.Errorf("node-a points = %+v, want one bucket at %v", got[1].Points, base)
+	}
+}
+
+// TestGreenTenantIsolation: tenant A's energy — pod and node — never
+// surfaces for tenant B, and the pod→workload map is tenant-scoped too.
+func TestGreenTenantIsolation(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	interval := 10 * time.Minute
+	base := greenBase(interval)
+	end := base.Add(10 * time.Minute)
+	acme := map[string]string{"avuru.tenant": "acme"}
+	acmeNode := map[string]string{"avuru.tenant": "acme", "k8s.node.name": "node-a"}
+
+	insertSum(t, store, base.Add(1*time.Minute), testPodEnergyA, acme, podAttrs("web-1", "shop", nil), 0)
+	insertSum(t, store, base.Add(4*time.Minute), testPodEnergyA, acme, podAttrs("web-1", "shop", nil), 720)
+	insertSum(t, store, base.Add(1*time.Minute), testNodeEnergyA, acmeNode, map[string]string{}, 0)
+	insertSum(t, store, base.Add(4*time.Minute), testNodeEnergyA, acmeNode, map[string]string{}, 3600)
+	insertGauge(t, store, base.Add(2*time.Minute), metricPodCPU, map[string]string{
+		"avuru.tenant": "acme", "k8s.pod.name": "web-1", "k8s.namespace.name": "shop",
+		"k8s.deployment.name": "web",
+	}, 0.2)
+
+	for _, tenant := range []string{"default", "other"} {
+		svc, err := store.ServiceEnergy(ctx, greenQuery(tenant, base, end, interval))
+		if err != nil {
+			t.Fatalf("ServiceEnergy(%s): %v", tenant, err)
+		}
+		if len(svc) != 0 {
+			t.Errorf("tenant leak: %s sees service energy %+v", tenant, svc)
+		}
+		nodes, err := store.NodeEnergy(ctx, greenQuery(tenant, base, end, interval))
+		if err != nil {
+			t.Fatalf("NodeEnergy(%s): %v", tenant, err)
+		}
+		if len(nodes) != 0 {
+			t.Errorf("tenant leak: %s sees node energy %+v", tenant, nodes)
+		}
+	}
+
+	svc, err := store.ServiceEnergy(ctx, greenQuery("acme", base, end, interval))
+	if err != nil {
+		t.Fatalf("ServiceEnergy(acme): %v", err)
+	}
+	if len(svc) != 1 || svc[0].Service != "web" {
+		t.Fatalf("acme service energy = %+v, want attributed workload web", svc)
+	}
+	wantWh(t, "acme web", svc[0].WattHours, 720) // = 0.2 Wh
+
+	nodes, err := store.NodeEnergy(ctx, greenQuery("acme", base, end, interval))
+	if err != nil {
+		t.Fatalf("NodeEnergy(acme): %v", err)
+	}
+	if len(nodes) != 1 || nodes[0].Node != "node-a" {
+		t.Fatalf("acme node energy = %+v, want node-a", nodes)
+	}
+	wantWh(t, "acme node-a", nodes[0].WattHours, 3600)
+}

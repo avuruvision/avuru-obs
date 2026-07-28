@@ -37,6 +37,10 @@ type Fake struct {
 	Profiled      []storage.ProfiledService
 	Flame         storage.FlameNode
 
+	ServiceEnergies []storage.ServiceEnergy
+	NodeEnergies    []storage.NodeEnergy
+	GreenErr        error
+
 	Issues       []storage.ErrorIssue
 	Issue        storage.ErrorIssue
 	IssueErr     error
@@ -74,6 +78,7 @@ type Fake struct {
 	LastProfileQuery     storage.ProfileQuery
 	LastIssueQuery       storage.ErrorIssueQuery
 	LastEventQuery       storage.ErrorEventQuery
+	LastGreenQuery       storage.GreenQuery
 	LastSpanLookupTenant string
 }
 
@@ -216,6 +221,22 @@ func (f *Fake) ErrorIssueHistogram(_ context.Context, _ string, _ uint64, _ stor
 func (f *Fake) SetErrorIssueStatus(_ context.Context, tenant string, fingerprint uint64, status string) error {
 	f.StatusWrites = append(f.StatusWrites, StatusWrite{Tenant: tenant, Fingerprint: fingerprint, Status: status})
 	return nil
+}
+
+func (f *Fake) ServiceEnergy(_ context.Context, q storage.GreenQuery) ([]storage.ServiceEnergy, error) {
+	f.LastGreenQuery = q
+	if f.GreenErr != nil {
+		return nil, f.GreenErr
+	}
+	return f.ServiceEnergies, nil
+}
+
+func (f *Fake) NodeEnergy(_ context.Context, q storage.GreenQuery) ([]storage.NodeEnergy, error) {
+	f.LastGreenQuery = q
+	if f.GreenErr != nil {
+		return nil, f.GreenErr
+	}
+	return f.NodeEnergies, nil
 }
 
 func (f *Fake) LoadAlertStates(_ context.Context, tenant string) ([]storage.AlertState, error) {

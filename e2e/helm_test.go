@@ -15,12 +15,17 @@ import (
 	"time"
 )
 
-// hubURL is the port-forwarded hub (deploy/helm/e2e-helm.sh forwards
-// svc/avuruops-hub → :8080). loginAs (auth_helpers_test.go) targets this.
-const (
-	hubURL        = "http://localhost:8080"
-	helmSeedTrace = "aaaa1111bbbb2222cccc3333dddd4444"
-)
+// The port-forwarded hub, env-overridable (a dev machine may have :8080 taken).
+// deploy/helm/e2e-helm.sh forwards svc/avuruops-hub → :8080 and exports the
+// matching URL; loginAs (auth_helpers_test.go) targets hubURL.
+var hubURL = func() string {
+	if v := os.Getenv("AVURUOPS_E2E_HUB_URL"); v != "" {
+		return v
+	}
+	return "http://localhost:8080"
+}()
+
+const helmSeedTrace = "aaaa1111bbbb2222cccc3333dddd4444"
 
 // helmClient carries the admin session. The chart enables auth by default, so
 // every hub route except /healthz and /api/v1/auth/* now needs a cookie;

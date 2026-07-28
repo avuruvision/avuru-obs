@@ -82,9 +82,46 @@
           "type": "object",
           "properties": { "enabled": { "type": "boolean" } },
           "required": ["enabled"]
+        },
+        "green": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } },
+          "required": ["enabled"]
         }
       },
-      "required": ["logs", "infraMetrics", "profiling", "errorTracking", "serviceHealth", "alerting"]
+      "required": ["logs", "infraMetrics", "profiling", "errorTracking", "serviceHealth", "alerting", "green"]
+    },
+    "green": {
+      "type": "object",
+      "properties": {
+        "region": { "type": "string" },
+        "gridIntensity": { "type": "number", "minimum": 0 },
+        "pue": { "type": "number", "minimum": 0 },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "podEnergy": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "nodeEnergy": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "podNameAttr": { "type": "string", "minLength": 1 },
+            "podNamespaceAttr": { "type": "string", "minLength": 1 }
+          }
+        },
+        "budgets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "group": { "type": "string", "minLength": 1 },
+              "monthlyKgCO2e": { "type": "number", "exclusiveMinimum": 0 },
+              "warnRatio": { "type": "number" },
+              "channel": { "type": "string" }
+            },
+            "required": ["name", "group", "monthlyKgCO2e"]
+          }
+        },
+        "budgetCheckIntervalSec": { "type": "integer", "minimum": 0 }
+      }
     },
     "alerting": {
       "type": "object",
@@ -218,6 +255,29 @@
               "properties": {
                 "enabled": { "type": "boolean" },
                 "stats": { "type": "boolean" }
+              }
+            }
+          }
+        },
+        "green": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "scrapeInterval": { "type": "string", "minLength": 2 },
+            "privileged": { "type": "boolean" },
+            "fakeCpuMeter": { "type": "boolean" },
+            "image": {
+              "type": "object",
+              "properties": {
+                "repository": { "type": "string", "minLength": 1 },
+                "tag": { "type": "string", "minLength": 1 }
+              }
+            },
+            "metrics": {
+              "type": "object",
+              "properties": {
+                "keep": { "type": "string", "minLength": 1 }
               }
             }
           }

@@ -110,6 +110,14 @@ These milestone tags (`M1`–`M5`) are referenced throughout the codebase and
   Instrumentation) — connection-level health without traces, SDKs, or app
   changes, surfaced on the map edges. (Retransmissions were dropped — OBI does
   not emit them; see the [AEP](design/2026-07-19-network-health.md).)
+- **Green (new module) — energy & carbon attribution:** per-pod energy measured
+  by CNCF Kepler (RAPL), attributed to the services on the map you already have:
+  Wh and gCO2e per service and per request, monthly carbon budgets per group
+  with webhook alerts, and a CSRD-ready export that states its methodology.
+  Carbon factors are static operator-set config with bundled country averages —
+  no external API, nothing leaves the cluster. Off by default (needs
+  RAPL-capable hardware, e.g. bare metal). See the
+  [AEP](design/2026-07-22-green-carbon.md).
 - **Richer auto-tagging:** map Kubernetes labels/annotations to business tags
   and filter by them across every signal.
 - **Deeper profiling:** off-CPU and memory profiles as the upstream OTel eBPF

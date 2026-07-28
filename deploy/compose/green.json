@@ -1,0 +1,14 @@
+{
+  "gridIntensity": 400,
+  "pue": 1.2,
+  "budgetCheckIntervalSec": 5,
+  "budgets": [
+    {
+      "name": "payments-monthly",
+      "group": "payments",
+      "monthlyKgCO2e": 10,
+      "warnRatio": 0.8,
+      "channel": "sink"
+    }
+  ]
+}

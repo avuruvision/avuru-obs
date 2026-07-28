@@ -9,6 +9,7 @@ import (
 
 	"github.com/avuru/avuru-obs/hub/internal/alerting"
 	"github.com/avuru/avuru-obs/hub/internal/auth"
+	"github.com/avuru/avuru-obs/hub/internal/green"
 	"github.com/avuru/avuru-obs/hub/internal/health"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
@@ -54,6 +55,10 @@ type Config struct {
 	// AnonymousIdentity, when non-nil, is served to requests without a valid
 	// session (demo mode: a Viewer scoped to listed projects).
 	AnonymousIdentity *auth.Identity
+	// GreenConfig returns the current green (energy/carbon) configuration
+	// (hot-reloaded, like GroupsConfig). nil → green.Default(). Unread until
+	// the green read path lands; declared now so the cmd/hub wiring is stable.
+	GreenConfig func() green.Config
 }
 
 // API holds handler dependencies.
@@ -151,6 +156,11 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("PUT /api/v1/alerts/channels/{name}", a.securedAdmin(a.handleUpdateAlertChannel))
 		mux.Handle("DELETE /api/v1/alerts/channels/{name}", a.securedAdmin(a.handleDeleteAlertChannel))
 		mux.Handle("POST /api/v1/alerts/channels/{name}/test", a.securedAdmin(a.handleTestAlertChannel))
+	}
+	if active.Enabled(modules.Green) {
+		mux.Handle("GET /api/v1/green/summary", handle(a.handleGreenSummary))
+		mux.Handle("GET /api/v1/green/budgets", handle(a.handleGreenBudgets))
+		mux.Handle("GET /api/v1/green/report", handle(a.handleGreenReport))
 	}
 }
 

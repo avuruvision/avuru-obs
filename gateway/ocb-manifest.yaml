@@ -47,3 +47,8 @@ extensions:
 # the module to /src/sentryreceiver so ../sentryreceiver resolves there too.
 replaces:
   - github.com/avuru/avuru-obs/gateway/sentryreceiver => ../sentryreceiver
+  # Security floor: GHSA-hrxh-6v49-42gf (HIGH — gRPC-Go xDS RBAC / HTTP/2). The
+  # collector 0.154.0 line resolves google.golang.org/grpc to v1.81.1, which the
+  # image scan fails on; pin the fixed v1.82.1 in the distro. Drop this when a
+  # collector bump carries v1.82.1+ on its own (revisit on the next OCB bump).
+  - google.golang.org/grpc => google.golang.org/grpc v1.82.1
