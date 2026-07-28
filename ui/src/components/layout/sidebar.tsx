@@ -2,12 +2,69 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, ChevronsLeft, ChevronsRight, Hexagon } from "lucide-react";
+import {
+  Activity,
+  ChevronsLeft,
+  ChevronsRight,
+  Hexagon,
+  LogIn,
+  LogOut,
+} from "lucide-react";
 import { cn } from "@/lib/cn";
+import { apiPost } from "@/lib/api";
 import { useLocalStorageFlag } from "@/hooks/use-local-storage-flag";
 import { useCapabilities } from "@/hooks/use-capabilities";
+import { useAuth } from "@/hooks/use-auth";
 import { NAV_SECTIONS } from "./nav-config";
 import { ProjectSwitcher } from "./project-switcher";
+
+// Exact nav-item styling copied from the Settings link's inactive state so the
+// auth control reads as one more entry in the primary nav.
+const NAV_ITEM_CLASS =
+  "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors text-base-content/65 hover:bg-base-300 hover:text-base-content";
+
+// Auth affordance pinned under the nav: Sign out for a real session, Sign in
+// for the anonymous fallback, and nothing when identity is unknown (auth off
+// or the hub is unreachable) so the sidebar never renders a dead control.
+function SidebarAuth({ collapsed }: { collapsed: boolean }) {
+  const { me } = useAuth();
+  if (!me) return null;
+
+  if (me.user.anonymous) {
+    return (
+      <a
+        href="/login"
+        title={collapsed ? "Sign in" : undefined}
+        className={NAV_ITEM_CLASS}
+      >
+        <LogIn className="h-4 w-4 shrink-0" aria-hidden />
+        {!collapsed && <span className="truncate">Sign in</span>}
+      </a>
+    );
+  }
+
+  const signOut = async () => {
+    try {
+      await apiPost("/api/v1/auth/logout", {});
+    } catch {
+      // Navigate to login regardless — the session is cleared server-side and
+      // the login page re-derives state from a fresh /auth/me.
+    }
+    window.location.assign("/login");
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void signOut()}
+      title={me.user.email}
+      className={NAV_ITEM_CLASS}
+    >
+      <LogOut className="h-4 w-4 shrink-0" aria-hidden />
+      {!collapsed && <span className="truncate">Sign out</span>}
+    </button>
+  );
+}
 
 const COLLAPSE_KEY = "avuru-sidebar-collapsed";
 
@@ -77,6 +134,7 @@ export function Sidebar() {
             })}
           </div>
         ))}
+        <SidebarAuth collapsed={collapsed} />
       </nav>
 
       <div className="border-t border-neutral p-2">

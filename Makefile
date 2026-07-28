@@ -39,6 +39,10 @@ check:
 	cd gateway/sentryreceiver && go build ./... && go vet ./... && go test ./...
 	cd ui && npm run lint && npm run build
 
+# Fixed, known admin password so the authenticated e2e harness (e2e/auth_helpers.go)
+# can log in deterministically. The normal dev/prod path (`make dev`) leaves
+# AVURUOPS_AUTH_ADMIN_PASSWORD unset — empty means "generate one and log it once".
+e2e: export AVURUOPS_AUTH_ADMIN_PASSWORD := e2e-admin-pw
 e2e:
 	$(COMPOSE) down -v --remove-orphans
 	$(COMPOSE) up -d --build --wait clickhouse hub

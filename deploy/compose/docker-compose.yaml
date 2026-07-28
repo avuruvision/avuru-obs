@@ -90,6 +90,11 @@ services:
       # can assert. Delivery targets an unroutable URL (the loop persists state
       # regardless; delivery is unit-tested, incl. the SSRF guard).
       AVURUOPS_ALERTS_CONFIG: /etc/avuruops-alerts/alerts.json
+      # AVURUOPS_AUTH_* pass-through for local dev/smoke-testing (Task 9 adds
+      # the fuller anonymous/OIDC compose wiring). Unset/empty keeps today's
+      # behavior: auth stays enabled, and the admin password is generated and
+      # logged once at first boot.
+      AVURUOPS_AUTH_ADMIN_PASSWORD: ${AVURUOPS_AUTH_ADMIN_PASSWORD:-}
       # Green energy/carbon config: explicit factors (deterministic gCO2e for
       # e2e) + a budget over the seeded `payments` group, delivered via the
       # `sink` alerting channel. green is auto-active here (the hub sets no
@@ -102,7 +107,7 @@ services:
       - ./alerts.json:/etc/avuruops-alerts/alerts.json:ro
       - ./green.json:/etc/avuruops-green/green.json:ro
     ports:
-      - "8080:8080"
+      - "18080:8080"
     depends_on:
       migrate:
         condition: service_completed_successfully

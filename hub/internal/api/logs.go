@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
@@ -55,8 +56,12 @@ func (a *API) handleSearchLogs(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
 	page, err := store.SearchLogs(r.Context(), storage.LogQuery{
-		Tenant:      tenant(r),
+		Tenant:      tenant,
 		Range:       tr,
 		Service:     r.URL.Query().Get("service"),
 		MinSeverity: r.URL.Query().Get("severity"),
@@ -84,7 +89,11 @@ func (a *API) handleLogsForTrace(w http.ResponseWriter, r *http.Request) error {
 	if traceID == "" {
 		return badRequest("missing traceId")
 	}
-	logs, err := store.LogsForTrace(r.Context(), tenant(r), traceID)
+	tenant, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
+	logs, err := store.LogsForTrace(r.Context(), tenant, traceID)
 	if err != nil {
 		return err
 	}

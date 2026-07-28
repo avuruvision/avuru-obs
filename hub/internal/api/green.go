@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/green"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
@@ -162,7 +163,10 @@ func (a *API) handleGreenSummary(w http.ResponseWriter, r *http.Request) error {
 		return badRequest("invalid topN: must be >= 0")
 	}
 	cfg := a.greenConfig()
-	ten := tenant(r)
+	ten, err := a.project(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
 	rows, err := store.ServiceEnergy(r.Context(), greenQuery(cfg, ten, tr, 0))
 	if err != nil {
 		return err

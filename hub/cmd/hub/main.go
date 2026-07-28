@@ -17,6 +17,7 @@ import (
 
 	"github.com/avuru/avuru-obs/hub/internal/alerting"
 	"github.com/avuru/avuru-obs/hub/internal/api"
+	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 	ch "github.com/avuru/avuru-obs/hub/internal/storage/clickhouse"
@@ -159,6 +160,11 @@ func run() error {
 
 	provider := connectStore(ctx, clickhouseConfig())
 
+	authSvc, anonID := authService(provider)
+	if authSvc != nil {
+		go bootstrapAdmin(ctx, authSvc, provider)
+	}
+
 	active, err := activeModules()
 	if err != nil {
 		return err
@@ -198,6 +204,8 @@ func run() error {
 		GroupsConfig:          groupsConfig,
 		AlertsConfig:          alertsConfig,
 		Notifier:              notifier,
+		Auth:                  authSvc,
+		AnonymousIdentity:     anonID,
 		GreenConfig:           greenConfig,
 	})
 
@@ -262,6 +270,124 @@ func connectStore(ctx context.Context, cfg ch.Config) api.StoreProvider {
 			return s
 		}
 		return nil
+	}
+}
+
+// authService builds the auth stack from env. AVURUOPS_AUTH_ENABLED=false
+// restores the fully-open pre-auth behavior (labs, demos). A misconfigured
+// kill-switch must fail closed: only the exact value "false" disables auth;
+// anything unrecognized (a typo, say) leaves auth ENABLED and logs an error,
+// rather than silently opening every request up as anonymous admin.
+// AVURUOPS_AUTH_ANONYMOUS_ROLE + _PROJECTS enable the project-scoped
+// anonymous identity (the docs-demo mode from the AEP).
+func authService(provider api.StoreProvider) (*auth.Service, *auth.Identity) {
+	v := envOr("AVURUOPS_AUTH_ENABLED", "true")
+	switch v {
+	case "false":
+		slog.Warn("authentication is DISABLED — every request is anonymous admin")
+		return nil, nil
+	case "true":
+	default:
+		slog.Error("unrecognized AVURUOPS_AUTH_ENABLED value, auth remains enabled", "value", v)
+	}
+	ttl := time.Duration(envIntOr("AVURUOPS_AUTH_SESSION_TTL_HOURS", 168)) * time.Hour
+	svc := auth.NewService(provider, ttl)
+
+	var anon *auth.Identity
+	role := os.Getenv("AVURUOPS_AUTH_ANONYMOUS_ROLE")
+	projectsRaw := os.Getenv("AVURUOPS_AUTH_ANONYMOUS_PROJECTS")
+	if role != "" {
+		r, ok := auth.ParseRole(role)
+		if !ok {
+			slog.Error("invalid AVURUOPS_AUTH_ANONYMOUS_ROLE, ignoring anonymous mode", "role", role)
+		} else {
+			projects := splitCSV(projectsRaw)
+			if len(projects) == 0 {
+				slog.Error("AVURUOPS_AUTH_ANONYMOUS_PROJECTS is required with anonymous mode (never implicit '*'), ignoring")
+			} else {
+				// Both cheap insurance against a fat-fingered config: neither
+				// is refused, both are visible operator choices, but a
+				// wildcard scope or an above-Viewer anonymous role is worth
+				// a second look in the logs.
+				for _, p := range projects {
+					if p == "*" {
+						slog.Warn("AVURUOPS_AUTH_ANONYMOUS_PROJECTS contains '*' — anonymous access applies to every project", "role", r)
+						break
+					}
+				}
+				if r != auth.RoleViewer {
+					slog.Warn("AVURUOPS_AUTH_ANONYMOUS_ROLE is stronger than viewer", "role", r)
+				}
+				anon = &auth.Identity{Name: "Anonymous", Anonymous: true}
+				for _, p := range projects {
+					anon.Grants = append(anon.Grants, auth.Grant{Scope: p, Role: r})
+				}
+				slog.Info("anonymous access enabled", "role", r, "projects", projects)
+			}
+		}
+	} else if projectsRaw != "" {
+		// _PROJECTS without _ROLE was a silent no-op before; a bare-typo'd
+		// env var deserves a log line, not silence.
+		slog.Error("AVURUOPS_AUTH_ANONYMOUS_PROJECTS is set but AVURUOPS_AUTH_ANONYMOUS_ROLE is empty, ignoring anonymous mode")
+	}
+	return svc, anon
+}
+
+// bootstrapAdmin waits for the store, then ensures the admin user exists.
+// AVURUOPS_AUTH_ADMIN_PASSWORD empty → generate one and log it ONCE, only on
+// the attempt whose Bootstrap call actually created the admin (created==true
+// tells us that directly, so there's no separate pre-check to race against).
+// Helm always sets the password; the generated path is the bare-compose
+// convenience.
+//
+// svc.Bootstrap can fail transiently — e.g. ClickHouse is reachable but the
+// auth tables haven't been migrated yet (migrate runs as a separate
+// job/hook) — so this retries forever rather than giving up (connectStore's
+// degraded-not-crashed philosophy): every 5s for the first 2 minutes, then
+// every 60s. A one-time Error when crossing the 2-minute mark flags a likely
+// deploy bug; retries continue quietly (Warn per failure only) after that.
+func bootstrapAdmin(ctx context.Context, svc *auth.Service, provider api.StoreProvider) {
+	password := os.Getenv("AVURUOPS_AUTH_ADMIN_PASSWORD")
+	generated := password == ""
+	if generated {
+		password = auth.NewID()
+	}
+
+	for provider() == nil {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
+	}
+
+	start := time.Now()
+	erroredOnce := false
+	for {
+		created, err := svc.Bootstrap(ctx, password)
+		if err == nil {
+			if generated && created {
+				// Printed once, only on the attempt that actually created the admin.
+				slog.Warn("generated admin password — change it after first login",
+					"email", "admin", "password", password)
+			}
+			return
+		}
+		slog.Warn("admin bootstrap failed, retrying", "error", err)
+		elapsed := time.Since(start)
+		if !erroredOnce && elapsed >= 2*time.Minute {
+			slog.Error("admin bootstrap still failing after 2 minutes — check ClickHouse/migration state", "error", err)
+			erroredOnce = true
+		}
+		interval := 5 * time.Second
+		if elapsed >= 2*time.Minute {
+			interval = 60 * time.Second
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(interval):
+		}
 	}
 }
 

@@ -15,10 +15,10 @@ import (
 	"time"
 )
 
-// The port-forwarded hub. Env-overridable because a dev machine may have
-// localhost:8080 taken by an unrelated process — deploy/helm/e2e-helm.sh
-// forwards HUB_PORT_LOCAL and exports the matching URL; CI keeps the default.
-var helmHubURL = func() string {
+// The port-forwarded hub, env-overridable (a dev machine may have :8080 taken).
+// deploy/helm/e2e-helm.sh forwards svc/avuruops-hub → :8080 and exports the
+// matching URL; loginAs (auth_helpers_test.go) targets hubURL.
+var hubURL = func() string {
 	if v := os.Getenv("AVURUOPS_E2E_HUB_URL"); v != "" {
 		return v
 	}
@@ -27,8 +27,44 @@ var helmHubURL = func() string {
 
 const helmSeedTrace = "aaaa1111bbbb2222cccc3333dddd4444"
 
+// helmClient carries the admin session. The chart enables auth by default, so
+// every hub route except /healthz and /api/v1/auth/* now needs a cookie;
+// TestMain logs in and replaces this before any test runs.
+var helmClient = http.DefaultClient
+
+// TestMain logs in as admin once for the whole e2ehelm binary. The chart is
+// installed with --set auth.adminPassword=e2e-admin-pw (adminPassword), but
+// the admin user is bootstrapped asynchronously (bootstrapAdmin waits for
+// ClickHouse + the migrate hook's auth tables), so login is retried rather
+// than attempted once.
+func TestMain(m *testing.M) {
+	client, err := waitForHelmAdminLogin(90 * time.Second)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: could not log in as admin against %s within 90s: %v\n", hubURL, err)
+		os.Exit(1)
+	}
+	helmClient = client
+	os.Exit(m.Run())
+}
+
+func waitForHelmAdminLogin(timeout time.Duration) (*http.Client, error) {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for {
+		client, err := loginAs("admin", adminPassword)
+		if err == nil {
+			return client, nil
+		}
+		lastErr = err
+		if time.Now().After(deadline) {
+			return nil, lastErr
+		}
+		time.Sleep(2 * time.Second)
+	}
+}
+
 func helmGetJSON(path string, out any) error {
-	resp, err := http.Get(helmHubURL + path)
+	resp, err := helmClient.Get(hubURL + path)
 	if err != nil {
 		return err
 	}

@@ -18,12 +18,12 @@ import (
 	"time"
 )
 
-// Endpoints default to the compose stack's published ports; each is
-// env-overridable so a shared dev machine can run the suite against an
-// isolated compose project with remapped host ports (the Playwright
-// AVURUOPS_BASE_URL precedent). CI sets nothing and keeps the defaults.
+// Endpoints default to the compose stack's published ports (hub is 18080:8080
+// in docker-compose); each is env-overridable so a shared dev machine can run
+// the suite against an isolated compose project with remapped host ports (the
+// Playwright AVURUOPS_BASE_URL precedent). CI sets nothing and keeps the defaults.
 var (
-	hubURL    = envOr("AVURUOPS_E2E_HUB_URL", "http://localhost:8080")
+	hubURL    = envOr("AVURUOPS_E2E_HUB_URL", "http://localhost:18080")
 	hotrodURL = envOr("AVURUOPS_E2E_HOTROD_URL", "http://localhost:8088")
 	chURL     = envOr("AVURUOPS_E2E_CH_URL", "http://localhost:8123")
 )
@@ -35,6 +35,48 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// apiClient is the shared, authenticated client used by every helper here
+// (getJSON, getJSONTenant) and by any test hitting the hub directly. The hub
+// has auth ON by default (Task 8), so plain http.DefaultClient now gets 401s
+// against every hub route except /healthz and /api/v1/auth/*. TestMain logs
+// in as admin before any test runs and replaces this with the authenticated
+// client; tests that deliberately want to be unauthenticated use
+// http.DefaultClient (or http.Get) directly instead of this var.
+var apiClient = http.DefaultClient
+
+// TestMain authenticates once for the whole package before running any
+// test: the hub may still be bootstrapping the admin user (bootstrapAdmin
+// waits for its ClickHouse connection, then creates `admin` with
+// AVURUOPS_AUTH_ADMIN_PASSWORD — see the Makefile's `e2e` target) when the
+// suite starts, so login is retried rather than attempted once.
+func TestMain(m *testing.M) {
+	client, err := waitForAdminLogin(60 * time.Second)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: could not log in as admin against %s within 60s: %v\n", hubURL, err)
+		os.Exit(1)
+	}
+	apiClient = client
+	os.Exit(m.Run())
+}
+
+// waitForAdminLogin mirrors poll's retry pattern (2s interval, no busy loop)
+// but can't use poll directly: TestMain has no *testing.T to hand it.
+func waitForAdminLogin(timeout time.Duration) (*http.Client, error) {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for {
+		client, err := loginAs("admin", adminPassword)
+		if err == nil {
+			return client, nil
+		}
+		lastErr = err
+		if time.Now().After(deadline) {
+			return nil, lastErr
+		}
+		time.Sleep(2 * time.Second)
+	}
 }
 
 // poll retries fn until it returns nil or the deadline passes (never sleep
@@ -53,7 +95,7 @@ func poll(t *testing.T, timeout time.Duration, fn func() error) {
 }
 
 func getJSON(path string, out any) error {
-	resp, err := http.Get(hubURL + path)
+	resp, err := apiClient.Get(hubURL + path)
 	if err != nil {
 		return err
 	}

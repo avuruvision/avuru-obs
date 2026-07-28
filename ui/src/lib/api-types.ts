@@ -448,6 +448,46 @@ export interface AlertChannelInput {
   secret?: string;
 }
 
+// Auth (Plan A: local only; "oidc" joins in Plan B). /api/v1/auth/config is
+// registered even when auth is off — `enabled: false` means no login page
+// needed. No 404 special-casing in the SPA.
+export interface AuthConfig {
+  enabled: boolean;
+  methods: ("local" | "oidc")[];
+  forceSSO: boolean;
+}
+
+export interface AuthGrant {
+  scope: string; // project name or "*"
+  role: "admin" | "editor" | "viewer";
+}
+
+export interface Me {
+  user: { id: string; email: string; name: string; anonymous: boolean };
+  grants: AuthGrant[];
+}
+
+// User administration (Plan A; admin only). Mirrors hub/internal/api/users.go.
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  origin: string;
+  disabled: boolean;
+  grants: AuthGrant[];
+}
+
+export interface UsersResponse {
+  users: AdminUser[];
+}
+
+export interface CreateUserRequest {
+  email: string;
+  name: string;
+  password: string;
+  grants: AuthGrant[];
+}
+
 // Green — per-service energy & carbon (module green). Mirrors the Go DTOs in
 // hub/internal/api/green.go and green_budgets.go — field names are byte-exact
 // with the json tags there (e.g. gridIntensity/intensitySource, not
