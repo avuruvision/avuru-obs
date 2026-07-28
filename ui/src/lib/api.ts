@@ -27,6 +27,22 @@ export class ApiError extends Error {
   }
 }
 
+// Global 401 handling: a missing/expired session on any call hands off to the
+// login page, remembering where the user was so login can send them back. The
+// `/login` guard lets the login page's own API calls (config, the login POST)
+// surface their 401 to the form instead of looping. Returns true when it has
+// started navigating — callers must then stop, since the response is unusable.
+function redirectedOn401(res: Response): boolean {
+  if (res.status === 401 && !window.location.pathname.startsWith("/login")) {
+    window.location.assign(
+      "/login?next=" +
+        encodeURIComponent(window.location.pathname + window.location.search),
+    );
+    return true;
+  }
+  return false;
+}
+
 export async function apiGet<T>(
   path: string,
   params?: Record<string, string | number | undefined>,
@@ -46,6 +62,7 @@ export async function apiGet<T>(
     headers["X-Avuru-Tenant"] = opts.project;
   }
   const res = await fetch(url, { headers });
+  if (redirectedOn401(res)) return new Promise<never>(() => {});
   return handleJSON<T>(res);
 }
 
@@ -65,6 +82,7 @@ export async function apiPost<T>(
     headers["X-Avuru-Tenant"] = opts.project;
   }
   const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+  if (redirectedOn401(res)) return new Promise<never>(() => {});
   return handleJSON<T>(res);
 }
 
@@ -83,6 +101,7 @@ export async function apiPut<T>(
     headers["X-Avuru-Tenant"] = opts.project;
   }
   const res = await fetch(url, { method: "PUT", headers, body: JSON.stringify(body) });
+  if (redirectedOn401(res)) return new Promise<never>(() => {});
   return handleJSON<T>(res);
 }
 
@@ -97,6 +116,7 @@ export async function apiDelete(
     headers["X-Avuru-Tenant"] = opts.project;
   }
   const res = await fetch(url, { method: "DELETE", headers });
+  if (redirectedOn401(res)) return new Promise<never>(() => {});
   if (res.status === 204) return;
   await handleJSON<unknown>(res);
 }

@@ -441,3 +441,22 @@ export interface AlertChannelInput {
   url: string;
   secret?: string;
 }
+
+// Auth (Plan A: local only; "oidc" joins in Plan B). /api/v1/auth/config is
+// registered even when auth is off — `enabled: false` means no login page
+// needed. No 404 special-casing in the SPA.
+export interface AuthConfig {
+  enabled: boolean;
+  methods: ("local" | "oidc")[];
+  forceSSO: boolean;
+}
+
+export interface AuthGrant {
+  scope: string; // project name or "*"
+  role: "admin" | "editor" | "viewer";
+}
+
+export interface Me {
+  user: { id: string; email: string; name: string; anonymous: boolean };
+  grants: AuthGrant[];
+}
