@@ -107,3 +107,26 @@ func TestParseConfigAcceptsT3(t *testing.T) {
 		t.Errorf("T3 tier threshold: got %v want 0.2", got.ErrorRateCrit)
 	}
 }
+
+// TestParseConfigTierOverrides: the operator's per-service tier override parses
+// and validates. Unlike a declared tier, a bad value here fails LOUD — config
+// is operator-controlled and a typo must not silently mis-tier.
+func TestParseConfigTierOverrides(t *testing.T) {
+	c, err := ParseConfig([]byte(`{
+	    "defaultTier":"T2",
+	    "tierOverrides":{"checkout":"T0","batch":"T3"}
+	}`))
+	if err != nil {
+		t.Fatalf("ParseConfig: %v", err)
+	}
+	if c.TierOverrides["checkout"] != TierT0 {
+		t.Errorf("tierOverrides[checkout] = %q, want T0", c.TierOverrides["checkout"])
+	}
+	if c.TierOverrides["batch"] != TierT3 {
+		t.Errorf("tierOverrides[batch] = %q, want T3", c.TierOverrides["batch"])
+	}
+
+	if _, err := ParseConfig([]byte(`{"defaultTier":"T2","tierOverrides":{"checkout":"T9"}}`)); err == nil {
+		t.Error("ParseConfig accepted an invalid tierOverrides tier, want error")
+	}
+}

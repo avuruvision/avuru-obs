@@ -71,6 +71,12 @@ type Config struct {
 	Groups        []Group         `json:"groups,omitempty"`
 	Thresholds    ThresholdConfig `json:"thresholds"`
 	CriticalEdges []CriticalEdge  `json:"criticalEdges,omitempty"`
+	// TierOverrides is the operator's per-service tier, winning over a declared
+	// avuru.tier and over a matched group's tier. It exists because a config
+	// group is the only other override and it also forces group membership: an
+	// operator must be able to correct one service's tier without renaming its
+	// group.
+	TierOverrides map[string]Tier `json:"tierOverrides,omitempty"`
 }
 
 // builtinDefaults are the SLO-lite thresholds applied when config omits them.
@@ -141,6 +147,11 @@ func (c Config) Validate() error {
 	for t := range c.Thresholds.Tiers {
 		if !knownTiers[t] {
 			return fmt.Errorf("thresholds.tiers has invalid tier %q", t)
+		}
+	}
+	for svc, t := range c.TierOverrides {
+		if !knownTiers[t] {
+			return fmt.Errorf("tierOverrides[%q] has invalid tier %q (known: T0, T1, T2, T3)", svc, t)
 		}
 	}
 	return nil
