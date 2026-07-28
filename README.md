@@ -111,6 +111,7 @@ sandbox) lands with the [M1–M2 milestones](ROADMAP.md).
 | [MAINTAINERS.md](MAINTAINERS.md) | Who maintains what |
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community standards |
 | [CLA.md](CLA.md) | Contributor License Agreement — signed automatically on your first PR |
+| [LICENSING.md](LICENSING.md) | What the AGPL means for you; editions and sustainability |
 | [SECURITY.md](SECURITY.md) | Reporting vulnerabilities (privately) |
 | [AI_POLICY.md](AI_POLICY.md) | Using AI tools when contributing |
 | [COMMIT-SIGNING-SETUP.md](COMMIT-SIGNING-SETUP.md) | Required signed-commit setup |
@@ -136,4 +137,9 @@ Organizations sponsoring at a sustained tier get their logo featured here.
 
 ## License
 
-[AGPL-3.0](LICENSE)
+[AGPL-3.0](LICENSE) — the same license as Grafana. Self-hosting unmodified
+puts zero obligations on you, and the [CLA (§2.2)](CLA.md) pledges that
+everything shipped here stays open under AGPL-3.0 forever. The node agent is
+upstream OBI (Apache-2.0). A commercial enterprise edition is planned as a
+separate offering — it adds to the community edition, never removes from it.
+Details, FAQ, and dual-licensing contact: [LICENSING.md](LICENSING.md).

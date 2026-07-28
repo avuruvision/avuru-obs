@@ -28,7 +28,9 @@ pledges (§2.2) that everything you contribute stays available under AGPL-3.0
 forever — your work can never be made closed-only.
 
 Contributing on your employer's time or equipment? Check §4 of the CLA; a
-corporate CLA is available on request.
+corporate CLA is available on request. The full licensing model — what the
+AGPL means for users, editions, sustainability — is in
+[LICENSING.md](./LICENSING.md).
 
 ## Workflow
 

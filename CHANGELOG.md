@@ -11,7 +11,18 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Licensing clarity.** [LICENSING.md](LICENSING.md) states the model in
+  full: AGPL-3.0 community edition forever (backed by the CLA §2.2 pledge),
+  the node agent as upstream Apache-2.0 OBI, a planned commercial enterprise
+  edition that only ever adds, and dual licensing for embedders.
+  `make notices` generates [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
+  (Apache §4 attribution for bundled dependencies) and is now a release
+  checklist step. The UI package now declares `AGPL-3.0-only` explicitly.
+- **Contributor License Agreement live.** Every first-time contributor signs
+  the [Individual CLA](CLA.md) via a one-comment bot flow; §2.2 pledges all
+  contributions remain available under AGPL-3.0 forever.
 
 ## [0.2.0] — 2026-07-28
 
