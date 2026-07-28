@@ -57,7 +57,7 @@ type Report struct {
 // labels, and dependency edges, over a window. It is pure: no I/O, no clock.
 // The window is used only to derive per-second rates.
 func Rollup(cfg Config, window time.Duration, stats []storage.ServiceStats, labels []storage.ServiceLabel, edges []storage.ServiceEdge) Report {
-	assign := resolve(cfg, stats, labels)
+	assign, _ := resolve(cfg, stats, labels)
 	statByService := make(map[string]storage.ServiceStats, len(stats))
 	for _, s := range stats {
 		statByService[s.Name] = s
