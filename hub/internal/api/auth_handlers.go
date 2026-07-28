@@ -18,14 +18,31 @@ type authConfigResponse struct {
 
 // handleAuthConfig is unauthenticated and ALWAYS registered (auth on or
 // off): the login page needs a straight answer, not a 404 it has to
-// special-case. OIDC lands in Plan B; today Enabled implies just ["local"].
+// special-case. Enabled implies ["local"]; when an OIDC provider is wired
+// (discovery succeeded) "oidc" is appended and ForceSSO reflects the config.
 func (a *API) handleAuthConfig(w http.ResponseWriter, _ *http.Request) error {
 	resp := authConfigResponse{Enabled: a.cfg.Auth != nil, Methods: []string{}}
 	if resp.Enabled {
 		resp.Methods = []string{"local"}
+		if a.cfg.OIDC != nil && a.cfg.OIDC() != nil {
+			resp.Methods = append(resp.Methods, "oidc")
+			resp.ForceSSO = a.oidcForceSSO()
+		}
 	}
 	writeJSON(w, http.StatusOK, resp)
 	return nil
+}
+
+// oidcForceSSO reports the current OIDC forceSSO setting, nil-safe against an
+// unwired accessor or a nil (unconfigured) settings value.
+func (a *API) oidcForceSSO() bool {
+	if a.cfg.OIDCSettings == nil {
+		return false
+	}
+	if s := a.cfg.OIDCSettings(); s != nil {
+		return s.ForceSSO
+	}
+	return false
 }
 
 type loginRequest struct {

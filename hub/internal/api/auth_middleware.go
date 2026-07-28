@@ -158,6 +158,39 @@ func isTLS(r *http.Request) bool {
 	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
+// oidcCookiePath scopes the transient OIDC flow cookies (state/nonce/verifier)
+// to the callback subtree so they are presented only on the OIDC endpoints and
+// nowhere else in the app.
+const oidcCookiePath = "/api/v1/auth/oidc"
+
+// setShortCookie sets a short-lived (5-minute) HttpOnly cookie carrying OIDC
+// flow state (CSRF state, nonce, PKCE verifier) between /oidc/start and the
+// callback. Scoped to oidcCookiePath; Secure follows the effective scheme.
+func setShortCookie(w http.ResponseWriter, r *http.Request, name, value string) {
+	http.SetCookie(w, &http.Cookie{
+		Name: name, Value: value, Path: oidcCookiePath,
+		HttpOnly: true, SameSite: http.SameSiteLaxMode,
+		Secure: isTLS(r), MaxAge: 300,
+	})
+}
+
+// clearShortCookie expires an OIDC flow cookie (same name/path as setShortCookie).
+func clearShortCookie(w http.ResponseWriter, r *http.Request, name string) {
+	http.SetCookie(w, &http.Cookie{
+		Name: name, Value: "", Path: oidcCookiePath,
+		HttpOnly: true, SameSite: http.SameSiteLaxMode,
+		Secure: isTLS(r), MaxAge: -1,
+	})
+}
+
+// cookieVal returns a cookie's value, or "" for a nil cookie (missing).
+func cookieVal(c *http.Cookie) string {
+	if c == nil {
+		return ""
+	}
+	return c.Value
+}
+
 // project resolves the request's project (X-Avuru-Tenant, default "default")
 // and AUTHORIZES it at min role. With auth disabled it degrades to the old
 // header-trusting behavior.
