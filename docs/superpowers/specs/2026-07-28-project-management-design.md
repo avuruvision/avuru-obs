@@ -39,6 +39,9 @@ in three dependency-ordered phases.
   key's project as the tenant.
 - A project may be a **member-project aggregate**: selecting it shows the merged
   data of its member tenants (multi-cluster view).
+- A **demo project** a prospect can explore as a read-only viewer via a one-click
+  "Try the demo" login, backed by live representative telemetry — to see the
+  product's potential without any setup.
 - Everything admin-gated; non-admins keep read-only visibility of their granted
   projects.
 
@@ -61,9 +64,10 @@ in three dependency-ordered phases.
    slug (used in data and `X-Avuru-Tenant`) plus a human label. Create declares a
    new id; rename edits only the label; delete removes the entry (data ages out).
    No data migration on any operation.
-2. **All three subsystems**, one combined spec, **three phases** in dependency
-   order: CRUD → API keys → member projects. Each phase ships independently and
-   leaves the product working.
+2. **Four subsystems**, one combined spec, **four phases**: CRUD → API keys →
+   member projects, plus a **demo project** (Phase 4) that depends only on Phase 1
+   and existing auth, so it can land right after CRUD. Each phase ships
+   independently and leaves the product working.
 3. **Persistence** follows the existing auth pattern: ClickHouse
    `ReplacingMergeTree(UpdatedAt)` + `FINAL`, tombstone deletes, embedded ordered
    `.sql` migrations, all SQL behind the `storage.Store` seam with a
@@ -262,7 +266,59 @@ union of two seeded tenants; e2e that seeds two tenants, creates an aggregate, a
 checks the merged view. The existing `projects.spec.ts` staging/default isolation
 tests must still pass (leaf projects stay isolated).
 
-## 10. Cross-cutting concerns
+## 10. Phase 4 — Demo project (viewer showcase)
+
+A zero-setup way for a prospect to explore the product as a read-only viewer. It
+reuses Phase 1 (the `demo` project entry) and the existing auth stack; it does
+**not** depend on Phase 2 or 3, so it can ship right after Phase 1.
+
+**Access — shared demo viewer login.** Auth stays fully enabled (no anonymous
+path). A bootstrapped viewer user (`viewer@demo`, granted `viewer@demo`) backs a
+one-click **"Try the demo"** entry on the login screen.
+
+- **Bootstrap:** mirror the existing admin bootstrap (`hub/internal/auth`): when
+  `AVURUOPS_DEMO_ENABLED=true`, ensure a viewer user exists with the configured
+  email and a `viewer` grant scoped to the `demo` project. Idempotent on start.
+  Credentials come from env (`AVURUOPS_DEMO_EMAIL`, `AVURUOPS_DEMO_PASSWORD`),
+  chart-generated when unset.
+- **One-click login endpoint:** `POST /api/v1/auth/demo` signs the request in as
+  the demo viewer **server-side** (rate-limited, reusing the login limiter) so the
+  shared password never ships to the browser. It is registered only when
+  `AVURUOPS_DEMO_ENABLED=true`.
+- **Login-page CTA:** `/api/v1/auth/config` gains `demoEnabled bool`. When true the
+  login page shows a **"Try the demo"** button that calls `/auth/demo` and lands in
+  the app. Hidden otherwise.
+- **Scoping:** the demo viewer's only grant is `viewer@demo`, so the project
+  switcher shows just `demo`, it is their landing project, and every write surface
+  (triage, alert-channel edits, project/user admin, ingest keys) is already
+  role-gated above viewer — the guest can look but not touch. The Users tab stays
+  hidden (non-admin), consistent with the Phase-1 settings fix.
+
+**Data — live OpenTelemetry Astronomy Shop.** The scaffolded
+[`deploy/demo/astronomy`](../../../deploy/demo/astronomy) install runs the demo
+workloads with the gateway tagging `gateway.tenant: demo`, so live traces, logs,
+metrics, RED, errors, service map, infra, and green data flow into the `demo`
+tenant through the normal ingest path — no special-casing in the hub. This suits a
+**hosted public demo instance** (a running cluster), not an air-gapped install.
+The `demo` project entry (Phase 1) carries a friendly label (e.g. "Demo —
+Astronomy Shop").
+
+**Interaction with Phase 2:** if ingest-key `enforce` is ever enabled on the demo
+gateway, it needs a `demo` project key; under the default `log` mode nothing is
+required. Independent of Phase 3.
+
+**Deployment:** opt-in only — a normal install ships **no** demo user and no demo
+tenant. A `demo.enabled` chart preset (or the astronomy `install.sh`) wires the
+env flags, the demo gateway tenant, and the demo workloads together. Guardrail:
+the demo viewer is a single shared low-privilege identity; the `/auth/demo`
+endpoint is rate-limited; nothing about the demo widens any other install.
+
+**Tests:** auth bootstrap unit test (demo user + grant created idempotently when
+enabled, absent when disabled); API test for `/auth/demo` (issues a viewer
+session; 404 when disabled; rate-limited); e2e that clicks "Try the demo" and
+asserts a read-only session scoped to `demo` with write controls absent.
+
+## 11. Cross-cutting concerns
 
 - **RBAC:** `securedAdmin` for all mutations; `resolveTenants` enforces read
   scoping for aggregates. `default`/`config` projects are never mutable.
@@ -275,7 +331,7 @@ tests must still pass (leaf projects stay isolated).
   matrix, API reference for the new endpoints, and guides ("managing projects",
   "authenticating ingest", "multi-cluster views"). README + roadmap badges.
 
-## 11. Risks & sequencing
+## 12. Risks & sequencing
 
 | Risk | Mitigation |
 |---|---|
@@ -284,11 +340,13 @@ tests must still pass (leaf projects stay isolated).
 | Migration slot collision (0012) | Phase 1 = `0012_projects.sql`; ingest keys renumbered to `0013` |
 | `IN`-clause perf on large tenant sets | Tenant is the LowCardinality ORDER BY prefix; aggregates are a handful of members |
 | Config vs db id shadowing confusion | Fixed precedence (config wins, read-only) + doc note |
+| Shared demo login abused / demo tenant on a real install | Opt-in only (`demo.enabled`); single low-privilege viewer; `/auth/demo` rate-limited; no demo user/tenant shipped by default |
 
-**Build order:** Phase 1 (foundation) → Phase 2 (independent; already planned) →
-Phase 3 (largest). Each is independently shippable to `main`.
+**Build order:** Phase 1 (foundation) → Phase 4 (demo — needs only Phase 1, high
+showcase value, land early) → Phase 2 (independent; already planned) → Phase 3
+(largest). Each is independently shippable to `main`.
 
-## 12. Open questions (resolve during planning)
+## 13. Open questions (resolve during planning)
 
 1. Create-project UX: a dedicated "New project" dialog on the General tab, vs. a
    "+ New project" row in the switcher. (Lean: General tab dialog first.)
@@ -296,3 +354,6 @@ Phase 3 (largest). Each is independently shippable to `main`.
    follow-up — UI-defined aggregates first.)
 3. Aggregate marker in the switcher: icon vs. label suffix. (Cosmetic; decide in
    UI task.)
+4. Demo: is the `demo` project a `db` entry seeded on demo installs, or a `config`
+   project (read-only)? (Lean: `config` on the demo instance — it's deployment-
+   owned, not meant to be edited/deleted from the UI.)
