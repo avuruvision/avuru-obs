@@ -282,6 +282,17 @@ export interface ProjectsResponse {
   projects: Project[];
 }
 
+// Request bodies for the admin project-CRUD endpoints (mirror the hub Go DTOs
+// createProjectRequest / updateProjectRequest in hub/internal/api/projects.go).
+export interface CreateProjectRequest {
+  id: string;
+  label: string;
+}
+
+export interface UpdateProjectRequest {
+  label: string;
+}
+
 export interface AgentSignals {
   traces: string | null;
   logs: string | null;

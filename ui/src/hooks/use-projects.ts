@@ -1,11 +1,16 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api";
+import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
-import type { Project, ProjectsResponse } from "@/lib/api-types";
+import type {
+  Project,
+  ProjectsResponse,
+  CreateProjectRequest,
+  UpdateProjectRequest,
+} from "@/lib/api-types";
 
-// The selectable project list: {default} ∪ config-defined ∪ UI-managed ∪
+// The selectable project list: {default} ∪ config-defined ∪ db-managed ∪
 // observed in data. Instance-global (no project scoping — it IS the project
 // list).
 export function useProjects() {
@@ -18,14 +23,17 @@ export function useProjects() {
 
 function useInvalidateProjects() {
   const qc = useQueryClient();
-  return () => void qc.invalidateQueries({ queryKey: queryKeys.projects });
+  return () => {
+    void qc.invalidateQueries({ queryKey: queryKeys.projects });
+  };
 }
 
+// Admin project CRUD. Mutations invalidate the instance-global projects list so
+// the switcher and General tab reflect the change.
 export function useCreateProject() {
   const invalidate = useInvalidateProjects();
   return useMutation({
-    mutationFn: (input: { id: string; label: string }) =>
-      apiPost<Project>("/api/v1/projects", input),
+    mutationFn: (input: CreateProjectRequest) => apiPost<Project>("/api/v1/projects", input),
     onSuccess: invalidate,
   });
 }
@@ -33,9 +41,8 @@ export function useCreateProject() {
 export function useRenameProject() {
   const invalidate = useInvalidateProjects();
   return useMutation({
-    // The hub rename route is PATCH.
-    mutationFn: ({ id, label }: { id: string; label: string }) =>
-      apiPatch<Project>(`/api/v1/projects/${encodeURIComponent(id)}`, { label }),
+    mutationFn: ({ id, input }: { id: string; input: UpdateProjectRequest }) =>
+      apiPut<Project>(`/api/v1/projects/${encodeURIComponent(id)}`, input),
     onSuccess: invalidate,
   });
 }

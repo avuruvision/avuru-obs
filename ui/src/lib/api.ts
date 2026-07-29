@@ -105,25 +105,6 @@ export async function apiPut<T>(
   return handleJSON<T>(res);
 }
 
-// apiPatch mirrors apiPut with PATCH (partial updates, e.g. project rename).
-export async function apiPatch<T>(
-  path: string,
-  body: unknown,
-  opts?: { project?: string },
-): Promise<T> {
-  const url = new URL(apiBase() + path, window.location.origin);
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    "Content-Type": "application/json",
-  };
-  if (opts?.project && opts.project !== "default") {
-    headers["X-Avuru-Tenant"] = opts.project;
-  }
-  const res = await fetch(url, { method: "PATCH", headers, body: JSON.stringify(body) });
-  if (redirectedOn401(res)) return new Promise<never>(() => {});
-  return handleJSON<T>(res);
-}
-
 // apiDelete issues a DELETE; a 204 resolves to undefined (no body to parse).
 export async function apiDelete(
   path: string,

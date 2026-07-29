@@ -52,3 +52,8 @@ replaces:
   # image scan fails on; pin the fixed v1.82.1 in the distro. Drop this when a
   # collector bump carries v1.82.1+ on its own (revisit on the next OCB bump).
   - google.golang.org/grpc => google.golang.org/grpc v1.82.1
+  # Security floor: CVE-2026-56852 (HIGH — golang.org/x/text norm.Iter infinite
+  # loop on crafted input). The collector 0.154.0 line resolves golang.org/x/text
+  # to v0.37.0, which the image scan fails on; pin the fixed v0.39.0. Drop this
+  # when a collector bump carries v0.39.0+ on its own (revisit on the next OCB bump).
+  - golang.org/x/text => golang.org/x/text v0.39.0

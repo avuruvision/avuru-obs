@@ -3,125 +3,187 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
+	"time"
 
+	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 	"github.com/avuru/avuru-obs/hub/internal/storage/storagetest"
 )
 
-// isStatus reports whether err is an *apiError with the given status.
-func isStatus(err error, status int) bool {
-	var ae *apiError
-	return errors.As(err, &ae) && ae.status == status
+// adminMuxCfg is adminMux with configurable Config.Projects (config-defined
+// projects), for the reserved/read-only paths.
+func adminMuxCfg(t *testing.T, projects []string) (*http.ServeMux, *http.Cookie, *storagetest.Fake) {
+	t.Helper()
+	f := &storagetest.Fake{}
+	svc := auth.NewService(func() storage.Store { return f }, time.Hour)
+	if _, err := svc.Bootstrap(context.Background(), "root-pw"); err != nil {
+		t.Fatal(err)
+	}
+	token, _, err := svc.Login(context.Background(), "admin", "root-pw", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return f }, Config{Auth: svc, Projects: projects})
+	return mux, &http.Cookie{Name: sessionCookieName, Value: token}, f
 }
 
-func TestHandleProjectsMergesDBSource(t *testing.T) {
-	f := &storagetest.Fake{}
-	_ = f.SaveProject(context.Background(), storage.Project{ID: "staging", Label: "Staging EU"})
-	a := &API{provider: func() storage.Store { return f }, cfg: Config{Projects: []string{"prod"}}}
+func decodeProject(t *testing.T, w *httptest.ResponseRecorder) projectDTO {
+	t.Helper()
+	var p projectDTO
+	if err := json.NewDecoder(w.Body).Decode(&p); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	return p
+}
 
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/projects", nil)
-	if err := a.handleProjects(rec, req); err != nil {
-		t.Fatal(err)
+func TestProjectsMergeIncludesDBProject(t *testing.T) {
+	mux, cookie, f := adminMux(t)
+	f.Projects = map[string]storage.Project{
+		"team-a": {ID: "team-a", Label: "Team A", Members: []string{}},
+	}
+
+	w := doBody(mux, http.MethodGet, "/api/v1/projects", cookie, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
 	}
 	var resp struct {
 		Projects []projectDTO `json:"projects"`
 	}
-	_ = json.NewDecoder(rec.Body).Decode(&resp)
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
 
-	byID := map[string]projectDTO{}
+	var found bool
 	for _, p := range resp.Projects {
-		byID[p.ID] = p
+		if p.ID == "team-a" {
+			found = true
+			if p.Source != "db" || !p.Editable || p.Label != "Team A" {
+				t.Fatalf("team-a = %+v, want source=db editable=true label=Team A", p)
+			}
+		}
 	}
-	if d := byID["default"]; d.Source != "default" || d.Editable {
-		t.Errorf("default = %+v, want source=default editable=false", d)
-	}
-	if p := byID["prod"]; p.Source != "config" || p.Editable {
-		t.Errorf("prod = %+v, want source=config editable=false", p)
-	}
-	if s := byID["staging"]; s.Source != "db" || !s.Editable || s.Label != "Staging EU" {
-		t.Errorf("staging = %+v, want source=db editable=true label=Staging EU", s)
+	if !found {
+		t.Fatalf("team-a missing from %+v", resp.Projects)
 	}
 }
 
 func TestCreateProject(t *testing.T) {
-	f := &storagetest.Fake{}
-	a := &API{provider: func() storage.Store { return f }, cfg: Config{Projects: []string{"prod"}}}
+	mux, cookie, f := adminMux(t)
 
-	// Happy path.
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/projects", strings.NewReader(`{"id":"staging","label":"Staging"}`))
-	if err := a.handleCreateProject(rec, req); err != nil {
-		t.Fatalf("create: %v", err)
+	w := doBody(mux, http.MethodPost, "/api/v1/projects", cookie, `{"id":"team-a","label":"Team A"}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
 	}
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("status = %d", rec.Code)
+	p := decodeProject(t, w)
+	if p.Source != "db" || !p.Editable || p.Label != "Team A" {
+		t.Fatalf("dto = %+v", p)
 	}
-	if _, err := f.GetProject(context.Background(), "staging"); err != nil {
-		t.Fatalf("not persisted: %v", err)
-	}
-
-	// Reserved id "default" → 400.
-	if err := a.handleCreateProject(httptest.NewRecorder(),
-		httptest.NewRequest(http.MethodPost, "/api/v1/projects", strings.NewReader(`{"id":"default"}`))); !isStatus(err, 400) {
-		t.Fatalf("default id: %v", err)
-	}
-	// Shadowing a config id → 409.
-	if err := a.handleCreateProject(httptest.NewRecorder(),
-		httptest.NewRequest(http.MethodPost, "/api/v1/projects", strings.NewReader(`{"id":"prod"}`))); !isStatus(err, 409) {
-		t.Fatalf("config shadow: %v", err)
-	}
-	// Invalid slug → 400.
-	if err := a.handleCreateProject(httptest.NewRecorder(),
-		httptest.NewRequest(http.MethodPost, "/api/v1/projects", strings.NewReader(`{"id":"Has Space"}`))); !isStatus(err, 400) {
-		t.Fatalf("bad slug: %v", err)
-	}
-	// Duplicate db id → 409.
-	if err := a.handleCreateProject(httptest.NewRecorder(),
-		httptest.NewRequest(http.MethodPost, "/api/v1/projects", strings.NewReader(`{"id":"staging"}`))); !isStatus(err, 409) {
-		t.Fatalf("dup: %v", err)
+	if got := f.Projects["team-a"]; got.Label != "Team A" {
+		t.Fatalf("fake missing project: %+v", f.Projects)
 	}
 }
 
-func TestRenameAndDeleteProject(t *testing.T) {
-	f := &storagetest.Fake{}
-	_ = f.SaveProject(context.Background(), storage.Project{ID: "staging", Label: "old"})
-	a := &API{provider: func() storage.Store { return f }, cfg: Config{Projects: []string{"prod"}}}
+func TestCreateProjectValidation(t *testing.T) {
+	mux, cookie, _ := adminMux(t)
+	cases := []struct {
+		name, body string
+		want       int
+	}{
+		{"bad chars", `{"id":"Team_A","label":"x"}`, http.StatusBadRequest},
+		{"leading digit", `{"id":"1team","label":"x"}`, http.StatusBadRequest},
+		{"reserved default", `{"id":"default","label":"x"}`, http.StatusConflict},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := doBody(mux, http.MethodPost, "/api/v1/projects", cookie, tc.body)
+			if w.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", w.Code, tc.want, w.Body.String())
+			}
+		})
+	}
+}
 
-	// Rename label.
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/projects/staging", strings.NewReader(`{"label":"new"}`))
-	req.SetPathValue("id", "staging")
-	if err := a.handleRenameProject(rec, req); err != nil {
-		t.Fatalf("rename: %v", err)
+func TestCreateProjectDuplicate(t *testing.T) {
+	mux, cookie, _ := adminMux(t)
+	doBody(mux, http.MethodPost, "/api/v1/projects", cookie, `{"id":"team-a","label":"A"}`)
+	w := doBody(mux, http.MethodPost, "/api/v1/projects", cookie, `{"id":"team-a","label":"A2"}`)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", w.Code)
 	}
-	if got, _ := f.GetProject(context.Background(), "staging"); got.Label != "new" {
-		t.Fatalf("label = %q", got.Label)
+}
+
+func TestCreateProjectConfigConflict(t *testing.T) {
+	mux, cookie, _ := adminMuxCfg(t, []string{"prod"})
+	w := doBody(mux, http.MethodPost, "/api/v1/projects", cookie, `{"id":"prod","label":"Prod"}`)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", w.Code)
 	}
-	// Renaming a config project → 409 (read-only).
-	rc := httptest.NewRequest(http.MethodPatch, "/api/v1/projects/prod", strings.NewReader(`{"label":"x"}`))
-	rc.SetPathValue("id", "prod")
-	if err := a.handleRenameProject(httptest.NewRecorder(), rc); !isStatus(err, 409) {
-		t.Fatalf("rename config: %v", err)
+}
+
+func TestRenameProject(t *testing.T) {
+	mux, cookie, f := adminMux(t)
+	doBody(mux, http.MethodPost, "/api/v1/projects", cookie, `{"id":"team-a","label":"A"}`)
+
+	w := doBody(mux, http.MethodPut, "/api/v1/projects/team-a", cookie, `{"label":"Renamed"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
 	}
-	// Delete.
-	rd := httptest.NewRequest(http.MethodDelete, "/api/v1/projects/staging", nil)
-	rd.SetPathValue("id", "staging")
-	if err := a.handleDeleteProject(httptest.NewRecorder(), rd); err != nil {
-		t.Fatalf("delete: %v", err)
+	if f.Projects["team-a"].Label != "Renamed" {
+		t.Fatalf("label = %q", f.Projects["team-a"].Label)
 	}
-	if _, err := f.GetProject(context.Background(), "staging"); !errors.Is(err, storage.ErrNotFound) {
-		t.Fatalf("still present: %v", err)
+}
+
+func TestRenameProjectRejectsReadOnly(t *testing.T) {
+	mux, cookie, _ := adminMuxCfg(t, []string{"prod"})
+	for _, id := range []string{"default", "prod", "ghost"} { // reserved, config, unknown-db
+		w := doBody(mux, http.MethodPut, "/api/v1/projects/"+id, cookie, `{"label":"x"}`)
+		if w.Code != http.StatusConflict {
+			t.Fatalf("%s: status = %d, want 409", id, w.Code)
+		}
 	}
-	// Deleting the default project → 409.
-	rdd := httptest.NewRequest(http.MethodDelete, "/api/v1/projects/default", nil)
-	rdd.SetPathValue("id", "default")
-	if err := a.handleDeleteProject(httptest.NewRecorder(), rdd); !isStatus(err, 409) {
-		t.Fatalf("delete default: %v", err)
+}
+
+func TestDeleteProject(t *testing.T) {
+	mux, cookie, f := adminMux(t)
+	doBody(mux, http.MethodPost, "/api/v1/projects", cookie, `{"id":"team-a","label":"A"}`)
+
+	w := doBody(mux, http.MethodDelete, "/api/v1/projects/team-a", cookie, "")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	if _, ok := f.Projects["team-a"]; ok {
+		t.Fatalf("project not removed: %+v", f.Projects)
+	}
+}
+
+func TestDeleteProjectRejectsReadOnly(t *testing.T) {
+	mux, cookie, _ := adminMuxCfg(t, []string{"prod"})
+	for _, id := range []string{"default", "prod", "ghost"} {
+		w := doBody(mux, http.MethodDelete, "/api/v1/projects/"+id, cookie, "")
+		if w.Code != http.StatusConflict {
+			t.Fatalf("%s: status = %d, want 409", id, w.Code)
+		}
+	}
+}
+
+// TestProjectMutationsAdminOnly is defense in depth: an editor (non-admin) is
+// rejected with 403 before any handler logic runs.
+func TestProjectMutationsAdminOnly(t *testing.T) {
+	mux, cookie := authedMux(t) // editor-on-payments identity
+	create := authDo(mux, http.MethodPost, "/api/v1/projects", cookie, nil)
+	if create.Code != http.StatusForbidden {
+		t.Fatalf("POST status = %d, want 403", create.Code)
+	}
+	put := authDo(mux, http.MethodPut, "/api/v1/projects/x", cookie, nil)
+	if put.Code != http.StatusForbidden {
+		t.Fatalf("PUT status = %d, want 403", put.Code)
+	}
+	del := authDo(mux, http.MethodDelete, "/api/v1/projects/x", cookie, nil)
+	if del.Code != http.StatusForbidden {
+		t.Fatalf("DELETE status = %d, want 403", del.Code)
 	}
 }

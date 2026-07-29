@@ -57,6 +57,6 @@ var ByModule = map[string][]modules.Name{
 	"0010_auth.sql": {modules.Core},
 	// OidcGroups column on auth_user — captured at SSO login, part of core auth.
 	"0011_auth_oidc_groups.sql": {modules.Core},
-	// UI-managed projects — core (projects underpin every tenant view).
+	// UI-managed projects (create/rename/delete). Auth-adjacent core state.
 	"0012_projects.sql": {modules.Core},
 }

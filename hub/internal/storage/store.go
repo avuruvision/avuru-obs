@@ -482,10 +482,9 @@ type AuthSession struct {
 	ExpiresAt time.Time
 }
 
-// Project is one UI-managed project. ID is immutable (the tenant slug used on
-// every telemetry row and in X-Avuru-Tenant); Label is display-only; Members is
-// the multi-cluster aggregate set (empty for a leaf project, unused until the
-// member-projects phase). Delete is a tombstone (never a hard row delete).
+// Project is one UI-managed project. ID is immutable (the tenant slug used in
+// data and the X-Avuru-Tenant header); Label is display-only; Members is the
+// aggregate set (empty for a leaf project — populated in Phase 3).
 type Project struct {
 	ID        string
 	Label     string
@@ -631,10 +630,10 @@ type Store interface {
 	// working the moment the password changes. A no-op (nil error) when the
 	// user has no live sessions.
 	RevokeAuthSessionsForUser(ctx context.Context, userID string) error
-	// UI-managed projects (core). ListProjects returns live (non-tombstoned)
-	// rows ordered by Id. GetProject returns ErrNotFound for an absent or
-	// deleted id. SaveProject upserts by Id. DeleteProject tombstones by Id and
-	// returns ErrNotFound when no live row matches.
+	// UI-managed projects (Phase 1). Reads are live-only (tombstones filtered).
+	// GetProject returns ErrNotFound for an absent or deleted id; SaveProject
+	// upserts by ID; DeleteProject tombstones and returns ErrNotFound when no
+	// live project has the id.
 	ListProjects(ctx context.Context) ([]Project, error)
 	GetProject(ctx context.Context, id string) (Project, error)
 	SaveProject(ctx context.Context, p Project) error

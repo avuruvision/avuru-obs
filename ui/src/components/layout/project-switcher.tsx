@@ -18,7 +18,8 @@ export function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
   // Before the list loads (or with the hub down) the active project still
   // renders — switching just isn't possible yet.
   const projects = data?.projects ?? [{ id: project, source: "default" as const }];
-  // Prefer the human label for the active project; selection still keys on id.
+  // The footer shows the active project's label when it has one (db projects),
+  // falling back to the id; selection still keys on the id (the tenant).
   const activeLabel = projects.find((p) => p.id === project)?.label || project;
 
   useEffect(() => {
@@ -37,7 +38,7 @@ export function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
         aria-label="Switch project"
         aria-haspopup="listbox"
         aria-expanded={open}
-        title={collapsed ? `Project: ${activeLabel}` : undefined}
+        title={collapsed ? `Project: ${project}` : undefined}
         onClick={() => setOpen((o) => !o)}
         onKeyDown={(e) => {
           if (e.key === "Escape") setOpen(false);

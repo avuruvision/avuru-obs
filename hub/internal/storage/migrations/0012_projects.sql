@@ -1,9 +1,8 @@
--- UI-managed projects. Id is the immutable tenant slug (= the partition key on
--- all telemetry); Label is the editable display name; Members is the
--- multi-cluster aggregate set (empty for a normal project, unused until the
--- member-projects phase). Delete is a tombstone. Same ReplacingMergeTree +
--- FINAL + tombstone pattern as auth_* / alert_channel; the table is tiny so
--- FINAL is cheap. Not module-toggleable — projects are core.
+-- 0012_projects.sql  (module: Core)
+-- UI-managed projects. Id is the immutable tenant slug (= partition key on all
+-- telemetry); Label is the editable display name; Members is the multi-cluster
+-- aggregate set (empty until Phase 3). Delete is a tombstone. Same
+-- ReplacingMergeTree + FINAL + tombstone pattern as auth_grant / alert_channel.
 CREATE TABLE IF NOT EXISTS otel.project
 (
     `Id`        String,
