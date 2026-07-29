@@ -13,6 +13,26 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **Project management from the UI.** Admins create, rename (display label), and
+  delete projects in Settings → General — no longer deployment-config only.
+  Projects gain an immutable tenant id plus an editable label shown in the
+  switcher; deployment-owned projects (the built-in `default` and any declared
+  in the chart's `projects`) stay read-only. Backed by a new `project` table.
+- **One-click read-only demo.** A "Try the demo" button on the login page signs
+  a visitor in as a scoped viewer (`viewer@demo`) — the shared password stays
+  server-side (a rate-limited `/api/v1/auth/demo`), never in the browser.
+  Opt-in via `auth.demo.enabled`; pair with the OpenTelemetry Astronomy Shop
+  overlay ([deploy/demo/astronomy](deploy/demo/astronomy)) tagged
+  `avuru.tenant=demo` for live data across every module.
+- **Settings Users tab fixed.** The Users tab is now an in-place tab (`?tab=users`)
+  instead of a separate page, so the tab bar no longer disappears when it is
+  opened. The login logo now reads "Avuru Obs" (was lowercase).
+
+### Fixed
+
+- Login page brand casing ("avuru obs" → "Avuru Obs"), matching every other
+  surface.
+
 - **Licensing clarity.** [LICENSING.md](LICENSING.md) states the model in
   full: AGPL-3.0 community edition forever (backed by the CLA §2.2 pledge),
   the node agent as upstream Apache-2.0 OBI, a planned commercial enterprise

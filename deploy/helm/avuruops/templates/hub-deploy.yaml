@@ -54,6 +54,17 @@ spec:
             - name: AVURUOPS_AUTH_ANONYMOUS_PROJECTS
               value: {{ join "," .Values.auth.anonymous.projects | quote }}
             {{- end }}
+            {{- if .Values.auth.demo.enabled }}
+            - name: AVURUOPS_DEMO_ENABLED
+              value: "true"
+            - name: AVURUOPS_DEMO_EMAIL
+              value: {{ .Values.auth.demo.email | quote }}
+            - name: AVURUOPS_DEMO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-auth" (include "avuruops.fullname" .)) }}
+                  key: demo-password
+            {{- end }}
             {{- with include "avuruops.oidcEnv" . }}{{ . | nindent 12 }}{{- end }}
             {{- end }}
           ports:

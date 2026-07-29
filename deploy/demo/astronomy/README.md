@@ -18,6 +18,11 @@ The Astronomy Shop is deliberately **instrumented** (OpenTelemetry SDKs), so it
 demonstrates the production OTLP story: bring your own instrumentation, point it
 at avuru obs, get every signal in one ClickHouse.
 
+The overlay tags all of its telemetry `avuru.tenant=demo`, so it lands in the
+**`demo` project**. Enable the read-only demo login on the avuru obs release
+(`--set auth.demo.enabled=true`) and visitors can explore it with one click via
+**"Try the demo"** on the login page — no account, no setup.
+
 ## Prerequisites
 
 - A Kubernetes cluster (kind is fine) with **avuru obs installed** — Helm

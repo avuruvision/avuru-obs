@@ -67,10 +67,12 @@ Everything below shipped in v0.2.0; the full detail lives in
 Each of the larger items already has a draft AEP — design work done, awaiting
 implementation.
 
-- **Projects completion:** per-project **API keys** at ingest (replaces
-  topology-based trust of `avuru.tenant` and the tenancy header — the auth
-  seam it needs shipped in v0.2), project CRUD (config-defined entries stay
-  read-only), per-project retention, per-project system status, and chart
+- **Projects completion:** project **CRUD** (create / rename / delete from the
+  UI, config-defined entries stay read-only) and a **one-click read-only demo**
+  have **landed** (Unreleased). Remaining: per-project **API keys** at ingest
+  (replaces topology-based trust of `avuru.tenant` and the tenancy header — the
+  auth seam it needs shipped in v0.2), **member projects** (multi-cluster
+  aggregation), per-project retention, per-project system status, and chart
   component toggles so secondary clusters install gateway(+sensor)-only
   against a shared ClickHouse. See the
   [AEP](design/2026-07-27-projects-completion.md).

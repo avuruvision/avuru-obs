@@ -441,6 +441,17 @@ auth:
   anonymous:
     role: ""        # "viewer" to enable
     projects: []    # explicit list — never implicit "*"
+  # One-click read-only demo login ("Try the demo" on the login page): a
+  # bootstrapped viewer scoped to the `demo` project. Opt-in — a normal install
+  # ships no demo user or tenant. Pair with the Astronomy Shop overlay
+  # (deploy/demo/astronomy) for live data. Requires auth.enabled.
+  demo:
+    enabled: false
+    email: demo@avuru.obs
+    # Demo viewer password. Empty → generated into the auth Secret and reused on
+    # upgrades (like adminPassword). With auth.existingSecret set, add a
+    # `demo-password` key to that Secret yourself.
+    password: ""
   # Enterprise SSO via any OpenID Connect IdP (Keycloak, Entra, Okta, Google,
   # Dex, ...). The hub runs the authorization-code + PKCE flow itself — no
   # oauth2-proxy, no extra pod. Register <publicUrl>/api/v1/auth/oidc/callback
