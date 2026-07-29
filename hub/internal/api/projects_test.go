@@ -32,7 +32,7 @@ func TestHandleProjectsMergesDBSource(t *testing.T) {
 	var resp struct {
 		Projects []projectDTO `json:"projects"`
 	}
-	json.NewDecoder(rec.Body).Decode(&resp)
+	_ = json.NewDecoder(rec.Body).Decode(&resp)
 
 	byID := map[string]projectDTO{}
 	for _, p := range resp.Projects {
