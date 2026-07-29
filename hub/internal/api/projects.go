@@ -10,14 +10,19 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
-// projectDTO is one selectable project. Source records where it came from:
-// "default" (always present), "config" (AVURUOPS_PROJECTS — Coroot's
-// "defined through the config" mode), "data" (tenant observed in telemetry;
-// auto-discovered), or "granted" (an RBAC-granted scope with no config/data
-// entry yet — see filterProjectsForIdentity).
+// projectDTO is one selectable project. Source records provenance: "default"
+// (always present), "config" (AVURUOPS_PROJECTS — Coroot's "defined through the
+// config" mode), "db" (UI-managed), "data" (tenant observed in telemetry;
+// auto-discovered), or "granted" (an RBAC-granted scope with no other entry yet
+// — see filterProjectsForIdentity). Editable is true only for db projects —
+// default/config are deployment-owned and read-only; data/granted are not real
+// project records. Label and Members are carried for db projects.
 type projectDTO struct {
-	ID     string `json:"id"`
-	Source string `json:"source"`
+	ID       string   `json:"id"`
+	Label    string   `json:"label,omitempty"`
+	Source   string   `json:"source"`
+	Editable bool     `json:"editable"`
+	Members  []string `json:"members,omitempty"`
 }
 
 type projectsResponse struct {
@@ -34,30 +39,56 @@ type tenantCache struct {
 
 const tenantCacheTTL = 30 * time.Second
 
-// handleProjects returns {default} ∪ configured ∪ observed-in-data. It
-// deliberately answers 200 with the config list when ClickHouse is down —
-// the project switcher must always render.
+// handleProjects returns {default} ∪ config ∪ db ∪ observed-in-data, filtered to
+// the caller's scopes. Fixed precedence when an id appears from several origins:
+// default > config > db > data > granted. Answers 200 with default+config even
+// when ClickHouse is down — the project switcher must always render.
 func (a *API) handleProjects(w http.ResponseWriter, r *http.Request) error {
-	set := map[string]string{storage.DefaultTenant: "default"}
+	byID := map[string]projectDTO{
+		storage.DefaultTenant: {ID: storage.DefaultTenant, Source: "default"},
+	}
 	for _, p := range a.cfg.Projects {
 		if p != "" && p != storage.DefaultTenant {
-			set[p] = "config"
+			if _, ok := byID[p]; !ok {
+				byID[p] = projectDTO{ID: p, Source: "config"}
+			}
+		}
+	}
+	for _, p := range a.dbProjects(r) {
+		if _, ok := byID[p.ID]; !ok {
+			byID[p.ID] = projectDTO{
+				ID: p.ID, Label: p.Label, Source: "db", Editable: true, Members: p.Members,
+			}
 		}
 	}
 	for _, t := range a.observedTenants(r) {
-		if _, ok := set[t]; !ok {
-			set[t] = "data"
+		if _, ok := byID[t]; !ok {
+			byID[t] = projectDTO{ID: t, Source: "data"}
 		}
 	}
 
-	resp := projectsResponse{Projects: make([]projectDTO, 0, len(set))}
-	for id, source := range set {
-		resp.Projects = append(resp.Projects, projectDTO{ID: id, Source: source})
+	resp := projectsResponse{Projects: make([]projectDTO, 0, len(byID))}
+	for _, p := range byID {
+		resp.Projects = append(resp.Projects, p)
 	}
 	sort.Slice(resp.Projects, func(i, j int) bool { return resp.Projects[i].ID < resp.Projects[j].ID })
 	resp.Projects = filterProjectsForIdentity(resp.Projects, identityFrom(r.Context()))
 	writeJSON(w, http.StatusOK, resp)
 	return nil
+}
+
+// dbProjects returns UI-managed projects, or nil when the store is unreachable
+// (degrade like observedTenants — the list must always render).
+func (a *API) dbProjects(r *http.Request) []storage.Project {
+	s := a.provider()
+	if s == nil {
+		return nil
+	}
+	ps, err := s.ListProjects(r.Context())
+	if err != nil {
+		return nil
+	}
+	return ps
 }
 
 // filterProjectsForIdentity restricts the merged (config+observed) project

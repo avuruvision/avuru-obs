@@ -741,8 +741,11 @@ func TestProjectsEndpoint(t *testing.T) {
 		t.Fatalf("projects = %+v, want %+v", resp.Projects, want)
 	}
 	for i, p := range want {
-		if resp.Projects[i] != p {
-			t.Errorf("projects[%d] = %+v, want %+v", i, resp.Projects[i], p)
+		// projectDTO carries a slice (Members) so it is not comparable with ==;
+		// these deployment/data rows carry no members, so compare the scalars.
+		got := resp.Projects[i]
+		if got.ID != p.ID || got.Source != p.Source || got.Label != p.Label || got.Editable != p.Editable {
+			t.Errorf("projects[%d] = %+v, want %+v", i, got, p)
 		}
 	}
 }
