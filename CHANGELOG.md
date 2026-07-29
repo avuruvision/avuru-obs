@@ -13,6 +13,16 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **UI-managed projects (Phase 1).** Projects now have a persistent identity you
+  control from the app. Admins **create, rename, and delete** projects in
+  Settings → General; the switcher and General tab reflect them immediately,
+  while the built-in `default` and deployment-config projects stay read-only
+  (clearly labelled). A project's id is an immutable tenant slug; only its
+  display name is editable, so no telemetry is ever rewritten or lost — delete
+  removes the entry and its data ages out by retention. New admin endpoints:
+  `POST/PUT/DELETE /api/v1/projects` (global-admin only); `GET /api/v1/projects`
+  now returns each project's `label`, `source`, and `editable` flag. Groundwork
+  for per-project ingest keys and multi-cluster aggregates (Phases 2–3).
 - **Licensing clarity.** [LICENSING.md](LICENSING.md) states the model in
   full: AGPL-3.0 community edition forever (backed by the CLA §2.2 pledge),
   the node agent as upstream Apache-2.0 OBI, a planned commercial enterprise
