@@ -37,7 +37,13 @@ server {
     # Docker DNS in compose, CoreDNS in k8s — which works in both.
     location /api/ {
         proxy_pass http://${HUB_UPSTREAM};
-        proxy_set_header Host $host;
+        # Forward the client's full Host INCLUDING the port ($http_host, not
+        # $host — the latter strips the port). The hub's CSRF guard rejects any
+        # state-changing request whose Origin host:port differs from the request
+        # Host. Reached on a non-default external port (compose ...:3001, a
+        # kubectl port-forward, a NodePort) the browser's Origin carries that
+        # port, so a port-stripped Host would 403 every login and mutation.
+        proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
     location = /healthz {
