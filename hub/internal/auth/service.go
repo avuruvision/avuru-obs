@@ -229,6 +229,38 @@ func (s *Service) Bootstrap(ctx context.Context, adminPassword string) (created 
 	return true, nil
 }
 
+// demoViewerID is the FIXED id for the demo viewer (same rationale as
+// bootstrapAdminID: a random id would let two replicas create divergent rows).
+const demoViewerID = "demo-viewer"
+
+// EnsureDemoUser idempotently creates/refreshes the read-only demo user
+// (viewer @ "demo") from the configured credentials. Called at startup only
+// when demo mode is enabled. Upsert-by-fixed-id keeps it safe under replicas and
+// re-runnable on every boot (the chart owns the password).
+func (s *Service) EnsureDemoUser(ctx context.Context, email, password string) error {
+	st, err := s.st()
+	if err != nil {
+		return err
+	}
+	hash, err := HashPassword(password)
+	if err != nil {
+		return err
+	}
+	// Grant first (harmless orphan if we crash before the user write).
+	if err := st.ReplaceAuthGrants(ctx, demoViewerID, []storage.AuthGrant{
+		{UserID: demoViewerID, Scope: "demo", Role: string(RoleViewer)},
+	}); err != nil {
+		return fmt.Errorf("granting demo viewer: %w", err)
+	}
+	u := storage.AuthUser{ID: demoViewerID, Email: email, Name: "Demo (read-only)",
+		PasswordHash: hash, Origin: "local"}
+	if err := st.SaveAuthUser(ctx, u); err != nil {
+		return fmt.Errorf("creating demo user: %w", err)
+	}
+	slog.Info("demo mode: ensured demo viewer", "email", email)
+	return nil
+}
+
 func (s *Service) identityFor(ctx context.Context, st storage.Store, u storage.AuthUser) (Identity, error) {
 	grants, err := st.ListAuthGrants(ctx, u.ID)
 	if err != nil {

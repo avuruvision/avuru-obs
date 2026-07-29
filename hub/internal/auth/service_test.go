@@ -37,6 +37,33 @@ func seedUser(t *testing.T, f *storagetest.Fake, email, password string, grants 
 	}
 }
 
+func TestEnsureDemoUser(t *testing.T) {
+	f := &storagetest.Fake{}
+	svc := testService(f)
+	ctx := context.Background()
+
+	if err := svc.EnsureDemoUser(ctx, "demo@avuru.obs", "demo-pw"); err != nil {
+		t.Fatal(err)
+	}
+	// The demo user exists, viewer-scoped to "demo" only.
+	u, err := f.GetAuthUserByEmail(ctx, "demo@avuru.obs")
+	if err != nil {
+		t.Fatalf("demo user missing: %v", err)
+	}
+	grants, _ := f.ListAuthGrants(ctx, u.ID)
+	if len(grants) != 1 || grants[0].Scope != "demo" || grants[0].Role != string(RoleViewer) {
+		t.Fatalf("grants = %+v, want one viewer@demo", grants)
+	}
+	// It logs in with the configured password.
+	if _, _, err := svc.Login(ctx, "demo@avuru.obs", "demo-pw", "1.2.3.4"); err != nil {
+		t.Fatalf("demo login: %v", err)
+	}
+	// Idempotent: a second call doesn't duplicate or error.
+	if err := svc.EnsureDemoUser(ctx, "demo@avuru.obs", "demo-pw"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestLoginAndIdentity(t *testing.T) {
 	f := &storagetest.Fake{}
 	seedUser(t, f, "a@x.io", "pw", []storage.AuthGrant{{UserID: "u-a@x.io", Scope: "demo", Role: "viewer"}})
