@@ -1,14 +1,55 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
+	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
+
+// projectIDRe: a tenant slug — lowercase alnum + hyphen, must start with a
+// letter, ≤63 chars (fits a DNS label / the X-Avuru-Tenant header).
+var projectIDRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+
+const maxProjectLabelLen = 200
+
+type createProjectRequest struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+type updateProjectRequest struct {
+	Label string `json:"label"`
+}
+
+func toProjectDTO(p storage.Project) projectDTO {
+	return projectDTO{ID: p.ID, Label: p.Label, Source: "db", Editable: true, Members: p.Members}
+}
+
+func (a *API) isConfigProject(id string) bool {
+	for _, p := range a.cfg.Projects {
+		if p == id {
+			return true
+		}
+	}
+	return false
+}
+
+func identityUserID(ctx context.Context) string {
+	if id := identityFrom(ctx); id != nil {
+		return id.UserID
+	}
+	return ""
+}
 
 // projectDTO is one selectable project. Source records where it came from:
 // "default" (always present), "config" (AVURUOPS_PROJECTS — Coroot's
@@ -101,6 +142,48 @@ func (a *API) dbProjects(r *http.Request) []storage.Project {
 		return nil
 	}
 	return ps
+}
+
+// handleCreateProject creates a UI-managed (db) project. A reserved id
+// (default or a config project) or a duplicate live id is a 409, matching
+// handleCreateUser's precedent for admin uniqueness conflicts.
+func (a *API) handleCreateProject(w http.ResponseWriter, r *http.Request) error {
+	st, err := a.store()
+	if err != nil {
+		return err
+	}
+	var req createProjectRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil {
+		return decodeJSONError(err)
+	}
+	id := strings.TrimSpace(req.ID)
+	label := strings.TrimSpace(req.Label)
+	if !projectIDRe.MatchString(id) {
+		return badRequest("id must match ^[a-z][a-z0-9-]{0,62}$")
+	}
+	if len(label) > maxProjectLabelLen {
+		return badRequest("label must be %d characters or fewer", maxProjectLabelLen)
+	}
+	if id == storage.DefaultTenant || a.isConfigProject(id) {
+		return &apiError{status: http.StatusConflict, message: fmt.Sprintf("%q is a reserved project", id)}
+	}
+	if _, err := st.GetProject(r.Context(), id); err == nil {
+		return &apiError{status: http.StatusConflict, message: fmt.Sprintf("project %q already exists", id)}
+	} else if !errors.Is(err, storage.ErrNotFound) {
+		return err
+	}
+	p := storage.Project{
+		ID:        id,
+		Label:     label,
+		Members:   []string{},
+		CreatedBy: identityUserID(r.Context()),
+		CreatedAt: time.Now(),
+	}
+	if err := st.SaveProject(r.Context(), p); err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusCreated, toProjectDTO(p))
+	return nil
 }
 
 // filterProjectsForIdentity restricts the merged (config+observed) project

@@ -70,3 +70,56 @@ func TestProjectsMergeIncludesDBProject(t *testing.T) {
 		t.Fatalf("team-a missing from %+v", resp.Projects)
 	}
 }
+
+func TestCreateProject(t *testing.T) {
+	mux, cookie, f := adminMux(t)
+
+	w := doBody(mux, http.MethodPost, "/api/v1/projects", cookie, `{"id":"team-a","label":"Team A"}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	p := decodeProject(t, w)
+	if p.Source != "db" || !p.Editable || p.Label != "Team A" {
+		t.Fatalf("dto = %+v", p)
+	}
+	if got := f.Projects["team-a"]; got.Label != "Team A" {
+		t.Fatalf("fake missing project: %+v", f.Projects)
+	}
+}
+
+func TestCreateProjectValidation(t *testing.T) {
+	mux, cookie, _ := adminMux(t)
+	cases := []struct {
+		name, body string
+		want       int
+	}{
+		{"bad chars", `{"id":"Team_A","label":"x"}`, http.StatusBadRequest},
+		{"leading digit", `{"id":"1team","label":"x"}`, http.StatusBadRequest},
+		{"reserved default", `{"id":"default","label":"x"}`, http.StatusConflict},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := doBody(mux, http.MethodPost, "/api/v1/projects", cookie, tc.body)
+			if w.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", w.Code, tc.want, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestCreateProjectDuplicate(t *testing.T) {
+	mux, cookie, _ := adminMux(t)
+	doBody(mux, http.MethodPost, "/api/v1/projects", cookie, `{"id":"team-a","label":"A"}`)
+	w := doBody(mux, http.MethodPost, "/api/v1/projects", cookie, `{"id":"team-a","label":"A2"}`)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", w.Code)
+	}
+}
+
+func TestCreateProjectConfigConflict(t *testing.T) {
+	mux, cookie, _ := adminMuxCfg(t, []string{"prod"})
+	w := doBody(mux, http.MethodPost, "/api/v1/projects", cookie, `{"id":"prod","label":"Prod"}`)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", w.Code)
+	}
+}
