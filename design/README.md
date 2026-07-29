@@ -47,7 +47,7 @@ only if the design needs to be pinned down before coding.
 | [2026-07-19](2026-07-19-network-health.md) | Network health on the service map — per-edge RTT + connection failures | Accepted |
 | [2026-07-20](2026-07-20-endpoint-checks.md) | Endpoint checks — health when there is no traffic | Draft |
 | [2026-07-22](2026-07-22-green-carbon.md) | Green — per-service energy and carbon attribution (Kepler) | Accepted |
-| [2026-07-27](2026-07-27-projects-completion.md) | Projects completion — CRUD, per-project retention, status, chart toggles | Draft |
+| [2026-07-27](2026-07-27-projects-completion.md) | Projects completion — CRUD, per-project retention, status, chart toggles | Accepted |
 | [2026-07-27](2026-07-27-collection-control-plane.md) | Runtime collection control plane — switch collection from the UI | Draft |
 | [2026-07-27](2026-07-27-wider-ingest-compat.md) | Wider ingest compatibility — Jaeger/Zipkin/Prometheus/Loki + forwarding | Draft |
 | [2026-07-27](2026-07-27-auto-tagging.md) | Richer auto-tagging — K8s labels/annotations as business tags | Draft |

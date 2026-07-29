@@ -18,6 +18,9 @@ export function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
   // Before the list loads (or with the hub down) the active project still
   // renders — switching just isn't possible yet.
   const projects = data?.projects ?? [{ id: project, source: "default" as const }];
+  // The footer shows the active project's label when it has one (db projects),
+  // falling back to the id; selection still keys on the id (the tenant).
+  const activeLabel = projects.find((p) => p.id === project)?.label || project;
 
   useEffect(() => {
     if (!open) return;
@@ -52,7 +55,7 @@ export function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
               <span className="text-[10px] uppercase tracking-wider text-base-content/40">
                 Project
               </span>
-              <span className="truncate text-sm font-medium">{project}</span>
+              <span className="truncate text-sm font-medium">{activeLabel}</span>
             </span>
             <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-base-content/50" aria-hidden />
           </>
@@ -80,7 +83,7 @@ export function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
                   isSel ? "text-primary" : "text-base-content",
                 )}
               >
-                <span className="truncate">{p.id}</span>
+                <span className="truncate">{p.label || p.id}</span>
                 {isSel && <Check className="h-3.5 w-3.5 shrink-0" />}
               </li>
             );

@@ -2,7 +2,7 @@
 
 - **Date:** 2026-07-27
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted — Phase 1 (project CRUD) shipped in v0.3; per-project retention, per-project status, and chart component toggles remain. Phase 1 delivery design: [project-management combined spec](../docs/superpowers/specs/2026-07-28-project-management-design.md).
 
 ## Summary
 
