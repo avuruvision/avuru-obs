@@ -175,14 +175,13 @@ New here? Look for **good first issue** labels, and open an issue or
 Avuru Obs is independent open-source software: AGPL-licensed, self-hosted,
 no telemetry phoning home. If it replaces a per-host observability bill for
 your team, consider funding the work that keeps it moving — CI, eBPF test
-hardware across kernels, and signed multi-arch releases:
+hardware across kernels, and signed multi-arch releases. Individual
+sponsorship (GitHub Sponsors, Ko-Fi, Buy Me a Coffee) is being set up —
+check back here for links once live.
 
-- **[GitHub Sponsors](https://github.com/sponsors/avuruvision)** — monthly or
-  one-time, directly through GitHub
-- **[Open Collective](https://opencollective.com/avuru-obs)** — fully
-  transparent budget; companies get proper invoices they can expense
-
-Organizations sponsoring at a sustained tier get their logo featured here.
+Organizations that need an invoiceable arrangement: contact
+**egilberny@lab.luxavuru.com** for commercial / dual licensing. Sponsors at
+a sustained tier get their logo featured here.
 
 ## License
 
