@@ -18,6 +18,8 @@ export function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
   // Before the list loads (or with the hub down) the active project still
   // renders — switching just isn't possible yet.
   const projects = data?.projects ?? [{ id: project, source: "default" as const }];
+  // Prefer the human label for the active project; selection still keys on id.
+  const activeLabel = projects.find((p) => p.id === project)?.label || project;
 
   useEffect(() => {
     if (!open) return;
@@ -35,7 +37,7 @@ export function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
         aria-label="Switch project"
         aria-haspopup="listbox"
         aria-expanded={open}
-        title={collapsed ? `Project: ${project}` : undefined}
+        title={collapsed ? `Project: ${activeLabel}` : undefined}
         onClick={() => setOpen((o) => !o)}
         onKeyDown={(e) => {
           if (e.key === "Escape") setOpen(false);
@@ -52,7 +54,7 @@ export function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
               <span className="text-[10px] uppercase tracking-wider text-base-content/40">
                 Project
               </span>
-              <span className="truncate text-sm font-medium">{project}</span>
+              <span className="truncate text-sm font-medium">{activeLabel}</span>
             </span>
             <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-base-content/50" aria-hidden />
           </>
@@ -80,7 +82,7 @@ export function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
                   isSel ? "text-primary" : "text-base-content",
                 )}
               >
-                <span className="truncate">{p.id}</span>
+                <span className="truncate">{p.label || p.id}</span>
                 {isSel && <Check className="h-3.5 w-3.5 shrink-0" />}
               </li>
             );
