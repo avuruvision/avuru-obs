@@ -1,7 +1,12 @@
 # UI image: Next.js static export served by nginx. The UI is its own deployable
 # (separate pod), single-origin with the hub. Build context = repo root.
 
-FROM node:24-alpine AS build
+# --platform=$BUILDPLATFORM: the Next.js static export is arch-independent, so
+# it builds once natively; without the pin, the arm64 half of a multi-arch
+# build runs Node under QEMU — an hour of emulation that then dies on
+# "qemu: uncaught target signal 4" (this failed the v0.2.0 cut). Only the
+# nginx stage below is per-architecture.
+FROM --platform=$BUILDPLATFORM node:24-alpine AS build
 WORKDIR /src/ui
 COPY ui/package.json ui/package-lock.json ./
 RUN npm ci --no-audit --no-fund

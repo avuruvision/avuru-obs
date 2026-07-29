@@ -1,0 +1,96 @@
+# Public demo overlay — demo.avuruobs.io
+#
+# Runs avuru obs as an internet-facing, read-only showcase: anonymous visitors
+# get Viewer on exactly one project (`demo`), fed by the Astronomy Shop
+# (deploy/demo/astronomy) over OTLP. Every other surface stays closed. See
+# docs/runbooks/public-demo.md for the full install + hardening runbook.
+#
+#   helm upgrade --install avuruops oci://ghcr.io/avuruvision/charts/avuruops \
+#     --version <released version> -n demo-obs --create-namespace \
+#     -f values-public-demo.yaml
+
+# One project, and every signal the gateway ingests is stamped into it — the
+# only project the anonymous role can read (v0.2 RBAC enforces server-side;
+# anything else 403s).
+projects: [demo]
+gateway:
+  tenant: demo
+
+auth:
+  enabled: true
+  # Bring your own admin Secret (key: admin-password) — never the in-chart
+  # default on a public host:
+  #   kubectl -n demo-obs create secret generic avuruops-admin \
+  #     --from-literal=admin-password="$(openssl rand -base64 24)"
+  existingSecret: avuruops-admin
+  # The public-demo feature shipped in v0.2: anonymous, project-scoped READ.
+  anonymous:
+    role: viewer
+    projects: [demo]
+
+# The demo proves the OTLP path with an instrumented app; the eBPF sensor is a
+# privileged DaemonSet and has no business on a public showcase box.
+sensor:
+  enabled: false
+
+modules:
+  # Off by default anyway — stated here because a public box must not imply
+  # energy numbers it cannot measure (no RAPL assumption). To demo Green Obs
+  # on bare metal with RAPL, see docs/runbooks/public-demo.md.
+  green:
+    enabled: false
+
+# No outbound calls from a public box: alerting stays inert (no rules, no
+# channels) and the SSRF allowlist stays empty.
+alerting:
+  webhookAllow: []
+  channels: []
+  rules: []
+
+# Short TTLs keep the demo self-limiting: ClickHouse expires data faster than
+# the load generator writes it, and anonymous users cannot mutate anything —
+# no reset cron needed.
+retention:
+  traces: 2
+  logs: 1
+  metrics: 2
+  profiles: 1
+  errors: 7
+
+clickhouse:
+  persistence:
+    size: 20Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      memory: 3Gi
+
+hub:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+ingress:
+  enabled: true
+  # Set to your controller's class (the reference LAN stack runs APISIX).
+  className: apisix
+  host: demo.avuruobs.io
+  # sentryHost stays "" — the Sentry SDK ingest port is never routed publicly.
+  sentryHost: ""
+  # Rate-limit the public host at the edge. Examples (uncomment for your
+  # controller):
+  annotations: {}
+  #   # APISIX (limit-req plugin):
+  #   k8s.apisix.apache.org/plugin-config-name: demo-rate-limit
+  #   # ingress-nginx:
+  #   nginx.ingress.kubernetes.io/limit-rps: "10"
+  #   nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+  tls:
+    - secretName: demo-avuruobs-tls
+      hosts:
+        - demo.avuruobs.io
