@@ -6,14 +6,33 @@ Live in 5 minutes, zero code changes.**
 [![CI](https://github.com/avuruvision/avuru-obs/actions/workflows/ci.yml/badge.svg)](https://github.com/avuruvision/avuru-obs/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/avuruvision/avuru-obs?color=blue)](https://github.com/avuruvision/avuru-obs/releases)
+[![Docs](https://img.shields.io/badge/docs-avuruobs.io-2ea44f)](https://avuruobs.io)
+
+**[Documentation](https://avuruobs.io)** ·
+**[How it compares](https://avuruobs.io/docs/compare)** ·
+**[Quickstart](#quickstart)** · Live demo at demo.avuruobs.io — coming soon
 
 Avuru Obs keeps every signal — traces, metrics, logs, profiles — in one storage
 engine (ClickHouse), behind one binary control plane and one UI. eBPF
 auto-discovers your services: install the Helm chart and watch the service map
 light up — no SDK, no sidecars, no YAML archaeology.
 
-> **Status: v0.1.0 released**; `main` is under active development toward v0.2.
-> See [ROADMAP.md](ROADMAP.md) for where it's headed and
+![Avuru Obs service map — auto-discovered, no code changes](docs/images/service-map.png)
+
+<details>
+<summary><b>More screenshots</b> — trace waterfall, error tracking, service health, alerting, Green Obs</summary>
+
+| | |
+|---|---|
+| ![Trace waterfall](docs/images/trace-waterfall.png) | ![Error tracking](docs/images/error-tracking.png) |
+| ![Service health tiers](docs/images/service-health.png) | ![Alerting](docs/images/alerting.png) |
+| ![Green Obs — energy & carbon per service](docs/images/green-dashboard.png) | |
+
+</details>
+
+> **Status: v0.2.0 released** (2026-07-28); `main` is under active development
+> toward v0.3. See [CHANGELOG.md](CHANGELOG.md) for what shipped,
+> [ROADMAP.md](ROADMAP.md) for where it's headed and
 > [`agent_docs/architecture.md`](agent_docs/architecture.md) for the living
 > architecture.
 
@@ -34,6 +53,22 @@ hub (Go binary: API + OpAMP config plane)   ◄── UI (static SPA, own pod)
 - **One store**: ClickHouse for traces, metrics, logs, profiles, and flows.
 - **Drop-in**: already on OTLP/Jaeger? Point your exporter at the gateway —
   no SDK or code changes (a hard product requirement).
+
+Beyond the core signals, v0.2 adds the day-2 layer:
+
+- **Error tracking** — deduplicated, triageable issues derived in-database
+  from spans and logs; browser SDKs report by changing a Sentry DSN (opt-in
+  ingest endpoint).
+- **Service health & alerting** — criticality tiers (T0/T1/T2) with
+  critical-dependency propagation, and webhook notifications on health
+  transitions.
+- **Green Obs — energy & carbon** *(opt-in)* — per-service Wh and gCO2e from
+  Kepler/RAPL, carbon budgets, and a CSRD-ready export that states its
+  methodology.
+- **Auth & SSO** — secure-by-default login, per-project roles, OIDC single
+  sign-on, and opt-in anonymous read access for public demos.
+- **Modules** — one switch per signal family gates schema, pipeline, API and
+  UI together; run only what you need.
 - **Secure by default**: login + per-project RBAC out of the box, and
   enterprise SSO via any OIDC IdP (Keycloak, Entra, Okta, ...) in OSS — IdP
   groups map to per-project roles, `forceSSO` for IdP-only fleets — with no
@@ -99,8 +134,22 @@ make check    # everything CI runs (build + test + lint across components)
 
 Per-component build/test/run lives in each component's README
 ([hub](hub/README.md), [ui](ui/README.md)) and in
-[`agent_docs/`](agent_docs/README.md). The eval path (Helm install / compose
-sandbox) lands with the [M1–M2 milestones](ROADMAP.md).
+[`agent_docs/`](agent_docs/README.md). To evaluate without building anything,
+use the [Quickstart](#quickstart) above — both paths run released artifacts.
+
+## How it compares
+
+One store instead of four backends: every signal lands in the same ClickHouse,
+so cross-signal correlation is a query, not a federation problem. The service
+map comes from eBPF — no SDKs, no sidecars — and the day-2 layer (errors,
+health, alerting, energy) ships in the same AGPL codebase, not a paid tier.
+Detailed, honest comparisons live on the docs site:
+[vs SigNoz](https://avuruobs.io/docs/compare/signoz) ·
+[vs Coroot](https://avuruobs.io/docs/compare/coroot) ·
+[vs the Grafana stack](https://avuruobs.io/docs/compare/grafana-stack) ·
+[vs Datadog](https://avuruobs.io/docs/compare/datadog) ·
+[vs Sentry](https://avuruobs.io/docs/compare/sentry) ·
+[full matrix](https://avuruobs.io/docs/compare)
 
 ## Contributing & community
 
