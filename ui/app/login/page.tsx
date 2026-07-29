@@ -96,7 +96,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center justify-center gap-2">
           <Hexagon className="h-6 w-6 text-primary" aria-hidden />
-          <span className="text-lg font-bold tracking-tight">avuru obs</span>
+          <span className="text-lg font-bold tracking-tight">Avuru Obs</span>
         </div>
         <Card className="p-6">
           {!config || !config.enabled ? (

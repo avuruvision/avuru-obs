@@ -1,29 +1,32 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { Tabs, type TabItem } from "@/components/ui/tabs";
 import { useURLState } from "@/hooks/use-url-state";
 import { useAuth } from "@/hooks/use-auth";
 import { SystemStatus } from "./system-status";
 import { GeneralTab } from "./general-tab";
 import { CollectionSettings } from "./collection-settings";
+import { UsersPanel } from "./users-panel";
 
-const TABS = ["general", "collection", "status"] as const;
+const TABS = ["general", "collection", "status", "users"] as const;
 type Tab = (typeof TABS)[number];
-// "users" is a routing-only tab: it lives at its own page (/settings/users)
-// rather than swapping in place, and shows only to admins.
-type NavTab = Tab | "users";
 
 // Coroot-inspired settings: General (project), Collection (agents), Status
-// (instance). Tab state lives in the URL (?tab=) — shareable like everything
-// else. Requires a Suspense boundary in the page (useSearchParams).
+// (instance), and Users (admin-only). Every tab swaps in place so the tab bar
+// stays put — "users" used to route to its own page, which made the whole bar
+// vanish. Tab state lives in the URL (?tab=) — shareable like everything else.
+// Requires a Suspense boundary in the page (useSearchParams).
 export function SettingsScreen() {
   const { get, setMany } = useURLState();
   const { isAdmin } = useAuth();
-  const router = useRouter();
-  const tab = (TABS.find((t) => t === get("tab")) ?? "general") as Tab;
+  // "users" is admin-only; anyone else requesting it falls back to general
+  // (matches the hub, which answers 403 on /api/v1/users to non-admins).
+  const requested = get("tab");
+  const tab = (TABS.find(
+    (t) => t === requested && (t !== "users" || isAdmin),
+  ) ?? "general") as Tab;
 
-  const items: TabItem<NavTab>[] = [
+  const items: TabItem<Tab>[] = [
     { value: "general", label: "General" },
     { value: "collection", label: "Collection" },
     { value: "status", label: "Status" },
@@ -32,15 +35,9 @@ export function SettingsScreen() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Tabs<NavTab>
+      <Tabs<Tab>
         value={tab}
-        onChange={(t) => {
-          if (t === "users") {
-            router.push("/settings/users");
-            return;
-          }
-          setMany({ tab: t === "general" ? undefined : t });
-        }}
+        onChange={(t) => setMany({ tab: t === "general" ? undefined : t })}
         items={items}
       />
       {tab === "general" && <GeneralTab />}
@@ -53,6 +50,7 @@ export function SettingsScreen() {
           <SystemStatus />
         </div>
       )}
+      {tab === "users" && <UsersPanel />}
     </div>
   );
 }
