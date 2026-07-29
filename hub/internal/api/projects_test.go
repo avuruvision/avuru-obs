@@ -123,3 +123,26 @@ func TestCreateProjectConfigConflict(t *testing.T) {
 		t.Fatalf("status = %d, want 409", w.Code)
 	}
 }
+
+func TestRenameProject(t *testing.T) {
+	mux, cookie, f := adminMux(t)
+	doBody(mux, http.MethodPost, "/api/v1/projects", cookie, `{"id":"team-a","label":"A"}`)
+
+	w := doBody(mux, http.MethodPut, "/api/v1/projects/team-a", cookie, `{"label":"Renamed"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	if f.Projects["team-a"].Label != "Renamed" {
+		t.Fatalf("label = %q", f.Projects["team-a"].Label)
+	}
+}
+
+func TestRenameProjectRejectsReadOnly(t *testing.T) {
+	mux, cookie, _ := adminMuxCfg(t, []string{"prod"})
+	for _, id := range []string{"default", "prod", "ghost"} { // reserved, config, unknown-db
+		w := doBody(mux, http.MethodPut, "/api/v1/projects/"+id, cookie, `{"label":"x"}`)
+		if w.Code != http.StatusConflict {
+			t.Fatalf("%s: status = %d, want 409", id, w.Code)
+		}
+	}
+}

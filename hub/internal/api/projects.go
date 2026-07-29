@@ -186,6 +186,51 @@ func (a *API) handleCreateProject(w http.ResponseWriter, r *http.Request) error 
 	return nil
 }
 
+// editableProject returns the live db project for id, or a 409 apiError when
+// the id is deployment-managed (default/config) or has no live db row. Both
+// rename and delete gate on this — only source "db" projects are mutable.
+func (a *API) editableProject(ctx context.Context, st storage.Store, id string) (storage.Project, error) {
+	if id == storage.DefaultTenant || a.isConfigProject(id) {
+		return storage.Project{}, &apiError{status: http.StatusConflict,
+			message: fmt.Sprintf("%q is a deployment-managed project and cannot be modified", id)}
+	}
+	p, err := st.GetProject(ctx, id)
+	if errors.Is(err, storage.ErrNotFound) {
+		return storage.Project{}, &apiError{status: http.StatusConflict,
+			message: fmt.Sprintf("project %q is not editable", id)}
+	}
+	if err != nil {
+		return storage.Project{}, err
+	}
+	return p, nil
+}
+
+// handleUpdateProject renames a db project's label (the id is immutable).
+func (a *API) handleUpdateProject(w http.ResponseWriter, r *http.Request) error {
+	st, err := a.store()
+	if err != nil {
+		return err
+	}
+	var req updateProjectRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil {
+		return decodeJSONError(err)
+	}
+	label := strings.TrimSpace(req.Label)
+	if len(label) > maxProjectLabelLen {
+		return badRequest("label must be %d characters or fewer", maxProjectLabelLen)
+	}
+	p, err := a.editableProject(r.Context(), st, r.PathValue("id"))
+	if err != nil {
+		return err
+	}
+	p.Label = label
+	if err := st.SaveProject(r.Context(), p); err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, toProjectDTO(p))
+	return nil
+}
+
 // filterProjectsForIdentity restricts the merged (config+observed) project
 // list to what the identity may see. A wildcard identity ("*" scope grant) —
 // and a nil identity, meaning auth is disabled — passes through unfiltered.
