@@ -272,11 +272,25 @@ export interface FlamegraphResponse {
 
 export interface Project {
   id: string;
-  source: "default" | "config" | "data";
+  label?: string;
+  source: "default" | "config" | "db" | "data" | "granted";
+  editable?: boolean;
+  members?: string[];
 }
 
 export interface ProjectsResponse {
   projects: Project[];
+}
+
+// Request bodies for the admin project-CRUD endpoints (mirror the hub Go DTOs
+// createProjectRequest / updateProjectRequest in hub/internal/api/projects.go).
+export interface CreateProjectRequest {
+  id: string;
+  label: string;
+}
+
+export interface UpdateProjectRequest {
+  label: string;
 }
 
 export interface AgentSignals {
