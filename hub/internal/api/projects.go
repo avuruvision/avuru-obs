@@ -1,7 +1,12 @@
 package api
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
+	"regexp"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -122,6 +127,116 @@ func filterProjectsForIdentity(projects []projectDTO, id *auth.Identity) []proje
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
+}
+
+// projectIDRe bounds a project id: a lowercase slug, so it is a safe tenant
+// value and a clean URL/path segment.
+var projectIDRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+
+type createProjectRequest struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+type renameProjectRequest struct {
+	Label string `json:"label"`
+}
+
+// reservedProject reports whether id is deployment-owned (the built-in default
+// or a config-declared project) and therefore not editable/deletable via the UI.
+func (a *API) reservedProject(id string) bool {
+	return id == storage.DefaultTenant || slices.Contains(a.cfg.Projects, id)
+}
+
+// handleCreateProject creates a UI-managed project. A reserved id is 400
+// (default) or 409 (config-shadow); a duplicate db id is 409; a bad slug is 400.
+func (a *API) handleCreateProject(w http.ResponseWriter, r *http.Request) error {
+	w.Header().Set("Cache-Control", "no-store")
+	st, err := a.store()
+	if err != nil {
+		return err
+	}
+	var req createProjectRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil {
+		return decodeJSONError(err)
+	}
+	if req.ID == storage.DefaultTenant {
+		return badRequest("%q is reserved", storage.DefaultTenant)
+	}
+	if !projectIDRe.MatchString(req.ID) {
+		return badRequest("invalid project id %q (lowercase letters, digits, hyphens; must start with a letter)", req.ID)
+	}
+	if slices.Contains(a.cfg.Projects, req.ID) {
+		return &apiError{status: http.StatusConflict, message: fmt.Sprintf("project %q is defined through config and cannot be created here", req.ID)}
+	}
+	if _, err := st.GetProject(r.Context(), req.ID); err == nil {
+		return &apiError{status: http.StatusConflict, message: fmt.Sprintf("project %q already exists", req.ID)}
+	} else if !errors.Is(err, storage.ErrNotFound) {
+		return err
+	}
+	p := storage.Project{ID: req.ID, Label: req.Label, CreatedBy: creatorOf(r)}
+	if err := st.SaveProject(r.Context(), p); err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusCreated, projectDTO{ID: p.ID, Label: p.Label, Source: "db", Editable: true})
+	return nil
+}
+
+// handleRenameProject edits a db project's label. Reserved (default/config)
+// projects are read-only → 409; an unknown id is 404.
+func (a *API) handleRenameProject(w http.ResponseWriter, r *http.Request) error {
+	w.Header().Set("Cache-Control", "no-store")
+	st, err := a.store()
+	if err != nil {
+		return err
+	}
+	id := r.PathValue("id")
+	if a.reservedProject(id) {
+		return &apiError{status: http.StatusConflict, message: fmt.Sprintf("project %q is deployment-owned and cannot be modified here", id)}
+	}
+	var req renameProjectRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil {
+		return decodeJSONError(err)
+	}
+	p, err := st.GetProject(r.Context(), id)
+	if err != nil {
+		return err // ErrNotFound -> 404
+	}
+	p.Label = req.Label
+	if err := st.SaveProject(r.Context(), p); err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, projectDTO{ID: p.ID, Label: p.Label, Source: "db", Editable: true, Members: p.Members})
+	return nil
+}
+
+// handleDeleteProject tombstones a db project. Reserved projects → 409; unknown
+// → 404. Telemetry is untouched (ages out by TTL; a still-active tenant
+// re-appears as source=data — intended).
+func (a *API) handleDeleteProject(w http.ResponseWriter, r *http.Request) error {
+	w.Header().Set("Cache-Control", "no-store")
+	st, err := a.store()
+	if err != nil {
+		return err
+	}
+	id := r.PathValue("id")
+	if a.reservedProject(id) {
+		return &apiError{status: http.StatusConflict, message: fmt.Sprintf("project %q is deployment-owned and cannot be deleted here", id)}
+	}
+	if err := st.DeleteProject(r.Context(), id); err != nil {
+		return err // ErrNotFound -> 404
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+// creatorOf returns the acting admin's id for the audit column, or "" when auth
+// is disabled.
+func creatorOf(r *http.Request) string {
+	if id := identityFrom(r.Context()); id != nil {
+		return id.UserID
+	}
+	return ""
 }
 
 // observedTenants returns recently-seen tenants, cached for tenantCacheTTL.
