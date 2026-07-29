@@ -109,3 +109,22 @@ test.describe("auth: oidc", () => {
     await expect(page.getByLabel("Password")).toHaveCount(0);
   });
 });
+
+// Demo mode — OPT-IN: the default `make e2e-ui` stack doesn't enable demo mode,
+// so gate this like the OIDC tests. Needs AVURUOPS_DEMO_ENABLED=true and a
+// `demo` project with data in the stack, signalled via DEMO_E2E=1.
+test.describe("auth: demo", () => {
+  test.skip(!process.env.DEMO_E2E, "DEMO_E2E not set — demo mode not enabled in the stack");
+
+  test("'Try the demo' signs in as a read-only viewer scoped to demo", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByRole("button", { name: /Try the demo/ }).click();
+    // Lands in the app with a session (Sign out present), on the demo project.
+    await expect(page).not.toHaveURL(/\/login/);
+    await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Switch project" })).toContainText("demo");
+    // Read-only: the admin-only Users tab is absent in Settings.
+    await page.goto("/settings");
+    await expect(page.getByRole("tab", { name: "Users" })).toHaveCount(0);
+  });
+});

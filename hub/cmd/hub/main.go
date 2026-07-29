@@ -161,6 +161,18 @@ func run() error {
 	provider := connectStore(ctx, clickhouseConfig())
 
 	authSvc, anonID := authService(provider)
+	// Demo mode: resolve the settings once so the SAME generated password feeds
+	// both the demo-user bootstrap and the /auth/demo handler (it never leaves
+	// the process). Requires auth to be on.
+	demoEnabled := envOr("AVURUOPS_DEMO_ENABLED", "false") == "true" && authSvc != nil
+	demoEmail := envOr("AVURUOPS_DEMO_EMAIL", "demo@avuru.obs")
+	demoPassword := os.Getenv("AVURUOPS_DEMO_PASSWORD")
+	if demoEnabled {
+		if demoPassword == "" {
+			demoPassword = auth.NewID() // held in-process; never disclosed
+		}
+		go ensureDemoUser(ctx, authSvc, provider, demoEmail, demoPassword)
+	}
 	if authSvc != nil {
 		go bootstrapAdmin(ctx, authSvc, provider)
 	}
@@ -213,6 +225,9 @@ func run() error {
 		Notifier:              notifier,
 		Auth:                  authSvc,
 		AnonymousIdentity:     anonID,
+		DemoEnabled:           demoEnabled,
+		DemoEmail:             demoEmail,
+		DemoPassword:          demoPassword,
 		GreenConfig:           greenConfig,
 		OIDC:                  oidcProvider,
 		OIDCSettings:          oidcSettings,
@@ -396,6 +411,31 @@ func bootstrapAdmin(ctx context.Context, svc *auth.Service, provider api.StorePr
 		case <-ctx.Done():
 			return
 		case <-time.After(interval):
+		}
+	}
+}
+
+// ensureDemoUser waits for the store, then idempotently ensures the demo viewer
+// exists. Retries every 5s until it succeeds (same degraded-not-crashed
+// philosophy as bootstrapAdmin); the table may not be migrated yet on first boot.
+func ensureDemoUser(ctx context.Context, svc *auth.Service, provider api.StoreProvider, email, password string) {
+	for provider() == nil {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
+	}
+	for {
+		if err := svc.EnsureDemoUser(ctx, email, password); err == nil {
+			return
+		} else {
+			slog.Warn("demo user bootstrap failed, retrying", "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Second):
 		}
 	}
 }

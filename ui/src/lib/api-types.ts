@@ -469,6 +469,7 @@ export interface AuthConfig {
   enabled: boolean;
   methods: ("local" | "oidc")[];
   forceSSO: boolean;
+  demoEnabled?: boolean;
 }
 
 export interface AuthGrant {

@@ -68,12 +68,14 @@ Each of the larger items already has a draft AEP — design work done, awaiting
 implementation.
 
 - **Projects completion:** **project CRUD** — admins create/rename/delete
-  projects from the UI, config-defined entries stay read-only — **shipped
-  (Phase 1)**. Still to come: per-project **API keys** at ingest (replaces
-  topology-based trust of `avuru.tenant` and the tenancy header — the auth
-  seam it needs shipped in v0.2), per-project retention, per-project system
-  status, and chart component toggles so secondary clusters install
-  gateway(+sensor)-only against a shared ClickHouse. See the
+  projects from the UI, config-defined entries stay read-only — and a
+  **one-click read-only demo** have **shipped (Phase 1)**. Still to come:
+  per-project **API keys** at ingest (replaces topology-based trust of
+  `avuru.tenant` and the tenancy header — the auth seam it needs shipped in
+  v0.2), **member projects** (multi-cluster aggregation), per-project
+  retention, per-project system status, and chart component toggles so
+  secondary clusters install gateway(+sensor)-only against a shared
+  ClickHouse. See the
   [AEP](design/2026-07-27-projects-completion.md).
 - **Runtime collection control plane:** the Helm collection knobs (per-signal,
   per-namespace, per-pod label, per-node label) become switchable from the UI:

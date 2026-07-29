@@ -15,10 +15,17 @@
 # Route every demo service's OTLP export at the avuru obs gateway. The chart
 # derives each component's OTEL_EXPORTER_OTLP_ENDPOINT from OTEL_COLLECTOR_NAME,
 # so this single override reroutes traces, metrics and logs to avuru obs.
+#
+# OTEL_RESOURCE_ATTRIBUTES stamps `avuru.tenant=demo` on every demo service's
+# telemetry, so it all lands in the `demo` project (what "Try the demo" shows) —
+# without tagging the rest of a shared gateway. Pair with auth.demo.enabled=true
+# on the avuru obs release.
 default:
   envOverrides:
     - name: OTEL_COLLECTOR_NAME
       value: avuruops-gateway
+    - name: OTEL_RESOURCE_ATTRIBUTES
+      value: avuru.tenant=demo
 
 # avuru obs IS the backend — turn off the demo's bundled collector and every
 # bundled store/UI so nothing competes with it and the footprint stays small.

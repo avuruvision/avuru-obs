@@ -23,6 +23,13 @@ When a release is cut, that block is renamed to the version with its date.
   `POST/PUT/DELETE /api/v1/projects` (global-admin only); `GET /api/v1/projects`
   now returns each project's `label`, `source`, and `editable` flag. Groundwork
   for per-project ingest keys and multi-cluster aggregates (Phases 2–3).
+- **One-click read-only demo.** A "Try the demo" button on the login page signs
+  a visitor in as a scoped viewer (`viewer@demo`) — the shared password stays
+  server-side (a rate-limited `/api/v1/auth/demo`), never in the browser.
+  Opt-in via `auth.demo.enabled`; pair with the OpenTelemetry Astronomy Shop
+  overlay ([deploy/demo/astronomy](deploy/demo/astronomy)) tagged
+  `avuru.tenant=demo` for live data across every module.
+
 - **Licensing clarity.** [LICENSING.md](LICENSING.md) states the model in
   full: AGPL-3.0 community edition forever (backed by the CLA §2.2 pledge),
   the node agent as upstream Apache-2.0 OBI, a planned commercial enterprise
@@ -33,6 +40,14 @@ When a release is cut, that block is renamed to the version with its date.
 - **Contributor License Agreement live.** Every first-time contributor signs
   the [Individual CLA](CLA.md) via a one-comment bot flow; §2.2 pledges all
   contributions remain available under AGPL-3.0 forever.
+
+### Fixed
+
+- **Settings Users tab no longer hides the tab bar.** It is now an in-place tab
+  (`?tab=users`) instead of a separate page, so the tab navigation stays put;
+  `/settings/users` is kept as a redirect for deep links.
+- Login page brand casing ("avuru obs" → "Avuru Obs"), matching every other
+  surface.
 
 ## [0.2.0] — 2026-07-28
 

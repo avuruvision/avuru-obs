@@ -55,6 +55,12 @@ type Config struct {
 	// AnonymousIdentity, when non-nil, is served to requests without a valid
 	// session (demo mode: a Viewer scoped to listed projects).
 	AnonymousIdentity *auth.Identity
+	// Demo mode: when DemoEnabled, POST /api/v1/auth/demo signs in as the
+	// read-only demo viewer using DemoEmail/DemoPassword server-side (the shared
+	// password never reaches the browser), and /auth/config advertises it.
+	DemoEnabled  bool
+	DemoEmail    string
+	DemoPassword string
 	// GreenConfig returns the current green (energy/carbon) configuration
 	// (hot-reloaded, like GroupsConfig). nil → green.Default(). Unread until
 	// the green read path lands; declared now so the cmd/hub wiring is stable.
@@ -118,6 +124,13 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("POST /api/v1/auth/login", handle(a.handleLogin))
 		mux.Handle("POST /api/v1/auth/logout", a.authenticated(a.handleLogout))
 		mux.Handle("GET /api/v1/auth/me", a.authenticated(a.handleMe))
+
+		// Demo one-click login — registered only when demo mode is on. Signs in
+		// as the read-only demo viewer server-side (shared password stays server
+		// -held); establishes the session, so it is unauthenticated like /login.
+		if cfg.DemoEnabled {
+			mux.Handle("POST /api/v1/auth/demo", handle(a.handleDemoLogin))
+		}
 
 		// OIDC SSO — unauthenticated (they establish the session): start the
 		// auth-code flow and handle the IdP redirect back. Registered even when

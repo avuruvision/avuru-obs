@@ -11,9 +11,10 @@ import (
 )
 
 type authConfigResponse struct {
-	Enabled  bool     `json:"enabled"`
-	Methods  []string `json:"methods"`
-	ForceSSO bool     `json:"forceSSO"`
+	Enabled     bool     `json:"enabled"`
+	Methods     []string `json:"methods"`
+	ForceSSO    bool     `json:"forceSSO"`
+	DemoEnabled bool     `json:"demoEnabled"`
 }
 
 // handleAuthConfig is unauthenticated and ALWAYS registered (auth on or
@@ -21,7 +22,7 @@ type authConfigResponse struct {
 // special-case. Enabled implies ["local"]; when an OIDC provider is wired
 // (discovery succeeded) "oidc" is appended and ForceSSO reflects the config.
 func (a *API) handleAuthConfig(w http.ResponseWriter, _ *http.Request) error {
-	resp := authConfigResponse{Enabled: a.cfg.Auth != nil, Methods: []string{}}
+	resp := authConfigResponse{Enabled: a.cfg.Auth != nil, Methods: []string{}, DemoEnabled: a.cfg.DemoEnabled}
 	if resp.Enabled {
 		resp.Methods = []string{"local"}
 		if a.cfg.OIDC != nil && a.cfg.OIDC() != nil {
@@ -30,6 +31,33 @@ func (a *API) handleAuthConfig(w http.ResponseWriter, _ *http.Request) error {
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)
+	return nil
+}
+
+// handleDemoLogin signs the caller in as the read-only demo viewer using the
+// server-held demo credentials — the shared password never reaches the browser.
+// Registered only when DemoEnabled. Reuses the login rate limiter (keyed on the
+// demo email + client IP).
+func (a *API) handleDemoLogin(w http.ResponseWriter, r *http.Request) error {
+	w.Header().Set("Cache-Control", "no-store")
+	if err := checkOrigin(r); err != nil {
+		return err
+	}
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	token, id, err := a.cfg.Auth.Login(r.Context(), a.cfg.DemoEmail, a.cfg.DemoPassword, ip)
+	switch {
+	case errors.Is(err, auth.ErrStoreUnavailable):
+		return errStoreUnavailable
+	case errors.Is(err, auth.ErrTooManyAttempts):
+		w.Header().Set("Retry-After", "60")
+		return &apiError{status: http.StatusTooManyRequests, message: "too many attempts, retry in a minute"}
+	case err != nil:
+		// Any other failure (e.g. the demo user isn't bootstrapped yet) is a
+		// server-side misconfiguration, not a client error.
+		return err
+	}
+	setSessionCookie(w, r, token, int(a.cfg.Auth.SessionTTL()/time.Second))
+	writeJSON(w, http.StatusOK, meFrom(id))
 	return nil
 }
 
