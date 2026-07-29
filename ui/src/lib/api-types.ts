@@ -272,7 +272,10 @@ export interface FlamegraphResponse {
 
 export interface Project {
   id: string;
-  source: "default" | "config" | "data";
+  label?: string;
+  source: "default" | "config" | "db" | "data" | "granted";
+  editable?: boolean;
+  members?: string[];
 }
 
 export interface ProjectsResponse {
