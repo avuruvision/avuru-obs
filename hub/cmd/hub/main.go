@@ -231,6 +231,7 @@ func run() error {
 		GreenConfig:           greenConfig,
 		OIDC:                  oidcProvider,
 		OIDCSettings:          oidcSettings,
+		IngestInternalToken:   envOr("AVURUOPS_INGEST_INTERNAL_TOKEN", ""),
 	})
 
 	// The alerting evaluator is a single background loop (see runAlertingEvaluator);
