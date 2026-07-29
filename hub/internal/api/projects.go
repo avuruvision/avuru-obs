@@ -231,6 +231,23 @@ func (a *API) handleUpdateProject(w http.ResponseWriter, r *http.Request) error 
 	return nil
 }
 
+// handleDeleteProject tombstones a db project (its telemetry ages out by TTL).
+func (a *API) handleDeleteProject(w http.ResponseWriter, r *http.Request) error {
+	st, err := a.store()
+	if err != nil {
+		return err
+	}
+	id := r.PathValue("id")
+	if _, err := a.editableProject(r.Context(), st, id); err != nil {
+		return err
+	}
+	if err := st.DeleteProject(r.Context(), id); err != nil {
+		return err
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
 // filterProjectsForIdentity restricts the merged (config+observed) project
 // list to what the identity may see. A wildcard identity ("*" scope grant) —
 // and a nil identity, meaning auth is disabled — passes through unfiltered.

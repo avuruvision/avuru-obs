@@ -146,3 +146,44 @@ func TestRenameProjectRejectsReadOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestDeleteProject(t *testing.T) {
+	mux, cookie, f := adminMux(t)
+	doBody(mux, http.MethodPost, "/api/v1/projects", cookie, `{"id":"team-a","label":"A"}`)
+
+	w := doBody(mux, http.MethodDelete, "/api/v1/projects/team-a", cookie, "")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	if _, ok := f.Projects["team-a"]; ok {
+		t.Fatalf("project not removed: %+v", f.Projects)
+	}
+}
+
+func TestDeleteProjectRejectsReadOnly(t *testing.T) {
+	mux, cookie, _ := adminMuxCfg(t, []string{"prod"})
+	for _, id := range []string{"default", "prod", "ghost"} {
+		w := doBody(mux, http.MethodDelete, "/api/v1/projects/"+id, cookie, "")
+		if w.Code != http.StatusConflict {
+			t.Fatalf("%s: status = %d, want 409", id, w.Code)
+		}
+	}
+}
+
+// TestProjectMutationsAdminOnly is defense in depth: an editor (non-admin) is
+// rejected with 403 before any handler logic runs.
+func TestProjectMutationsAdminOnly(t *testing.T) {
+	mux, cookie := authedMux(t) // editor-on-payments identity
+	create := authDo(mux, http.MethodPost, "/api/v1/projects", cookie, nil)
+	if create.Code != http.StatusForbidden {
+		t.Fatalf("POST status = %d, want 403", create.Code)
+	}
+	put := authDo(mux, http.MethodPut, "/api/v1/projects/x", cookie, nil)
+	if put.Code != http.StatusForbidden {
+		t.Fatalf("PUT status = %d, want 403", put.Code)
+	}
+	del := authDo(mux, http.MethodDelete, "/api/v1/projects/x", cookie, nil)
+	if del.Code != http.StatusForbidden {
+		t.Fatalf("DELETE status = %d, want 403", del.Code)
+	}
+}

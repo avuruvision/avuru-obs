@@ -97,6 +97,7 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 	mux.Handle("GET /api/v1/projects", a.secured(auth.RoleViewer, a.handleProjects))
 	mux.Handle("POST /api/v1/projects", a.securedAdmin(a.handleCreateProject))
 	mux.Handle("PUT /api/v1/projects/{id}", a.securedAdmin(a.handleUpdateProject))
+	mux.Handle("DELETE /api/v1/projects/{id}", a.securedAdmin(a.handleDeleteProject))
 	// system/status is instance-wide (disk capacity, retained-row counts) —
 	// not project data, so a single-project viewer or the anonymous demo
 	// identity has no business seeing it. Global admin only.
