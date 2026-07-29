@@ -67,6 +67,12 @@ type Fake struct {
 	Sessions     map[string]storage.AuthSession
 	SavedUsers   []storage.AuthUser
 
+	// Project fakes. Projects keyed by ID; only live projects are ever stored
+	// (DeleteProject removes the entry, mirroring the tombstone-then-FINAL read).
+	Projects        map[string]storage.Project
+	SavedProjects   []storage.Project
+	DeletedProjects []string
+
 	// Last*Query record the most recent inputs for asserting parameter parsing.
 	LastTraceQuery       storage.TraceQuery
 	LastServiceQuery     storage.ServiceQuery
@@ -404,5 +410,45 @@ func (f *Fake) RevokeAuthSessionsForUser(_ context.Context, userID string) error
 			delete(f.Sessions, hash)
 		}
 	}
+	return nil
+}
+
+// ListProjects returns live projects ordered by ID, matching the real
+// ClickHouse implementation's ORDER BY (map iteration order is random).
+func (f *Fake) ListProjects(context.Context) ([]storage.Project, error) {
+	out := make([]storage.Project, 0, len(f.Projects))
+	for _, p := range f.Projects {
+		out = append(out, p)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+func (f *Fake) GetProject(_ context.Context, id string) (storage.Project, error) {
+	p, ok := f.Projects[id]
+	if !ok {
+		return storage.Project{}, storage.ErrNotFound
+	}
+	return p, nil
+}
+
+// SaveProject mirrors the ReplacingMergeTree upsert-by-ID.
+func (f *Fake) SaveProject(_ context.Context, p storage.Project) error {
+	if f.Projects == nil {
+		f.Projects = make(map[string]storage.Project)
+	}
+	f.Projects[p.ID] = p
+	f.SavedProjects = append(f.SavedProjects, p)
+	return nil
+}
+
+// DeleteProject mirrors the tombstone from the caller's point of view: only
+// live projects are ever observable, so a deleted id simply disappears.
+func (f *Fake) DeleteProject(_ context.Context, id string) error {
+	f.DeletedProjects = append(f.DeletedProjects, id)
+	if _, ok := f.Projects[id]; !ok {
+		return storage.ErrNotFound
+	}
+	delete(f.Projects, id)
 	return nil
 }

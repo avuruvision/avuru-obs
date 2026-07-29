@@ -482,6 +482,18 @@ type AuthSession struct {
 	ExpiresAt time.Time
 }
 
+// Project is one UI-managed project. ID is immutable (the tenant slug used in
+// data and the X-Avuru-Tenant header); Label is display-only; Members is the
+// aggregate set (empty for a leaf project — populated in Phase 3).
+type Project struct {
+	ID        string
+	Label     string
+	Members   []string
+	CreatedBy string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 // GreenQuery filters ServiceEnergy / NodeEnergy (module green). Metric names
 // and attribute keys come from the green module's config — the backend must
 // not hardcode Kepler naming (an AEP verify item; operators can rename
@@ -618,6 +630,14 @@ type Store interface {
 	// working the moment the password changes. A no-op (nil error) when the
 	// user has no live sessions.
 	RevokeAuthSessionsForUser(ctx context.Context, userID string) error
+	// UI-managed projects (Phase 1). Reads are live-only (tombstones filtered).
+	// GetProject returns ErrNotFound for an absent or deleted id; SaveProject
+	// upserts by ID; DeleteProject tombstones and returns ErrNotFound when no
+	// live project has the id.
+	ListProjects(ctx context.Context) ([]Project, error)
+	GetProject(ctx context.Context, id string) (Project, error)
+	SaveProject(ctx context.Context, p Project) error
+	DeleteProject(ctx context.Context, id string) error
 }
 
 // AlertChannel is a UI-managed delivery channel (global, not per-tenant).
