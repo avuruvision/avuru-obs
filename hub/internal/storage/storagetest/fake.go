@@ -73,6 +73,13 @@ type Fake struct {
 	SavedProjects   []storage.Project
 	DeletedProjects []string
 
+	// Ingest-key fakes (auth Plan C). IngestKeys keyed by hash; only live keys
+	// are ever stored (RevokeIngestKey removes the entry, mirroring the
+	// tombstone-then-FINAL read).
+	IngestKeys      map[string]storage.AuthIngestKey
+	SavedIngestKeys []storage.AuthIngestKey
+	RevokedKeys     []string
+
 	// Last*Query record the most recent inputs for asserting parameter parsing.
 	LastTraceQuery       storage.TraceQuery
 	LastServiceQuery     storage.ServiceQuery
@@ -450,5 +457,56 @@ func (f *Fake) DeleteProject(_ context.Context, id string) error {
 		return storage.ErrNotFound
 	}
 	delete(f.Projects, id)
+	return nil
+}
+
+// CreateIngestKey mirrors the ReplacingMergeTree insert (upsert by hash).
+func (f *Fake) CreateIngestKey(_ context.Context, k storage.AuthIngestKey) error {
+	if f.IngestKeys == nil {
+		f.IngestKeys = make(map[string]storage.AuthIngestKey)
+	}
+	f.IngestKeys[k.KeyHash] = k
+	f.SavedIngestKeys = append(f.SavedIngestKeys, k)
+	return nil
+}
+
+// GetIngestKeyByHash returns a live key or ErrNotFound (unknown or revoked —
+// revoked keys are removed from the map, mirroring the FINAL/Revoked read).
+func (f *Fake) GetIngestKeyByHash(_ context.Context, keyHash string) (storage.AuthIngestKey, error) {
+	k, ok := f.IngestKeys[keyHash]
+	if !ok {
+		return storage.AuthIngestKey{}, storage.ErrNotFound
+	}
+	return k, nil
+}
+
+// ListIngestKeys returns the live keys for one project, newest first (matching
+// the real ORDER BY CreatedAt DESC — map iteration order is random).
+func (f *Fake) ListIngestKeys(_ context.Context, project string) ([]storage.AuthIngestKey, error) {
+	out := make([]storage.AuthIngestKey, 0, len(f.IngestKeys))
+	for _, k := range f.IngestKeys {
+		if k.Project == project {
+			out = append(out, k)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].CreatedAt.After(out[j].CreatedAt)
+		}
+		return out[i].KeyHash < out[j].KeyHash
+	})
+	return out, nil
+}
+
+// RevokeIngestKey mirrors the tombstone: only live keys are observable, so a
+// revoked hash simply disappears. ErrNotFound when no live key in the project
+// has that hash.
+func (f *Fake) RevokeIngestKey(_ context.Context, project, keyHash string) error {
+	f.RevokedKeys = append(f.RevokedKeys, keyHash)
+	k, ok := f.IngestKeys[keyHash]
+	if !ok || k.Project != project {
+		return storage.ErrNotFound
+	}
+	delete(f.IngestKeys, keyHash)
 	return nil
 }
