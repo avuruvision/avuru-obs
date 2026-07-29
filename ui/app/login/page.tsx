@@ -79,6 +79,23 @@ export default function LoginPage() {
     }
   };
 
+  const tryDemo = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      await apiPost<Me>("/api/v1/auth/demo", {});
+      // Full navigation so providers/queries re-initialise with the session.
+      window.location.assign(safeNext());
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 429) {
+        setError("The demo is busy — wait a minute and retry");
+      } else {
+        setError("Couldn’t start the demo — is the hub reachable?");
+      }
+      setBusy(false);
+    }
+  };
+
   // Shared field styling with the app's other forms (see alerts/channel-form).
   const inputClass =
     "h-9 w-full rounded-lg border border-neutral bg-base-100 px-3 text-sm focus-visible:outline-2 focus-visible:outline-primary";
@@ -171,7 +188,28 @@ export default function LoginPage() {
                 </a>
               )}
 
-              {!showLocal && !showOIDC && (
+              {config?.demoEnabled && (
+                <>
+                  {(showLocal || showOIDC) && (
+                    <div className="flex items-center gap-3 text-[10px] font-medium uppercase tracking-wide text-base-content/40">
+                      <span className="h-px flex-1 bg-neutral" />
+                      or
+                      <span className="h-px flex-1 bg-neutral" />
+                    </div>
+                  )}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full"
+                    onClick={() => void tryDemo()}
+                    disabled={busy}
+                  >
+                    Try the demo (read-only)
+                  </Button>
+                </>
+              )}
+
+              {!showLocal && !showOIDC && !config?.demoEnabled && (
                 <p className="text-sm text-base-content/60">
                   No sign-in method is configured for this workspace.
                 </p>
