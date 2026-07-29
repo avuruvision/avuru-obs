@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,44 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 	"github.com/avuru/avuru-obs/hub/internal/storage/storagetest"
 )
+
+func TestDemoLogin(t *testing.T) {
+	f := &storagetest.Fake{}
+	svc := auth.NewService(func() storage.Store { return f }, time.Hour)
+	if err := svc.EnsureDemoUser(context.Background(), "demo@avuru.obs", "demo-pw"); err != nil {
+		t.Fatal(err)
+	}
+	a := &API{provider: func() storage.Store { return f }, cfg: Config{
+		Auth: svc, DemoEnabled: true, DemoEmail: "demo@avuru.obs", DemoPassword: "demo-pw",
+	}}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/demo", nil)
+	if err := a.handleDemoLogin(rec, req); err != nil {
+		t.Fatalf("demo login: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	// A session cookie was set and the identity is the read-only demo viewer.
+	if len(rec.Result().Cookies()) == 0 {
+		t.Fatal("no session cookie set")
+	}
+	var me meResponse
+	_ = json.NewDecoder(rec.Body).Decode(&me)
+	if len(me.Grants) != 1 || me.Grants[0].Scope != "demo" {
+		t.Fatalf("grants = %+v, want viewer@demo", me.Grants)
+	}
+}
+
+func TestAuthConfigAdvertisesDemo(t *testing.T) {
+	a := &API{cfg: Config{Auth: &auth.Service{}, DemoEnabled: true}}
+	rec := httptest.NewRecorder()
+	_ = a.handleAuthConfig(rec, httptest.NewRequest(http.MethodGet, "/api/v1/auth/config", nil))
+	if !strings.Contains(rec.Body.String(), `"demoEnabled":true`) {
+		t.Fatalf("config missing demoEnabled: %s", rec.Body)
+	}
+}
 
 func TestLoginSetsCookieAndMeWorks(t *testing.T) {
 	mux, _ := authedMux(t)
