@@ -550,3 +550,32 @@ func TestBuildGreenRows_QualitySplit(t *testing.T) {
 		t.Errorf("totals.AttributedWh = %v, want 15 (never silently blended, but the total IS the sum)", totals.AttributedWh)
 	}
 }
+
+func TestBuildGreenBudgets_EstimatedShare(t *testing.T) {
+	now := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	rows := []storage.ServiceEnergy{
+		{Service: "web", Quality: "measured", WattHours: 1000},
+		{Service: "web", Quality: "estimated", WattHours: 3000},
+	}
+	stats := []storage.ServiceStats{{Name: "web", SpanCount: 10}}
+	labels := []storage.ServiceLabel{{Service: "web", K8sNamespace: "shop"}}
+	cfg := green.Config{
+		GridIntensity: 500, PUE: 2, // gCO2e == Wh with these factors
+		Budgets: []green.Budget{{Name: "prod", Group: "shop", MonthlyKgCO2e: 100, WarnRatio: 0.8}},
+	}
+
+	budgets := buildGreenBudgets(cfg, health.Default(), resolveFactors(cfg), rows, stats, labels, now)
+	if len(budgets) != 1 {
+		t.Fatalf("len(budgets) = %d, want 1", len(budgets))
+	}
+	b := budgets[0]
+	// Total used includes BOTH tiers (an all-VM fleet must be able to trip a
+	// budget — AEP explicit goal): (1000+3000) gCO2e / 1000 = 4 kg.
+	if !almost(b.UsedKgCO2e, 4) {
+		t.Errorf("UsedKgCO2e = %v, want 4", b.UsedKgCO2e)
+	}
+	// 3000 of the 4000 Wh (75%) is estimated -> EstimatedShare = 0.75.
+	if !almost(b.EstimatedShare, 0.75) {
+		t.Errorf("EstimatedShare = %v, want 0.75", b.EstimatedShare)
+	}
+}
