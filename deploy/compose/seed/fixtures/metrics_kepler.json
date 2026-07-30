@@ -24,7 +24,8 @@
                     "asDouble": 1000,
                     "attributes": [
                       { "key": "pod_name", "value": { "stringValue": "seed-checkout-0" } },
-                      { "key": "pod_namespace", "value": { "stringValue": "shop" } }
+                      { "key": "pod_namespace", "value": { "stringValue": "shop" } },
+                      { "key": "avuruops_quality", "value": { "stringValue": "measured" } }
                     ]
                   },
                   {
@@ -33,7 +34,8 @@
                     "asDouble": 1720,
                     "attributes": [
                       { "key": "pod_name", "value": { "stringValue": "seed-checkout-0" } },
-                      { "key": "pod_namespace", "value": { "stringValue": "shop" } }
+                      { "key": "pod_namespace", "value": { "stringValue": "shop" } },
+                      { "key": "avuruops_quality", "value": { "stringValue": "measured" } }
                     ]
                   },
                   {
@@ -42,7 +44,8 @@
                     "asDouble": 2000,
                     "attributes": [
                       { "key": "pod_name", "value": { "stringValue": "seed-payments-0" } },
-                      { "key": "pod_namespace", "value": { "stringValue": "shop" } }
+                      { "key": "pod_namespace", "value": { "stringValue": "shop" } },
+                      { "key": "avuruops_quality", "value": { "stringValue": "estimated" } }
                     ]
                   },
                   {
@@ -51,7 +54,8 @@
                     "asDouble": 5600,
                     "attributes": [
                       { "key": "pod_name", "value": { "stringValue": "seed-payments-0" } },
-                      { "key": "pod_namespace", "value": { "stringValue": "shop" } }
+                      { "key": "pod_namespace", "value": { "stringValue": "shop" } },
+                      { "key": "avuruops_quality", "value": { "stringValue": "estimated" } }
                     ]
                   }
                 ]
