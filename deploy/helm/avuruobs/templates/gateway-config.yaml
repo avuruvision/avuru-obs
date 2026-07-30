@@ -1,18 +1,18 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "avuruops.fullname" . }}-gateway
+  name: {{ include "avuruobs.fullname" . }}-gateway
   labels:
-    {{- include "avuruops.labels" . | nindent 4 }}
+    {{- include "avuruobs.labels" . | nindent 4 }}
     app.kubernetes.io/component: gateway
 data:
   config.yaml: |
     {{- /* Sentry events become log records in otel_logs, so the ingest needs
            the logs module (its table) as well as error-tracking + the flag.
            Shared with the container/Service ports and the ingress route. */}}
-    {{- $sentry := include "avuruops.sentryEnabled" . }}
-    {{- $ingestAuth := include "avuruops.ingestAuthEnabled" . }}
-    {{- $ingestStamp := include "avuruops.ingestTenantStamp" . }}
+    {{- $sentry := include "avuruobs.sentryEnabled" . }}
+    {{- $ingestAuth := include "avuruobs.ingestAuthEnabled" . }}
+    {{- $ingestStamp := include "avuruobs.ingestTenantStamp" . }}
     receivers:
       otlp:
         protocols:
@@ -98,10 +98,10 @@ data:
         timeout: 2s
     exporters:
       clickhouse:
-        endpoint: tcp://{{ include "avuruops.clickhouseAddr" . }}
-        username: {{ include "avuruops.clickhouseUser" . }}
+        endpoint: tcp://{{ include "avuruobs.clickhouseAddr" . }}
+        username: {{ include "avuruobs.clickhouseUser" . }}
         password: ${env:CLICKHOUSE_PASSWORD}
-        database: {{ include "avuruops.clickhouseDatabase" . }}
+        database: {{ include "avuruobs.clickhouseDatabase" . }}
         # Schema is owned by `hub migrate`; the exporter never creates tables.
         create_schema: false
         timeout: 10s
@@ -118,8 +118,8 @@ data:
       # verdicts serving through a hub blip so a control-plane outage cannot
       # drop traffic.
       avuruingestauth:
-        hub_validate_url: http://{{ include "avuruops.fullname" . }}-hub:80/internal/v1/ingest-keys/validate
-        internal_token: ${env:AVURUOPS_INGEST_INTERNAL_TOKEN}
+        hub_validate_url: http://{{ include "avuruobs.fullname" . }}-hub:80/internal/v1/ingest-keys/validate
+        internal_token: ${env:AVURUOBS_INGEST_INTERNAL_TOKEN}
         mode: {{ .Values.auth.ingest.mode | quote }}
         cache_ttl: {{ .Values.auth.ingest.cacheTTL | quote }}
         stale_grace: {{ .Values.auth.ingest.staleGrace | quote }}

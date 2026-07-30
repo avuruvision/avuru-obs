@@ -1,10 +1,10 @@
 {{/* Expand the name of the chart. */}}
-{{- define "avuruops.name" -}}
+{{- define "avuruobs.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
 {{/* Fully qualified app name. */}}
-{{- define "avuruops.fullname" -}}
+{{- define "avuruobs.fullname" -}}
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
@@ -18,35 +18,35 @@
 {{- end -}}
 
 {{/* Common labels. */}}
-{{- define "avuruops.labels" -}}
+{{- define "avuruobs.labels" -}}
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
-{{ include "avuruops.selectorLabels" . }}
+{{ include "avuruobs.selectorLabels" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 
-{{- define "avuruops.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "avuruops.name" . }}
+{{- define "avuruobs.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "avuruobs.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
 {{/* Image reference: prefixes the global registry when set. Call with a dict
      {registry, repo, tag}. */}}
-{{- define "avuruops.image" -}}
+{{- define "avuruobs.image" -}}
 {{- if .registry -}}{{ .registry }}/{{ end -}}{{ .repo }}:{{ .tag }}
 {{- end -}}
 
 {{/* ClickHouse native address (in-chart Service or external). */}}
-{{- define "avuruops.clickhouseAddr" -}}
+{{- define "avuruobs.clickhouseAddr" -}}
 {{- if .Values.clickhouse.external.enabled -}}
 {{- .Values.clickhouse.external.address -}}
 {{- else -}}
-{{- printf "%s-clickhouse:9000" (include "avuruops.fullname" .) -}}
+{{- printf "%s-clickhouse:9000" (include "avuruobs.fullname" .) -}}
 {{- end -}}
 {{- end -}}
 
 {{/* ClickHouse database name. */}}
-{{- define "avuruops.clickhouseDatabase" -}}
+{{- define "avuruobs.clickhouseDatabase" -}}
 {{- if .Values.clickhouse.external.enabled -}}
 {{- default "otel" .Values.clickhouse.external.database -}}
 {{- else -}}
@@ -55,7 +55,7 @@ otel
 {{- end -}}
 
 {{/* ClickHouse username. */}}
-{{- define "avuruops.clickhouseUser" -}}
+{{- define "avuruobs.clickhouseUser" -}}
 {{- if .Values.clickhouse.external.enabled -}}
 {{- default "avuru" .Values.clickhouse.external.username -}}
 {{- else -}}
@@ -66,19 +66,19 @@ otel
 {{/* Name of the Secret holding the ClickHouse password, and whether it is
      chart-managed. External existingSecret > in-chart existingSecret >
      chart-created Secret. */}}
-{{- define "avuruops.clickhouseSecretName" -}}
+{{- define "avuruobs.clickhouseSecretName" -}}
 {{- if and .Values.clickhouse.external.enabled .Values.clickhouse.external.existingSecret -}}
 {{- .Values.clickhouse.external.existingSecret -}}
 {{- else if .Values.clickhouse.auth.existingSecret -}}
 {{- .Values.clickhouse.auth.existingSecret -}}
 {{- else -}}
-{{- printf "%s-clickhouse" (include "avuruops.fullname" .) -}}
+{{- printf "%s-clickhouse" (include "avuruobs.fullname" .) -}}
 {{- end -}}
 {{- end -}}
 
-{{/* Active module set, as the CSV the hub reads (AVURUOPS_MODULES). `core` is
+{{/* Active module set, as the CSV the hub reads (AVURUOBS_MODULES). `core` is
      always present — it is the wedge and has no switch. */}}
-{{- define "avuruops.activeModules" -}}
+{{- define "avuruobs.activeModules" -}}
 {{- $mods := list "core" -}}
 {{- if .Values.modules.logs.enabled -}}{{- $mods = append $mods "logs" -}}{{- end -}}
 {{- if .Values.modules.infraMetrics.enabled -}}{{- $mods = append $mods "infra-metrics" -}}{{- end -}}
@@ -91,64 +91,64 @@ otel
 {{- end -}}
 
 {{/* Module env block shared by the hub Deployment and the migrate Job. */}}
-{{- define "avuruops.modulesEnv" -}}
-- name: AVURUOPS_MODULES
-  value: {{ include "avuruops.activeModules" . | quote }}
+{{- define "avuruobs.modulesEnv" -}}
+- name: AVURUOBS_MODULES
+  value: {{ include "avuruobs.activeModules" . | quote }}
 {{- end -}}
 
 {{/* Service-health groups config: env pointing the hub at the mounted
      ConfigMap file, plus the volume and mount. Emitted only when the module is
      on, so a disabled install carries no config surface. The hub hot-reloads
      the file, so a `kubectl edit` of the ConfigMap applies without a restart. */}}
-{{- define "avuruops.groupsEnv" -}}
+{{- define "avuruobs.groupsEnv" -}}
 {{- if .Values.modules.serviceHealth.enabled }}
-- name: AVURUOPS_GROUPS_CONFIG
-  value: /etc/avuruops/groups.json
+- name: AVURUOBS_GROUPS_CONFIG
+  value: /etc/avuruobs/groups.json
 {{- end }}
 {{- end -}}
 
-{{- define "avuruops.groupsVolume" -}}
+{{- define "avuruobs.groupsVolume" -}}
 {{- if .Values.modules.serviceHealth.enabled }}
 - name: service-groups
   configMap:
-    name: {{ include "avuruops.fullname" . }}-groups
+    name: {{ include "avuruobs.fullname" . }}-groups
 {{- end }}
 {{- end -}}
 
-{{- define "avuruops.groupsVolumeMount" -}}
+{{- define "avuruobs.groupsVolumeMount" -}}
 {{- if .Values.modules.serviceHealth.enabled }}
 - name: service-groups
-  mountPath: /etc/avuruops
+  mountPath: /etc/avuruobs
   readOnly: true
 {{- end }}
 {{- end -}}
 
 {{/* Alerting rules config: env + volume + mount, mounted at its OWN dir so it
-     never collides with the service-groups mount. AVURUOPS_WEBHOOK_ALLOW carries
+     never collides with the service-groups mount. AVURUOBS_WEBHOOK_ALLOW carries
      the SSRF override CIDRs. Emitted only when the module is on. */}}
-{{- define "avuruops.alertsEnv" -}}
+{{- define "avuruobs.alertsEnv" -}}
 {{- if .Values.modules.alerting.enabled }}
-- name: AVURUOPS_ALERTS_CONFIG
-  value: /etc/avuruops-alerts/alerts.json
+- name: AVURUOBS_ALERTS_CONFIG
+  value: /etc/avuruobs-alerts/alerts.json
 {{- if .Values.alerting.webhookAllow }}
-- name: AVURUOPS_WEBHOOK_ALLOW
+- name: AVURUOBS_WEBHOOK_ALLOW
   value: {{ join "," .Values.alerting.webhookAllow | quote }}
 {{- end }}
 {{- end }}
 {{- end -}}
 
-{{- define "avuruops.alertsVolume" -}}
+{{- define "avuruobs.alertsVolume" -}}
 {{- if .Values.modules.alerting.enabled }}
 - name: alert-rules
   configMap:
-    name: {{ include "avuruops.fullname" . }}-alerts
+    name: {{ include "avuruobs.fullname" . }}-alerts
 {{- end }}
 {{- end -}}
 
-{{- define "avuruops.alertsVolumeMount" -}}
+{{- define "avuruobs.alertsVolumeMount" -}}
 {{- if .Values.modules.alerting.enabled }}
 - name: alert-rules
-  mountPath: /etc/avuruops-alerts
+  mountPath: /etc/avuruobs-alerts
   readOnly: true
 {{- end }}
 {{- end -}}
@@ -157,25 +157,25 @@ otel
      never collides with the service-groups or alerts mounts. Carries the carbon
      factors, metric-name overrides and budgets the hub reads (hot-reloaded).
      Emitted only when the green module is on. */}}
-{{- define "avuruops.greenEnv" -}}
+{{- define "avuruobs.greenEnv" -}}
 {{- if .Values.modules.green.enabled }}
-- name: AVURUOPS_GREEN_CONFIG
-  value: /etc/avuruops-green/green.json
+- name: AVURUOBS_GREEN_CONFIG
+  value: /etc/avuruobs-green/green.json
 {{- end }}
 {{- end -}}
 
-{{- define "avuruops.greenVolume" -}}
+{{- define "avuruobs.greenVolume" -}}
 {{- if .Values.modules.green.enabled }}
 - name: green-config
   configMap:
-    name: {{ include "avuruops.fullname" . }}-green
+    name: {{ include "avuruobs.fullname" . }}-green
 {{- end }}
 {{- end -}}
 
-{{- define "avuruops.greenVolumeMount" -}}
+{{- define "avuruobs.greenVolumeMount" -}}
 {{- if .Values.modules.green.enabled }}
 - name: green-config
-  mountPath: /etc/avuruops-green
+  mountPath: /etc/avuruobs-green
   readOnly: true
 {{- end }}
 {{- end -}}
@@ -184,48 +184,48 @@ otel
      (a guard in hub-oidc-configmap.yaml fails the contradictory combination).
      Same true/"" contract as the collect* helpers — consume via `if include`,
      never compare to "false". */}}
-{{- define "avuruops.oidcEnabled" -}}
+{{- define "avuruobs.oidcEnabled" -}}
 {{- if and .Values.auth.enabled .Values.auth.oidc.enabled -}}true{{- end -}}
 {{- end -}}
 
 {{/* OIDC config: env + volume + mount, in its OWN dir so it never collides
      with the groups/alerts/green mounts. The config file is hot-reloaded by
      the hub; the client secret arrives via env from a Secret (existingSecret >
-     chart-created — never in the config file); AVURUOPS_PUBLIC_URL builds the
+     chart-created — never in the config file); AVURUOBS_PUBLIC_URL builds the
      absolute redirect_uri the IdP requires. With neither clientSecret nor
      existingSecret set the secret env is omitted (public client attempt)
      rather than referencing a Secret that does not exist. Emitted only when
      SSO is on. */}}
-{{- define "avuruops.oidcEnv" -}}
-{{- if include "avuruops.oidcEnabled" . }}
-- name: AVURUOPS_AUTH_OIDC_CONFIG
-  value: /etc/avuruops-oidc/oidc.yaml
+{{- define "avuruobs.oidcEnv" -}}
+{{- if include "avuruobs.oidcEnabled" . }}
+- name: AVURUOBS_AUTH_OIDC_CONFIG
+  value: /etc/avuruobs-oidc/oidc.yaml
 {{- if or .Values.auth.oidc.clientSecret .Values.auth.oidc.existingSecret }}
-- name: AVURUOPS_AUTH_OIDC_CLIENT_SECRET
+- name: AVURUOBS_AUTH_OIDC_CLIENT_SECRET
   valueFrom:
     secretKeyRef:
-      name: {{ .Values.auth.oidc.existingSecret | default (printf "%s-oidc" (include "avuruops.fullname" .)) }}
+      name: {{ .Values.auth.oidc.existingSecret | default (printf "%s-oidc" (include "avuruobs.fullname" .)) }}
       key: oidc-client-secret
 {{- end }}
 {{- if .Values.auth.oidc.publicUrl }}
-- name: AVURUOPS_PUBLIC_URL
+- name: AVURUOBS_PUBLIC_URL
   value: {{ .Values.auth.oidc.publicUrl | quote }}
 {{- end }}
 {{- end }}
 {{- end -}}
 
-{{- define "avuruops.oidcVolume" -}}
-{{- if include "avuruops.oidcEnabled" . }}
+{{- define "avuruobs.oidcVolume" -}}
+{{- if include "avuruobs.oidcEnabled" . }}
 - name: oidc-config
   configMap:
-    name: {{ include "avuruops.fullname" . }}-oidc
+    name: {{ include "avuruobs.fullname" . }}-oidc
 {{- end }}
 {{- end -}}
 
-{{- define "avuruops.oidcVolumeMount" -}}
-{{- if include "avuruops.oidcEnabled" . }}
+{{- define "avuruobs.oidcVolumeMount" -}}
+{{- if include "avuruobs.oidcEnabled" . }}
 - name: oidc-config
-  mountPath: /etc/avuruops-oidc
+  mountPath: /etc/avuruobs-oidc
   readOnly: true
 {{- end }}
 {{- end -}}
@@ -235,15 +235,15 @@ otel
      "true" or the empty string — a rendered "false" would be a non-empty
      string, and therefore TRUTHY in `if`. Always consume them via
      `if include "..." .`, never compare to "false". */}}
-{{- define "avuruops.collectLogs" -}}
+{{- define "avuruobs.collectLogs" -}}
 {{- if and .Values.modules.logs.enabled .Values.sensor.agent.logs.enabled -}}true{{- end -}}
 {{- end -}}
 
-{{- define "avuruops.collectInfraMetrics" -}}
+{{- define "avuruobs.collectInfraMetrics" -}}
 {{- if and .Values.modules.infraMetrics.enabled .Values.sensor.agent.kubeletstats.enabled -}}true{{- end -}}
 {{- end -}}
 
-{{- define "avuruops.collectProfiles" -}}
+{{- define "avuruobs.collectProfiles" -}}
 {{- if and .Values.modules.profiling.enabled .Values.sensor.profiler.enabled -}}true{{- end -}}
 {{- end -}}
 
@@ -252,17 +252,17 @@ otel
      sibling collect* helpers — consume via `if include`, never compare to
      "false". The pod→workload join it feeds also needs infra-metrics, but that
      is a hard dependency enforced by a {{ fail }} guard, not folded in here. */}}
-{{- define "avuruops.collectGreen" -}}
+{{- define "avuruobs.collectGreen" -}}
 {{- if and .Values.modules.green.enabled .Values.sensor.green.enabled -}}true{{- end -}}
 {{- end -}}
 
 {{/* Whether the tdp-estimator container/scrape should render: requires green
      collection active AND the estimation sub-flag. Same true/"" (never
-     "false") convention as the other avuruops.collect* gates — always
+     "false") convention as the other avuruobs.collect* gates — always
      consumed via `if include "..."`, never string-compared. See
      design/2026-07-28-green-tdp-estimation.md. */}}
-{{- define "avuruops.collectGreenEstimation" -}}
-{{- if and (include "avuruops.collectGreen" .) .Values.sensor.green.estimation.enabled -}}true{{- end -}}
+{{- define "avuruobs.collectGreenEstimation" -}}
+{{- if and (include "avuruobs.collectGreen" .) .Values.sensor.green.estimation.enabled -}}true{{- end -}}
 {{- end -}}
 
 {{/* Sentry SDK ingest is live only when the flag AND both modules it leans on
@@ -270,42 +270,42 @@ otel
      (error-tracking). Gates the receiver, the container port, the Service port
      and the ingress route, so they can never drift apart. Same true/"" contract
      as the collect* helpers above. */}}
-{{- define "avuruops.sentryEnabled" -}}
+{{- define "avuruobs.sentryEnabled" -}}
 {{- if and .Values.modules.errorTracking.enabled .Values.modules.logs.enabled .Values.gateway.sentry.enabled -}}true{{- end -}}
 {{- end -}}
 
 {{/* ClickHouse env block shared by the hub Deployment and the migrate Job. */}}
-{{- define "avuruops.clickhouseEnv" -}}
-- name: AVURUOPS_CLICKHOUSE_ADDR
-  value: {{ include "avuruops.clickhouseAddr" . | quote }}
-- name: AVURUOPS_CLICKHOUSE_DATABASE
-  value: {{ include "avuruops.clickhouseDatabase" . | quote }}
-- name: AVURUOPS_CLICKHOUSE_USER
-  value: {{ include "avuruops.clickhouseUser" . | quote }}
-- name: AVURUOPS_CLICKHOUSE_PASSWORD
+{{- define "avuruobs.clickhouseEnv" -}}
+- name: AVURUOBS_CLICKHOUSE_ADDR
+  value: {{ include "avuruobs.clickhouseAddr" . | quote }}
+- name: AVURUOBS_CLICKHOUSE_DATABASE
+  value: {{ include "avuruobs.clickhouseDatabase" . | quote }}
+- name: AVURUOBS_CLICKHOUSE_USER
+  value: {{ include "avuruobs.clickhouseUser" . | quote }}
+- name: AVURUOBS_CLICKHOUSE_PASSWORD
   valueFrom:
     secretKeyRef:
-      name: {{ include "avuruops.clickhouseSecretName" . }}
+      name: {{ include "avuruobs.clickhouseSecretName" . }}
       key: clickhouse-password
 {{- end -}}
 
 {{/* Name of the Secret holding ingest-key material (internal token, the
      provisioned sensor key, and its hub seed record). */}}
-{{- define "avuruops.ingestSecretName" -}}
-{{- printf "%s-ingest" (include "avuruops.fullname" .) -}}
+{{- define "avuruobs.ingestSecretName" -}}
+{{- printf "%s-ingest" (include "avuruobs.fullname" .) -}}
 {{- end -}}
 
 {{/* Project the chart-provisioned sensor key belongs to. Follows gateway.tenant
      so a single-project install needs no extra configuration — the sensor's key
      lands in the same project its telemetry is already stamped with. */}}
-{{- define "avuruops.ingestSensorProject" -}}
+{{- define "avuruobs.ingestSensorProject" -}}
 {{- .Values.auth.ingest.sensorKeyProject | default .Values.gateway.tenant | default "default" -}}
 {{- end -}}
 
 {{/* The ingest-key AUTHENTICATOR is wired for log and enforce (log validates and
      counts would-be denials without rejecting). Same true/"" contract as the
      collect* helpers — consume via `if include`, never compare to "false". */}}
-{{- define "avuruops.ingestAuthEnabled" -}}
+{{- define "avuruobs.ingestAuthEnabled" -}}
 {{- if ne .Values.auth.ingest.mode "off" -}}true{{- end -}}
 {{- end -}}
 
@@ -314,6 +314,6 @@ otel
      no-op hop on every record — and leaving it out keeps the log-mode pipeline
      byte-identical to a pre-ingest-keys install, which is exactly the drop-in
      guarantee the default is there to protect. */}}
-{{- define "avuruops.ingestTenantStamp" -}}
+{{- define "avuruobs.ingestTenantStamp" -}}
 {{- if eq .Values.auth.ingest.mode "enforce" -}}true{{- end -}}
 {{- end -}}

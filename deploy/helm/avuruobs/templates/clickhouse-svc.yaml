@@ -2,14 +2,14 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "avuruops.fullname" . }}-clickhouse
+  name: {{ include "avuruobs.fullname" . }}-clickhouse
   labels:
-    {{- include "avuruops.labels" . | nindent 4 }}
+    {{- include "avuruobs.labels" . | nindent 4 }}
     app.kubernetes.io/component: clickhouse
 spec:
   clusterIP: None
   selector:
-    {{- include "avuruops.selectorLabels" . | nindent 4 }}
+    {{- include "avuruobs.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: clickhouse
   ports:
     - name: native

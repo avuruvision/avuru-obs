@@ -15,7 +15,7 @@ image:
 # Hub: REST API only (the `migrate` subcommand runs the schema hook). The UI is
 # a separate deployable; the hub API is the client-agnostic contract.
 hub:
-  repository: avuruops/hub
+  repository: avuruobs/hub
   tag: "" # defaults to .Chart.AppVersion
   replicas: 1
   resources:
@@ -28,7 +28,7 @@ hub:
 # UI: static SPA served by nginx, its own pod (separate resources/scaling).
 # Single-origin: the ingress routes `/`→ui and `/api`→hub (no CORS).
 ui:
-  repository: avuruops/ui
+  repository: avuruobs/ui
   tag: "" # defaults to .Chart.AppVersion
   replicas: 1
   resources:
@@ -44,7 +44,7 @@ ui:
 #   otel/opentelemetry-collector-contrib : 0.154.0
 gateway:
   image:
-    repository: avuruops/gateway
+    repository: avuruobs/gateway
     tag: "" # defaults to .Chart.AppVersion
   replicas: 1
   # Project/environment this gateway feeds (one project per cluster): stamps
@@ -56,7 +56,7 @@ gateway:
   # environments: stamps `avuru.tenant` from the sender's k8s.namespace.name
   # resource attribute (set by the sensor). Unmatched telemetry (node metrics,
   # SDKs without k8s attributes) falls back to `tenant` above. Requires the
-  # avuruops gateway image with the transform processor (the stock
+  # avuruobs gateway image with the transform processor (the stock
   # otel/opentelemetry-collector-contrib fallback image also ships it).
   # NOTE: profiling bypasses the gateway (direct hub ingest) and stays on the
   # static `tenant`.
@@ -124,7 +124,7 @@ modules:
     enabled: false
 
 # Alerting rules and channels. Rendered to a ConfigMap the hub reads (mounted at
-# AVURUOPS_ALERTS_CONFIG) when modules.alerting.enabled. No rules = nothing
+# AVURUOBS_ALERTS_CONFIG) when modules.alerting.enabled. No rules = nothing
 # fires. Hot-reloads within ~15s on a `kubectl edit`, no restart. A channel is a
 # generic webhook (Slack/PagerDuty/Opsgenie/Alertmanager all accept these).
 alerting:
@@ -149,7 +149,7 @@ alerting:
   #    channel: ops
 
 # Service Health grouping/tier configuration. Rendered to a ConfigMap the hub
-# reads (mounted at AVURUOPS_GROUPS_CONFIG) when modules.serviceHealth.enabled.
+# reads (mounted at AVURUOBS_GROUPS_CONFIG) when modules.serviceHealth.enabled.
 # Empty groups = auto-group every service by its Kubernetes namespace at
 # defaultTier. Edit and `helm upgrade`, OR `kubectl edit` the rendered
 # ConfigMap — the hub hot-reloads it within ~15s, no restart or redeploy.
@@ -180,7 +180,7 @@ serviceGroups:
   #  - { from: web, to: legacy-billing }
 
 # Green energy/carbon configuration. Rendered to a ConfigMap the hub reads
-# (mounted at AVURUOPS_GREEN_CONFIG) when modules.green.enabled. gCO2e is
+# (mounted at AVURUOBS_GREEN_CONFIG) when modules.green.enabled. gCO2e is
 # computed at query time as Wh × gridIntensity/1000 × PUE — energy never leaves
 # the cluster and no external API is called. The hub hot-reloads this within
 # ~15s on a `kubectl edit`, no restart. Metric names must match the Kepler
@@ -394,7 +394,7 @@ sensor:
         memory: 256Mi
     # TDP-based power estimation for RAPL-less nodes (opt-in, requires
     # sensor.green.enabled). See design/2026-07-28-green-tdp-estimation.md.
-    # Every series it emits is stamped avuruops_quality="estimated" by the
+    # Every series it emits is stamped avuruobs_quality="estimated" by the
     # otel-agent — never blended with Kepler's measured numbers.
     estimation:
       enabled: false
@@ -555,7 +555,7 @@ auth:
     forceSSO: false
     # External base URL of this install (e.g. https://obs.example.com — with
     # ingress.enabled typically https://<ingress.host>). Builds the absolute
-    # redirect_uri the IdP requires (AVURUOPS_PUBLIC_URL); unset, the hub
+    # redirect_uri the IdP requires (AVURUOBS_PUBLIC_URL); unset, the hub
     # degrades to a relative URL most IdPs reject (loud warning in its log).
     publicUrl: ""
 
@@ -571,7 +571,7 @@ retention:
 ingress:
   enabled: false
   className: ""
-  host: avuruops.local
+  host: avuruobs.local
   # Hostname for Sentry SDK ingest, when gateway.sentry.enabled. It needs one
   # of its own: SDKs POST to /api/<project>/envelope/, which the main host
   # routes to the hub. "" = no ingress route (reach :4319 in-cluster, or via

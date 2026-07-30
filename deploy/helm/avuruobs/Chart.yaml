@@ -1,5 +1,5 @@
 apiVersion: v2
-name: avuruops
+name: avuruobs
 description: Avuru Obs — all-in-one observability on ClickHouse. Zero-code eBPF traces, RED metrics, logs, continuous profiling and error tracking behind one OTLP endpoint.
 type: application
 # Chart version (SemVer); appVersion tracks the hub/gateway image generation.

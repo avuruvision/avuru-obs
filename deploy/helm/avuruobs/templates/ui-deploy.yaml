@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "avuruops.fullname" . }}-ui
+  name: {{ include "avuruobs.fullname" . }}-ui
   labels:
-    {{- include "avuruops.labels" . | nindent 4 }}
+    {{- include "avuruobs.labels" . | nindent 4 }}
     app.kubernetes.io/component: ui
 spec:
   replicas: {{ .Values.ui.replicas }}
   selector:
     matchLabels:
-      {{- include "avuruops.selectorLabels" . | nindent 6 }}
+      {{- include "avuruobs.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: ui
   template:
     metadata:
       labels:
-        {{- include "avuruops.selectorLabels" . | nindent 8 }}
+        {{- include "avuruobs.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: ui
     spec:
       {{- with .Values.image.pullSecrets }}
@@ -23,7 +23,7 @@ spec:
       {{- end }}
       containers:
         - name: ui
-          image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.ui.repository "tag" (.Values.ui.tag | default .Chart.AppVersion)) }}
+          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.ui.repository "tag" (.Values.ui.tag | default .Chart.AppVersion)) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             # nginx proxies /api → hub (single-origin). FQDN so the literal
@@ -32,7 +32,7 @@ spec:
             # 8080 is not exposed on the Service, so :8080 here would never route
             # (and an ambient mesh resets it). Matches the ingress /api backend.
             - name: HUB_UPSTREAM
-              value: {{ printf "%s-hub.%s.svc.cluster.local:80" (include "avuruops.fullname" .) .Release.Namespace | quote }}
+              value: {{ printf "%s-hub.%s.svc.cluster.local:80" (include "avuruobs.fullname" .) .Release.Namespace | quote }}
           ports:
             - name: http
               containerPort: 80

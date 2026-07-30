@@ -1,14 +1,14 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "avuruops.fullname" . }}-gateway
+  name: {{ include "avuruobs.fullname" . }}-gateway
   labels:
-    {{- include "avuruops.labels" . | nindent 4 }}
+    {{- include "avuruobs.labels" . | nindent 4 }}
     app.kubernetes.io/component: gateway
 spec:
   type: {{ .Values.service.type }}
   selector:
-    {{- include "avuruops.selectorLabels" . | nindent 4 }}
+    {{- include "avuruobs.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: gateway
   ports:
     # The ONLY address instrumented apps point at (Jaeger drop-in).
@@ -18,7 +18,7 @@ spec:
     - name: otlp-http
       port: 4318
       targetPort: otlp-http
-    {{- if include "avuruops.sentryEnabled" . }}
+    {{- if include "avuruobs.sentryEnabled" . }}
     # Sentry SDK ingest. Reachable in-cluster on 4319; expose it from outside
     # via ingress.sentryHost (browser SDKs are cross-origin).
     - name: sentry-http

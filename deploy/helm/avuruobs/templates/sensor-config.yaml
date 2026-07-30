@@ -13,7 +13,7 @@
        a prometheus receiver that lives in the agent container. Gated by
        sensor.enabled so values that render nothing (sensor off) never fail an
        install — the same discipline as the OBI optIn guards. */}}
-{{- if and .Values.sensor.enabled (include "avuruops.collectGreen" .) (not .Values.sensor.agent.enabled) }}
+{{- if and .Values.sensor.enabled (include "avuruobs.collectGreen" .) (not .Values.sensor.agent.enabled) }}
 {{- fail "sensor.green.enabled requires sensor.agent.enabled — Kepler's energy metrics are scraped by a prometheus receiver in the otel-agent; with the agent off nothing collects them." }}
 {{- end }}
 {{- if and .Values.sensor.green.estimation.enabled (not .Values.sensor.green.enabled) }}
@@ -35,9 +35,9 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "avuruops.fullname" . }}-sensor-obi
+  name: {{ include "avuruobs.fullname" . }}-sensor-obi
   labels:
-    {{- include "avuruops.labels" . | nindent 4 }}
+    {{- include "avuruobs.labels" . | nindent 4 }}
     app.kubernetes.io/component: sensor
 data:
   obi-config.yml: |
@@ -112,21 +112,21 @@ data:
     {{- end }}
 {{- end }}
 {{- /* The agent needs >=1 active pipeline or the collector crash-loops. A
-       module gates its own collection (see avuruops.collect* helpers). */}}
-{{- $agentActive := and .Values.sensor.enabled .Values.sensor.agent.enabled (or (include "avuruops.collectLogs" .) (include "avuruops.collectInfraMetrics" .) (include "avuruops.collectGreen" .)) }}
+       module gates its own collection (see avuruobs.collect* helpers). */}}
+{{- $agentActive := and .Values.sensor.enabled .Values.sensor.agent.enabled (or (include "avuruobs.collectLogs" .) (include "avuruobs.collectInfraMetrics" .) (include "avuruobs.collectGreen" .)) }}
 {{- if $agentActive }}
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "avuruops.fullname" . }}-sensor-agent
+  name: {{ include "avuruobs.fullname" . }}-sensor-agent
   labels:
-    {{- include "avuruops.labels" . | nindent 4 }}
+    {{- include "avuruobs.labels" . | nindent 4 }}
     app.kubernetes.io/component: sensor
 data:
   config.yaml: |
     receivers:
-    {{- if include "avuruops.collectLogs" . }}
+    {{- if include "avuruobs.collectLogs" . }}
       filelog:
         # Zero-config stdout/stderr collection for every pod on the node,
         # EXCEPT this release's namespace (the platform must not ingest its
@@ -147,7 +147,7 @@ data:
           # path to resource attributes.
           - type: container
     {{- end }}
-    {{- if include "avuruops.collectInfraMetrics" . }}
+    {{- if include "avuruobs.collectInfraMetrics" . }}
       # Node/pod CPU, memory, network from this node's kubelet (Supporting
       # signal tier). Read-only stats API via the pod ServiceAccount.
       kubeletstats:
@@ -158,7 +158,7 @@ data:
         collection_interval: {{ .Values.sensor.agent.kubeletstats.interval }}
         metric_groups: [node, pod]
     {{- end }}
-    {{- if include "avuruops.collectGreen" . }}
+    {{- if include "avuruobs.collectGreen" . }}
       # Scrapes the same-pod Kepler exporter over loopback (Kepler binds
       # 127.0.0.1 — never exposed on the pod network; see the hostNetwork
       # caveat on sensor.green.port in values.yaml). The keep relabel drops
@@ -178,7 +178,7 @@ data:
                 - source_labels: [__name__]
                   regex: {{ .Values.sensor.green.metrics.keep | quote }}
                   action: keep
-              {{- if include "avuruops.collectGreenEstimation" . }}
+              {{- if include "avuruobs.collectGreenEstimation" . }}
             - job_name: tdp-estimator
               scrape_interval: {{ .Values.sensor.green.estimation.scrapeInterval }}
               static_configs:
@@ -216,7 +216,7 @@ data:
           - sources:
               - from: resource_attribute
                 name: k8s.pod.uid
-          {{- if include "avuruops.collectGreen" . }}
+          {{- if include "avuruobs.collectGreen" . }}
           # Kepler energy carries no pod UID — associate on its promoted
           # k8s.pod.name/k8s.namespace.name (see groupbyattrs/green) so the
           # opt-out label reaches energy too. Ordered AFTER the UID rule, which
@@ -261,7 +261,7 @@ data:
               - set(attributes["service.name"], attributes["k8s.statefulset.name"]) where attributes["service.name"] == nil
               - set(attributes["service.name"], attributes["k8s.daemonset.name"]) where attributes["service.name"] == nil
               - set(attributes["service.name"], attributes["k8s.container.name"]) where attributes["service.name"] == nil
-      {{- if include "avuruops.collectGreen" . }}
+      {{- if include "avuruobs.collectGreen" . }}
       # Prometheus's synthetic scrape-report series (up, scrape_duration_seconds,
       # scrape_samples_scraped, scrape_samples_post_metric_relabeling,
       # scrape_series_added) are generated AFTER metric_relabel_configs, so the
@@ -296,9 +296,9 @@ data:
         metric_statements:
           - context: datapoint
             statements:
-              - set(attributes["avuruops_quality"], "measured") where resource.attributes["service.name"] == "kepler"
-              {{- if include "avuruops.collectGreenEstimation" . }}
-              - set(attributes["avuruops_quality"], "estimated") where resource.attributes["service.name"] == "tdp-estimator"
+              - set(attributes["avuruobs_quality"], "measured") where resource.attributes["service.name"] == "kepler"
+              {{- if include "avuruobs.collectGreenEstimation" . }}
+              - set(attributes["avuruobs_quality"], "estimated") where resource.attributes["service.name"] == "tdp-estimator"
               {{- end }}
       # Promote the standard keys to resource attributes so k8sattributes can
       # associate the pod and filter/collection can match the namespace. The
@@ -322,13 +322,13 @@ data:
         timeout: 2s
     exporters:
       otlphttp:
-        endpoint: http://{{ include "avuruops.fullname" . }}-gateway:4318
-        {{- if and (include "avuruops.ingestAuthEnabled" .) .Values.auth.ingest.provisionSensorKey }}
+        endpoint: http://{{ include "avuruobs.fullname" . }}-gateway:4318
+        {{- if and (include "avuruobs.ingestAuthEnabled" .) .Values.auth.ingest.provisionSensorKey }}
         # The sensor is itself an unkeyed OTLP sender, so without this header
         # flipping mode to enforce would silence avuru's own agent. Read from the
         # environment so the raw key stays out of this ConfigMap.
         headers:
-          Authorization: "Bearer ${env:AVURUOPS_INGEST_KEY}"
+          Authorization: "Bearer ${env:AVURUOBS_INGEST_KEY}"
         {{- end }}
     extensions:
       health_check:
@@ -340,13 +340,13 @@ data:
       extensions: [health_check, file_storage]
       pipelines:
     {{- $collectionFilter := or .Values.sensor.collection.excludeNamespaces .Values.sensor.collection.optOutLabel }}
-    {{- if include "avuruops.collectLogs" . }}
+    {{- if include "avuruobs.collectLogs" . }}
         logs:
           receivers: [filelog]
           processors: [memory_limiter, k8sattributes{{ if $collectionFilter }}, filter/collection{{ end }}, transform/service_name, batch]
           exporters: [otlphttp]
     {{- end }}
-    {{- if include "avuruops.collectInfraMetrics" . }}
+    {{- if include "avuruobs.collectInfraMetrics" . }}
         metrics:
           # k8sattributes adds workload names (deployment/statefulset) to pod
           # metrics via k8s.pod.uid, for the pods panel.
@@ -354,7 +354,7 @@ data:
           processors: [memory_limiter, k8sattributes{{ if $collectionFilter }}, filter/collection{{ end }}, batch]
           exporters: [otlphttp]
     {{- end }}
-    {{- if include "avuruops.collectGreen" . }}
+    {{- if include "avuruobs.collectGreen" . }}
         metrics/green:
           # Kepler energy on its OWN pipeline (separate from the kubeletstats
           # `metrics` pipeline so neither receiver's attributes bleed into the
@@ -366,14 +366,14 @@ data:
           exporters: [otlphttp]
     {{- end }}
 {{- end }}
-{{- if and .Values.sensor.enabled (include "avuruops.collectProfiles" .) }}
+{{- if and .Values.sensor.enabled (include "avuruobs.collectProfiles" .) }}
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "avuruops.fullname" . }}-sensor-profiler
+  name: {{ include "avuruobs.fullname" . }}-sensor-profiler
   labels:
-    {{- include "avuruops.labels" . | nindent 4 }}
+    {{- include "avuruobs.labels" . | nindent 4 }}
     app.kubernetes.io/component: sensor
 data:
   config.yaml: |
@@ -393,7 +393,7 @@ data:
       # /v1development/profiles path) — documented profiles-only exception to
       # "the hub is never in the telemetry byte-path".
       otlphttp:
-        endpoint: http://{{ include "avuruops.fullname" . }}-hub:80
+        endpoint: http://{{ include "avuruobs.fullname" . }}-hub:80
         {{- if .Values.gateway.tenant }}
         # Profiles bypass the gateway, so the project tag rides the ingest
         # header instead of the resource processor — same gateway.tenant
@@ -418,14 +418,14 @@ data:
           processors: [memory_limiter]
           exporters: [otlphttp]
 {{- end }}
-{{- if and .Values.sensor.enabled (include "avuruops.collectGreen" .) }}
+{{- if and .Values.sensor.enabled (include "avuruobs.collectGreen" .) }}
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "avuruops.fullname" . }}-sensor-kepler
+  name: {{ include "avuruobs.fullname" . }}-sensor-kepler
   labels:
-    {{- include "avuruops.labels" . | nindent 4 }}
+    {{- include "avuruobs.labels" . | nindent 4 }}
     app.kubernetes.io/component: sensor
 data:
   # Kepler ({{ .Values.sensor.green.image.tag }}) — CPU energy from RAPL/powercap.

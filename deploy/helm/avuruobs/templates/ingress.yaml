@@ -2,9 +2,9 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "avuruops.fullname" . }}
+  name: {{ include "avuruobs.fullname" . }}
   labels:
-    {{- include "avuruops.labels" . | nindent 4 }}
+    {{- include "avuruobs.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -27,24 +27,24 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "avuruops.fullname" . }}-hub
+                name: {{ include "avuruobs.fullname" . }}-hub
                 port:
                   number: 80
           - path: /healthz
             pathType: Prefix
             backend:
               service:
-                name: {{ include "avuruops.fullname" . }}-hub
+                name: {{ include "avuruobs.fullname" . }}-hub
                 port:
                   number: 80
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: {{ include "avuruops.fullname" . }}-ui
+                name: {{ include "avuruobs.fullname" . }}-ui
                 port:
                   number: 80
-    {{- if and (include "avuruops.sentryEnabled" .) .Values.ingress.sentryHost }}
+    {{- if and (include "avuruobs.sentryEnabled" .) .Values.ingress.sentryHost }}
     # Sentry SDK ingest gets its OWN host: the SDKs POST to
     # /api/<project>/envelope/, which on the main host would be swallowed by the
     # /api -> hub rule above. The project id is part of the path, so no static
@@ -56,7 +56,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "avuruops.fullname" . }}-gateway
+                name: {{ include "avuruobs.fullname" . }}-gateway
                 port:
                   number: 4319
     {{- end }}
