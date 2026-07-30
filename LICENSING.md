@@ -72,9 +72,9 @@ it).
   compliance). It adds to the community edition; it never removes from it.
 - **Commercial / dual licensing.** For vendors embedding Avuru Obs where the
   AGPL doesn't fit — contact **egilberny@lab.luxavuru.com**.
-- **Sponsoring.** [GitHub Sponsors](https://github.com/sponsors/avuruvision)
-  and [Open Collective](https://opencollective.com/avuru-obs) fund CI, eBPF
-  test hardware, and signed multi-arch releases.
+- **Sponsoring.** Individual sponsorship (GitHub Sponsors, Ko-Fi, Buy Me a
+  Coffee) is being set up to fund CI, eBPF test hardware, and signed
+  multi-arch releases — see the README for links once live.
 
 ## The CLA in one paragraph
 
