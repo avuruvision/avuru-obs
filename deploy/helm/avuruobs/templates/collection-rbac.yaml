@@ -3,6 +3,15 @@
 {{- if and .Values.collection.runtimeControl.enabled (not .Values.sensor.enabled) }}
 {{- fail "collection.runtimeControl.enabled requires sensor.enabled — there is no sensor to control." }}
 {{- end }}
+{{- /* With auth off, securedAdmin is a pass-through, so the overlay's write
+       routes would be reachable unauthenticated — and this is the first hub
+       API that mutates cluster objects (the SA below carries ConfigMap and
+       DaemonSet write RBAC). Refuse the combination rather than ship an
+       anonymous kill switch for collection; same guard shape as
+       hub-oidc-configmap.yaml's auth.oidc.enabled check. */}}
+{{- if and .Values.collection.runtimeControl.enabled (not .Values.auth.enabled) }}
+{{- fail "collection.runtimeControl.enabled requires auth.enabled — with auth off the overlay's write API would be reachable unauthenticated." }}
+{{- end }}
 {{- if .Values.collection.runtimeControl.enabled }}
 apiVersion: v1
 kind: ServiceAccount

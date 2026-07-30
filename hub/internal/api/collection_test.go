@@ -1,11 +1,14 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/avuru/avuru-obs/hub/internal/collection"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 	"github.com/avuru/avuru-obs/hub/internal/storage/storagetest"
 )
@@ -120,5 +123,33 @@ func TestCollectionOverlayDisabledNotRegistered(t *testing.T) {
 	Register(mux, func() storage.Store { return &storagetest.Fake{} }, Config{})
 	if rec := get(t, mux, "/api/v1/collection/overlay"); rec.Code != http.StatusNotFound {
 		t.Errorf("capability off: got %d, want 404", rec.Code)
+	}
+}
+
+// failingApplier stands in for a cluster the hub cannot reach.
+type failingApplier struct{}
+
+func (failingApplier) Apply(context.Context, collection.Overlay) error {
+	return errors.New("cluster unreachable")
+}
+
+// TestCollectionOverlayPutApplierFailure: the overlay is persisted BEFORE the
+// applier runs, so an apply failure must surface as 502 while the write
+// stands — storage and cluster are then knowingly divergent until the next
+// apply, which is why the status is a gateway error and not a 500.
+func TestCollectionOverlayPutApplierFailure(t *testing.T) {
+	fake := &storagetest.Fake{}
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return fake }, Config{
+		CollectionRuntimeControlEnabled: true,
+		CollectionApplier:               failingApplier{},
+	})
+
+	rec := do(t, mux, http.MethodPut, "/api/v1/collection/overlay", `{"obiEnabled":false}`)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status %d, want 502: %s", rec.Code, rec.Body.String())
+	}
+	if len(fake.SavedOverlays) != 1 {
+		t.Errorf("SavedOverlays = %d, want the overlay persisted despite the apply failure", len(fake.SavedOverlays))
 	}
 }

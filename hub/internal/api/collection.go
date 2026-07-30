@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -25,6 +26,11 @@ type collectionOverlayResponse struct {
 
 // handleGetCollectionOverlay returns the current overlay. "Never saved" is not
 // an error — it is the empty overlay, i.e. everything at chart defaults.
+//
+// The design doc also specifies the EFFECTIVE (base ⊕ overlay) config on this
+// route. That half waits for the applier, which is what owns the base values;
+// serving it before then would mean a second, drifting copy of the chart's
+// defaults living in the API layer.
 func (a *API) handleGetCollectionOverlay(w http.ResponseWriter, r *http.Request) error {
 	store, err := a.store()
 	if err != nil {
@@ -75,6 +81,11 @@ func (a *API) handlePutCollectionOverlay(w http.ResponseWriter, r *http.Request)
 	}); err != nil {
 		return err
 	}
+	// Audit trail: the store keeps only the newest overlay (ReplacingMergeTree
+	// singleton), so without this line there is no record of who turned
+	// collection off, when, or what it was before. For an API whose whole
+	// purpose is blinding the sensors, that history has to live somewhere.
+	slog.Info("collection overlay updated", "actor", updatedBy, "overlay", encoded)
 	if err := a.collectionApplier.Apply(r.Context(), ov); err != nil {
 		return &apiError{status: http.StatusBadGateway, message: fmt.Sprintf("overlay saved but applying it failed: %s", err)}
 	}
@@ -101,6 +112,7 @@ func (a *API) handleDeleteCollectionOverlay(w http.ResponseWriter, r *http.Reque
 	}); err != nil {
 		return err
 	}
+	slog.Info("collection overlay reset to chart defaults", "actor", updatedBy)
 	if err := a.collectionApplier.Apply(r.Context(), empty); err != nil {
 		return &apiError{status: http.StatusBadGateway, message: fmt.Sprintf("overlay reset but applying it failed: %s", err)}
 	}

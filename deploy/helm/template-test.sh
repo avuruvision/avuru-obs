@@ -488,10 +488,18 @@ echo "== collection runtime control: the env is emitted with auth off too"
 hub="$(render -s templates/hub-deploy.yaml --set auth.enabled=false)"
 grep -A1 'name: AVURUOBS_COLLECTION_RUNTIME_CONTROL_ENABLED' <<<"$hub" | grep -q 'value: "false"' \
   || fail "collection env lost with auth.enabled=false (it landed inside the auth conditional)"
-hub="$(render -s templates/hub-deploy.yaml --set auth.enabled=false --set collection.runtimeControl.enabled=true)"
+# The flag-on half of this guard can't use auth.enabled=false any more (that
+# combination is refused outright — see the auth guard below), so prove the
+# env is outside the auth conditional using the OIDC-off/auth-on install.
+hub="$(render -s templates/hub-deploy.yaml --set collection.runtimeControl.enabled=true)"
 grep -A1 'name: AVURUOBS_COLLECTION_RUNTIME_CONTROL_ENABLED' <<<"$hub" | grep -q 'value: "true"' \
-  || fail "collection env lost with auth.enabled=false and the flag on"
-ok "env independent of auth.enabled, both off and on"
+  || fail "collection env missing with the flag on"
+ok "env rendered independently of the auth conditional"
+
+echo "== collection runtime control: guard refuses an unauthenticated write API"
+render --set collection.runtimeControl.enabled=true --set auth.enabled=false >/dev/null 2>&1 \
+  && fail "collection.runtimeControl.enabled rendered with auth.enabled=false (securedAdmin is a pass-through then — the overlay write API would be anonymous)"
+ok "flag without auth.enabled fails at template time"
 
 echo "== collection runtime control: enabled -> SA + Role + RoleBinding + base-values ConfigMap"
 out="$(render --set collection.runtimeControl.enabled=true)"
