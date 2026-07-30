@@ -229,8 +229,10 @@ grep -q '127.0.0.1:28282' <<<"$out" || fail "Kepler loopback bind/scrape target 
 # Prometheus scrape-report series (up, scrape_*) bypass metric_relabel_configs;
 # the pipeline must drop them or they pollute the shared otel_metrics_gauge.
 grep -qF 'IsMatch(name, "^(up|scrape_.+)$")' <<<"$out" || fail "scrape-meta drop condition (filter/green) missing"
-grep -qE 'processors: \[memory_limiter, filter/green, transform/green, groupbyattrs/green, resource/green, k8sattributes, filter/collection, batch\]' <<<"$out" \
+grep -qE 'processors: \[memory_limiter, filter/green, transform/green, transform/green_quality, groupbyattrs/green, resource/green, k8sattributes, filter/collection, batch\]' <<<"$out" \
   || fail "filter/green not wired into the metrics/green pipeline"
+grep -qF 'set(attributes["avuruops_quality"], "measured") where resource.attributes["service.name"] == "kepler"' <<<"$out" \
+  || fail "measured quality stamp missing from transform/green_quality"
 # The "do no harm" clause: a RAPL-less Kepler must never flap the sensor pod,
 # so the container must carry NO liveness/readiness/startup probe.
 kepler_block="$(sed -n '/- name: kepler$/,/resources:/p' <<<"$out")"
@@ -300,6 +302,38 @@ grep -q 'obi_stat_tcp_rtt' <<<"$out" || fail "OBI TCP-stats config lost next to 
 grep -q '127.0.0.1:28282' <<<"$out" || fail "Kepler loopback bind lost under hostNetwork"
 grep -q '0.0.0.0:28282' <<<"$out" && fail "Kepler bound beyond loopback under hostNetwork"
 ok "green + obi.network render together; Kepler stays loopback-bound"
+
+echo "== green tdp-estimator: off by default even with green enabled"
+out="$(render --set modules.green.enabled=true --set sensor.green.enabled=true)"
+grep -q 'name: tdp-estimator' <<<"$out" && fail "tdp-estimator container rendered without opt-in"
+grep -q 'job_name: tdp-estimator' <<<"$out" && fail "tdp-estimator scrape job rendered without opt-in"
+grep -q '"estimated") where resource.attributes\["service.name"\] == "tdp-estimator"' <<<"$out" \
+  && fail "estimated quality statement rendered without opt-in"
+ok "estimator stays off when only sensor.green.enabled is set"
+
+echo "== green tdp-estimator: guard requires sensor.green.enabled"
+render --set sensor.green.estimation.enabled=true --set sensor.green.enabled=false >/dev/null 2>&1 \
+  && fail "estimation.enabled rendered without sensor.green.enabled"
+ok "estimation.enabled without sensor.green.enabled fails at template time"
+
+echo "== green tdp-estimator: opt-in -> container, scrape job, quality stamp, no probes"
+out="$(render --set modules.green.enabled=true --set sensor.green.enabled=true \
+  --set sensor.green.estimation.enabled=true \
+  --set sensor.green.estimation.image.repository=example/tdp-estimator \
+  --set sensor.green.estimation.image.tag=v0.3.0)"
+grep -q 'name: tdp-estimator' <<<"$out" || fail "tdp-estimator container missing"
+grep -q 'image: example/tdp-estimator:v0.3.0' <<<"$out" || fail "tdp-estimator image not wired from values"
+grep -q 'job_name: tdp-estimator' <<<"$out" || fail "tdp-estimator scrape job missing"
+grep -q '127.0.0.1:28283' <<<"$out" || fail "tdp-estimator loopback scrape target missing"
+grep -qF 'set(attributes["avuruops_quality"], "estimated") where resource.attributes["service.name"] == "tdp-estimator"' <<<"$out" \
+  || fail "estimated quality statement missing when estimation is enabled"
+estimator_block="$(sed -n '/- name: tdp-estimator$/,/resources:/p' <<<"$out")"
+[ -n "$estimator_block" ] || fail "could not isolate the tdp-estimator container block"
+grep -qE 'livenessProbe|readinessProbe|startupProbe' <<<"$estimator_block" \
+  && fail "tdp-estimator container has a probe — a RAPL-less node must never flap the sensor pod (do-no-harm gate)"
+grep -q 'mountPath: /sys' <<<"$estimator_block" || fail "tdp-estimator missing /sys mount (RAPL probe + cgroup walk)"
+grep -q 'mountPath: /proc' <<<"$estimator_block" || fail "tdp-estimator missing /proc mount (utilization sampling)"
+ok "container + scrape job + quality stamp render on opt-in; no probes; host mounts present"
 
 echo "== auth oidc: off by default -> no SSO surface"
 out="$(render)"
