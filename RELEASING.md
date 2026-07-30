@@ -14,7 +14,7 @@ the post-release verification steps, see
 | `ui` container image | `ghcr.io/<org>/avuru-obs-ui` — same |
 | `gateway` container image | `ghcr.io/<org>/avuru-obs-gateway` — same |
 | `tdp-estimator` container image | `ghcr.io/<org>/avuru-obs-tdp-estimator` — same |
-| Helm chart (`deploy/helm/avuruops`) | `oci://ghcr.io/<org>/charts/avuruops` (cosign-signed), **and** the `.tgz` attached to the GitHub Release |
+| Helm chart (`deploy/helm/avuruobs`) | `oci://ghcr.io/<org>/charts/avuruobs` (cosign-signed), **and** the `.tgz` attached to the GitHub Release |
 | GitHub Release | tag `vX.Y.Z` + notes from [CHANGELOG.md](CHANGELOG.md) |
 
 > The registry is parameterized in [`release.yml`](.github/workflows/release.yml)
@@ -26,8 +26,8 @@ the post-release verification steps, see
 The chart is the install path, so it ships to the registry alongside the images:
 
 ```bash
-helm install avuruops oci://ghcr.io/<org>/charts/avuruops --version X.Y.Z \
-  -n avuruops --create-namespace
+helm install avuruobs oci://ghcr.io/<org>/charts/avuruobs --version X.Y.Z \
+  -n avuruobs --create-namespace
 ```
 
 The `.tgz` on the Release is the offline fallback for clients that cannot reach
@@ -47,7 +47,7 @@ cosign verify ghcr.io/<org>/avuru-obs-hub:vX.Y.Z \
   --certificate-identity-regexp '^https://github\.com/<org>/avuru-obs/\.github/workflows/release\.yml@refs/tags/v'
 
 # chart (SemVer tag, no leading v)
-cosign verify ghcr.io/<org>/charts/avuruops:X.Y.Z \
+cosign verify ghcr.io/<org>/charts/avuruobs:X.Y.Z \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github\.com/<org>/avuru-obs/\.github/workflows/release\.yml@refs/tags/v'
 

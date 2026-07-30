@@ -7,7 +7,7 @@ useDefault = true
 description = "Local/dev default credentials and test fixtures — not real secrets"
 paths = [
   '''deploy/compose/.*''',
-  '''deploy/helm/avuruops/values.*\.yaml''',
+  '''deploy/helm/avuruobs/values.*\.yaml''',
   '''.*_test\.go$''',
   '''e2e/.*''',
   '''tools/seed/.*''',
