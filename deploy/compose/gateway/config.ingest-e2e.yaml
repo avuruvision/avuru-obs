@@ -50,7 +50,7 @@ extensions:
     endpoint: 0.0.0.0:13133
   avuruingestauth:
     hub_validate_url: http://hub:8080/internal/v1/ingest-keys/validate
-    internal_token: ${env:AVURUOPS_INGEST_INTERNAL_TOKEN}
+    internal_token: ${env:AVURUOBS_INGEST_INTERNAL_TOKEN}
     mode: enforce
     # Short TTL so the test does not have to wait out a stale verdict.
     cache_ttl: 2s

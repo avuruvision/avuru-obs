@@ -25,7 +25,7 @@
                     "attributes": [
                       { "key": "pod_name", "value": { "stringValue": "seed-checkout-0" } },
                       { "key": "pod_namespace", "value": { "stringValue": "shop" } },
-                      { "key": "avuruops_quality", "value": { "stringValue": "measured" } }
+                      { "key": "avuruobs_quality", "value": { "stringValue": "measured" } }
                     ]
                   },
                   {
@@ -35,7 +35,7 @@
                     "attributes": [
                       { "key": "pod_name", "value": { "stringValue": "seed-checkout-0" } },
                       { "key": "pod_namespace", "value": { "stringValue": "shop" } },
-                      { "key": "avuruops_quality", "value": { "stringValue": "measured" } }
+                      { "key": "avuruobs_quality", "value": { "stringValue": "measured" } }
                     ]
                   },
                   {
@@ -45,7 +45,7 @@
                     "attributes": [
                       { "key": "pod_name", "value": { "stringValue": "seed-payments-0" } },
                       { "key": "pod_namespace", "value": { "stringValue": "shop" } },
-                      { "key": "avuruops_quality", "value": { "stringValue": "estimated" } }
+                      { "key": "avuruobs_quality", "value": { "stringValue": "estimated" } }
                     ]
                   },
                   {
@@ -55,7 +55,7 @@
                     "attributes": [
                       { "key": "pod_name", "value": { "stringValue": "seed-payments-0" } },
                       { "key": "pod_namespace", "value": { "stringValue": "shop" } },
-                      { "key": "avuruops_quality", "value": { "stringValue": "estimated" } }
+                      { "key": "avuruobs_quality", "value": { "stringValue": "estimated" } }
                     ]
                   }
                 ]

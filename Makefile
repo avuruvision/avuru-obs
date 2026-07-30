@@ -15,9 +15,9 @@ version-set:
 	@test -n "$(V)" || { echo "usage: make version-set V=x.y.z[-SNAPSHOT]"; exit 1; }
 	@printf '%s\n' "$(V)" > VERSION
 	@perl -i -pe 's/"version": ".*"/"version": "$(V)"/ && ($$done=1) if !$$done' ui/package.json
-	@perl -i -pe 's/^version: .*/version: $(V)/ && ($$done=1) if !$$done' deploy/helm/avuruops/Chart.yaml
-	@perl -i -pe 's/^appVersion: .*/appVersion: "$(V)"/ && ($$done=1) if !$$done' deploy/helm/avuruops/Chart.yaml
-	@perl -i -pe 's{(avuru-obs-(?:hub|ui|gateway)):\S+}{$$1:$(V)}g' deploy/helm/avuruops/Chart.yaml
+	@perl -i -pe 's/^version: .*/version: $(V)/ && ($$done=1) if !$$done' deploy/helm/avuruobs/Chart.yaml
+	@perl -i -pe 's/^appVersion: .*/appVersion: "$(V)"/ && ($$done=1) if !$$done' deploy/helm/avuruobs/Chart.yaml
+	@perl -i -pe 's{(avuru-obs-(?:hub|ui|gateway)):\S+}{$$1:$(V)}g' deploy/helm/avuruobs/Chart.yaml
 	@echo "version set to $(V) (VERSION, ui/package.json, Chart.yaml)"
 
 # Regenerates THIRD-PARTY-NOTICES.md (Apache §4 attribution for bundled
@@ -62,8 +62,8 @@ check:
 
 # Fixed, known admin password so the authenticated e2e harness (e2e/auth_helpers.go)
 # can log in deterministically. The normal dev/prod path (`make dev`) leaves
-# AVURUOPS_AUTH_ADMIN_PASSWORD unset — empty means "generate one and log it once".
-e2e: export AVURUOPS_AUTH_ADMIN_PASSWORD := e2e-admin-pw
+# AVURUOBS_AUTH_ADMIN_PASSWORD unset — empty means "generate one and log it once".
+e2e: export AVURUOBS_AUTH_ADMIN_PASSWORD := e2e-admin-pw
 e2e:
 	$(COMPOSE) down -v --remove-orphans
 	$(COMPOSE) up -d --build --wait clickhouse hub

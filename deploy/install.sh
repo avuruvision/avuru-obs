@@ -11,7 +11,7 @@
 #
 # Flags:
 #   --version X.Y.Z   chart version (default: the latest GitHub release)
-#   --namespace NS    target namespace (default: avuruops)
+#   --namespace NS    target namespace (default: avuruobs)
 #   --values FILE     extra -f values file (repeatable)
 #   --set K=V         extra --set override (repeatable)
 #   --dry-run         print what would run, change nothing
@@ -23,11 +23,11 @@
 set -eu
 
 REPO="avuruvision/avuru-obs"
-CHART="oci://ghcr.io/avuruvision/charts/avuruops"
-RELEASE="avuruops"
+CHART="oci://ghcr.io/avuruvision/charts/avuruobs"
+RELEASE="avuruobs"
 
-VERSION="${AVURUOPS_VERSION:-}"
-NAMESPACE="avuruops"
+VERSION="${AVURUOBS_VERSION:-}"
+NAMESPACE="avuruobs"
 DRY_RUN=0
 OPEN=0
 ASSUME_YES=0

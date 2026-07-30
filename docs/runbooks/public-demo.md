@@ -20,11 +20,11 @@ Manifests: [`deploy/demo/public/`](../../deploy/demo/public/).
 ```bash
 NS=demo-obs
 kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n "$NS" create secret generic avuruops-admin \
+kubectl -n "$NS" create secret generic avuruobs-admin \
   --from-literal=admin-password="$(openssl rand -base64 24)"
 
 VERSION=<released chart version> NS="$NS" deploy/demo/public/install.sh
-kubectl -n "$NS" rollout status deploy/avuruops-hub --timeout=300s
+kubectl -n "$NS" rollout status deploy/avuruobs-hub --timeout=300s
 ```
 
 The shop's built-in load generator drives traffic continuously; the service
@@ -82,7 +82,7 @@ default).
 - **Teardown:**
   ```bash
   helm uninstall astronomy -n demo-obs
-  helm uninstall avuruops -n demo-obs
+  helm uninstall avuruobs -n demo-obs
   kubectl delete ns demo-obs
   ```
 

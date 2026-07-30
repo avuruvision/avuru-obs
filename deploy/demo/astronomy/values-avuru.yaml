@@ -6,11 +6,11 @@
 # collector + backends. This is the app that powers the public Live Demo.
 #
 #   helm install astronomy open-telemetry/opentelemetry-demo \
-#     -n avuruops -f values-avuru.yaml
+#     -n avuruobs -f values-avuru.yaml
 #
-# Assumes avuru obs is installed in the SAME namespace (release `avuruops`), so
-# the gateway resolves as `avuruops-gateway`. For a different namespace, set the
-# value below to the FQDN, e.g. `avuruops-gateway.avuruops.svc.cluster.local`.
+# Assumes avuru obs is installed in the SAME namespace (release `avuruobs`), so
+# the gateway resolves as `avuruobs-gateway`. For a different namespace, set the
+# value below to the FQDN, e.g. `avuruobs-gateway.avuruobs.svc.cluster.local`.
 
 # Route every demo service's OTLP export at the avuru obs gateway. The chart
 # derives each component's OTEL_EXPORTER_OTLP_ENDPOINT from OTEL_COLLECTOR_NAME,
@@ -23,7 +23,7 @@
 default:
   envOverrides:
     - name: OTEL_COLLECTOR_NAME
-      value: avuruops-gateway
+      value: avuruobs-gateway
     - name: OTEL_RESOURCE_ATTRIBUTES
       value: avuru.tenant=demo
 

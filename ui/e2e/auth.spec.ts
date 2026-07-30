@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 // Auth flows against the compose stack with auth ENABLED. `make e2e-ui` pins
-// AVURUOPS_AUTH_ADMIN_PASSWORD=e2e-admin-pw, and the hub bootstraps a single
+// AVURUOBS_AUTH_ADMIN_PASSWORD=e2e-admin-pw, and the hub bootstraps a single
 // admin whose identity is `admin` (hub/internal/auth/service.go). A missing
 // session on any protected call bounces the browser to /login?next=… (see the
 // global 401 handler in src/lib/api.ts).
@@ -111,7 +111,7 @@ test.describe("auth: oidc", () => {
 });
 
 // Demo mode — OPT-IN: the default `make e2e-ui` stack doesn't enable demo mode,
-// so gate this like the OIDC tests. Needs AVURUOPS_DEMO_ENABLED=true and a
+// so gate this like the OIDC tests. Needs AVURUOBS_DEMO_ENABLED=true and a
 // `demo` project with data in the stack, signalled via DEMO_E2E=1.
 test.describe("auth: demo", () => {
   test.skip(!process.env.DEMO_E2E, "DEMO_E2E not set — demo mode not enabled in the stack");

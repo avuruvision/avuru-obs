@@ -150,8 +150,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Package Helm chart
         run: |
-          helm lint deploy/helm/avuruops
-          helm package deploy/helm/avuruops \
+          helm lint deploy/helm/avuruobs
+          helm package deploy/helm/avuruobs \
             --version "${{ needs.meta.outputs.version }}" \
             --app-version "${{ needs.meta.outputs.version }}" \
             --destination dist
@@ -170,11 +170,11 @@ jobs:
           # behind tee's exit code.
           set -euo pipefail
           helm registry login "${{ env.REGISTRY }}" -u "${{ github.actor }}" --password-stdin <<<"$GH_TOKEN"
-          helm push "dist/avuruops-${VERSION}.tgz" "oci://${CHART_NS}" 2>&1 | tee push.log
+          helm push "dist/avuruobs-${VERSION}.tgz" "oci://${CHART_NS}" 2>&1 | tee push.log
           # Sign the chart by digest, exactly like the images.
           digest="$(awk '/^Digest: /{print $2}' push.log)"
           test -n "$digest" || { echo "helm push printed no digest"; exit 1; }
-          cosign sign --yes "${CHART_NS}/avuruops@${digest}"
+          cosign sign --yes "${CHART_NS}/avuruobs@${digest}"
       - uses: actions/upload-artifact@v4
         with:
           name: helm-chart

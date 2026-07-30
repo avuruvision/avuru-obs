@@ -9,16 +9,16 @@
 # harness. Reduced footprint (ephemeral CH) for a laptop VM.
 set -euo pipefail
 
-CLUSTER="${KIND_CLUSTER:-avuruops-e2e}"
-NS=avuruops
+CLUSTER="${KIND_CLUSTER:-avuruobs-e2e}"
+NS=avuruobs
 HUB_IMG=avuru-obs-hub:local
 UI_IMG=avuru-obs-ui:local
 GW_IMG=avuru-obs-gateway:local
 TDP_IMG=avuru-obs-tdp-estimator:local
 # Local port the hub is forwarded to. Overridable for dev machines where an
-# unrelated process holds 8080; the test binary follows via AVURUOPS_E2E_HUB_URL.
+# unrelated process holds 8080; the test binary follows via AVURUOBS_E2E_HUB_URL.
 HUB_PORT_LOCAL="${HUB_PORT_LOCAL:-8080}"
-export AVURUOPS_E2E_HUB_URL="http://localhost:${HUB_PORT_LOCAL}"
+export AVURUOBS_E2E_HUB_URL="http://localhost:${HUB_PORT_LOCAL}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
@@ -120,7 +120,7 @@ export WEDGE_T0_UNIX
 # (probe fails -> estimate), so no fake-meter equivalent is needed on its
 # side — this is the estimator's genuine "probe fails -> estimate" path
 # running in CI, not a synthetic stand-in.
-helm install avuruops deploy/helm/avuruops -n "$NS" --create-namespace \
+helm install avuruobs deploy/helm/avuruobs -n "$NS" --create-namespace \
   --set hub.repository=avuru-obs-hub --set hub.tag=local \
   --set ui.repository=avuru-obs-ui --set ui.tag=local \
   --set gateway.image.repository=avuru-obs-gateway --set gateway.image.tag=local \
@@ -139,8 +139,8 @@ helm install avuruops deploy/helm/avuruops -n "$NS" --create-namespace \
   --set sensor.green.estimation.image.tag=local
 
 echo "==> waiting for the hub to answer (inside the wedge clock)"
-kubectl -n "$NS" wait --for=condition=Available deploy/avuruops-hub --timeout=240s
-kubectl -n "$NS" port-forward svc/avuruops-hub "${HUB_PORT_LOCAL}:80" >/dev/null 2>&1 &
+kubectl -n "$NS" wait --for=condition=Available deploy/avuruobs-hub --timeout=240s
+kubectl -n "$NS" port-forward svc/avuruobs-hub "${HUB_PORT_LOCAL}:80" >/dev/null 2>&1 &
 PF_PIDS="$PF_PIDS $!"
 sleep 2
 
@@ -148,9 +148,9 @@ echo "==> asserting the <5-min zero-code wedge via the hub API"
 ( cd e2e && "$E2E_BIN" -test.v -test.timeout 15m -test.run 'TestWedge' )
 
 echo "==> waiting for the remaining deployables + migrate hook"
-kubectl -n "$NS" rollout status deploy/avuruops-ui --timeout=180s
-kubectl -n "$NS" rollout status deploy/avuruops-gateway --timeout=180s
-kubectl -n "$NS" rollout status ds/avuruops-sensor --timeout=180s
+kubectl -n "$NS" rollout status deploy/avuruobs-ui --timeout=180s
+kubectl -n "$NS" rollout status deploy/avuruobs-gateway --timeout=180s
+kubectl -n "$NS" rollout status ds/avuruobs-sensor --timeout=180s
 SENSOR_READY_UNIX=$(date +%s)
 # Pin the canary pod's identity at sensor-ready: the gate later asserts the
 # SAME pod survived — restartCount alone is blind to a kill-and-replace
@@ -161,9 +161,9 @@ case "$CANARY_UID_T0" in
   *" "*) echo "expected one probe-canary pod at sensor-ready, got uids: $CANARY_UID_T0"
          kubectl -n wedge-demo get pods -l app=probe-canary; exit 1 ;;
 esac
-kubectl -n "$NS" port-forward svc/avuruops-gateway 4318:4318 >/dev/null 2>&1 &
+kubectl -n "$NS" port-forward svc/avuruobs-gateway 4318:4318 >/dev/null 2>&1 &
 PF_PIDS="$PF_PIDS $!"
-kubectl -n "$NS" port-forward svc/avuruops-ui 8081:80 >/dev/null 2>&1 &
+kubectl -n "$NS" port-forward svc/avuruobs-ui 8081:80 >/dev/null 2>&1 &
 PF_PIDS="$PF_PIDS $!"
 sleep 4
 
@@ -190,7 +190,7 @@ echo "==> GREEN: polling ClickHouse for Kepler energy rows scraped from the pinn
 KEPLER_SQL="SELECT countIf(MetricName = 'kepler_node_cpu_joules_total'), countIf(MetricName = 'kepler_pod_cpu_joules_total') FROM otel.otel_metrics_sum WHERE MetricName LIKE 'kepler%' AND ScopeName NOT LIKE 'avuru-seed%'"
 KEPLER_DEADLINE=$(( $(date +%s) + 240 ))
 while :; do
-  counts=$(kubectl -n "$NS" exec avuruops-clickhouse-0 -- \
+  counts=$(kubectl -n "$NS" exec avuruobs-clickhouse-0 -- \
     clickhouse-client -u avuru --password avuru -q "$KEPLER_SQL" 2>/dev/null || echo "")
   node_rows=$(awk '{print $1}' <<<"$counts")
   pod_rows=$(awk '{print $2}' <<<"$counts")
@@ -200,8 +200,8 @@ while :; do
   fi
   if [ "$(date +%s)" -ge "$KEPLER_DEADLINE" ]; then
     echo "GREEN: no scraped kepler_(node|pod)_cpu_joules_total rows within 240s (node=${node_rows:-?} pod=${pod_rows:-?})"
-    kubectl -n "$NS" logs ds/avuruops-sensor -c kepler --tail=30 || true
-    kubectl -n "$NS" logs ds/avuruops-sensor -c otel-agent --tail=15 || true
+    kubectl -n "$NS" logs ds/avuruobs-sensor -c kepler --tail=30 || true
+    kubectl -n "$NS" logs ds/avuruobs-sensor -c otel-agent --tail=15 || true
     exit 1
   fi
   sleep 5
@@ -211,14 +211,14 @@ done
 # RAPL probe fails independently of Kepler's fake-cpu-meter — this is its
 # genuine "probe fails -> estimate" activation path, not a synthetic stand-in
 # (design/2026-07-28-green-tdp-estimation.md). Same rows Kepler produces
-# (kepler_(node|pod)_cpu_joules_total) but stamped avuruops_quality
+# (kepler_(node|pod)_cpu_joules_total) but stamped avuruobs_quality
 # "estimated" by transform/green_quality, distinguishing them from Kepler's
 # own "measured" rows in the SAME window.
 echo "==> GREEN TDP ESTIMATION: polling ClickHouse for tdp-estimator rows stamped estimated"
-TDP_SQL="SELECT count() FROM otel.otel_metrics_sum WHERE MetricName LIKE 'kepler%' AND Attributes['avuruops_quality'] = 'estimated' AND ScopeName NOT LIKE 'avuru-seed%'"
+TDP_SQL="SELECT count() FROM otel.otel_metrics_sum WHERE MetricName LIKE 'kepler%' AND Attributes['avuruobs_quality'] = 'estimated' AND ScopeName NOT LIKE 'avuru-seed%'"
 TDP_DEADLINE=$(( $(date +%s) + 240 ))
 while :; do
-  estimated_rows=$(kubectl -n "$NS" exec avuruops-clickhouse-0 -- \
+  estimated_rows=$(kubectl -n "$NS" exec avuruobs-clickhouse-0 -- \
     clickhouse-client -u avuru --password avuru -q "$TDP_SQL" 2>/dev/null || echo "")
   if [ "${estimated_rows:-0}" -gt 0 ] 2>/dev/null; then
     echo "    estimated-quality rows in otel_metrics_sum (scraped, non-seeded): $estimated_rows"
@@ -226,8 +226,8 @@ while :; do
   fi
   if [ "$(date +%s)" -ge "$TDP_DEADLINE" ]; then
     echo "GREEN TDP ESTIMATION: no estimated-quality rows within 240s (rows=${estimated_rows:-?})"
-    kubectl -n "$NS" logs ds/avuruops-sensor -c tdp-estimator --tail=30 || true
-    kubectl -n "$NS" logs ds/avuruops-sensor -c otel-agent --tail=15 || true
+    kubectl -n "$NS" logs ds/avuruobs-sensor -c tdp-estimator --tail=30 || true
+    kubectl -n "$NS" logs ds/avuruobs-sensor -c otel-agent --tail=15 || true
     exit 1
   fi
   sleep 5

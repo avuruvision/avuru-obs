@@ -61,20 +61,20 @@ func probe() int {
 
 func clickhouseConfig() ch.Config {
 	return ch.Config{
-		Addr:     envOr("AVURUOPS_CLICKHOUSE_ADDR", "localhost:9000"),
-		Database: envOr("AVURUOPS_CLICKHOUSE_DATABASE", "otel"),
-		Username: envOr("AVURUOPS_CLICKHOUSE_USER", "avuru"),
-		Password: envOr("AVURUOPS_CLICKHOUSE_PASSWORD", "avuru"),
+		Addr:     envOr("AVURUOBS_CLICKHOUSE_ADDR", "localhost:9000"),
+		Database: envOr("AVURUOBS_CLICKHOUSE_DATABASE", "otel"),
+		Username: envOr("AVURUOBS_CLICKHOUSE_USER", "avuru"),
+		Password: envOr("AVURUOBS_CLICKHOUSE_PASSWORD", "avuru"),
 	}
 }
 
-// activeModules resolves AVURUOPS_MODULES (empty = all). A typo must fail the
+// activeModules resolves AVURUOBS_MODULES (empty = all). A typo must fail the
 // deploy loudly — silently skipping a module's schema is worse than a crash
 // loop with a clear message.
 func activeModules() (modules.Set, error) {
-	set, err := modules.Parse(os.Getenv("AVURUOPS_MODULES"))
+	set, err := modules.Parse(os.Getenv("AVURUOBS_MODULES"))
 	if err != nil {
-		return nil, fmt.Errorf("AVURUOPS_MODULES: %w", err)
+		return nil, fmt.Errorf("AVURUOBS_MODULES: %w", err)
 	}
 	return set, nil
 }
@@ -114,15 +114,15 @@ func runMigrate() error {
 		return fmt.Errorf("applying migrations: %w", err)
 	}
 	retention := ch.Retention{
-		TracesDays:   envIntOr("AVURUOPS_RETENTION_TRACES_DAYS", 7),
-		LogsDays:     envIntOr("AVURUOPS_RETENTION_LOGS_DAYS", 3),
-		MetricsDays:  envIntOr("AVURUOPS_RETENTION_METRICS_DAYS", 7),
-		ProfilesDays: envIntOr("AVURUOPS_RETENTION_PROFILES_DAYS", 3),
+		TracesDays:   envIntOr("AVURUOBS_RETENTION_TRACES_DAYS", 7),
+		LogsDays:     envIntOr("AVURUOBS_RETENTION_LOGS_DAYS", 3),
+		MetricsDays:  envIntOr("AVURUOBS_RETENTION_METRICS_DAYS", 7),
+		ProfilesDays: envIntOr("AVURUOBS_RETENTION_PROFILES_DAYS", 3),
 		// Errors default higher: low volume after fingerprint grouping, and
 		// issue history is the point of the module.
-		ErrorsDays: envIntOr("AVURUOPS_RETENTION_ERRORS_DAYS", 30),
+		ErrorsDays: envIntOr("AVURUOBS_RETENTION_ERRORS_DAYS", 30),
 		// Alert history is tiny; keep a month for the UI timeline.
-		AlertsDays: envIntOr("AVURUOPS_RETENTION_ALERTS_DAYS", 30),
+		AlertsDays: envIntOr("AVURUOBS_RETENTION_ALERTS_DAYS", 30),
 	}
 	// Don't touch a disabled module's TTL: its tables were never created —
 	// or, if the module was enabled once, they still hold data we no longer
@@ -153,7 +153,7 @@ func runMigrate() error {
 }
 
 func run() error {
-	addr := envOr("AVURUOPS_LISTEN_ADDR", ":8080")
+	addr := envOr("AVURUOBS_LISTEN_ADDR", ":8080")
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -164,9 +164,9 @@ func run() error {
 	// Demo mode: resolve the settings once so the SAME generated password feeds
 	// both the demo-user bootstrap and the /auth/demo handler (it never leaves
 	// the process). Requires auth to be on.
-	demoEnabled := envOr("AVURUOPS_DEMO_ENABLED", "false") == "true" && authSvc != nil
-	demoEmail := envOr("AVURUOPS_DEMO_EMAIL", "demo@avuru.obs")
-	demoPassword := os.Getenv("AVURUOPS_DEMO_PASSWORD")
+	demoEnabled := envOr("AVURUOBS_DEMO_ENABLED", "false") == "true" && authSvc != nil
+	demoEmail := envOr("AVURUOBS_DEMO_EMAIL", "demo@avuru.obs")
+	demoPassword := os.Getenv("AVURUOBS_DEMO_PASSWORD")
 	if demoEnabled {
 		if demoPassword == "" {
 			demoPassword = auth.NewID() // held in-process; never disclosed
@@ -180,7 +180,7 @@ func run() error {
 	// Chart-provisioned ingest keys (the sensor's). Parsed eagerly so a
 	// malformed seed fails the boot loudly instead of surfacing later as
 	// "enforce mode silently dropped our telemetry".
-	seedKeys, err := parseIngestSeedKeys(os.Getenv("AVURUOPS_INGEST_SEED_KEYS"))
+	seedKeys, err := parseIngestSeedKeys(os.Getenv("AVURUOBS_INGEST_SEED_KEYS"))
 	if err != nil {
 		return err
 	}
@@ -205,7 +205,7 @@ func run() error {
 		return err
 	}
 	// OIDC is hot-reloaded like the other mounted configs; nil accessors when
-	// AVURUOPS_AUTH_OIDC_CONFIG is unset (or auth is disabled). Installs the
+	// AVURUOBS_AUTH_OIDC_CONFIG is unset (or auth is disabled). Installs the
 	// SSO group→grant mapper on authSvc as a side effect.
 	oidcProvider, oidcSettings, err := loadOIDCConfig(ctx, authSvc)
 	if err != nil {
@@ -223,11 +223,11 @@ func run() error {
 	// reached single-origin via the gateway/ingress. See agent_docs/architecture.md.
 	mux := http.NewServeMux()
 	api.Register(mux, provider, api.Config{
-		RetentionTracesDays:   envIntOr("AVURUOPS_RETENTION_TRACES_DAYS", 7),
-		RetentionLogsDays:     envIntOr("AVURUOPS_RETENTION_LOGS_DAYS", 3),
-		RetentionMetricsDays:  envIntOr("AVURUOPS_RETENTION_METRICS_DAYS", 7),
-		RetentionProfilesDays: envIntOr("AVURUOPS_RETENTION_PROFILES_DAYS", 3),
-		Projects:              splitCSV(envOr("AVURUOPS_PROJECTS", "")),
+		RetentionTracesDays:   envIntOr("AVURUOBS_RETENTION_TRACES_DAYS", 7),
+		RetentionLogsDays:     envIntOr("AVURUOBS_RETENTION_LOGS_DAYS", 3),
+		RetentionMetricsDays:  envIntOr("AVURUOBS_RETENTION_METRICS_DAYS", 7),
+		RetentionProfilesDays: envIntOr("AVURUOBS_RETENTION_PROFILES_DAYS", 3),
+		Projects:              splitCSV(envOr("AVURUOBS_PROJECTS", "")),
 		Modules:               active,
 		GroupsConfig:          groupsConfig,
 		AlertsConfig:          alertsConfig,
@@ -240,13 +240,13 @@ func run() error {
 		GreenConfig:           greenConfig,
 		OIDC:                  oidcProvider,
 		OIDCSettings:          oidcSettings,
-		IngestInternalToken:   envOr("AVURUOPS_INGEST_INTERNAL_TOKEN", ""),
+		IngestInternalToken:   envOr("AVURUOBS_INGEST_INTERNAL_TOKEN", ""),
 	})
 
 	// The alerting evaluator is a single background loop (see runAlertingEvaluator);
 	// started only when the module is active.
 	if active.Enabled(modules.Alerting) {
-		go runAlertingEvaluator(ctx, provider, groupsConfig, alertsConfig, greenConfig, notifier, splitCSV(envOr("AVURUOPS_PROJECTS", "")), active)
+		go runAlertingEvaluator(ctx, provider, groupsConfig, alertsConfig, greenConfig, notifier, splitCSV(envOr("AVURUOBS_PROJECTS", "")), active)
 	}
 
 	srv := &http.Server{
@@ -307,37 +307,37 @@ func connectStore(ctx context.Context, cfg ch.Config) api.StoreProvider {
 	}
 }
 
-// authService builds the auth stack from env. AVURUOPS_AUTH_ENABLED=false
+// authService builds the auth stack from env. AVURUOBS_AUTH_ENABLED=false
 // restores the fully-open pre-auth behavior (labs, demos). A misconfigured
 // kill-switch must fail closed: only the exact value "false" disables auth;
 // anything unrecognized (a typo, say) leaves auth ENABLED and logs an error,
 // rather than silently opening every request up as anonymous admin.
-// AVURUOPS_AUTH_ANONYMOUS_ROLE + _PROJECTS enable the project-scoped
+// AVURUOBS_AUTH_ANONYMOUS_ROLE + _PROJECTS enable the project-scoped
 // anonymous identity (the docs-demo mode from the AEP).
 func authService(provider api.StoreProvider) (*auth.Service, *auth.Identity) {
-	v := envOr("AVURUOPS_AUTH_ENABLED", "true")
+	v := envOr("AVURUOBS_AUTH_ENABLED", "true")
 	switch v {
 	case "false":
 		slog.Warn("authentication is DISABLED — every request is anonymous admin")
 		return nil, nil
 	case "true":
 	default:
-		slog.Error("unrecognized AVURUOPS_AUTH_ENABLED value, auth remains enabled", "value", v)
+		slog.Error("unrecognized AVURUOBS_AUTH_ENABLED value, auth remains enabled", "value", v)
 	}
-	ttl := time.Duration(envIntOr("AVURUOPS_AUTH_SESSION_TTL_HOURS", 168)) * time.Hour
+	ttl := time.Duration(envIntOr("AVURUOBS_AUTH_SESSION_TTL_HOURS", 168)) * time.Hour
 	svc := auth.NewService(provider, ttl)
 
 	var anon *auth.Identity
-	role := os.Getenv("AVURUOPS_AUTH_ANONYMOUS_ROLE")
-	projectsRaw := os.Getenv("AVURUOPS_AUTH_ANONYMOUS_PROJECTS")
+	role := os.Getenv("AVURUOBS_AUTH_ANONYMOUS_ROLE")
+	projectsRaw := os.Getenv("AVURUOBS_AUTH_ANONYMOUS_PROJECTS")
 	if role != "" {
 		r, ok := auth.ParseRole(role)
 		if !ok {
-			slog.Error("invalid AVURUOPS_AUTH_ANONYMOUS_ROLE, ignoring anonymous mode", "role", role)
+			slog.Error("invalid AVURUOBS_AUTH_ANONYMOUS_ROLE, ignoring anonymous mode", "role", role)
 		} else {
 			projects := splitCSV(projectsRaw)
 			if len(projects) == 0 {
-				slog.Error("AVURUOPS_AUTH_ANONYMOUS_PROJECTS is required with anonymous mode (never implicit '*'), ignoring")
+				slog.Error("AVURUOBS_AUTH_ANONYMOUS_PROJECTS is required with anonymous mode (never implicit '*'), ignoring")
 			} else {
 				// Both cheap insurance against a fat-fingered config: neither
 				// is refused, both are visible operator choices, but a
@@ -345,12 +345,12 @@ func authService(provider api.StoreProvider) (*auth.Service, *auth.Identity) {
 				// a second look in the logs.
 				for _, p := range projects {
 					if p == "*" {
-						slog.Warn("AVURUOPS_AUTH_ANONYMOUS_PROJECTS contains '*' — anonymous access applies to every project", "role", r)
+						slog.Warn("AVURUOBS_AUTH_ANONYMOUS_PROJECTS contains '*' — anonymous access applies to every project", "role", r)
 						break
 					}
 				}
 				if r != auth.RoleViewer {
-					slog.Warn("AVURUOPS_AUTH_ANONYMOUS_ROLE is stronger than viewer", "role", r)
+					slog.Warn("AVURUOBS_AUTH_ANONYMOUS_ROLE is stronger than viewer", "role", r)
 				}
 				anon = &auth.Identity{Name: "Anonymous", Anonymous: true}
 				for _, p := range projects {
@@ -362,13 +362,13 @@ func authService(provider api.StoreProvider) (*auth.Service, *auth.Identity) {
 	} else if projectsRaw != "" {
 		// _PROJECTS without _ROLE was a silent no-op before; a bare-typo'd
 		// env var deserves a log line, not silence.
-		slog.Error("AVURUOPS_AUTH_ANONYMOUS_PROJECTS is set but AVURUOPS_AUTH_ANONYMOUS_ROLE is empty, ignoring anonymous mode")
+		slog.Error("AVURUOBS_AUTH_ANONYMOUS_PROJECTS is set but AVURUOBS_AUTH_ANONYMOUS_ROLE is empty, ignoring anonymous mode")
 	}
 	return svc, anon
 }
 
 // bootstrapAdmin waits for the store, then ensures the admin user exists.
-// AVURUOPS_AUTH_ADMIN_PASSWORD empty → generate one and log it ONCE, only on
+// AVURUOBS_AUTH_ADMIN_PASSWORD empty → generate one and log it ONCE, only on
 // the attempt whose Bootstrap call actually created the admin (created==true
 // tells us that directly, so there's no separate pre-check to race against).
 // Helm always sets the password; the generated path is the bare-compose
@@ -381,7 +381,7 @@ func authService(provider api.StoreProvider) (*auth.Service, *auth.Identity) {
 // every 60s. A one-time Error when crossing the 2-minute mark flags a likely
 // deploy bug; retries continue quietly (Warn per failure only) after that.
 func bootstrapAdmin(ctx context.Context, svc *auth.Service, provider api.StoreProvider) {
-	password := os.Getenv("AVURUOPS_AUTH_ADMIN_PASSWORD")
+	password := os.Getenv("AVURUOBS_AUTH_ADMIN_PASSWORD")
 	generated := password == ""
 	if generated {
 		password = auth.NewID()
@@ -468,7 +468,7 @@ func envIntOr(key string, def int) int {
 }
 
 // splitCSV parses a comma-separated env value, trimming blanks (used for
-// AVURUOPS_PROJECTS, the config-defined project list).
+// AVURUOBS_PROJECTS, the config-defined project list).
 func splitCSV(v string) []string {
 	if v == "" {
 		return nil

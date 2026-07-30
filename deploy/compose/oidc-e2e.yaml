@@ -1,8 +1,8 @@
 # Hub OIDC config for the OPT-IN `oidc-e2e` compose profile (schema:
 # hub/internal/auth/oidcconfig.go — issuer/clientId/groupsClaim/mapping/
 # defaultRole/defaultProjects/forceSSO). Mounted into the hub by
-# docker-compose.oidc-e2e.yaml as AVURUOPS_AUTH_OIDC_CONFIG; the client
-# secret comes from AVURUOPS_AUTH_OIDC_CLIENT_SECRET, never from this file.
+# docker-compose.oidc-e2e.yaml as AVURUOBS_AUTH_OIDC_CONFIG; the client
+# secret comes from AVURUOBS_AUTH_OIDC_CLIENT_SECRET, never from this file.
 #
 # issuer is the mock IdP AS REACHABLE FROM THE HUB CONTAINER (compose service
 # DNS). mock-oauth2-server derives the issuer in discovery documents and

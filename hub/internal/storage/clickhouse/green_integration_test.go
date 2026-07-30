@@ -318,15 +318,15 @@ func TestServiceEnergyQualitySplit(t *testing.T) {
 
 	// web-1 on a RAPL node: measured.
 	insertSum(t, store, base.Add(1*time.Minute), testPodEnergyA, noRes,
-		podAttrs("web-1", "shop", map[string]string{"avuruops_quality": "measured"}), 0)
+		podAttrs("web-1", "shop", map[string]string{"avuruobs_quality": "measured"}), 0)
 	insertSum(t, store, base.Add(4*time.Minute), testPodEnergyA, noRes,
-		podAttrs("web-1", "shop", map[string]string{"avuruops_quality": "measured"}), 360) // Δ360 J
+		podAttrs("web-1", "shop", map[string]string{"avuruobs_quality": "measured"}), 360) // Δ360 J
 
 	// web-2, same service (workload), on a RAPL-less node: estimated.
 	insertSum(t, store, base.Add(1*time.Minute), testPodEnergyA, noRes,
-		podAttrs("web-2", "shop", map[string]string{"avuruops_quality": "estimated"}), 0)
+		podAttrs("web-2", "shop", map[string]string{"avuruobs_quality": "estimated"}), 0)
 	insertSum(t, store, base.Add(4*time.Minute), testPodEnergyA, noRes,
-		podAttrs("web-2", "shop", map[string]string{"avuruops_quality": "estimated"}), 720) // Δ720 J
+		podAttrs("web-2", "shop", map[string]string{"avuruobs_quality": "estimated"}), 720) // Δ720 J
 
 	insertGauge(t, store, base.Add(2*time.Minute), metricPodCPU, map[string]string{
 		"k8s.pod.name": "web-1", "k8s.namespace.name": "shop", "k8s.deployment.name": "web",
@@ -378,14 +378,14 @@ func TestNodeCoverage(t *testing.T) {
 	end := base.Add(interval)
 
 	insertSum(t, store, base.Add(1*time.Minute), testNodeEnergyA,
-		map[string]string{"k8s.node.name": "node-measured"}, map[string]string{"avuruops_quality": "measured"}, 0)
+		map[string]string{"k8s.node.name": "node-measured"}, map[string]string{"avuruobs_quality": "measured"}, 0)
 	insertSum(t, store, base.Add(4*time.Minute), testNodeEnergyA,
-		map[string]string{"k8s.node.name": "node-measured"}, map[string]string{"avuruops_quality": "measured"}, 100)
+		map[string]string{"k8s.node.name": "node-measured"}, map[string]string{"avuruobs_quality": "measured"}, 100)
 
 	insertSum(t, store, base.Add(1*time.Minute), testNodeEnergyA,
-		map[string]string{"k8s.node.name": "node-estimated"}, map[string]string{"avuruops_quality": "estimated"}, 0)
+		map[string]string{"k8s.node.name": "node-estimated"}, map[string]string{"avuruobs_quality": "estimated"}, 0)
 	insertSum(t, store, base.Add(4*time.Minute), testNodeEnergyA,
-		map[string]string{"k8s.node.name": "node-estimated"}, map[string]string{"avuruops_quality": "estimated"}, 100)
+		map[string]string{"k8s.node.name": "node-estimated"}, map[string]string{"avuruobs_quality": "estimated"}, 100)
 
 	// node-silent: seed a kubeletstats-style presence row so it is a KNOWN
 	// node, but never any green energy series for it — must count as absent.

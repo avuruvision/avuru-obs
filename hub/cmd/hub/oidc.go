@@ -17,7 +17,7 @@ import (
 const oidcReloadInterval = 15 * time.Second
 
 // oidcCallbackPath is the hub route the IdP redirects back to; the external
-// redirect URL is AVURUOPS_PUBLIC_URL joined to it.
+// redirect URL is AVURUOBS_PUBLIC_URL joined to it.
 const oidcCallbackPath = "/api/v1/auth/oidc/callback"
 
 // oidcState bundles the discovered provider with its parsed config so both swap
@@ -28,8 +28,8 @@ type oidcState struct {
 	settings *auth.OIDCConfig
 }
 
-// loadOIDCConfig loads the OIDC config from AVURUOPS_AUTH_OIDC_CONFIG (a file
-// path) paired with the AVURUOPS_AUTH_OIDC_CLIENT_SECRET env, discovers the
+// loadOIDCConfig loads the OIDC config from AVURUOBS_AUTH_OIDC_CONFIG (a file
+// path) paired with the AVURUOBS_AUTH_OIDC_CLIENT_SECRET env, discovers the
 // provider, and returns accessors for both (nil,nil when OIDC is off). An unset
 // path — or auth being disabled — yields nil accessors (OIDC off). A
 // present-but-invalid file (parse or discovery failure) fails loud at startup,
@@ -37,23 +37,23 @@ type oidcState struct {
 // (last good provider stays live). SSO group→grant mapping is installed on
 // authSvc here and re-installed on every good reload.
 func loadOIDCConfig(ctx context.Context, authSvc *auth.Service) (func() *auth.OIDCProvider, func() *auth.OIDCConfig, error) {
-	path := os.Getenv("AVURUOPS_AUTH_OIDC_CONFIG")
+	path := os.Getenv("AVURUOBS_AUTH_OIDC_CONFIG")
 	if path == "" {
 		return nil, nil, nil
 	}
 	if authSvc == nil {
 		// A config was mounted but auth is disabled: SSO has no session store to
 		// mint into. Log the mismatch rather than silently ignoring it.
-		slog.Warn("AVURUOPS_AUTH_OIDC_CONFIG is set but authentication is disabled — OIDC ignored")
+		slog.Warn("AVURUOBS_AUTH_OIDC_CONFIG is set but authentication is disabled — OIDC ignored")
 		return nil, nil, nil
 	}
 
-	secret := os.Getenv("AVURUOPS_AUTH_OIDC_CLIENT_SECRET")
+	secret := os.Getenv("AVURUOBS_AUTH_OIDC_CLIENT_SECRET")
 	redirectURL := oidcRedirectURL()
 
 	p, cfg, modTime, err := readOIDCConfig(ctx, path, secret, redirectURL)
 	if err != nil {
-		return nil, nil, fmt.Errorf("AVURUOPS_AUTH_OIDC_CONFIG: %w", err)
+		return nil, nil, fmt.Errorf("AVURUOBS_AUTH_OIDC_CONFIG: %w", err)
 	}
 	authSvc.SetGroupMapper(cfg.MapGroups)
 	slog.Info("oidc config loaded", "path", path, "issuer", cfg.Issuer, "forceSSO", cfg.ForceSSO, "mappings", len(cfg.Mapping))
@@ -124,15 +124,15 @@ func watchOIDCConfig(ctx context.Context, path, secret, redirectURL string, last
 	}
 }
 
-// oidcRedirectURL builds the IdP redirect-back URL from AVURUOPS_PUBLIC_URL (the
+// oidcRedirectURL builds the IdP redirect-back URL from AVURUOBS_PUBLIC_URL (the
 // hub's external base, e.g. https://obs.example.com) joined to the callback
 // path. When PUBLIC_URL is unset the URL degrades to the bare callback path and
 // a warning is logged: most IdPs require an absolute redirect_uri, so the
 // operator must set it for a real deployment.
 func oidcRedirectURL() string {
-	base := strings.TrimRight(os.Getenv("AVURUOPS_PUBLIC_URL"), "/")
+	base := strings.TrimRight(os.Getenv("AVURUOBS_PUBLIC_URL"), "/")
 	if base == "" {
-		slog.Warn("AVURUOPS_PUBLIC_URL is unset — OIDC redirect URL is relative and likely rejected by the IdP; set it to the hub's external base URL (e.g. https://obs.example.com)",
+		slog.Warn("AVURUOBS_PUBLIC_URL is unset — OIDC redirect URL is relative and likely rejected by the IdP; set it to the hub's external base URL (e.g. https://obs.example.com)",
 			"redirectPath", oidcCallbackPath)
 		return oidcCallbackPath
 	}

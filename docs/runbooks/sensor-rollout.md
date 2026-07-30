@@ -40,7 +40,7 @@ Pin the sensor to a canary pool first:
 
 ```bash
 kubectl label node <canary-node> avuru.obs/rollout=canary
-helm upgrade avuruops ... --reuse-values \
+helm upgrade avuruobs ... --reuse-values \
   --set-json 'sensor.nodeSelector={"avuru.obs/rollout":"canary"}'
 ```
 

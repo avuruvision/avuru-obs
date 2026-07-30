@@ -16,10 +16,10 @@ import (
 )
 
 // The port-forwarded hub, env-overridable (a dev machine may have :8080 taken).
-// deploy/helm/e2e-helm.sh forwards svc/avuruops-hub → :8080 and exports the
+// deploy/helm/e2e-helm.sh forwards svc/avuruobs-hub → :8080 and exports the
 // matching URL; loginAs (auth_helpers_test.go) targets hubURL.
 var hubURL = func() string {
-	if v := os.Getenv("AVURUOPS_E2E_HUB_URL"); v != "" {
+	if v := os.Getenv("AVURUOBS_E2E_HUB_URL"); v != "" {
 		return v
 	}
 	return "http://localhost:8080"

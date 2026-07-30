@@ -2,9 +2,9 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "avuruops.fullname" . }}-alerts
+  name: {{ include "avuruobs.fullname" . }}-alerts
   labels:
-    {{- include "avuruops.labels" . | nindent 4 }}
+    {{- include "avuruobs.labels" . | nindent 4 }}
     app.kubernetes.io/component: hub
 data:
   # The hub parses this as JSON with DisallowUnknownFields (fail-loud). alerting

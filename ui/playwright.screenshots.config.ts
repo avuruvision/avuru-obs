@@ -10,7 +10,7 @@ export default defineConfig({
   reporter: "list",
   timeout: 600_000,
   use: {
-    baseURL: process.env.AVURUOPS_BASE_URL ?? "http://localhost:13001",
+    baseURL: process.env.AVURUOBS_BASE_URL ?? "http://localhost:13001",
     // 2x density so README images stay crisp on hi-DPI displays.
     viewport: { width: 1600, height: 1000 },
     deviceScaleFactor: 2,

@@ -17,10 +17,10 @@ func testAuthService() *auth.Service {
 	return auth.NewService(func() storage.Store { return nil }, time.Hour)
 }
 
-// TestLoadOIDCConfigUnsetIsOff: no AVURUOPS_AUTH_OIDC_CONFIG → nil accessors
+// TestLoadOIDCConfigUnsetIsOff: no AVURUOBS_AUTH_OIDC_CONFIG → nil accessors
 // (OIDC off), no polling, no error.
 func TestLoadOIDCConfigUnsetIsOff(t *testing.T) {
-	t.Setenv("AVURUOPS_AUTH_OIDC_CONFIG", "")
+	t.Setenv("AVURUOBS_AUTH_OIDC_CONFIG", "")
 	p, s, err := loadOIDCConfig(context.Background(), testAuthService())
 	if err != nil {
 		t.Fatalf("loadOIDCConfig: %v", err)
@@ -38,7 +38,7 @@ func TestLoadOIDCConfigAuthDisabledIsOff(t *testing.T) {
 	if err := os.WriteFile(path, []byte("issuer: https://unreachable.invalid\nclientId: y\n"), 0o600); err != nil {
 		t.Fatalf("writing config: %v", err)
 	}
-	t.Setenv("AVURUOPS_AUTH_OIDC_CONFIG", path)
+	t.Setenv("AVURUOBS_AUTH_OIDC_CONFIG", path)
 	p, s, err := loadOIDCConfig(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("loadOIDCConfig: %v", err)
@@ -67,9 +67,9 @@ func TestLoadOIDCConfigFromFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("writing config: %v", err)
 	}
-	t.Setenv("AVURUOPS_AUTH_OIDC_CONFIG", path)
-	t.Setenv("AVURUOPS_AUTH_OIDC_CLIENT_SECRET", m.ClientSecret)
-	t.Setenv("AVURUOPS_PUBLIC_URL", "https://obs.example.com")
+	t.Setenv("AVURUOBS_AUTH_OIDC_CONFIG", path)
+	t.Setenv("AVURUOBS_AUTH_OIDC_CLIENT_SECRET", m.ClientSecret)
+	t.Setenv("AVURUOBS_PUBLIC_URL", "https://obs.example.com")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // stops the watcher goroutine
@@ -104,7 +104,7 @@ func TestLoadOIDCConfigInvalidFailsLoud(t *testing.T) {
 	if err := os.WriteFile(path, []byte("clientId: only-client\n"), 0o600); err != nil {
 		t.Fatalf("writing config: %v", err)
 	}
-	t.Setenv("AVURUOPS_AUTH_OIDC_CONFIG", path)
+	t.Setenv("AVURUOBS_AUTH_OIDC_CONFIG", path)
 	if _, _, err := loadOIDCConfig(context.Background(), testAuthService()); err == nil {
 		t.Fatal("expected error for missing issuer, got nil")
 	}
@@ -115,15 +115,15 @@ func TestLoadOIDCConfigInvalidFailsLoud(t *testing.T) {
 func TestOIDCRedirectURL(t *testing.T) {
 	const want = "https://obs.example.com" + oidcCallbackPath
 
-	t.Setenv("AVURUOPS_PUBLIC_URL", "https://obs.example.com/")
+	t.Setenv("AVURUOBS_PUBLIC_URL", "https://obs.example.com/")
 	if got := oidcRedirectURL(); got != want {
 		t.Fatalf("trailing slash: got %q want %q", got, want)
 	}
-	t.Setenv("AVURUOPS_PUBLIC_URL", "https://obs.example.com")
+	t.Setenv("AVURUOBS_PUBLIC_URL", "https://obs.example.com")
 	if got := oidcRedirectURL(); got != want {
 		t.Fatalf("no slash: got %q want %q", got, want)
 	}
-	t.Setenv("AVURUOPS_PUBLIC_URL", "")
+	t.Setenv("AVURUOBS_PUBLIC_URL", "")
 	if got := oidcRedirectURL(); got != oidcCallbackPath {
 		t.Fatalf("unset: got %q want %q", got, oidcCallbackPath)
 	}

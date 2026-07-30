@@ -3,29 +3,29 @@
        unreachable while sensor-config's collectGreen-requires-agent guard
        holds ($agentActive already covers every successful green render); kept
        as belt-and-braces against a future change to that guard. */}}
-{{- $agentActive := and .Values.sensor.agent.enabled (or (include "avuruops.collectLogs" .) (include "avuruops.collectInfraMetrics" .) (include "avuruops.collectGreen" .)) }}
-{{- if and .Values.sensor.enabled (or .Values.sensor.obi.enabled $agentActive (include "avuruops.collectProfiles" .) (include "avuruops.collectGreen" .)) }}
+{{- $agentActive := and .Values.sensor.agent.enabled (or (include "avuruobs.collectLogs" .) (include "avuruobs.collectInfraMetrics" .) (include "avuruobs.collectGreen" .)) }}
+{{- if and .Values.sensor.enabled (or .Values.sensor.obi.enabled $agentActive (include "avuruobs.collectProfiles" .) (include "avuruobs.collectGreen" .)) }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: {{ include "avuruops.fullname" . }}-sensor
+  name: {{ include "avuruobs.fullname" . }}-sensor
   labels:
-    {{- include "avuruops.labels" . | nindent 4 }}
+    {{- include "avuruobs.labels" . | nindent 4 }}
     app.kubernetes.io/component: sensor
 spec:
   selector:
     matchLabels:
-      {{- include "avuruops.selectorLabels" . | nindent 6 }}
+      {{- include "avuruobs.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: sensor
   template:
     metadata:
       labels:
-        {{- include "avuruops.selectorLabels" . | nindent 8 }}
+        {{- include "avuruobs.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: sensor
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/sensor-config.yaml") . | sha256sum }}
     spec:
-      serviceAccountName: {{ include "avuruops.fullname" . }}-sensor
+      serviceAccountName: {{ include "avuruobs.fullname" . }}-sensor
       # eBPF containers discover and inspect host processes.
       hostPID: true
       {{- if .Values.sensor.obi.network.enabled }}
@@ -35,7 +35,7 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       {{- end }}
       {{- if or .Values.sensor.priorityClass.create .Values.sensor.priorityClass.name }}
-      priorityClassName: {{ .Values.sensor.priorityClass.name | default (printf "%s-sensor" (include "avuruops.fullname" .)) }}
+      priorityClassName: {{ .Values.sensor.priorityClass.name | default (printf "%s-sensor" (include "avuruobs.fullname" .)) }}
       {{- end }}
       {{- with .Values.sensor.nodeSelector }}
       nodeSelector:
@@ -86,7 +86,7 @@ spec:
                 echo "is unaffected. Set sensor.obi.enabled=false to silence."
                 echo "**********************************************************"
               fi
-              {{- if include "avuruops.collectGreen" . }}
+              {{- if include "avuruobs.collectGreen" . }}
               # Green energy: Kepler measures CPU energy from Intel/AMD RAPL via
               # the powercap sysfs tree (read from this container's own /sys, the
               # same way the BTF check above reads /sys/kernel). WARN (never
@@ -110,7 +110,7 @@ spec:
         {{- if .Values.sensor.obi.enabled }}
         # OBI — zero-code traces + RED metrics via eBPF (upstream, pinned).
         - name: obi
-          image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.obi.image.repository "tag" .Values.sensor.obi.image.tag) }}
+          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.obi.image.repository "tag" .Values.sensor.obi.image.tag) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             readOnlyRootFilesystem: true
@@ -133,22 +133,22 @@ spec:
             - name: OTEL_EBPF_CONFIG_PATH
               value: /config/obi-config.yml
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: http://{{ include "avuruops.fullname" . }}-gateway:4318
+              value: http://{{ include "avuruobs.fullname" . }}-gateway:4318
             - name: OTEL_EXPORTER_OTLP_PROTOCOL
               value: http/protobuf
-            {{- if and (include "avuruops.ingestAuthEnabled" .) .Values.auth.ingest.provisionSensorKey }}
+            {{- if and (include "avuruobs.ingestAuthEnabled" .) .Values.auth.ingest.provisionSensorKey }}
             {{- /* OBI exports straight to the gateway rather than through the
                    agent's collector config, so it needs the key on its own.
                    OTEL_EXPORTER_OTLP_HEADERS is the standard OTel env; the
                    $(VAR) form is Kubernetes env interpolation, which requires
-                   AVURUOPS_INGEST_KEY to be declared before it. */}}
-            - name: AVURUOPS_INGEST_KEY
+                   AVURUOBS_INGEST_KEY to be declared before it. */}}
+            - name: AVURUOBS_INGEST_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "avuruops.ingestSecretName" . }}
+                  name: {{ include "avuruobs.ingestSecretName" . }}
                   key: sensor-key
             - name: OTEL_EXPORTER_OTLP_HEADERS
-              value: "Authorization=Bearer $(AVURUOPS_INGEST_KEY)"
+              value: "Authorization=Bearer $(AVURUOBS_INGEST_KEY)"
             {{- end }}
           volumeMounts:
             - name: obi-config
@@ -166,7 +166,7 @@ spec:
         # Node collector — tails container stdout/stderr into the gateway
         # (zero-config logs tier). Runs as root: /var/log/pods is root-owned.
         - name: otel-agent
-          image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.agent.image.repository "tag" .Values.sensor.agent.image.tag) }}
+          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.agent.image.repository "tag" .Values.sensor.agent.image.tag) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["--config=/etc/avuru/config.yaml"]
           securityContext:
@@ -178,13 +178,13 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            {{- if and (include "avuruops.ingestAuthEnabled" .) .Values.auth.ingest.provisionSensorKey }}
-            {{- /* Consumed as ${env:AVURUOPS_INGEST_KEY} by the otlphttp
+            {{- if and (include "avuruobs.ingestAuthEnabled" .) .Values.auth.ingest.provisionSensorKey }}
+            {{- /* Consumed as ${env:AVURUOBS_INGEST_KEY} by the otlphttp
                    exporter's Authorization header in sensor-config.yaml. */}}
-            - name: AVURUOPS_INGEST_KEY
+            - name: AVURUOBS_INGEST_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "avuruops.ingestSecretName" . }}
+                  name: {{ include "avuruobs.ingestSecretName" . }}
                   key: sensor-key
             {{- end }}
           volumeMounts:
@@ -217,12 +217,12 @@ spec:
           resources:
             {{- toYaml .Values.sensor.agent.resources | nindent 12 }}
         {{- end }}
-        {{- if include "avuruops.collectProfiles" . }}
+        {{- if include "avuruobs.collectProfiles" . }}
         # Continuous CPU profiling (OTel eBPF profiler distro). Profiles are
         # ALPHA: the feature gate is required, and export goes straight to the
         # hub's ingest seam.
         - name: profiler
-          image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.profiler.image.repository "tag" .Values.sensor.profiler.image.tag) }}
+          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.profiler.image.repository "tag" .Values.sensor.profiler.image.tag) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --config=/etc/avuru/config.yaml
@@ -256,7 +256,7 @@ spec:
           resources:
             {{- toYaml .Values.sensor.profiler.resources | nindent 12 }}
         {{- end }}
-        {{- if include "avuruops.collectGreen" . }}
+        {{- if include "avuruobs.collectGreen" . }}
         # Kepler — per-pod/node CPU energy from RAPL/powercap (CNCF upstream,
         # pinned). Scraped over loopback by the otel-agent's prometheus/green
         # receiver. Deliberately has NO liveness/readiness/startup probes: a
@@ -264,7 +264,7 @@ spec:
         # sensor pod (the "do no harm" probe-canary gate). kube mode and the
         # node name are passed on the CLI; host sysfs/procfs are read-only.
         - name: kepler
-          image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.green.image.repository "tag" .Values.sensor.green.image.tag) }}
+          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.green.image.repository "tag" .Values.sensor.green.image.tag) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --config.file=/etc/kepler/config.yaml
@@ -314,7 +314,7 @@ spec:
           resources:
             {{- toYaml .Values.sensor.green.resources | nindent 12 }}
         {{- end }}
-        {{- if include "avuruops.collectGreenEstimation" . }}
+        {{- if include "avuruobs.collectGreenEstimation" . }}
         # tdp-estimator — modeled CPU power for nodes with no RAPL/powercap
         # (first-party, opt-in). Deliberately has NO liveness/readiness/
         # startup probes, same "do no harm" posture as Kepler: a probe
@@ -324,7 +324,7 @@ spec:
         # absolute paths — the estimator's RAPL probe and cgroup walk use
         # literal /sys, /proc paths, not a remapped /host/... prefix.
         - name: tdp-estimator
-          image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.green.estimation.image.repository "tag" .Values.sensor.green.estimation.image.tag) }}
+          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.green.estimation.image.repository "tag" .Values.sensor.green.estimation.image.tag) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --listen=:{{ .Values.sensor.green.estimation.port }}
@@ -371,17 +371,17 @@ spec:
         {{- if .Values.sensor.obi.enabled }}
         - name: obi-config
           configMap:
-            name: {{ include "avuruops.fullname" . }}-sensor-obi
+            name: {{ include "avuruobs.fullname" . }}-sensor-obi
         - name: var-run-obi
           emptyDir: {}
         - name: cgroup
           hostPath:
             path: /sys/fs/cgroup
         {{- end }}
-        {{- if include "avuruops.collectProfiles" . }}
+        {{- if include "avuruobs.collectProfiles" . }}
         - name: profiler-config
           configMap:
-            name: {{ include "avuruops.fullname" . }}-sensor-profiler
+            name: {{ include "avuruobs.fullname" . }}-sensor-profiler
         - name: kernel-debug
           hostPath:
             path: /sys/kernel/debug
@@ -392,7 +392,7 @@ spec:
         {{- if $agentActive }}
         - name: agent-config
           configMap:
-            name: {{ include "avuruops.fullname" . }}-sensor-agent
+            name: {{ include "avuruobs.fullname" . }}-sensor-agent
         - name: varlogpods
           hostPath:
             path: /var/log/pods
@@ -402,13 +402,13 @@ spec:
             type: DirectoryOrCreate
         - name: agent-storage
           hostPath:
-            path: /var/lib/avuruops/otel-agent
+            path: /var/lib/avuruobs/otel-agent
             type: DirectoryOrCreate
         {{- end }}
-        {{- if include "avuruops.collectGreen" . }}
+        {{- if include "avuruobs.collectGreen" . }}
         - name: kepler-config
           configMap:
-            name: {{ include "avuruops.fullname" . }}-sensor-kepler
+            name: {{ include "avuruobs.fullname" . }}-sensor-kepler
         - name: host-sys
           hostPath:
             path: /sys

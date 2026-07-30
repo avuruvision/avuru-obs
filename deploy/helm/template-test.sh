@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Render-time assertions for the avuruops chart — no cluster needed.
+# Render-time assertions for the avuruobs chart — no cluster needed.
 # Run via `make helm-check` or directly: deploy/helm/template-test.sh
 set -euo pipefail
 cd "$(dirname "$0")"
-CHART=avuruops
+CHART=avuruobs
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 ok() { echo "  ok: $*"; }
@@ -35,7 +35,7 @@ ok "priorityClass stays off by default"
 echo "== priorityClass opt-in"
 out="$(render --set sensor.priorityClass.create=true)"
 grep -q 'kind: PriorityClass' <<<"$out" || fail "PriorityClass object not rendered"
-grep -q 'priorityClassName: test-avuruops-sensor' <<<"$out" || fail "priorityClassName not wired to DaemonSet"
+grep -q 'priorityClassName: test-avuruobs-sensor' <<<"$out" || fail "priorityClassName not wired to DaemonSet"
 grep -q 'value: -10' <<<"$out" || fail "priority value not rendered"
 ok "PriorityClass + DaemonSet wiring"
 
@@ -97,7 +97,7 @@ ok "guardrail plumbing disappears when unset"
 echo "== project tagging (gateway.tenant + projects)"
 out="$(render)"
 grep -q 'resource/tenant' <<<"$out" && fail "resource/tenant rendered without gateway.tenant"
-grep -q 'AVURUOPS_PROJECTS' <<<"$out" && fail "AVURUOPS_PROJECTS rendered without projects"
+grep -q 'AVURUOBS_PROJECTS' <<<"$out" && fail "AVURUOBS_PROJECTS rendered without projects"
 ok "default render carries no tenant plumbing"
 out="$(render --set gateway.tenant=staging --set 'projects={default,staging}' --set sensor.profiler.enabled=true)"
 grep -q 'value: "staging"' <<<"$out" || fail "resource/tenant value missing"
@@ -105,7 +105,7 @@ grep -q 'action: upsert' <<<"$out" || fail "resource/tenant action missing"
 n=$(grep -c 'processors: \[resource/tenant, batch\]' <<<"$out")
 [ "$n" = "3" ] || fail "resource/tenant not in all 3 gateway pipelines (got $n)"
 grep -q 'X-Avuru-Tenant: "staging"' <<<"$out" || fail "profiler ingest header missing"
-grep -q 'value: "default,staging"' <<<"$out" || fail "AVURUOPS_PROJECTS env missing"
+grep -q 'value: "default,staging"' <<<"$out" || fail "AVURUOBS_PROJECTS env missing"
 ok "tenant stamped in gateway pipelines, profiler header, hub env"
 
 echo "== all sensor containers off -> no DaemonSet"
@@ -146,45 +146,45 @@ grep -q 'host: "errors.example.com"' <<<"$out" || fail "sentry host rule missing
 grep -q 'number: 4319' <<<"$out" || fail "sentry ingress backend port missing"
 # /api on the MAIN host must still reach the hub — the sentry rule is a second
 # host precisely because /api/<project>/envelope/ would collide with it.
-grep -q 'name: test-avuruops-hub' <<<"$out" || fail "hub backend lost from the main host"
+grep -q 'name: test-avuruobs-hub' <<<"$out" || fail "hub backend lost from the main host"
 ok "dedicated sentry host routes to the gateway, hub keeps /api"
 
 echo "== service-health: on by default -> module, ConfigMap, env, mount"
 out="$(render)"
-grep -qE 'value: "core,logs,infra-metrics,profiling,error-tracking,service-health(,|")' <<<"$out" || fail "service-health missing from AVURUOPS_MODULES"
-grep -q 'name: test-avuruops-groups' <<<"$out" || fail "service-health groups ConfigMap missing"
+grep -qE 'value: "core,logs,infra-metrics,profiling,error-tracking,service-health(,|")' <<<"$out" || fail "service-health missing from AVURUOBS_MODULES"
+grep -q 'name: test-avuruobs-groups' <<<"$out" || fail "service-health groups ConfigMap missing"
 grep -q 'groups.json:' <<<"$out" || fail "groups.json key missing from ConfigMap"
-grep -q 'name: AVURUOPS_GROUPS_CONFIG' <<<"$out" || fail "AVURUOPS_GROUPS_CONFIG env missing"
-grep -q 'mountPath: /etc/avuruops' <<<"$out" || fail "groups ConfigMap not mounted"
+grep -q 'name: AVURUOBS_GROUPS_CONFIG' <<<"$out" || fail "AVURUOBS_GROUPS_CONFIG env missing"
+grep -q 'mountPath: /etc/avuruobs' <<<"$out" || fail "groups ConfigMap not mounted"
 ok "module, ConfigMap, env and mount all rendered"
 
 echo "== service-health: disabled -> whole surface disappears"
 out="$(render --set modules.serviceHealth.enabled=false)"
 grep -q 'service-health' <<<"$out" && fail "service-health surface survived module off"
-grep -q 'AVURUOPS_GROUPS_CONFIG' <<<"$out" && fail "groups env survived module off"
+grep -q 'AVURUOBS_GROUPS_CONFIG' <<<"$out" && fail "groups env survived module off"
 ok "no module entry, ConfigMap, env or mount when disabled"
 
 echo "== alerting: on by default -> module, ConfigMap, env, mount"
 out="$(render)"
-grep -q 'core,logs,infra-metrics,profiling,error-tracking,service-health,alerting' <<<"$out" || fail "alerting missing from AVURUOPS_MODULES"
-grep -q 'name: test-avuruops-alerts' <<<"$out" || fail "alerting ConfigMap missing"
+grep -q 'core,logs,infra-metrics,profiling,error-tracking,service-health,alerting' <<<"$out" || fail "alerting missing from AVURUOBS_MODULES"
+grep -q 'name: test-avuruobs-alerts' <<<"$out" || fail "alerting ConfigMap missing"
 grep -q 'alerts.json:' <<<"$out" || fail "alerts.json key missing from ConfigMap"
-grep -q 'name: AVURUOPS_ALERTS_CONFIG' <<<"$out" || fail "AVURUOPS_ALERTS_CONFIG env missing"
-grep -q 'mountPath: /etc/avuruops-alerts' <<<"$out" || fail "alerts ConfigMap not mounted"
+grep -q 'name: AVURUOBS_ALERTS_CONFIG' <<<"$out" || fail "AVURUOBS_ALERTS_CONFIG env missing"
+grep -q 'mountPath: /etc/avuruobs-alerts' <<<"$out" || fail "alerts ConfigMap not mounted"
 # webhookAllow is an env knob, never in the parsed config file.
 grep -q 'webhookAllow' <<<"$(grep alerts.json: <<<"$out")" && fail "webhookAllow leaked into alerts.json"
 ok "module, ConfigMap, env and mount all rendered; webhookAllow excluded"
 
 echo "== alerting: webhookAllow renders the SSRF override env"
 out="$(render --set 'alerting.webhookAllow[0]=10.0.0.0/8')"
-grep -q 'name: AVURUOPS_WEBHOOK_ALLOW' <<<"$out" || fail "AVURUOPS_WEBHOOK_ALLOW env missing when set"
-ok "webhookAllow -> AVURUOPS_WEBHOOK_ALLOW"
+grep -q 'name: AVURUOBS_WEBHOOK_ALLOW' <<<"$out" || fail "AVURUOBS_WEBHOOK_ALLOW env missing when set"
+ok "webhookAllow -> AVURUOBS_WEBHOOK_ALLOW"
 
 echo "== alerting: disabled -> whole surface disappears"
 out="$(render --set modules.alerting.enabled=false)"
 grep -q ',alerting' <<<"$out" && fail "alerting survived in the module CSV"
-grep -q 'AVURUOPS_ALERTS_CONFIG' <<<"$out" && fail "alerts env survived module off"
-grep -q 'test-avuruops-alerts' <<<"$out" && fail "alerts ConfigMap survived module off"
+grep -q 'AVURUOBS_ALERTS_CONFIG' <<<"$out" && fail "alerts env survived module off"
+grep -q 'test-avuruobs-alerts' <<<"$out" && fail "alerts ConfigMap survived module off"
 ok "no module entry, ConfigMap, env or mount when disabled"
 
 echo "== OBI network stats: off by default"
@@ -210,9 +210,9 @@ out="$(render)"
 grep -q 'name: kepler' <<<"$out" && fail "kepler container rendered without opt-in"
 grep -q 'prometheus/green' <<<"$out" && fail "green receiver rendered without opt-in"
 grep -q 'metrics/green' <<<"$out" && fail "green pipeline rendered without opt-in"
-grep -q 'AVURUOPS_GREEN_CONFIG' <<<"$out" && fail "green env rendered without opt-in"
+grep -q 'AVURUOBS_GREEN_CONFIG' <<<"$out" && fail "green env rendered without opt-in"
 grep -q 'green.json' <<<"$out" && fail "green ConfigMap rendered without opt-in"
-grep -A1 'name: AVURUOPS_MODULES' <<<"$out" | grep -qE ',green[,"]' && fail "green in AVURUOPS_MODULES without opt-in"
+grep -A1 'name: AVURUOBS_MODULES' <<<"$out" | grep -qE ',green[,"]' && fail "green in AVURUOBS_MODULES without opt-in"
 ok "no container, receiver, pipeline, ConfigMap, env or module entry by default"
 
 echo "== green: module + sensor on -> full surface, and NO probes on Kepler"
@@ -221,17 +221,17 @@ grep -q 'name: kepler' <<<"$out" || fail "kepler container missing"
 grep -q 'prometheus/green:' <<<"$out" || fail "prometheus/green receiver missing"
 grep -q 'metrics/green:' <<<"$out" || fail "metrics/green pipeline missing"
 grep -q 'kepler_(node|pod)_cpu_(watts|joules_total)' <<<"$out" || fail "keep-regex missing or diverged from the AEP metric table"
-grep -q 'name: test-avuruops-green' <<<"$out" || fail "green (hub factors/budgets) ConfigMap missing"
-grep -q 'name: test-avuruops-sensor-kepler' <<<"$out" || fail "kepler config ConfigMap missing"
-grep -q 'AVURUOPS_GREEN_CONFIG' <<<"$out" || fail "AVURUOPS_GREEN_CONFIG env missing"
-grep -q 'core,logs,infra-metrics,profiling,error-tracking,service-health,alerting,green' <<<"$out" || fail "green missing from AVURUOPS_MODULES"
+grep -q 'name: test-avuruobs-green' <<<"$out" || fail "green (hub factors/budgets) ConfigMap missing"
+grep -q 'name: test-avuruobs-sensor-kepler' <<<"$out" || fail "kepler config ConfigMap missing"
+grep -q 'AVURUOBS_GREEN_CONFIG' <<<"$out" || fail "AVURUOBS_GREEN_CONFIG env missing"
+grep -q 'core,logs,infra-metrics,profiling,error-tracking,service-health,alerting,green' <<<"$out" || fail "green missing from AVURUOBS_MODULES"
 grep -q '127.0.0.1:28282' <<<"$out" || fail "Kepler loopback bind/scrape target missing"
 # Prometheus scrape-report series (up, scrape_*) bypass metric_relabel_configs;
 # the pipeline must drop them or they pollute the shared otel_metrics_gauge.
 grep -qF 'IsMatch(name, "^(up|scrape_.+)$")' <<<"$out" || fail "scrape-meta drop condition (filter/green) missing"
 grep -qE 'processors: \[memory_limiter, filter/green, transform/green, transform/green_quality, groupbyattrs/green, resource/green, k8sattributes, filter/collection, batch\]' <<<"$out" \
   || fail "filter/green not wired into the metrics/green pipeline"
-grep -qF 'set(attributes["avuruops_quality"], "measured") where resource.attributes["service.name"] == "kepler"' <<<"$out" \
+grep -qF 'set(attributes["avuruobs_quality"], "measured") where resource.attributes["service.name"] == "kepler"' <<<"$out" \
   || fail "measured quality stamp missing from transform/green_quality"
 # The "do no harm" clause: a RAPL-less Kepler must never flap the sensor pod,
 # so the container must carry NO liveness/readiness/startup probe.
@@ -256,8 +256,8 @@ ok "module-without-infra-metrics and collect-without-agent fail; sensor-without-
 
 echo "== green: module on without the sensor -> hub config only"
 out="$(render --set modules.green.enabled=true)"
-grep -q 'AVURUOPS_GREEN_CONFIG' <<<"$out" || fail "green env missing with module on"
-grep -q 'name: test-avuruops-green' <<<"$out" || fail "green ConfigMap missing with module on"
+grep -q 'AVURUOBS_GREEN_CONFIG' <<<"$out" || fail "green env missing with module on"
+grep -q 'name: test-avuruobs-green' <<<"$out" || fail "green ConfigMap missing with module on"
 grep -q 'name: kepler' <<<"$out" && fail "kepler rendered without sensor.green.enabled"
 ok "hub reads factors/budgets; no collection until sensor.green opts in"
 
@@ -325,7 +325,7 @@ grep -q 'name: tdp-estimator' <<<"$out" || fail "tdp-estimator container missing
 grep -q 'image: example/tdp-estimator:v0.3.0' <<<"$out" || fail "tdp-estimator image not wired from values"
 grep -q 'job_name: tdp-estimator' <<<"$out" || fail "tdp-estimator scrape job missing"
 grep -q '127.0.0.1:28283' <<<"$out" || fail "tdp-estimator loopback scrape target missing"
-grep -qF 'set(attributes["avuruops_quality"], "estimated") where resource.attributes["service.name"] == "tdp-estimator"' <<<"$out" \
+grep -qF 'set(attributes["avuruobs_quality"], "estimated") where resource.attributes["service.name"] == "tdp-estimator"' <<<"$out" \
   || fail "estimated quality statement missing when estimation is enabled"
 estimator_block="$(sed -n '/- name: tdp-estimator$/,/resources:/p' <<<"$out")"
 [ -n "$estimator_block" ] || fail "could not isolate the tdp-estimator container block"
@@ -337,9 +337,9 @@ ok "container + scrape job + quality stamp render on opt-in; no probes; host mou
 
 echo "== auth oidc: off by default -> no SSO surface"
 out="$(render)"
-grep -q 'AVURUOPS_AUTH_OIDC' <<<"$out" && fail "OIDC env rendered without auth.oidc.enabled"
-grep -q 'AVURUOPS_PUBLIC_URL' <<<"$out" && fail "AVURUOPS_PUBLIC_URL rendered without auth.oidc.enabled"
-grep -q 'test-avuruops-oidc' <<<"$out" && fail "oidc ConfigMap/Secret rendered without opt-in"
+grep -q 'AVURUOBS_AUTH_OIDC' <<<"$out" && fail "OIDC env rendered without auth.oidc.enabled"
+grep -q 'AVURUOBS_PUBLIC_URL' <<<"$out" && fail "AVURUOBS_PUBLIC_URL rendered without auth.oidc.enabled"
+grep -q 'test-avuruobs-oidc' <<<"$out" && fail "oidc ConfigMap/Secret rendered without opt-in"
 grep -q 'oidc.yaml' <<<"$out" && fail "oidc config file rendered without opt-in"
 ok "no env, ConfigMap, Secret, volume or mount by default"
 
@@ -351,7 +351,7 @@ echo "== auth oidc: enabled -> ConfigMap + Secret + env + mount"
 out="$(render "${oidc_on[@]}" --set auth.oidc.clientSecret=s3cret \
   --set auth.oidc.publicUrl=https://obs.example.com \
   --set-json 'auth.oidc.mapping=[{"group":"obs-admins","role":"admin","projects":["*"]}]')"
-grep -q 'name: test-avuruops-oidc' <<<"$out" || fail "oidc ConfigMap missing"
+grep -q 'name: test-avuruobs-oidc' <<<"$out" || fail "oidc ConfigMap missing"
 grep -q 'oidc.yaml: |' <<<"$out" || fail "oidc.yaml key missing from ConfigMap"
 grep -q 'issuer: https://idp.example.com/realms/avuru' <<<"$out" || fail "issuer missing from rendered config"
 grep -q 'group: obs-admins' <<<"$out" || fail "mapping rule missing from rendered config"
@@ -360,12 +360,12 @@ cfg_block="$(sed -n '/oidc.yaml: |/,/^[^ ]/p' <<<"$out")"
 [ -n "$cfg_block" ] || fail "could not isolate the oidc.yaml block"
 grep -qE 'clientSecret|existingSecret|publicUrl|enabled' <<<"$cfg_block" \
   && fail "chart-only knob leaked into oidc.yaml"
-grep -q 'value: /etc/avuruops-oidc/oidc.yaml' <<<"$out" || fail "AVURUOPS_AUTH_OIDC_CONFIG env missing"
-grep -q 'name: AVURUOPS_AUTH_OIDC_CLIENT_SECRET' <<<"$out" || fail "client-secret env missing"
+grep -q 'value: /etc/avuruobs-oidc/oidc.yaml' <<<"$out" || fail "AVURUOBS_AUTH_OIDC_CONFIG env missing"
+grep -q 'name: AVURUOBS_AUTH_OIDC_CLIENT_SECRET' <<<"$out" || fail "client-secret env missing"
 grep -q 'key: oidc-client-secret' <<<"$out" || fail "secretKeyRef key wrong"
 grep -q 'oidc-client-secret: "' <<<"$out" || fail "chart-created oidc Secret missing"
-grep -q 'value: "https://obs.example.com"' <<<"$out" || fail "AVURUOPS_PUBLIC_URL env missing"
-grep -q 'mountPath: /etc/avuruops-oidc' <<<"$out" || fail "oidc ConfigMap not mounted"
+grep -q 'value: "https://obs.example.com"' <<<"$out" || fail "AVURUOBS_PUBLIC_URL env missing"
+grep -q 'mountPath: /etc/avuruobs-oidc' <<<"$out" || fail "oidc ConfigMap not mounted"
 ok "ConfigMap (secret-free), Secret, env, volume and mount all rendered"
 
 echo "== auth oidc: existingSecret wins and suppresses the chart Secret"
@@ -376,9 +376,9 @@ ok "existingSecret referenced; no chart-created Secret"
 
 echo "== auth oidc: no secret source -> secret env omitted (public client), no dangling ref"
 out="$(render "${oidc_on[@]}")"
-grep -q 'AVURUOPS_AUTH_OIDC_CONFIG' <<<"$out" || fail "oidc config env lost without a secret source"
+grep -q 'AVURUOBS_AUTH_OIDC_CONFIG' <<<"$out" || fail "oidc config env lost without a secret source"
 grep -q 'oidc-client-secret' <<<"$out" && fail "secret surface rendered with no secret source"
-grep -q 'name: AVURUOPS_AUTH_OIDC_CLIENT_SECRET' <<<"$out" && fail "secret env references a Secret that does not exist"
+grep -q 'name: AVURUOBS_AUTH_OIDC_CLIENT_SECRET' <<<"$out" && fail "secret env references a Secret that does not exist"
 ok "config still renders; nothing points at a nonexistent Secret"
 
 echo "== auth oidc: guards"
@@ -403,7 +403,7 @@ out="$(render --set auth.ingest.mode=off)"
 grep -q 'avuruingestauth' <<<"$out" && fail "authenticator rendered with mode=off"
 grep -q 'tenantfromauth' <<<"$out" && fail "tenantfromauth rendered with mode=off"
 grep -q 'internal-token' <<<"$out" && fail "ingest Secret rendered with mode=off"
-grep -q 'AVURUOPS_INGEST_INTERNAL_TOKEN' <<<"$out" && fail "hub/gateway ingest env rendered with mode=off"
+grep -q 'AVURUOBS_INGEST_INTERNAL_TOKEN' <<<"$out" && fail "hub/gateway ingest env rendered with mode=off"
 ok "mode=off leaves no extension, processor, Secret or env behind"
 
 echo "== ingest keys: enforce stamps the tenant LAST so the key wins"
@@ -416,11 +416,11 @@ grep -q 'mode: "enforce"' <<<"$out" || fail "enforce mode not rendered into the 
 ok "enforce: key project overrides the static tenant in all 3 pipelines"
 
 echo "== ingest keys: the sensor can still send under enforce"
-grep -q 'Authorization: "Bearer ${env:AVURUOPS_INGEST_KEY}"' <<<"$out" \
+grep -q 'Authorization: "Bearer ${env:AVURUOBS_INGEST_KEY}"' <<<"$out" \
   || fail "sensor agent exporter has no ingest key header (enforce would silence it)"
-grep -q 'value: "Authorization=Bearer $(AVURUOPS_INGEST_KEY)"' <<<"$out" \
+grep -q 'value: "Authorization=Bearer $(AVURUOBS_INGEST_KEY)"' <<<"$out" \
   || fail "OBI container has no ingest key header (enforce would silence it)"
-grep -q 'AVURUOPS_INGEST_SEED_KEYS' <<<"$out" \
+grep -q 'AVURUOBS_INGEST_SEED_KEYS' <<<"$out" \
   || fail "hub gets no seed keys — the sensor key would never exist in auth_ingest_key"
 ok "sensor key provisioned for both sensor containers and seeded into the hub"
 

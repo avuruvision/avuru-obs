@@ -163,7 +163,7 @@ func TestGreenSummary(t *testing.T) {
 	}
 
 	// Quality split (green TDP estimation AEP): the fixture stamps
-	// seed-checkout's series avuruops_quality=measured and seed-payments'
+	// seed-checkout's series avuruobs_quality=measured and seed-payments'
 	// estimated — the full HTTP path (not just the storage-layer unit/
 	// integration tests) must carry that split through to the wire without
 	// blending it into one number.

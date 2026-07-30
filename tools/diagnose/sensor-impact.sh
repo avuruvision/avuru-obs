@@ -4,7 +4,7 @@
 # mutates the cluster.
 set -uo pipefail
 
-NS="${AVURUOPS_NAMESPACE:-avuruops}"
+NS="${AVURUOBS_NAMESPACE:-avuruobs}"
 SINCE="${LOG_SINCE:-30m}"
 
 section() { printf '\n===== %s =====\n' "$*"; }

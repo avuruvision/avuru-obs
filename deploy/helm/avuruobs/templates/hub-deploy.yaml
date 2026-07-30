@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "avuruops.fullname" . }}-hub
+  name: {{ include "avuruobs.fullname" . }}-hub
   labels:
-    {{- include "avuruops.labels" . | nindent 4 }}
+    {{- include "avuruobs.labels" . | nindent 4 }}
     app.kubernetes.io/component: hub
 spec:
   replicas: {{ .Values.hub.replicas }}
   selector:
     matchLabels:
-      {{- include "avuruops.selectorLabels" . | nindent 6 }}
+      {{- include "avuruobs.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: hub
   template:
     metadata:
       labels:
-        {{- include "avuruops.selectorLabels" . | nindent 8 }}
+        {{- include "avuruobs.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: hub
     spec:
       {{- with .Values.image.pullSecrets }}
@@ -23,67 +23,67 @@ spec:
       {{- end }}
       containers:
         - name: hub
-          image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.hub.repository "tag" (.Values.hub.tag | default .Chart.AppVersion)) }}
+          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.hub.repository "tag" (.Values.hub.tag | default .Chart.AppVersion)) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
-            {{- include "avuruops.clickhouseEnv" . | nindent 12 }}
-            {{- include "avuruops.modulesEnv" . | nindent 12 }}
-            {{- include "avuruops.groupsEnv" . | nindent 12 }}
-            {{- include "avuruops.alertsEnv" . | nindent 12 }}
+            {{- include "avuruobs.clickhouseEnv" . | nindent 12 }}
+            {{- include "avuruobs.modulesEnv" . | nindent 12 }}
+            {{- include "avuruobs.groupsEnv" . | nindent 12 }}
+            {{- include "avuruobs.alertsEnv" . | nindent 12 }}
             {{- /* with-guard on the OUTPUT, not a restated module condition:
                    an empty include piped through nindent would leave a stray
                    indented blank line in default renders. */}}
-            {{- with include "avuruops.greenEnv" . }}{{ . | nindent 12 }}{{- end }}
+            {{- with include "avuruobs.greenEnv" . }}{{ . | nindent 12 }}{{- end }}
             {{- if .Values.projects }}
-            - name: AVURUOPS_PROJECTS
+            - name: AVURUOBS_PROJECTS
               value: {{ join "," .Values.projects | quote }}
             {{- end }}
-            {{- if include "avuruops.ingestAuthEnabled" . }}
+            {{- if include "avuruobs.ingestAuthEnabled" . }}
             {{- /* Registers POST /internal/v1/ingest-keys/validate (the hub
                    skips the route entirely when this is empty) and seeds the
                    chart-provisioned sensor key so enforce mode has something
                    valid to accept before anyone flips the dial. */}}
-            - name: AVURUOPS_INGEST_INTERNAL_TOKEN
+            - name: AVURUOBS_INGEST_INTERNAL_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "avuruops.ingestSecretName" . }}
+                  name: {{ include "avuruobs.ingestSecretName" . }}
                   key: internal-token
             {{- if .Values.auth.ingest.provisionSensorKey }}
-            - name: AVURUOPS_INGEST_SEED_KEYS
+            - name: AVURUOBS_INGEST_SEED_KEYS
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "avuruops.ingestSecretName" . }}
+                  name: {{ include "avuruobs.ingestSecretName" . }}
                   key: seed-keys
             {{- end }}
             {{- end }}
-            - name: AVURUOPS_AUTH_ENABLED
+            - name: AVURUOBS_AUTH_ENABLED
               value: {{ .Values.auth.enabled | quote }}
             {{- if .Values.auth.enabled }}
-            - name: AVURUOPS_AUTH_ADMIN_PASSWORD
+            - name: AVURUOBS_AUTH_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.auth.existingSecret | default (printf "%s-auth" (include "avuruops.fullname" .)) }}
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-auth" (include "avuruobs.fullname" .)) }}
                   key: admin-password
-            - name: AVURUOPS_AUTH_SESSION_TTL_HOURS
+            - name: AVURUOBS_AUTH_SESSION_TTL_HOURS
               value: {{ .Values.auth.sessionTTLHours | quote }}
             {{- if .Values.auth.anonymous.role }}
-            - name: AVURUOPS_AUTH_ANONYMOUS_ROLE
+            - name: AVURUOBS_AUTH_ANONYMOUS_ROLE
               value: {{ .Values.auth.anonymous.role | quote }}
-            - name: AVURUOPS_AUTH_ANONYMOUS_PROJECTS
+            - name: AVURUOBS_AUTH_ANONYMOUS_PROJECTS
               value: {{ join "," .Values.auth.anonymous.projects | quote }}
             {{- end }}
             {{- if .Values.auth.demo.enabled }}
-            - name: AVURUOPS_DEMO_ENABLED
+            - name: AVURUOBS_DEMO_ENABLED
               value: "true"
-            - name: AVURUOPS_DEMO_EMAIL
+            - name: AVURUOBS_DEMO_EMAIL
               value: {{ .Values.auth.demo.email | quote }}
-            - name: AVURUOPS_DEMO_PASSWORD
+            - name: AVURUOBS_DEMO_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.auth.existingSecret | default (printf "%s-auth" (include "avuruops.fullname" .)) }}
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-auth" (include "avuruobs.fullname" .)) }}
                   key: demo-password
             {{- end }}
-            {{- with include "avuruops.oidcEnv" . }}{{ . | nindent 12 }}{{- end }}
+            {{- with include "avuruobs.oidcEnv" . }}{{ . | nindent 12 }}{{- end }}
             {{- end }}
           ports:
             - name: http
@@ -102,17 +102,17 @@ spec:
             periodSeconds: 10
           resources:
             {{- toYaml .Values.hub.resources | nindent 12 }}
-          {{- if or .Values.modules.serviceHealth.enabled .Values.modules.alerting.enabled .Values.modules.green.enabled (include "avuruops.oidcEnabled" .) }}
+          {{- if or .Values.modules.serviceHealth.enabled .Values.modules.alerting.enabled .Values.modules.green.enabled (include "avuruobs.oidcEnabled" .) }}
           volumeMounts:
-            {{- include "avuruops.groupsVolumeMount" . | nindent 12 }}
-            {{- include "avuruops.alertsVolumeMount" . | nindent 12 }}
-            {{- with include "avuruops.greenVolumeMount" . }}{{ . | nindent 12 }}{{- end }}
-            {{- with include "avuruops.oidcVolumeMount" . }}{{ . | nindent 12 }}{{- end }}
+            {{- include "avuruobs.groupsVolumeMount" . | nindent 12 }}
+            {{- include "avuruobs.alertsVolumeMount" . | nindent 12 }}
+            {{- with include "avuruobs.greenVolumeMount" . }}{{ . | nindent 12 }}{{- end }}
+            {{- with include "avuruobs.oidcVolumeMount" . }}{{ . | nindent 12 }}{{- end }}
           {{- end }}
-      {{- if or .Values.modules.serviceHealth.enabled .Values.modules.alerting.enabled .Values.modules.green.enabled (include "avuruops.oidcEnabled" .) }}
+      {{- if or .Values.modules.serviceHealth.enabled .Values.modules.alerting.enabled .Values.modules.green.enabled (include "avuruobs.oidcEnabled" .) }}
       volumes:
-        {{- include "avuruops.groupsVolume" . | nindent 8 }}
-        {{- include "avuruops.alertsVolume" . | nindent 8 }}
-        {{- with include "avuruops.greenVolume" . }}{{ . | nindent 8 }}{{- end }}
-        {{- with include "avuruops.oidcVolume" . }}{{ . | nindent 8 }}{{- end }}
+        {{- include "avuruobs.groupsVolume" . | nindent 8 }}
+        {{- include "avuruobs.alertsVolume" . | nindent 8 }}
+        {{- with include "avuruobs.greenVolume" . }}{{ . | nindent 8 }}{{- end }}
+        {{- with include "avuruobs.oidcVolume" . }}{{ . | nindent 8 }}{{- end }}
       {{- end }}

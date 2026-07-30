@@ -17,15 +17,15 @@ import (
 const greenReloadInterval = 15 * time.Second
 
 // loadGreenConfig loads the green (energy/carbon) config from
-// AVURUOPS_GREEN_CONFIG and returns an accessor for it. An unset path yields
+// AVURUOBS_GREEN_CONFIG and returns an accessor for it. An unset path yields
 // green.Default() (world-average factors, Kepler default metric names, no
 // budgets). A present-but-invalid file fails loud at startup (like
-// AVURUOPS_MODULES) rather than silently misreporting carbon. When a path is
+// AVURUOBS_MODULES) rather than silently misreporting carbon. When a path is
 // set, a background goroutine re-reads it on mtime change so operators can
 // edit the ConfigMap without a pod restart; a later bad edit is logged and
 // ignored (the last good config stays live).
 func loadGreenConfig(ctx context.Context) (func() green.Config, error) {
-	path := os.Getenv("AVURUOPS_GREEN_CONFIG")
+	path := os.Getenv("AVURUOBS_GREEN_CONFIG")
 	if path == "" {
 		cfg := green.Default()
 		return func() green.Config { return cfg }, nil
@@ -33,7 +33,7 @@ func loadGreenConfig(ctx context.Context) (func() green.Config, error) {
 
 	cfg, modTime, err := readGreenConfig(path)
 	if err != nil {
-		return nil, fmt.Errorf("AVURUOPS_GREEN_CONFIG: %w", err)
+		return nil, fmt.Errorf("AVURUOBS_GREEN_CONFIG: %w", err)
 	}
 	slog.Info("green config loaded", "path", path, "budgets", len(cfg.Budgets))
 

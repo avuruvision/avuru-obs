@@ -10,7 +10,7 @@ import { test, expect, type Page } from "@playwright/test";
 const OUT_DIR = join(__dirname, "..", "..", "docs", "images");
 const HOTROD_URL = process.env.HOTROD_URL ?? "http://localhost:18088";
 const ADMIN_EMAIL = "admin";
-const ADMIN_PASSWORD = process.env.AVURUOPS_AUTH_ADMIN_PASSWORD ?? "shots-admin-pw";
+const ADMIN_PASSWORD = process.env.AVURUOBS_AUTH_ADMIN_PASSWORD ?? "shots-admin-pw";
 
 // HotROD's four demo customers; rotating them fans traffic across drivers.
 const CUSTOMERS = [123, 392, 731, 567];

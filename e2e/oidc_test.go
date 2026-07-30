@@ -2,7 +2,7 @@
 
 // OIDC SSO against the compose stack plus the OPT-IN mock IdP (compose
 // profile `oidc-e2e` + deploy/compose/docker-compose.oidc-e2e.yaml). Skipped
-// unless AVURUOPS_E2E_OIDC=1 — the default `make e2e` stack has no IdP.
+// unless AVURUOBS_E2E_OIDC=1 — the default `make e2e` stack has no IdP.
 //
 // The flow under test is the hub's authorization-code + PKCE round trip:
 //
@@ -31,8 +31,8 @@ import (
 // so the client rewrites it before following — only the URL host changes;
 // path, query, and the jar-managed cookies are untouched.
 var (
-	oidcInternalHost = envOr("AVURUOPS_E2E_OIDC_INTERNAL_HOST", "mock-oidc:8080")
-	oidcExternalHost = envOr("AVURUOPS_E2E_OIDC_EXTERNAL_HOST", "localhost:18089")
+	oidcInternalHost = envOr("AVURUOBS_E2E_OIDC_INTERNAL_HOST", "mock-oidc:8080")
+	oidcExternalHost = envOr("AVURUOBS_E2E_OIDC_EXTERNAL_HOST", "localhost:18089")
 )
 
 // Mirrors deploy/compose/oidc-e2e.yaml (mapping) and the mock's JSON_CONFIG
@@ -45,8 +45,8 @@ const (
 )
 
 func TestOIDCLoginMapsGrants(t *testing.T) {
-	if os.Getenv("AVURUOPS_E2E_OIDC") != "1" {
-		t.Skip("AVURUOPS_E2E_OIDC != 1 — mock-IdP stack not up (see deploy/compose/docker-compose.oidc-e2e.yaml)")
+	if os.Getenv("AVURUOBS_E2E_OIDC") != "1" {
+		t.Skip("AVURUOBS_E2E_OIDC != 1 — mock-IdP stack not up (see deploy/compose/docker-compose.oidc-e2e.yaml)")
 	}
 
 	jar, err := cookiejar.New(nil)

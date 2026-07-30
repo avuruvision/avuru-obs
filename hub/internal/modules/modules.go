@@ -65,7 +65,7 @@ func AllSet() Set {
 	return s
 }
 
-// Parse resolves a comma-separated module list (the AVURUOPS_MODULES env
+// Parse resolves a comma-separated module list (the AVURUOBS_MODULES env
 // value). Empty means "all modules" — the backward-compatible default. Core
 // is always forced on. Unknown names are an error: a typo must fail the
 // deploy loudly, not silently disable a module's schema.
@@ -91,7 +91,7 @@ func Parse(v string) (Set, error) {
 	}
 	// Green's hard dependency (see the Green const doc) must fail the deploy loudly.
 	if s[Green] && !s[InfraMetrics] {
-		return nil, fmt.Errorf("module %q requires %q — add it to AVURUOPS_MODULES", Green, InfraMetrics)
+		return nil, fmt.Errorf("module %q requires %q — add it to AVURUOBS_MODULES", Green, InfraMetrics)
 	}
 	return s, nil
 }

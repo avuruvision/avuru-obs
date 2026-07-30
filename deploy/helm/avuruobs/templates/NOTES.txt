@@ -2,28 +2,28 @@ Avuru Obs is installed.
 
 Point your OTLP exporters at the gateway (the ONLY change to migrate off Jaeger):
 
-  OTEL_EXPORTER_OTLP_ENDPOINT = http://{{ include "avuruops.fullname" . }}-gateway:4318   # HTTP
-  (or {{ include "avuruops.fullname" . }}-gateway:4317 for gRPC)
+  OTEL_EXPORTER_OTLP_ENDPOINT = http://{{ include "avuruobs.fullname" . }}-gateway:4318   # HTTP
+  (or {{ include "avuruobs.fullname" . }}-gateway:4317 for gRPC)
 
 Open the UI (separate static deployable; single-origin /api -> hub via ingress):
 {{- if .Values.ingress.enabled }}
   http://{{ .Values.ingress.host }}/
 {{- else }}
-  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "avuruops.fullname" . }}-ui 8080:80
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "avuruobs.fullname" . }}-ui 8080:80
   http://localhost:8080/
-  (port-forward svc/{{ include "avuruops.fullname" . }}-hub for the raw API)
+  (port-forward svc/{{ include "avuruobs.fullname" . }}-hub for the raw API)
 {{- end }}
 
-Schema migrations run automatically via the `{{ include "avuruops.fullname" . }}-migrate`
+Schema migrations run automatically via the `{{ include "avuruobs.fullname" . }}-migrate`
 hook (post-install / post-upgrade). Retention: traces {{ .Values.retention.traces }}d, logs {{ .Values.retention.logs }}d.
-{{- if include "avuruops.sentryEnabled" . }}
+{{- if include "avuruobs.sentryEnabled" . }}
 
 Sentry SDK ingest: ENABLED. Point an existing SDK here by changing only its DSN
 (<key> is not validated yet — any value works until per-project keys land):
 {{- if .Values.ingress.sentryHost }}
   https://<key>@{{ .Values.ingress.sentryHost }}/<project>
 {{- else }}
-  http://<key>@{{ include "avuruops.fullname" . }}-gateway:4319/<project>   # in-cluster only
+  http://<key>@{{ include "avuruobs.fullname" . }}-gateway:4319/<project>   # in-cluster only
   Set ingress.sentryHost to reach it from browsers (it needs its own hostname:
   /api/<project>/envelope/ collides with the hub's /api on the main host).
 {{- end }}
@@ -59,11 +59,11 @@ NOTE: the UI ships open (no auth). Enforce authentication at your ingress
 {{- end }}
 {{- if .Values.auth.enabled }}
 Login: user `admin`. Retrieve the bootstrap password with:
-  kubectl -n {{ .Release.Namespace }} get secret {{ .Values.auth.existingSecret | default (printf "%s-auth" (include "avuruops.fullname" .)) }} -o jsonpath='{.data.admin-password}' | base64 -d
+  kubectl -n {{ .Release.Namespace }} get secret {{ .Values.auth.existingSecret | default (printf "%s-auth" (include "avuruobs.fullname" .)) }} -o jsonpath='{.data.admin-password}' | base64 -d
 NOTE: if you front the hub with your own proxy, it must preserve the Host
 header (e.g. nginx `proxy_set_header Host $host`) — the CSRF origin check
 compares Origin against Host and rejects browser writes on mismatch.
-{{- if include "avuruops.oidcEnabled" . }}
+{{- if include "avuruobs.oidcEnabled" . }}
 
 SSO: OIDC ENABLED against {{ .Values.auth.oidc.issuer }}. Register this
 redirect URL with the IdP:

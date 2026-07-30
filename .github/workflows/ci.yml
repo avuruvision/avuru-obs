@@ -93,7 +93,7 @@ jobs:
       # The one case template-test.sh does not cover.
       - name: template against external ClickHouse
         run: |
-          helm template avuruops deploy/helm/avuruops \
+          helm template avuruobs deploy/helm/avuruobs \
             --set clickhouse.external.enabled=true \
             --set clickhouse.external.address=ch:9000 \
             --set clickhouse.external.existingSecret=ch > /dev/null

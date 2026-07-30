@@ -74,7 +74,7 @@ type Channel struct {
 }
 
 // Config is the whole alerting configuration, loaded from the mounted ConfigMap
-// (AVURUOPS_ALERTS_CONFIG) or Default() when absent.
+// (AVURUOBS_ALERTS_CONFIG) or Default() when absent.
 type Config struct {
 	EvalIntervalSec int       `json:"evalIntervalSec,omitempty"`
 	WindowMinutes   int       `json:"windowMinutes,omitempty"`
@@ -88,7 +88,7 @@ const (
 )
 
 // Default is the zero-config configuration: no rules (inert), 30s evaluation
-// over a 5-minute window. Mirrors an empty AVURUOPS_ALERTS_CONFIG.
+// over a 5-minute window. Mirrors an empty AVURUOBS_ALERTS_CONFIG.
 func Default() Config {
 	return Config{EvalIntervalSec: defaultEvalIntervalSec, WindowMinutes: defaultWindowMinutes}
 }

@@ -5,9 +5,9 @@
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
-  name: {{ .Values.sensor.priorityClass.name | default (printf "%s-sensor" (include "avuruops.fullname" .)) }}
+  name: {{ .Values.sensor.priorityClass.name | default (printf "%s-sensor" (include "avuruobs.fullname" .)) }}
   labels:
-    {{- include "avuruops.labels" . | nindent 4 }}
+    {{- include "avuruobs.labels" . | nindent 4 }}
     app.kubernetes.io/component: sensor
 value: {{ .Values.sensor.priorityClass.value }}
 globalDefault: false

@@ -5,7 +5,7 @@
 # dev sandbox mounts, so /health, /alerts and /green render real content on the
 # RELEASED images. Always run under an isolated project name:
 #
-#   AVURUOPS_VERSION=v0.2.0 docker compose -p avuru-shots \
+#   AVURUOBS_VERSION=v0.2.0 docker compose -p avuru-shots \
 #     -f deploy/compose/docker-compose.release.yaml \
 #     -f tools/screenshots/compose.screenshots.yaml up --wait
 #
@@ -20,7 +20,7 @@ services:
     environment:
       # The release file's module list misses `alerting`, whose 0008_alerts.sql
       # tables /alerts depends on (the hub runs all modules when unset).
-      AVURUOPS_MODULES: "core,logs,infra-metrics,profiling,error-tracking,alerting"
+      AVURUOBS_MODULES: "core,logs,infra-metrics,profiling,error-tracking,alerting"
 
   gateway:
     ports: !override
@@ -32,19 +32,19 @@ services:
     environment:
       # Deterministic admin credentials for the capture script (the release
       # image otherwise generates a password and logs it once at first boot).
-      AVURUOPS_AUTH_ADMIN_PASSWORD: shots-admin-pw
+      AVURUOBS_AUTH_ADMIN_PASSWORD: shots-admin-pw
       # Same seeded-config wiring as the dev sandbox (docker-compose.yaml):
       # tiny seed volumes need minSampleCount 1, alert rules fire on the seeded
       # down service, and green factors make gCO2e deterministic.
-      AVURUOPS_GROUPS_CONFIG: /etc/avuruops/groups.json
-      AVURUOPS_ALERTS_CONFIG: /etc/avuruops-alerts/alerts.json
-      AVURUOPS_GREEN_CONFIG: /etc/avuruops-green/green.json
+      AVURUOBS_GROUPS_CONFIG: /etc/avuruobs/groups.json
+      AVURUOBS_ALERTS_CONFIG: /etc/avuruobs-alerts/alerts.json
+      AVURUOBS_GREEN_CONFIG: /etc/avuruobs-green/green.json
     # Resolves identically from this file's directory and from the project
     # directory (deploy/compose): both paths land on deploy/compose/*.json.
     volumes:
-      - ../../deploy/compose/groups.json:/etc/avuruops/groups.json:ro
-      - ../../deploy/compose/alerts.json:/etc/avuruops-alerts/alerts.json:ro
-      - ../../deploy/compose/green.json:/etc/avuruops-green/green.json:ro
+      - ../../deploy/compose/groups.json:/etc/avuruobs/groups.json:ro
+      - ../../deploy/compose/alerts.json:/etc/avuruobs-alerts/alerts.json:ro
+      - ../../deploy/compose/green.json:/etc/avuruobs-green/green.json:ro
     ports: !override
       - "127.0.0.1:18081:8080"
 

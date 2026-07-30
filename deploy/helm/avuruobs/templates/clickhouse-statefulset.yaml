@@ -2,21 +2,21 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "avuruops.fullname" . }}-clickhouse
+  name: {{ include "avuruobs.fullname" . }}-clickhouse
   labels:
-    {{- include "avuruops.labels" . | nindent 4 }}
+    {{- include "avuruobs.labels" . | nindent 4 }}
     app.kubernetes.io/component: clickhouse
 spec:
-  serviceName: {{ include "avuruops.fullname" . }}-clickhouse
+  serviceName: {{ include "avuruobs.fullname" . }}-clickhouse
   replicas: 1
   selector:
     matchLabels:
-      {{- include "avuruops.selectorLabels" . | nindent 6 }}
+      {{- include "avuruobs.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: clickhouse
   template:
     metadata:
       labels:
-        {{- include "avuruops.selectorLabels" . | nindent 8 }}
+        {{- include "avuruobs.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: clickhouse
     spec:
       {{- with .Values.image.pullSecrets }}
@@ -27,7 +27,7 @@ spec:
         fsGroup: 101
       containers:
         - name: clickhouse
-          image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.clickhouse.image.repository "tag" .Values.clickhouse.image.tag) }}
+          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.clickhouse.image.repository "tag" .Values.clickhouse.image.tag) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: CLICKHOUSE_USER
@@ -35,7 +35,7 @@ spec:
             - name: CLICKHOUSE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "avuruops.clickhouseSecretName" . }}
+                  name: {{ include "avuruobs.clickhouseSecretName" . }}
                   key: clickhouse-password
             - name: CLICKHOUSE_DB
               value: otel
@@ -67,7 +67,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: {{ include "avuruops.fullname" . }}-clickhouse
+            name: {{ include "avuruobs.fullname" . }}-clickhouse
         {{- if not .Values.clickhouse.persistence.enabled }}
         - name: data
           emptyDir: {}

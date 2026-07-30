@@ -5,7 +5,7 @@
 # cluster rather than scaling the bundled one. Layer this on top of an
 # environment overlay:
 #
-#   helm upgrade --install avuruops oci://ghcr.io/avuruvision/charts/avuruops \
+#   helm upgrade --install avuruobs oci://ghcr.io/avuruvision/charts/avuruobs \
 #     -f values-prod.yaml -f values-external-clickhouse.yaml \
 #     --set clickhouse.external.address=ch.prod.svc.cluster.local:9000
 
@@ -17,7 +17,7 @@ clickhouse:
     database: otel
     username: avuru
     # Secret with key `clickhouse-password`. Never inline the password in prod.
-    existingSecret: avuruops-clickhouse-external
+    existingSecret: avuruobs-clickhouse-external
 
 # The stateless tier scales out; ClickHouse is the shared backend, so add
 # gateway replicas as ingest grows and hub replicas for query concurrency.

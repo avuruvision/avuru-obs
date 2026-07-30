@@ -4,7 +4,7 @@
 #
 # Prereqs (see docs/runbooks/public-demo.md): a cluster with an ingress
 # controller + TLS, DNS for demo.avuruobs.io, and the admin Secret created:
-#   kubectl -n "$NS" create secret generic avuruops-admin \
+#   kubectl -n "$NS" create secret generic avuruobs-admin \
 #     --from-literal=admin-password="$(openssl rand -base64 24)"
 set -euo pipefail
 
@@ -14,7 +14,7 @@ VERSION="${VERSION:?set VERSION to a released chart version, e.g. VERSION=0.2.1}
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "Installing avuru obs $VERSION into namespace '$NS' (public-demo values)…"
-helm upgrade --install avuruops oci://ghcr.io/avuruvision/charts/avuruops \
+helm upgrade --install avuruobs oci://ghcr.io/avuruvision/charts/avuruobs \
   --version "$VERSION" \
   -n "$NS" --create-namespace \
   -f "$HERE/values-public-demo.yaml"

@@ -132,7 +132,7 @@ func TestProjectsList(t *testing.T) {
 	if _, ok := found["default"]; !ok {
 		t.Errorf("projects missing default: %v", found)
 	}
-	// staging is BOTH config-defined (AVURUOPS_PROJECTS in compose) and
+	// staging is BOTH config-defined (AVURUOBS_PROJECTS in compose) and
 	// data-observed; config wins the source label.
 	if src, ok := found["staging"]; !ok || src != "config" {
 		t.Errorf("projects staging = %q (present=%v), want config", src, ok)

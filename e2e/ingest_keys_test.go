@@ -3,7 +3,7 @@
 // Per-project ingest keys (auth Plan C) end to end against the compose stack.
 //
 // OPT-IN: needs the ingest-e2e overlay (two gateways, one enforce, one log) and
-// runs only when AVURUOPS_E2E_INGEST=1, so the default `make e2e` run is
+// runs only when AVURUOBS_E2E_INGEST=1, so the default `make e2e` run is
 // unaffected. See deploy/compose/docker-compose.ingest-e2e.yaml for the boot
 // command.
 //
@@ -53,14 +53,14 @@ const (
 )
 
 var (
-	enforceOTLP = envOr("AVURUOPS_E2E_OTLP_ENFORCE", "http://localhost:4318")
-	logOTLP     = envOr("AVURUOPS_E2E_OTLP_LOG", "http://localhost:4328")
+	enforceOTLP = envOr("AVURUOBS_E2E_OTLP_ENFORCE", "http://localhost:4318")
+	logOTLP     = envOr("AVURUOBS_E2E_OTLP_LOG", "http://localhost:4328")
 )
 
 func requireIngestE2E(t *testing.T) {
 	t.Helper()
-	if os.Getenv("AVURUOPS_E2E_INGEST") != "1" {
-		t.Skip("ingest-key e2e needs the ingest-e2e overlay; set AVURUOPS_E2E_INGEST=1")
+	if os.Getenv("AVURUOBS_E2E_INGEST") != "1" {
+		t.Skip("ingest-key e2e needs the ingest-e2e overlay; set AVURUOBS_E2E_INGEST=1")
 	}
 }
 

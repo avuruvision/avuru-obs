@@ -16,15 +16,15 @@ import (
 // applies it without a restart. Cheap: one stat per tick.
 const groupsReloadInterval = 15 * time.Second
 
-// loadGroupsConfig loads the service-health config from AVURUOPS_GROUPS_CONFIG
+// loadGroupsConfig loads the service-health config from AVURUOBS_GROUPS_CONFIG
 // and returns an accessor for it. An unset path yields health.Default()
 // (auto-only grouping). A present-but-invalid file fails loud at startup (like
-// AVURUOPS_MODULES) rather than silently misgrouping. When a path is set, a
+// AVURUOBS_MODULES) rather than silently misgrouping. When a path is set, a
 // background goroutine re-reads it on mtime change so operators can edit the
 // ConfigMap without a pod restart; a later bad edit is logged and ignored
 // (the last good config stays live).
 func loadGroupsConfig(ctx context.Context) (func() health.Config, error) {
-	path := os.Getenv("AVURUOPS_GROUPS_CONFIG")
+	path := os.Getenv("AVURUOBS_GROUPS_CONFIG")
 	if path == "" {
 		cfg := health.Default()
 		return func() health.Config { return cfg }, nil
@@ -32,7 +32,7 @@ func loadGroupsConfig(ctx context.Context) (func() health.Config, error) {
 
 	cfg, modTime, err := readGroupsConfig(path)
 	if err != nil {
-		return nil, fmt.Errorf("AVURUOPS_GROUPS_CONFIG: %w", err)
+		return nil, fmt.Errorf("AVURUOBS_GROUPS_CONFIG: %w", err)
 	}
 	slog.Info("service-health config loaded", "path", path, "groups", len(cfg.Groups))
 

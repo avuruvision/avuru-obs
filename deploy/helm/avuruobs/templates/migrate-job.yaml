@@ -1,9 +1,9 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "avuruops.fullname" . }}-migrate
+  name: {{ include "avuruobs.fullname" . }}-migrate
   labels:
-    {{- include "avuruops.labels" . | nindent 4 }}
+    {{- include "avuruobs.labels" . | nindent 4 }}
     app.kubernetes.io/component: migrate
   annotations:
     # post-install AND post-upgrade (NOT pre-*): with an in-chart ClickHouse,
@@ -22,7 +22,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "avuruops.selectorLabels" . | nindent 8 }}
+        {{- include "avuruobs.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: migrate
     spec:
       restartPolicy: Never
@@ -32,19 +32,19 @@ spec:
       {{- end }}
       containers:
         - name: migrate
-          image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.hub.repository "tag" (.Values.hub.tag | default .Chart.AppVersion)) }}
+          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.hub.repository "tag" (.Values.hub.tag | default .Chart.AppVersion)) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["migrate"]
           env:
-            {{- include "avuruops.clickhouseEnv" . | nindent 12 }}
-            {{- include "avuruops.modulesEnv" . | nindent 12 }}
-            - name: AVURUOPS_RETENTION_TRACES_DAYS
+            {{- include "avuruobs.clickhouseEnv" . | nindent 12 }}
+            {{- include "avuruobs.modulesEnv" . | nindent 12 }}
+            - name: AVURUOBS_RETENTION_TRACES_DAYS
               value: {{ .Values.retention.traces | quote }}
-            - name: AVURUOPS_RETENTION_LOGS_DAYS
+            - name: AVURUOBS_RETENTION_LOGS_DAYS
               value: {{ .Values.retention.logs | quote }}
-            - name: AVURUOPS_RETENTION_METRICS_DAYS
+            - name: AVURUOBS_RETENTION_METRICS_DAYS
               value: {{ .Values.retention.metrics | quote }}
-            - name: AVURUOPS_RETENTION_PROFILES_DAYS
+            - name: AVURUOBS_RETENTION_PROFILES_DAYS
               value: {{ .Values.retention.profiles | quote }}
-            - name: AVURUOPS_RETENTION_ERRORS_DAYS
+            - name: AVURUOBS_RETENTION_ERRORS_DAYS
               value: {{ .Values.retention.errors | quote }}
