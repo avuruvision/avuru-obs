@@ -452,6 +452,38 @@ auth:
     # upgrades (like adminPassword). With auth.existingSecret set, add a
     # `demo-password` key to that Secret yourself.
     password: ""
+  # Per-project ingest API keys, authenticated in the GATEWAY (not the hub — the
+  # hub is never in the telemetry byte-path; it only answers the gateway's
+  # control-plane validation call).
+  #
+  # mode is the rollout dial, and `log` is the safe default that keeps the
+  # drop-in OTLP promise intact on upgrade:
+  #   off      no key checking at all
+  #   log      validate and count would-be denials, never reject, never stamp
+  #            the tenant — an existing unkeyed sender keeps landing unchanged
+  #   enforce  reject unkeyed/invalid OTLP, and the key's project becomes the
+  #            authoritative tenant, overriding any client-supplied
+  #            avuru.tenant (this is what replaces topology-based trust)
+  #
+  # Create keys in the UI (Settings → General → Ingest API keys) or via
+  # POST /api/v1/projects/{project}/keys. The raw secret is shown exactly once.
+  ingest:
+    mode: log
+    # Authenticates the gateway→hub validation call. Empty → generated into the
+    # auth Secret on first install and reused on upgrades (like adminPassword).
+    internalToken: ""
+    # The sensor is itself an unkeyed OTLP sender, so enforce mode would silence
+    # avuru's own agent. The chart therefore provisions a key for the sensor's
+    # project and seeds it through the hub. Leave true unless you manage the
+    # sensor's credential yourself.
+    provisionSensorKey: true
+    # Project the provisioned sensor key belongs to. Defaults to gateway.tenant
+    # when set, else "default".
+    sensorKeyProject: ""
+    # Verdict cache bounds in the gateway. staleGrace lets a cached verdict keep
+    # serving through a hub blip so a control-plane outage never drops telemetry.
+    cacheTTL: 30s
+    staleGrace: 5m
   # Enterprise SSO via any OpenID Connect IdP (Keycloak, Entra, Okta, Google,
   # Dex, ...). The hub runs the authorization-code + PKCE flow itself — no
   # oauth2-proxy, no extra pod. Register <publicUrl>/api/v1/auth/oidc/callback

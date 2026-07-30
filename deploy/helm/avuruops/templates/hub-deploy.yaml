@@ -38,6 +38,24 @@ spec:
             - name: AVURUOPS_PROJECTS
               value: {{ join "," .Values.projects | quote }}
             {{- end }}
+            {{- if include "avuruops.ingestAuthEnabled" . }}
+            {{- /* Registers POST /internal/v1/ingest-keys/validate (the hub
+                   skips the route entirely when this is empty) and seeds the
+                   chart-provisioned sensor key so enforce mode has something
+                   valid to accept before anyone flips the dial. */}}
+            - name: AVURUOPS_INGEST_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "avuruops.ingestSecretName" . }}
+                  key: internal-token
+            {{- if .Values.auth.ingest.provisionSensorKey }}
+            - name: AVURUOPS_INGEST_SEED_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "avuruops.ingestSecretName" . }}
+                  key: seed-keys
+            {{- end }}
+            {{- end }}
             - name: AVURUOPS_AUTH_ENABLED
               value: {{ .Values.auth.enabled | quote }}
             {{- if .Values.auth.enabled }}

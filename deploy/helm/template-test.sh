@@ -354,4 +354,64 @@ render "${oidc_on[@]}" --set auth.enabled=false >/dev/null 2>&1 \
   && fail "oidc rendered with auth disabled (hub would silently ignore SSO)"
 ok "missing issuer/clientId fails; SSO-with-auth-off fails"
 
+echo "== ingest keys: default (log) keeps the drop-in pipeline unchanged"
+out="$(render)"
+grep -q 'avuruingestauth:' <<<"$out" || fail "authenticator missing in default log mode"
+grep -q 'authenticator: avuruingestauth' <<<"$out" || fail "otlp receiver not wired to the authenticator"
+# The whole point of the log default: the pipeline must look exactly like a
+# pre-ingest-keys install, so an upgrade cannot change what lands.
+grep -q 'tenantfromauth' <<<"$out" && fail "tenantfromauth wired in log mode (pipeline is no longer byte-identical)"
+grep -q 'mode: "log"' <<<"$out" || fail "log mode not rendered into the extension"
+ok "log mode: authenticator on, no tenant stamping, pipeline unchanged"
+
+echo "== ingest keys: off renders no ingest surface at all"
+out="$(render --set auth.ingest.mode=off)"
+grep -q 'avuruingestauth' <<<"$out" && fail "authenticator rendered with mode=off"
+grep -q 'tenantfromauth' <<<"$out" && fail "tenantfromauth rendered with mode=off"
+grep -q 'internal-token' <<<"$out" && fail "ingest Secret rendered with mode=off"
+grep -q 'AVURUOPS_INGEST_INTERNAL_TOKEN' <<<"$out" && fail "hub/gateway ingest env rendered with mode=off"
+ok "mode=off leaves no extension, processor, Secret or env behind"
+
+echo "== ingest keys: enforce stamps the tenant LAST so the key wins"
+out="$(render --set auth.ingest.mode=enforce --set gateway.tenant=staging)"
+# Ordering is the correctness property: resource/tenant upserts the static
+# tenant, so stamping before it would let the static value silently win.
+n=$(grep -c 'processors: \[resource/tenant, tenantfromauth, batch\]' <<<"$out")
+[ "$n" = "3" ] || fail "tenantfromauth not last in all 3 gateway pipelines (got $n)"
+grep -q 'mode: "enforce"' <<<"$out" || fail "enforce mode not rendered into the extension"
+ok "enforce: key project overrides the static tenant in all 3 pipelines"
+
+echo "== ingest keys: the sensor can still send under enforce"
+grep -q 'Authorization: "Bearer ${env:AVURUOPS_INGEST_KEY}"' <<<"$out" \
+  || fail "sensor agent exporter has no ingest key header (enforce would silence it)"
+grep -q 'value: "Authorization=Bearer $(AVURUOPS_INGEST_KEY)"' <<<"$out" \
+  || fail "OBI container has no ingest key header (enforce would silence it)"
+grep -q 'AVURUOPS_INGEST_SEED_KEYS' <<<"$out" \
+  || fail "hub gets no seed keys — the sensor key would never exist in auth_ingest_key"
+ok "sensor key provisioned for both sensor containers and seeded into the hub"
+
+echo "== ingest keys: secret material never lands in a ConfigMap"
+# Decode what the chart generated and prove those exact bytes appear nowhere
+# outside the Secret. A ${env:...} placeholder in the ConfigMap is the point.
+leakcheck="$(mktemp)"
+cat > "$leakcheck" <<'PYEOF'
+import sys, yaml, base64
+docs = [d for d in yaml.safe_load_all(sys.stdin) if d]
+sec = {}
+for d in docs:
+    if d.get("kind") == "Secret" and d["metadata"]["name"].endswith("-ingest"):
+        sec = {k: base64.b64decode(v).decode() for k, v in d.get("data", {}).items()}
+assert sec, "no ingest Secret rendered"
+for label in ("internal-token", "sensor-key"):
+    raw = sec.get(label)
+    assert raw, f"{label} missing from the ingest Secret"
+    for d in docs:
+        body = yaml.safe_dump(d)
+        if raw in body or base64.b64encode(raw.encode()).decode() in body:
+            assert d.get("kind") == "Secret", f"{label} leaked into {d.get('kind')}"
+PYEOF
+printf '%s' "$out" | python3 "$leakcheck" || fail "ingest secret material leaked outside a Secret"
+rm -f "$leakcheck"
+ok "internal token and sensor key appear only in Secret objects"
+
 echo "ALL TEMPLATE ASSERTIONS PASSED"

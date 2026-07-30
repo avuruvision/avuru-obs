@@ -34,6 +34,15 @@ spec:
                 secretKeyRef:
                   name: {{ include "avuruops.clickhouseSecretName" . }}
                   key: clickhouse-password
+            {{- if include "avuruops.ingestAuthEnabled" . }}
+            {{- /* Referenced as ${env:...} by the avuruingestauth extension, so
+                   the shared secret never lands in the gateway ConfigMap. */}}
+            - name: AVURUOPS_INGEST_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "avuruops.ingestSecretName" . }}
+                  key: internal-token
+            {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/avuru

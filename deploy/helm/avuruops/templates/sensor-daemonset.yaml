@@ -136,6 +136,20 @@ spec:
               value: http://{{ include "avuruops.fullname" . }}-gateway:4318
             - name: OTEL_EXPORTER_OTLP_PROTOCOL
               value: http/protobuf
+            {{- if and (include "avuruops.ingestAuthEnabled" .) .Values.auth.ingest.provisionSensorKey }}
+            {{- /* OBI exports straight to the gateway rather than through the
+                   agent's collector config, so it needs the key on its own.
+                   OTEL_EXPORTER_OTLP_HEADERS is the standard OTel env; the
+                   $(VAR) form is Kubernetes env interpolation, which requires
+                   AVURUOPS_INGEST_KEY to be declared before it. */}}
+            - name: AVURUOPS_INGEST_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "avuruops.ingestSecretName" . }}
+                  key: sensor-key
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              value: "Authorization=Bearer $(AVURUOPS_INGEST_KEY)"
+            {{- end }}
           volumeMounts:
             - name: obi-config
               mountPath: /config
@@ -164,6 +178,15 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            {{- if and (include "avuruops.ingestAuthEnabled" .) .Values.auth.ingest.provisionSensorKey }}
+            {{- /* Consumed as ${env:AVURUOPS_INGEST_KEY} by the otlphttp
+                   exporter's Authorization header in sensor-config.yaml. */}}
+            - name: AVURUOPS_INGEST_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "avuruops.ingestSecretName" . }}
+                  key: sensor-key
+            {{- end }}
           volumeMounts:
             - name: agent-config
               mountPath: /etc/avuru

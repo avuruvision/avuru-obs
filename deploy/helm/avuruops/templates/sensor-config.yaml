@@ -295,6 +295,13 @@ data:
     exporters:
       otlphttp:
         endpoint: http://{{ include "avuruops.fullname" . }}-gateway:4318
+        {{- if and (include "avuruops.ingestAuthEnabled" .) .Values.auth.ingest.provisionSensorKey }}
+        # The sensor is itself an unkeyed OTLP sender, so without this header
+        # flipping mode to enforce would silence avuru's own agent. Read from the
+        # environment so the raw key stays out of this ConfigMap.
+        headers:
+          Authorization: "Bearer ${env:AVURUOPS_INGEST_KEY}"
+        {{- end }}
     extensions:
       health_check:
         endpoint: 0.0.0.0:13134
