@@ -18,6 +18,7 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/alerting"
 	"github.com/avuru/avuru-obs/hub/internal/api"
 	"github.com/avuru/avuru-obs/hub/internal/auth"
+	"github.com/avuru/avuru-obs/hub/internal/collection"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 	ch "github.com/avuru/avuru-obs/hub/internal/storage/clickhouse"
@@ -167,6 +168,10 @@ func run() error {
 	demoEnabled := envOr("AVURUOBS_DEMO_ENABLED", "false") == "true" && authSvc != nil
 	demoEmail := envOr("AVURUOBS_DEMO_EMAIL", "demo@avuru.obs")
 	demoPassword := os.Getenv("AVURUOBS_DEMO_PASSWORD")
+	// Runtime collection control (design/2026-07-27-collection-control-plane.md)
+	// — off unless the install opts in, since it exposes a write API that
+	// reconfigures the sensors.
+	collectionRuntimeControlEnabled := envOr("AVURUOBS_COLLECTION_RUNTIME_CONTROL_ENABLED", "false") == "true"
 	if demoEnabled {
 		if demoPassword == "" {
 			demoPassword = auth.NewID() // held in-process; never disclosed
@@ -241,6 +246,11 @@ func run() error {
 		OIDC:                  oidcProvider,
 		OIDCSettings:          oidcSettings,
 		IngestInternalToken:   envOr("AVURUOBS_INGEST_INTERNAL_TOKEN", ""),
+		// The cluster-side applier ships in a follow-up plan; until then the
+		// overlay persists and reads back correctly, it just doesn't reach the
+		// sensor pods (NoopApplier logs that).
+		CollectionRuntimeControlEnabled: collectionRuntimeControlEnabled,
+		CollectionApplier:               collection.NoopApplier{},
 	})
 
 	// The alerting evaluator is a single background loop (see runAlertingEvaluator);
