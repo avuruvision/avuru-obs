@@ -1,0 +1,58 @@
+# OPT-IN overlay: exercises per-project ingest keys (auth Plan C) end to end.
+# The default stack is untouched — without this file nothing here exists and
+# plain `docker compose up` behaves exactly as before.
+#
+# Two gateways share one hub so all three properties are provable in a single
+# stack, with no restart-and-reconfigure in the middle of a test run:
+#   gateway      (4318) enforce — rejects unkeyed, stamps tenant from the key
+#   gateway-log  (4328) log     — accepts unkeyed, changes nothing
+#
+# Usage (from repo root; keep the project name isolated so a shared dev machine
+# does not lose an unrelated stack — see agent_docs/testing.md):
+#
+#   AVURUOPS_AUTH_ADMIN_PASSWORD=e2e-admin-pw docker compose -p avuru-obs-ingest-e2e \
+#     -f deploy/compose/docker-compose.yaml \
+#     -f deploy/compose/docker-compose.ingest-e2e.yaml \
+#     up -d --build --wait clickhouse hub gateway gateway-log
+#
+#   cd e2e && AVURUOPS_E2E_INGEST=1 go test -tags=e2e -count=1 -run IngestKey ./...
+services:
+  hub:
+    environment:
+      # Registers POST /internal/v1/ingest-keys/validate (absent when empty) and
+      # seeds the key the test authenticates with, so the suite never has to
+      # create one through the admin API before it can send telemetry.
+      AVURUOPS_INGEST_INTERNAL_TOKEN: e2e-internal-token
+      AVURUOPS_INGEST_SEED_KEYS: '[{"project":"payments","name":"e2e","key":"avuruk_e2e0000000000000000000000000000"}]'
+
+  gateway:
+    volumes: !override
+      - ./gateway/config.ingest-e2e.yaml:/etc/avuru/config.yaml:ro
+    environment:
+      AVURUOPS_INGEST_INTERNAL_TOKEN: e2e-internal-token
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      hub:
+        condition: service_started
+
+  # Second gateway in log mode. Same image and hub, different config and ports.
+  # Deliberately NO build: block — it reuses the image the `gateway` service
+  # builds. Two services building the same tag concurrently race and fail with
+  # "image already exists", so the tag must have exactly one builder.
+  gateway-log:
+    image: avuru-obs-gateway:local
+    command: ["--config=/etc/avuru/config.yaml"]
+    volumes:
+      - ./gateway/config.ingest-e2e-log.yaml:/etc/avuru/config.yaml:ro
+    environment:
+      AVURUOPS_INGEST_INTERNAL_TOKEN: e2e-internal-token
+    ports:
+      - "4327:4317"
+      - "4328:4318"
+      - "127.0.0.1:13143:13133"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      hub:
+        condition: service_started
