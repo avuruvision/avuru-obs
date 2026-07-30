@@ -88,6 +88,10 @@ const tenantCacheTTL = 30 * time.Second
 // always render. Precedence (first source wins per id):
 // default > config > db > data > granted.
 func (a *API) handleProjects(w http.ResponseWriter, r *http.Request) error {
+	// The list is filtered per-identity below (filterProjectsForIdentity) —
+	// like /auth/me, a cached copy would leak across a sign-out/sign-in as a
+	// different identity on the same browser.
+	w.Header().Set("Cache-Control", "no-store")
 	dtos := map[string]*projectDTO{}
 	var order []string
 	add := func(id, source string) *projectDTO {

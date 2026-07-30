@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { apiPost } from "@/lib/api";
+import { clearStoredProject } from "@/lib/project-context";
 import { useLocalStorageFlag } from "@/hooks/use-local-storage-flag";
 import { useCapabilities } from "@/hooks/use-capabilities";
 import { useAuth } from "@/hooks/use-auth";
@@ -50,6 +51,10 @@ function SidebarAuth({ collapsed }: { collapsed: boolean }) {
       // Navigate to login regardless — the session is cleared server-side and
       // the login page re-derives state from a fresh /auth/me.
     }
+    // The next sign-in on this browser may be a different, less-privileged
+    // identity — don't leave it stuck on a project only THIS identity could
+    // reach (see project-context.tsx's ProjectProvider self-heal effect).
+    clearStoredProject();
     window.location.assign("/login");
   };
 

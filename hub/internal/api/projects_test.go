@@ -40,6 +40,17 @@ func decodeProject(t *testing.T, w *httptest.ResponseRecorder) projectDTO {
 	return p
 }
 
+// The list is filtered per-identity, so a cache hit for a second identity on
+// the same browser (sign-out, sign back in as someone else) would leak the
+// first identity's project set — same rationale as the login/me no-store.
+func TestProjectsNoStore(t *testing.T) {
+	mux, cookie, _ := adminMux(t)
+	w := doBody(mux, http.MethodGet, "/api/v1/projects", cookie, "")
+	if got := w.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
+}
+
 func TestProjectsMergeIncludesDBProject(t *testing.T) {
 	mux, cookie, f := adminMux(t)
 	f.Projects = map[string]storage.Project{

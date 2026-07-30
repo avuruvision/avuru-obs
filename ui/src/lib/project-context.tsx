@@ -7,6 +7,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/hooks/use-auth";
 
 export const DEFAULT_PROJECT = "default";
 
@@ -44,6 +45,7 @@ const ProjectContext = createContext<{
 export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const project = useSyncExternalStore(subscribe, snapshot, () => DEFAULT_PROJECT);
+  const { me } = useAuth();
 
   // A shared link's ?project= must stick: mirror the resolved project into
   // localStorage so the next in-app navigation (which drops the query)
@@ -76,6 +78,21 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     window.dispatchEvent(new Event(CHANGE_EVENT));
   };
 
+  // A project picked by a PREVIOUS identity on this browser (or the "default"
+  // fallback) is invisible to whoever is actually signed in now: the hub
+  // 403s every scoped request and the page just spins with no visible error
+  // (login flows set the right project up front, but this is the backstop —
+  // page refreshes, OIDC's server-side redirect, and a shared browser signing
+  // out and back in as someone else all land here with no such chance).
+  // Once the identity's grants are known, self-heal onto one it can reach.
+  useEffect(() => {
+    if (!me) return;
+    if (me.grants.some((g) => g.scope === "*")) return; // global admin reaches every project
+    const allowed = me.grants.map((g) => g.scope);
+    if (allowed.length === 0 || allowed.includes(project)) return;
+    setProject(allowed[0]);
+  }, [me, project]);
+
   return (
     <ProjectContext.Provider value={{ project, setProject }}>
       {children}
@@ -85,4 +102,13 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
 
 export function useProject() {
   return useContext(ProjectContext);
+}
+
+// Drops the stored project selection — called on sign-out so a shared
+// browser's next sign-in (a different identity) starts from DEFAULT_PROJECT
+// rather than a project only the OLD identity could reach. The self-heal
+// effect in ProjectProvider covers this too, but clearing it here avoids a
+// visible flash of 403s while that effect catches up.
+export function clearStoredProject() {
+  localStorage.removeItem(KEY);
 }
