@@ -13,6 +13,7 @@ the post-release verification steps, see
 | `hub` container image | `ghcr.io/<org>/avuru-obs-hub` — `linux/amd64` + `linux/arm64`, cosign-signed, SBOM + provenance attached |
 | `ui` container image | `ghcr.io/<org>/avuru-obs-ui` — same |
 | `gateway` container image | `ghcr.io/<org>/avuru-obs-gateway` — same |
+| `tdp-estimator` container image | `ghcr.io/<org>/avuru-obs-tdp-estimator` — same |
 | Helm chart (`deploy/helm/avuruops`) | `oci://ghcr.io/<org>/charts/avuruops` (cosign-signed), **and** the `.tgz` attached to the GitHub Release |
 | GitHub Release | tag `vX.Y.Z` + notes from [CHANGELOG.md](CHANGELOG.md) |
 

@@ -525,3 +525,87 @@ func TestServiceMapSurvivesEnergyError(t *testing.T) {
 		t.Errorf("energy keys present despite storage error: %s", body)
 	}
 }
+
+func TestBuildGreenRows_QualitySplit(t *testing.T) {
+	rows := []storage.ServiceEnergy{
+		{Service: "web", Quality: "measured", WattHours: 10},
+		{Service: "web", Quality: "estimated", WattHours: 5},
+	}
+	f := greenFactors{intensity: 480, pue: 1.5}
+	services, totals := buildGreenRows(rows, nil, f, 0)
+
+	if len(services) != 1 {
+		t.Fatalf("len(services) = %d, want 1 (one merged row per service)", len(services))
+	}
+	if !almost(services[0].Wh, 15) {
+		t.Errorf("services[0].Wh = %v, want 15 (measured+estimated summed for the total)", services[0].Wh)
+	}
+	if !almost(services[0].EstimatedWh, 5) {
+		t.Errorf("services[0].EstimatedWh = %v, want 5", services[0].EstimatedWh)
+	}
+	if !almost(totals.MeasuredWh, 10) || !almost(totals.EstimatedWh, 5) {
+		t.Errorf("totals = %+v, want MeasuredWh=10 EstimatedWh=5", totals)
+	}
+	if !almost(totals.AttributedWh, 15) {
+		t.Errorf("totals.AttributedWh = %v, want 15 (never silently blended, but the total IS the sum)", totals.AttributedWh)
+	}
+}
+
+func TestBuildGreenBudgets_EstimatedShare(t *testing.T) {
+	now := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	rows := []storage.ServiceEnergy{
+		{Service: "web", Quality: "measured", WattHours: 1000},
+		{Service: "web", Quality: "estimated", WattHours: 3000},
+	}
+	stats := []storage.ServiceStats{{Name: "web", SpanCount: 10}}
+	labels := []storage.ServiceLabel{{Service: "web", K8sNamespace: "shop"}}
+	cfg := green.Config{
+		GridIntensity: 500, PUE: 2, // gCO2e == Wh with these factors
+		Budgets: []green.Budget{{Name: "prod", Group: "shop", MonthlyKgCO2e: 100, WarnRatio: 0.8}},
+	}
+
+	budgets := buildGreenBudgets(cfg, health.Default(), resolveFactors(cfg), rows, stats, labels, now)
+	if len(budgets) != 1 {
+		t.Fatalf("len(budgets) = %d, want 1", len(budgets))
+	}
+	b := budgets[0]
+	// Total used includes BOTH tiers (an all-VM fleet must be able to trip a
+	// budget — AEP explicit goal): (1000+3000) gCO2e / 1000 = 4 kg.
+	if !almost(b.UsedKgCO2e, 4) {
+		t.Errorf("UsedKgCO2e = %v, want 4", b.UsedKgCO2e)
+	}
+	// 3000 of the 4000 Wh (75%) is estimated -> EstimatedShare = 0.75.
+	if !almost(b.EstimatedShare, 0.75) {
+		t.Errorf("EstimatedShare = %v, want 0.75", b.EstimatedShare)
+	}
+}
+
+func TestBuildMethodology_EstimationSubsection(t *testing.T) {
+	cfg := green.Default()
+	f := greenFactors{intensity: 480, pue: 1.5}
+	totals := greenTotalsDTO{AttributedWh: 100, MeasuredWh: 40, EstimatedWh: 60, Coverage: 1}
+	tr := storage.TimeRange{Start: time.Now().Add(-time.Hour), End: time.Now()}
+
+	meth := buildMethodology(cfg, f, tr, totals)
+	if meth.Estimation == nil {
+		t.Fatal("Estimation subsection is nil, want populated (totals.EstimatedWh > 0)")
+	}
+	if meth.Estimation.FormulaLiteral == "" || meth.Estimation.ErrorBand == "" {
+		t.Errorf("Estimation = %+v, want non-empty formula and error band", meth.Estimation)
+	}
+	if meth.Estimation.CoefficientDataset == "" {
+		t.Errorf("Estimation.CoefficientDataset is empty, want the bundled dataset label")
+	}
+}
+
+func TestBuildMethodology_NoEstimationSubsectionWhenFullyMeasured(t *testing.T) {
+	cfg := green.Default()
+	f := greenFactors{intensity: 480, pue: 1.5}
+	totals := greenTotalsDTO{AttributedWh: 100, MeasuredWh: 100, EstimatedWh: 0, Coverage: 1}
+	tr := storage.TimeRange{Start: time.Now().Add(-time.Hour), End: time.Now()}
+
+	meth := buildMethodology(cfg, f, tr, totals)
+	if meth.Estimation != nil {
+		t.Errorf("Estimation = %+v, want nil (report stays unchanged for fully-measured installs)", meth.Estimation)
+	}
+}

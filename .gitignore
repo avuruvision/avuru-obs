@@ -33,6 +33,9 @@ gateway/build/
 deploy/helm/**/charts/
 deploy/helm/**/*.tgz
 
+# ── Sensor (first-party Go modules) ───────────────────────────
+sensor/tdp-estimator/tdp-estimator
+
 # ── Logs & temp ───────────────────────────────────────────────
 *.log
 logs/

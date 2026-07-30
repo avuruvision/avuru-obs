@@ -539,21 +539,48 @@ type EnergyPoint struct {
 	WattHours float64
 }
 
-// ServiceEnergy is one service's energy over a window: the Wh total plus the
-// bucketed series. An empty Service is the unattributed bucket — energy whose
-// pod could not be mapped to a workload (the coverage-ratio denominator's
-// missing part, per the green AEP).
+// ServiceEnergy is one service's energy over a window for ONE quality tier:
+// the Wh total plus the bucketed series. An empty Service is the
+// unattributed bucket — energy whose pod could not be mapped to a workload
+// (the coverage-ratio denominator's missing part, per the green AEP).
+// Quality is "measured" (Kepler/RAPL), "estimated" (tdp-estimator), or ""
+// (a series with no avuruops_quality attribute at all — pre-AEP data or a
+// misconfigured sensor; callers must not assume "" means measured). A
+// service with both measured and estimated energy in the window appears as
+// TWO rows, one per quality — callers must never sum across Quality values
+// without being explicit about it (the green TDP estimation AEP: never
+// silently blend).
 type ServiceEnergy struct {
 	Service   string
+	Quality   string
 	WattHours float64
 	Points    []EnergyPoint
 }
 
-// NodeEnergy is one node's energy over a window (Wh total + bucketed series).
+// NodeEnergy is one node's energy over a window for ONE quality tier (Wh
+// total + bucketed series) — same Quality semantics as ServiceEnergy.
 type NodeEnergy struct {
 	Node      string
+	Quality   string
 	WattHours float64
 	Points    []EnergyPoint
+}
+
+// NodeCoverage reports, per node, whether it contributed measured,
+// estimated, or no green energy in the window — closing the green-carbon
+// AEP review's follow-up (the RAPL-less share was invisible before this).
+// "Known nodes" is the node universe visible in recent telemetry (the same
+// k8s.node.name resource attribute the whole infra view keys on), not a
+// heartbeat protocol. AbsentNodes = KnownNodes - MeasuredNodes -
+// EstimatedNodes (a node reporting BOTH tiers, which shouldn't normally
+// happen per-node but isn't impossible on a heterogeneous multi-NIC node,
+// counts toward both — AbsentNodes is therefore a lower bound in that edge
+// case, never negative).
+type NodeCoverage struct {
+	KnownNodes     int
+	MeasuredNodes  int
+	EstimatedNodes int
+	AbsentNodes    int
 }
 
 // Store is the telemetry query seam implemented by storage backends.
@@ -609,6 +636,7 @@ type Store interface {
 	// gCO2e is computed by callers.
 	ServiceEnergy(ctx context.Context, q GreenQuery) ([]ServiceEnergy, error)
 	NodeEnergy(ctx context.Context, q GreenQuery) ([]NodeEnergy, error)
+	NodeCoverage(ctx context.Context, q GreenQuery) (NodeCoverage, error)
 	// Alerting (module alerting).
 	LoadAlertStates(ctx context.Context, tenant string) ([]AlertState, error)
 	SaveAlertStates(ctx context.Context, states []AlertState) error

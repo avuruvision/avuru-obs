@@ -299,3 +299,104 @@ func TestGreenTenantIsolation(t *testing.T) {
 	}
 	wantWh(t, "acme node-a", nodes[0].WattHours, 3600)
 }
+
+// TestServiceEnergyQualitySplit seeds one service with BOTH a measured
+// (Kepler) and an estimated (tdp-estimator) series on distinct pods, and
+// asserts the per-quality split is exact — quality never gets blended into
+// one number, and a series carrying no quality attribute at all (pre-AEP
+// data, or a misconfigured install) reads as an empty Quality string rather
+// than silently dropping. The delta math itself is unaffected: quality
+// rides the grouping, not the series identity (greenSeriesID).
+func TestServiceEnergyQualitySplit(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	interval := 5 * time.Minute
+	base := greenBase(interval)
+	end := base.Add(interval)
+	noRes := map[string]string{}
+
+	// web-1 on a RAPL node: measured.
+	insertSum(t, store, base.Add(1*time.Minute), testPodEnergyA, noRes,
+		podAttrs("web-1", "shop", map[string]string{"avuruops_quality": "measured"}), 0)
+	insertSum(t, store, base.Add(4*time.Minute), testPodEnergyA, noRes,
+		podAttrs("web-1", "shop", map[string]string{"avuruops_quality": "measured"}), 360) // Δ360 J
+
+	// web-2, same service (workload), on a RAPL-less node: estimated.
+	insertSum(t, store, base.Add(1*time.Minute), testPodEnergyA, noRes,
+		podAttrs("web-2", "shop", map[string]string{"avuruops_quality": "estimated"}), 0)
+	insertSum(t, store, base.Add(4*time.Minute), testPodEnergyA, noRes,
+		podAttrs("web-2", "shop", map[string]string{"avuruops_quality": "estimated"}), 720) // Δ720 J
+
+	insertGauge(t, store, base.Add(2*time.Minute), metricPodCPU, map[string]string{
+		"k8s.pod.name": "web-1", "k8s.namespace.name": "shop", "k8s.deployment.name": "web",
+	}, 0.1)
+	insertGauge(t, store, base.Add(2*time.Minute), metricPodCPU, map[string]string{
+		"k8s.pod.name": "web-2", "k8s.namespace.name": "shop", "k8s.deployment.name": "web",
+	}, 0.2)
+
+	rows, err := store.ServiceEnergy(ctx, greenQuery("default", base, end, interval))
+	if err != nil {
+		t.Fatalf("ServiceEnergy: %v", err)
+	}
+
+	var measuredWh, estimatedWh float64
+	var sawQualities []string
+	for _, row := range rows {
+		if row.Service != "web" {
+			t.Errorf("unexpected service row %+v, want only \"web\"", row)
+			continue
+		}
+		sawQualities = append(sawQualities, row.Quality)
+		switch row.Quality {
+		case "measured":
+			measuredWh = row.WattHours
+		case "estimated":
+			estimatedWh = row.WattHours
+		default:
+			t.Errorf("unexpected quality %q on row %+v", row.Quality, row)
+		}
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows %+v, want exactly 2 (one per quality)", len(rows), rows)
+	}
+	wantWh(t, "measured", measuredWh, 360)
+	wantWh(t, "estimated", estimatedWh, 720)
+}
+
+// TestNodeCoverage seeds one node reporting measured energy, one reporting
+// estimated, and asserts a THIRD known-but-silent node (present via a
+// kubeletstats-style gauge row, the same resource attribute NodeEnergy joins
+// on) is counted as absent — the exact gap the green-carbon AEP review
+// flagged as invisible before this feature.
+func TestNodeCoverage(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	interval := 5 * time.Minute
+	base := greenBase(interval)
+	end := base.Add(interval)
+
+	insertSum(t, store, base.Add(1*time.Minute), testNodeEnergyA,
+		map[string]string{"k8s.node.name": "node-measured"}, map[string]string{"avuruops_quality": "measured"}, 0)
+	insertSum(t, store, base.Add(4*time.Minute), testNodeEnergyA,
+		map[string]string{"k8s.node.name": "node-measured"}, map[string]string{"avuruops_quality": "measured"}, 100)
+
+	insertSum(t, store, base.Add(1*time.Minute), testNodeEnergyA,
+		map[string]string{"k8s.node.name": "node-estimated"}, map[string]string{"avuruops_quality": "estimated"}, 0)
+	insertSum(t, store, base.Add(4*time.Minute), testNodeEnergyA,
+		map[string]string{"k8s.node.name": "node-estimated"}, map[string]string{"avuruops_quality": "estimated"}, 100)
+
+	// node-silent: seed a kubeletstats-style presence row so it is a KNOWN
+	// node, but never any green energy series for it — must count as absent.
+	insertGauge(t, store, base.Add(2*time.Minute), "k8s.node.cpu.utilization",
+		map[string]string{"k8s.node.name": "node-silent"}, 0.1)
+
+	cov, err := store.NodeCoverage(ctx, greenQuery("default", base, end, interval))
+	if err != nil {
+		t.Fatalf("NodeCoverage: %v", err)
+	}
+	if cov.KnownNodes != 3 || cov.MeasuredNodes != 1 || cov.EstimatedNodes != 1 || cov.AbsentNodes != 1 {
+		t.Errorf("NodeCoverage = %+v, want {Known:3 Measured:1 Estimated:1 Absent:1}", cov)
+	}
+}

@@ -74,13 +74,14 @@ WITH series_deltas AS (
     SELECT
         Attributes[?]                                    AS pod,
         Attributes[?]                                    AS ns,
+        Attributes['avuruops_quality']                   AS quality,
         toStartOfInterval(TimeUnix, INTERVAL %d SECOND)  AS t,
         %s                                               AS sid,
         greatest(max(Value) - min(Value), 0)             AS joules
     FROM otel_metrics_sum
     WHERE Tenant = ? AND TimeUnix >= ? AND TimeUnix < ?
       AND MetricName IN (%s)
-    GROUP BY pod, ns, t, sid
+    GROUP BY pod, ns, quality, t, sid
 ),
 pod_workloads AS (
     SELECT
@@ -93,11 +94,11 @@ pod_workloads AS (
       AND ResourceAttributes['k8s.pod.name'] != ''
     GROUP BY pod, ns
 )
-SELECT w.workload AS service, d.t AS t, sum(d.joules) / 3600 AS wh
+SELECT w.workload AS service, d.quality AS quality, d.t AS t, sum(d.joules) / 3600 AS wh
 FROM series_deltas AS d
 LEFT JOIN pod_workloads AS w ON d.pod = w.pod AND d.ns = w.ns
-GROUP BY service, t
-ORDER BY service, t`,
+GROUP BY service, quality, t
+ORDER BY service, quality, t`,
 		int(bucket.Seconds()), greenSeriesID, inList(len(q.PodEnergyMetrics)), workloadExpr)
 
 	args := []any{q.PodNameAttr, q.PodNamespaceAttr, q.Tenant, q.Range.Start, q.Range.End}
@@ -119,14 +120,15 @@ ORDER BY service, t`,
 	for rows.Next() {
 		var (
 			service string
+			quality string
 			t       time.Time
 			wh      float64
 		)
-		if err := rows.Scan(&service, &t, &wh); err != nil {
+		if err := rows.Scan(&service, &quality, &t, &wh); err != nil {
 			return nil, fmt.Errorf("scanning service energy row: %w", err)
 		}
-		if cur == nil || cur.Service != service {
-			out = append(out, storage.ServiceEnergy{Service: service})
+		if cur == nil || cur.Service != service || cur.Quality != quality {
+			out = append(out, storage.ServiceEnergy{Service: service, Quality: quality})
 			cur = &out[len(out)-1]
 		}
 		cur.WattHours += wh
@@ -139,7 +141,10 @@ ORDER BY service, t`,
 		if out[i].WattHours != out[j].WattHours {
 			return out[i].WattHours > out[j].WattHours
 		}
-		return out[i].Service < out[j].Service
+		if out[i].Service != out[j].Service {
+			return out[i].Service < out[j].Service
+		}
+		return out[i].Quality < out[j].Quality
 	})
 	return out, nil
 }
@@ -160,10 +165,11 @@ func (s *Store) NodeEnergy(ctx context.Context, q storage.GreenQuery) ([]storage
 	bucket := greenBucket(q)
 
 	query := fmt.Sprintf(`
-SELECT node, t, sum(joules) / 3600 AS wh
+SELECT node, quality, t, sum(joules) / 3600 AS wh
 FROM (
     SELECT
         `+nodeAttr+`                                     AS node,
+        Attributes['avuruops_quality']                   AS quality,
         toStartOfInterval(TimeUnix, INTERVAL %d SECOND)  AS t,
         %s                                               AS sid,
         greatest(max(Value) - min(Value), 0)             AS joules
@@ -171,10 +177,10 @@ FROM (
     WHERE Tenant = ? AND TimeUnix >= ? AND TimeUnix < ?
       AND MetricName IN (%s)
       AND `+nodeAttr+` != ''
-    GROUP BY node, t, sid
+    GROUP BY node, quality, t, sid
 )
-GROUP BY node, t
-ORDER BY node, t`,
+GROUP BY node, quality, t
+ORDER BY node, quality, t`,
 		int(bucket.Seconds()), greenSeriesID, inList(len(q.NodeEnergyMetrics)))
 
 	args := []any{q.Tenant, q.Range.Start, q.Range.End}
@@ -194,15 +200,16 @@ ORDER BY node, t`,
 	)
 	for rows.Next() {
 		var (
-			node string
-			t    time.Time
-			wh   float64
+			node    string
+			quality string
+			t       time.Time
+			wh      float64
 		)
-		if err := rows.Scan(&node, &t, &wh); err != nil {
+		if err := rows.Scan(&node, &quality, &t, &wh); err != nil {
 			return nil, fmt.Errorf("scanning node energy row: %w", err)
 		}
-		if cur == nil || cur.Node != node {
-			out = append(out, storage.NodeEnergy{Node: node})
+		if cur == nil || cur.Node != node || cur.Quality != quality {
+			out = append(out, storage.NodeEnergy{Node: node, Quality: quality})
 			cur = &out[len(out)-1]
 		}
 		cur.WattHours += wh
@@ -215,7 +222,70 @@ ORDER BY node, t`,
 		if out[i].WattHours != out[j].WattHours {
 			return out[i].WattHours > out[j].WattHours
 		}
-		return out[i].Node < out[j].Node
+		if out[i].Node != out[j].Node {
+			return out[i].Node < out[j].Node
+		}
+		return out[i].Quality < out[j].Quality
 	})
 	return out, nil
+}
+
+// NodeCoverage computes the three-tier node coverage the green-carbon AEP
+// review asked for: known nodes (any telemetry presence in the window, via
+// the same k8s.node.name resource attribute the whole infra view keys on)
+// cross-referenced against which of them reported measured vs estimated
+// green energy. A node with neither is absent — the gap the tdp-estimation
+// AEP makes visible for the first time.
+func (s *Store) NodeCoverage(ctx context.Context, q storage.GreenQuery) (storage.NodeCoverage, error) {
+	if len(q.NodeEnergyMetrics) == 0 {
+		return storage.NodeCoverage{}, nil
+	}
+	query := fmt.Sprintf(`
+WITH energy AS (
+    SELECT DISTINCT
+        `+nodeAttr+`                    AS node,
+        Attributes['avuruops_quality']  AS quality
+    FROM otel_metrics_sum
+    WHERE Tenant = ? AND TimeUnix >= ? AND TimeUnix < ?
+      AND MetricName IN (%s)
+      AND `+nodeAttr+` != ''
+),
+known AS (
+    -- Known = any node visible in this window's telemetry at all, not only
+    -- kubeletstats presence: a node reporting green energy but (for whatever
+    -- reason) no kubeletstats gauge row in this exact window must still
+    -- count as known, or it would double as both "known" and invisible.
+    SELECT DISTINCT `+nodeAttr+` AS node
+    FROM otel_metrics_gauge
+    WHERE Tenant = ? AND TimeUnix >= ? AND TimeUnix < ?
+      AND `+nodeAttr+` != ''
+    UNION DISTINCT
+    SELECT node FROM energy
+)
+SELECT
+    (SELECT count() FROM known) AS known_nodes,
+    (SELECT count(DISTINCT node) FROM energy WHERE quality = 'measured') AS measured_nodes,
+    (SELECT count(DISTINCT node) FROM energy WHERE quality = 'estimated') AS estimated_nodes`,
+		inList(len(q.NodeEnergyMetrics)))
+
+	args := []any{q.Tenant, q.Range.Start, q.Range.End}
+	for _, m := range q.NodeEnergyMetrics {
+		args = append(args, m)
+	}
+	args = append(args, q.Tenant, q.Range.Start, q.Range.End)
+
+	row := s.conn.QueryRow(ctx, query, args...)
+	// count() returns ClickHouse UInt64 — the driver requires scanning into
+	// *uint64, not *int (discovered by actually running this against a real
+	// ClickHouse, not assumed).
+	var known, measured, estimated uint64
+	if err := row.Scan(&known, &measured, &estimated); err != nil {
+		return storage.NodeCoverage{}, fmt.Errorf("node coverage: %w", err)
+	}
+	cov := storage.NodeCoverage{KnownNodes: int(known), MeasuredNodes: int(measured), EstimatedNodes: int(estimated)}
+	cov.AbsentNodes = cov.KnownNodes - cov.MeasuredNodes - cov.EstimatedNodes
+	if cov.AbsentNodes < 0 {
+		cov.AbsentNodes = 0
+	}
+	return cov, nil
 }

@@ -45,6 +45,7 @@ const (
 type greenService struct {
 	Service          string  `json:"service"`
 	Wh               float64 `json:"wh"`
+	EstimatedWh      float64 `json:"estimatedWh"`
 	GCO2e            float64 `json:"gco2e"`
 	Requests         uint64  `json:"requests"`
 	MgCO2ePerRequest float64 `json:"mgCO2ePerRequest"`
@@ -59,9 +60,17 @@ type greenSummary struct {
 	} `json:"factors"`
 	Totals struct {
 		AttributedWh   float64 `json:"attributedWh"`
+		MeasuredWh     float64 `json:"measuredWh"`
+		EstimatedWh    float64 `json:"estimatedWh"`
 		UnattributedWh float64 `json:"unattributedWh"`
 		Coverage       float64 `json:"coverage"`
 		GCO2e          float64 `json:"gco2e"`
+		NodeCoverage   struct {
+			Known     int `json:"known"`
+			Measured  int `json:"measured"`
+			Estimated int `json:"estimated"`
+			Absent    int `json:"absent"`
+		} `json:"nodeCoverage"`
 	} `json:"totals"`
 	Services []greenService `json:"services"`
 }
@@ -151,6 +160,27 @@ func TestGreenSummary(t *testing.T) {
 	}
 	if _, ok := byName["(unattributed)"]; ok {
 		t.Errorf("unexpected (unattributed) row: %+v", resp.Services)
+	}
+
+	// Quality split (green TDP estimation AEP): the fixture stamps
+	// seed-checkout's series avuruops_quality=measured and seed-payments'
+	// estimated — the full HTTP path (not just the storage-layer unit/
+	// integration tests) must carry that split through to the wire without
+	// blending it into one number.
+	if !near(resp.Totals.MeasuredWh, greenCheckoutWh, 0.01) {
+		t.Errorf("totals.measuredWh = %v, want %v (seed-checkout only)", resp.Totals.MeasuredWh, greenCheckoutWh)
+	}
+	if !near(resp.Totals.EstimatedWh, greenPaymentsWh, 0.01) {
+		t.Errorf("totals.estimatedWh = %v, want %v (seed-payments only)", resp.Totals.EstimatedWh, greenPaymentsWh)
+	}
+	if !near(pay.EstimatedWh, greenPaymentsWh, 0.01) {
+		t.Errorf("seed-payments row EstimatedWh = %v, want %v (entirely estimated)", pay.EstimatedWh, greenPaymentsWh)
+	}
+	if co.EstimatedWh != 0 {
+		t.Errorf("seed-checkout row EstimatedWh = %v, want 0 (entirely measured)", co.EstimatedWh)
+	}
+	if resp.Totals.NodeCoverage.Known < 1 {
+		t.Errorf("nodeCoverage.known = %d, want >= 1 (seed-node-1 reports green energy)", resp.Totals.NodeCoverage.Known)
 	}
 }
 

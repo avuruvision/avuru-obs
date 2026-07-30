@@ -36,6 +36,12 @@ type greenBudgetDTO struct {
 	Ratio           float64             `json:"ratio"`
 	Status          string              `json:"status"` // ok | warn | exceeded
 	BurnDown        []greenBurnPointDTO `json:"burnDown,omitempty"`
+	// EstimatedShare is the fraction of UsedKgCO2e that came from modeled
+	// (tdp-estimator) rather than measured (RAPL/Kepler) energy — budgets
+	// include estimated energy (an all-VM fleet must be able to trip a
+	// budget), but a threshold crossed mostly on modeled numbers must stay
+	// visibly soft here and in any alert payload (green TDP estimation AEP).
+	EstimatedShare float64 `json:"estimatedShare,omitempty"`
 }
 
 type greenBudgetsResponse struct {
@@ -99,7 +105,7 @@ func monthToDate(now time.Time) storage.TimeRange {
 // service (used=0): the operator must see them.
 func buildGreenBudgets(cfg green.Config, groups health.Config, f greenFactors, rows []storage.ServiceEnergy, stats []storage.ServiceStats, labels []storage.ServiceLabel, now time.Time) []greenBudgetDTO {
 	assigned := assignEnergy(groups, rows, stats, labels)
-	usedByGroup := usedKgByGroup(f, assigned, rows)
+	usedByGroup, estimatedByGroup := usedKgByGroup(f, assigned, rows)
 
 	monthStart := monthStartUTC(now)
 	monthFrac := elapsedMonthFraction(monthStart, now)
@@ -128,6 +134,9 @@ func buildGreenBudgets(cfg green.Config, groups health.Config, f greenFactors, r
 			ProjectedKgCO2e: used,
 			Status:          green.StatusOK,
 			BurnDown:        burnDown(buckets, f),
+		}
+		if used > 0 {
+			dto.EstimatedShare = estimatedByGroup[b.Group] / used
 		}
 		if monthFrac > 0 {
 			dto.ProjectedKgCO2e = used / monthFrac
@@ -169,12 +178,13 @@ func assignEnergy(groups health.Config, rows []storage.ServiceEnergy, stats []st
 	return health.Assign(groups, pop, labels)
 }
 
-// usedKgByGroup rolls energy up to per-group kgCO2e — the single carbon roll-up
-// shared by the budgets endpoint (buildGreenBudgets) and the alerting tick
-// (BudgetUsageByGroup), so both compute and fire on identical numbers. The
-// unattributed bucket (empty Service) has no group and never counts.
-func usedKgByGroup(f greenFactors, assigned map[string]health.Assignment, rows []storage.ServiceEnergy) map[string]float64 {
+// usedKgByGroup rolls energy up to per-group kgCO2e, split into total and
+// estimated-only — the alerting tick's usage source (BudgetUsageByGroup) and
+// the budgets endpoint share this so both fire/report on identical numbers.
+// The unattributed bucket (empty Service) has no group and never counts.
+func usedKgByGroup(f greenFactors, assigned map[string]health.Assignment, rows []storage.ServiceEnergy) (total, estimated map[string]float64) {
 	whByGroup := map[string]float64{}
+	estWhByGroup := map[string]float64{}
 	for _, row := range rows {
 		if row.Service == "" {
 			continue
@@ -184,12 +194,17 @@ func usedKgByGroup(f greenFactors, assigned map[string]health.Assignment, rows [
 			continue
 		}
 		whByGroup[g] += row.WattHours
+		if row.Quality == "estimated" {
+			estWhByGroup[g] += row.WattHours
+		}
 	}
-	out := make(map[string]float64, len(whByGroup))
+	total = make(map[string]float64, len(whByGroup))
+	estimated = make(map[string]float64, len(whByGroup))
 	for g, wh := range whByGroup {
-		out[g] = f.gco2e(wh) / 1000 // budgets are kg
+		total[g] = f.gco2e(wh) / 1000 // budgets are kg
+		estimated[g] = f.gco2e(estWhByGroup[g]) / 1000
 	}
-	return out
+	return total, estimated
 }
 
 // BudgetUsageByGroup computes one tenant's month-to-date used kgCO2e per
@@ -213,7 +228,8 @@ func BudgetUsageByGroup(ctx context.Context, store storage.Store, cfg green.Conf
 	if err != nil {
 		return nil, err
 	}
-	return usedKgByGroup(resolveFactors(cfg), assignEnergy(groups, rows, stats, labels), rows), nil
+	usedByGroup, _ := usedKgByGroup(resolveFactors(cfg), assignEnergy(groups, rows, stats, labels), rows)
+	return usedByGroup, nil
 }
 
 // elapsedMonthFraction is how far through the calendar month now is, in [0,1].

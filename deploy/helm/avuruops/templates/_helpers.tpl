@@ -256,6 +256,15 @@ otel
 {{- if and .Values.modules.green.enabled .Values.sensor.green.enabled -}}true{{- end -}}
 {{- end -}}
 
+{{/* Whether the tdp-estimator container/scrape should render: requires green
+     collection active AND the estimation sub-flag. Same true/"" (never
+     "false") convention as the other avuruops.collect* gates — always
+     consumed via `if include "..."`, never string-compared. See
+     design/2026-07-28-green-tdp-estimation.md. */}}
+{{- define "avuruops.collectGreenEstimation" -}}
+{{- if and (include "avuruops.collectGreen" .) .Values.sensor.green.estimation.enabled -}}true{{- end -}}
+{{- end -}}
+
 {{/* Sentry SDK ingest is live only when the flag AND both modules it leans on
      are on: events land as log records (logs) that the hub derives issues from
      (error-tracking). Gates the receiver, the container port, the Service port

@@ -1,0 +1,15 @@
+# Every component's Dockerfile uses build context "." (repo root) so it can
+# COPY files from other component directories (e.g. hub/Dockerfile stages
+# from /src/hub). Without this file the whole repo tree — including
+# multi-gigabyte local-only directories never meant to reach an image — gets
+# sent to the Docker daemon as build context on every build.
+.git
+.claude
+.idea
+.trunk
+node_modules
+**/node_modules
+**/bin
+**/*.test
+ui/.next
+ui/out

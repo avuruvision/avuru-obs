@@ -37,9 +37,10 @@ type Fake struct {
 	Profiled      []storage.ProfiledService
 	Flame         storage.FlameNode
 
-	ServiceEnergies []storage.ServiceEnergy
-	NodeEnergies    []storage.NodeEnergy
-	GreenErr        error
+	ServiceEnergies    []storage.ServiceEnergy
+	NodeEnergies       []storage.NodeEnergy
+	NodeCoverageResult storage.NodeCoverage
+	GreenErr           error
 
 	Issues       []storage.ErrorIssue
 	Issue        storage.ErrorIssue
@@ -250,6 +251,14 @@ func (f *Fake) NodeEnergy(_ context.Context, q storage.GreenQuery) ([]storage.No
 		return nil, f.GreenErr
 	}
 	return f.NodeEnergies, nil
+}
+
+func (f *Fake) NodeCoverage(_ context.Context, q storage.GreenQuery) (storage.NodeCoverage, error) {
+	f.LastGreenQuery = q
+	if f.GreenErr != nil {
+		return storage.NodeCoverage{}, f.GreenErr
+	}
+	return f.NodeCoverageResult, nil
 }
 
 func (f *Fake) LoadAlertStates(_ context.Context, tenant string) ([]storage.AlertState, error) {

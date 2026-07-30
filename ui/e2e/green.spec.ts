@@ -226,7 +226,15 @@ test.describe("green dashboard (stubbed states)", () => {
         json: {
           window: MOCK_WINDOW,
           factors: MOCK_FACTORS,
-          totals: { attributedWh: 0, unattributedWh: 0, coverage: 0, gco2e: 0 },
+          totals: {
+            attributedWh: 0,
+            measuredWh: 0,
+            estimatedWh: 0,
+            unattributedWh: 0,
+            coverage: 0,
+            gco2e: 0,
+            nodeCoverage: { known: 0, measured: 0, estimated: 0, absent: 0 },
+          },
           services: [],
         },
       }),
@@ -239,6 +247,10 @@ test.describe("green dashboard (stubbed states)", () => {
     await expect(page.getByText(/--set modules\.green\.enabled=true/)).toBeVisible();
     await expect(page.getByText(/--set sensor\.green\.enabled=true/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Copy Helm command" })).toBeVisible();
+    // The TDP-estimation alternative is taught alongside the RAPL checklist.
+    await expect(page.getByText(/No RAPL\? Enable TDP estimation instead/)).toBeVisible();
+    await expect(page.getByText(/--set sensor\.green\.estimation\.enabled=true/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Copy TDP estimation Helm command" })).toBeVisible();
     // No data is expected on RAPL-less hardware — never an outage message.
     await expect(page.getByText(/Couldn.t reach the hub/)).toHaveCount(0);
   });
@@ -263,7 +275,15 @@ test.describe("green dashboard (stubbed states)", () => {
         json: {
           window: MOCK_WINDOW,
           factors: MOCK_FACTORS,
-          totals: { attributedWh: 6.5, unattributedWh: 5, coverage: 0.565, gco2e: 5.52 },
+          totals: {
+            attributedWh: 6.5,
+            measuredWh: 6.5,
+            estimatedWh: 0,
+            unattributedWh: 5,
+            coverage: 0.565,
+            gco2e: 5.52,
+            nodeCoverage: { known: 1, measured: 1, estimated: 0, absent: 0 },
+          },
           services: [
             { service: "svc-b", wh: 3, gco2e: 1.44, requests: 100, mgCO2ePerRequest: 14.4 },
             { service: "svc-a", wh: 2, gco2e: 0.96, requests: 50, mgCO2ePerRequest: 19.2 },
@@ -290,6 +310,70 @@ test.describe("green dashboard (stubbed states)", () => {
     const unattr = page.getByRole("row").filter({ hasText: "(unattributed)" });
     await expect(unattr).toHaveClass(/italic/);
     await expect(unattr.getByRole("cell").nth(3)).toHaveText("—");
+  });
+
+  test("quality badge and node-coverage panel render a mixed measured/estimated window", async ({
+    page,
+  }) => {
+    await page.route(SUMMARY, (route) =>
+      route.fulfill({
+        json: {
+          window: MOCK_WINDOW,
+          factors: MOCK_FACTORS,
+          totals: {
+            attributedWh: 4,
+            measuredWh: 1,
+            estimatedWh: 3,
+            unattributedWh: 0,
+            coverage: 1,
+            gco2e: 1.92,
+            nodeCoverage: { known: 3, measured: 1, estimated: 1, absent: 1 },
+          },
+          services: [
+            { service: "web", wh: 4, estimatedWh: 3, gco2e: 1.92, requests: 10, mgCO2ePerRequest: 192 },
+          ],
+        },
+      }),
+    );
+    await page.goto(GREEN_URL);
+
+    // 3 of 4 Wh (75%) is estimated.
+    await expect(page.getByText("75% estimated")).toBeVisible();
+
+    // The coverage panel surfaces all four node-tier counts.
+    const tile = (label: string) => page.getByText(label, { exact: true }).locator("..");
+    await expect(tile("Nodes known")).toContainText("3");
+    await expect(tile("Measured")).toContainText("1");
+    await expect(tile("Estimated")).toContainText("1");
+    await expect(tile("Absent")).toContainText("1");
+  });
+
+  test("quality badge is absent when energy is entirely measured", async ({ page }) => {
+    await page.route(SUMMARY, (route) =>
+      route.fulfill({
+        json: {
+          window: MOCK_WINDOW,
+          factors: MOCK_FACTORS,
+          totals: {
+            attributedWh: 4,
+            measuredWh: 4,
+            estimatedWh: 0,
+            unattributedWh: 0,
+            coverage: 1,
+            gco2e: 1.92,
+            nodeCoverage: { known: 1, measured: 1, estimated: 0, absent: 0 },
+          },
+          services: [{ service: "web", wh: 4, gco2e: 1.92, requests: 10, mgCO2ePerRequest: 192 }],
+        },
+      }),
+    );
+    await page.goto(GREEN_URL);
+
+    await expect(page.getByText(/estimated/)).toHaveCount(0);
+    // A fully-measured, single-tier install has nothing to show in the
+    // coverage panel either — it stays hidden rather than showing all-zeros
+    // noise.
+    await expect(page.getByText("Nodes known", { exact: true })).toHaveCount(0);
   });
 });
 

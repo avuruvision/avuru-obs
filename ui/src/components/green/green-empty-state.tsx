@@ -14,6 +14,11 @@ const HELM_SNIPPET = [
   "  --set sensor.green.enabled=true",
 ].join("\n");
 
+const ESTIMATION_HELM_SNIPPET = [
+  "helm upgrade … \\",
+  "  --set sensor.green.estimation.enabled=true",
+].join("\n");
+
 const CHECKLIST: { ok: string; detail: string }[] = [
   {
     ok: "Bare-metal or metal instances",
@@ -28,6 +33,11 @@ const CHECKLIST: { ok: string; detail: string }[] = [
     ok: "infra-metrics module on",
     detail: "The pod→workload join reads kubeletstats attributes; green requires it.",
   },
+  {
+    ok: "No RAPL? Enable TDP estimation instead",
+    detail:
+      "sensor.green.estimation.enabled models power from CPU utilization (±30-50% typical error), stamped estimated everywhere it appears.",
+  },
 ];
 
 export function GreenEmptyState() {
@@ -36,8 +46,9 @@ export function GreenEmptyState() {
       <EmptyState icon={Leaf} title="No energy measured yet">
         Per-service energy comes from your CPUs&apos; <strong>RAPL</strong> counters,
         read by the Kepler sensor container. On clusters without RAPL — most
-        public-cloud VMs — there is simply nothing to measure, and that is
-        expected. Where RAPL is present, data appears within a collection interval.
+        public-cloud VMs — there is simply nothing to measure by default, and
+        that is expected; the last item below turns on a modeled estimate
+        instead. Where RAPL is present, data appears within a collection interval.
       </EmptyState>
 
       <div className="mx-auto w-full max-w-xl rounded-xl border border-neutral bg-base-200 p-4 [box-shadow:var(--shadow-card)]">
@@ -69,6 +80,27 @@ export function GreenEmptyState() {
           <p className="mt-2 text-xs text-base-content/50">
             Both are off by default — the signal is hardware-dependent, so green
             never flips on for an existing install on upgrade.
+          </p>
+        </div>
+
+        <div className="mt-4 border-t border-neutral/50 pt-4">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-xs font-medium text-base-content/70">
+              No RAPL? Estimate instead (requires the above)
+            </span>
+            <CopyButton
+              value={ESTIMATION_HELM_SNIPPET}
+              label="Copy"
+              ariaLabel="Copy TDP estimation Helm command"
+            />
+          </div>
+          <pre className="overflow-x-auto rounded-lg bg-base-300 px-3 py-2 text-xs leading-relaxed">
+            {ESTIMATION_HELM_SNIPPET}
+          </pre>
+          <p className="mt-2 text-xs text-base-content/50">
+            Models power from CPU utilization — every number it produces is
+            stamped <span className="italic">estimated</span>, never blended
+            with measured data.
           </p>
         </div>
       </div>

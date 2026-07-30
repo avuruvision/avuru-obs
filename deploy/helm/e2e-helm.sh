@@ -14,6 +14,7 @@ NS=avuruops
 HUB_IMG=avuru-obs-hub:local
 UI_IMG=avuru-obs-ui:local
 GW_IMG=avuru-obs-gateway:local
+TDP_IMG=avuru-obs-tdp-estimator:local
 # Local port the hub is forwarded to. Overridable for dev machines where an
 # unrelated process holds 8080; the test binary follows via AVURUOPS_E2E_HUB_URL.
 HUB_PORT_LOCAL="${HUB_PORT_LOCAL:-8080}"
@@ -28,10 +29,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "==> building hub + ui + gateway images"
+echo "==> building hub + ui + gateway + tdp-estimator images"
 docker build -t "$HUB_IMG" -f hub/Dockerfile .
 docker build -t "$UI_IMG" -f ui/Dockerfile .
 docker build -t "$GW_IMG" -f gateway/Dockerfile .
+docker build -t "$TDP_IMG" -f sensor/tdp-estimator/Dockerfile .
 
 echo "==> pre-building test + seed binaries (toolchain time is not the product's clock)"
 E2E_BIN="$(mktemp -t avuru-e2e.XXXXXX)"
@@ -69,6 +71,7 @@ kind create cluster --name "$CLUSTER" --wait 120s
 kind load docker-image "$HUB_IMG" --name "$CLUSTER"
 kind load docker-image "$UI_IMG" --name "$CLUSTER"
 kind load docker-image "$GW_IMG" --name "$CLUSTER"
+kind load docker-image "$TDP_IMG" --name "$CLUSTER"
 # Public images: docker's containerd store keeps multi-arch manifest lists,
 # which `kind load docker-image` can't import (foreign digests missing) —
 # export a single platform explicitly instead.
@@ -112,6 +115,11 @@ export WEDGE_T0_UNIX
 # pinned Kepler joins the sensor DaemonSet with its dev fake-cpu-meter so kind
 # — which has no RAPL — proves do-no-harm with energy actually flowing. The
 # TTV wedge gate and the probe-canary gate below run UNCHANGED against it.
+# tdp-estimator ALSO joins on the same install: unlike Kepler, kind nodes
+# having no powercap is exactly the estimator's real activation condition
+# (probe fails -> estimate), so no fake-meter equivalent is needed on its
+# side — this is the estimator's genuine "probe fails -> estimate" path
+# running in CI, not a synthetic stand-in.
 helm install avuruops deploy/helm/avuruops -n "$NS" --create-namespace \
   --set hub.repository=avuru-obs-hub --set hub.tag=local \
   --set ui.repository=avuru-obs-ui --set ui.tag=local \
@@ -125,7 +133,10 @@ helm install avuruops deploy/helm/avuruops -n "$NS" --create-namespace \
   --set hub.resources.requests.memory=64Mi \
   --set modules.green.enabled=true \
   --set sensor.green.enabled=true \
-  --set sensor.green.fakeCpuMeter=true
+  --set sensor.green.fakeCpuMeter=true \
+  --set sensor.green.estimation.enabled=true \
+  --set sensor.green.estimation.image.repository=avuru-obs-tdp-estimator \
+  --set sensor.green.estimation.image.tag=local
 
 echo "==> waiting for the hub to answer (inside the wedge clock)"
 kubectl -n "$NS" wait --for=condition=Available deploy/avuruops-hub --timeout=240s
@@ -190,6 +201,32 @@ while :; do
   if [ "$(date +%s)" -ge "$KEPLER_DEADLINE" ]; then
     echo "GREEN: no scraped kepler_(node|pod)_cpu_joules_total rows within 240s (node=${node_rows:-?} pod=${pod_rows:-?})"
     kubectl -n "$NS" logs ds/avuruops-sensor -c kepler --tail=30 || true
+    kubectl -n "$NS" logs ds/avuruops-sensor -c otel-agent --tail=15 || true
+    exit 1
+  fi
+  sleep 5
+done
+
+# GREEN TDP ESTIMATION: kind nodes have no powercap, so the estimator's own
+# RAPL probe fails independently of Kepler's fake-cpu-meter — this is its
+# genuine "probe fails -> estimate" activation path, not a synthetic stand-in
+# (design/2026-07-28-green-tdp-estimation.md). Same rows Kepler produces
+# (kepler_(node|pod)_cpu_joules_total) but stamped avuruops_quality
+# "estimated" by transform/green_quality, distinguishing them from Kepler's
+# own "measured" rows in the SAME window.
+echo "==> GREEN TDP ESTIMATION: polling ClickHouse for tdp-estimator rows stamped estimated"
+TDP_SQL="SELECT count() FROM otel.otel_metrics_sum WHERE MetricName LIKE 'kepler%' AND Attributes['avuruops_quality'] = 'estimated' AND ScopeName NOT LIKE 'avuru-seed%'"
+TDP_DEADLINE=$(( $(date +%s) + 240 ))
+while :; do
+  estimated_rows=$(kubectl -n "$NS" exec avuruops-clickhouse-0 -- \
+    clickhouse-client -u avuru --password avuru -q "$TDP_SQL" 2>/dev/null || echo "")
+  if [ "${estimated_rows:-0}" -gt 0 ] 2>/dev/null; then
+    echo "    estimated-quality rows in otel_metrics_sum (scraped, non-seeded): $estimated_rows"
+    break
+  fi
+  if [ "$(date +%s)" -ge "$TDP_DEADLINE" ]; then
+    echo "GREEN TDP ESTIMATION: no estimated-quality rows within 240s (rows=${estimated_rows:-?})"
+    kubectl -n "$NS" logs ds/avuruops-sensor -c tdp-estimator --tail=30 || true
     kubectl -n "$NS" logs ds/avuruops-sensor -c otel-agent --tail=15 || true
     exit 1
   fi
