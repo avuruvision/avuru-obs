@@ -966,11 +966,17 @@ var genericFallback = Coefficients{IdleWatts: 0.74, MaxWatts: 3.5}
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Coefficients is one node's resolved power-curve inputs plus provenance —
@@ -1053,7 +1059,7 @@ func Resolve(nodeAnnotations map[string]string, valuesIdle, valuesMax float64, c
 		"cpuModel", cpuModel, "idleWatts", genericFallback.IdleWatts, "maxWatts", genericFallback.MaxWatts)
 	c := genericFallback
 	c.Tier = "fallback"
-	c.Provenance = "generic per-core fallback (no table match for %q)"
+	c.Provenance = fmt.Sprintf("generic per-core fallback (no table match for %q)", cpuModel)
 	return c
 }
 
@@ -1128,8 +1134,6 @@ func nodeAnnotations(nodeName string) map[string]string {
 	return node.Metadata.Annotations
 }
 ```
-
-This needs `crypto/tls`, `crypto/x509`, `encoding/json`, `net/http`, `time` added to `coefficients.go`'s imports alongside the existing `log/slog`, `os`, `regexp`, `strconv`, `strings`.
 
 - [ ] **Step 5: Run test to verify it passes**
 

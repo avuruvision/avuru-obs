@@ -8,8 +8,8 @@ func TestNodePower(t *testing.T) {
 		util float64
 		want float64
 	}{
-		{0, 10},  // fully idle -> P_idle
-		{1, 50},  // fully busy -> P_max
+		{0, 10},   // fully idle -> P_idle
+		{1, 50},   // fully busy -> P_max
 		{0.5, 30}, // halfway -> midpoint
 	}
 	for _, tt := range tests {
