@@ -2,7 +2,9 @@
 
 - **Date:** 2026-07-28
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted — targeting v0.3. Implementation decisions (coefficient
+  sourcing, component layout, release sequencing) recorded in the
+  [combined spec](../docs/superpowers/specs/2026-07-30-green-tdp-estimation-design.md).
 
 ## Summary
 
@@ -120,9 +122,14 @@ recorded per node and cited in the export methodology:
 2. **Helm values** `sensor.green.estimation.{idleWatts,maxWatts}` — uniform
    fleets; the accurate path for a LAN whose hardware the operator knows.
 3. **Bundled per-CPU-model table** — `/proc/cpuinfo` model name matched against
-   a trimmed table derived from open SPECpower-based coefficient sets
-   (Boavizta / Cloud Carbon Footprint, permissively licensed), shipped and
-   versioned exactly like the bundled grid-intensity factors.
+   a comprehensive table derived from open SPECpower-based coefficient sets.
+   Cloud Carbon Footprint's coefficient data (Apache-2.0) is the primary
+   source; Boavizta's environmental-footprint-data is ODbL (share-alike for
+   the database, not permissive as originally stated here) and is used only
+   for a bounded number of specific, individually-cited facts filling CCF
+   coverage gaps — never bulk-copied. Shipped and versioned exactly like the
+   bundled grid-intensity factors (see
+   [combined spec](../docs/superpowers/specs/2026-07-30-green-tdp-estimation-design.md#coefficient-table)).
 4. **Generic per-core fallback** (per-vCPU idle/max averages × core count) —
    allowed but **loud**: a preflight warning and a methodology note, because
    its error band is the widest.
@@ -219,9 +226,12 @@ existing metrics policy; no migration.
 
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] Re-verify the pinned Kepler line for upstream estimation/VM support
-      (may shrink the estimator to config)
+- [x] AEP accepted
+- [x] Re-verify the pinned Kepler line for upstream estimation/VM support
+      (may shrink the estimator to config) — confirmed 2026-07-30: Kepler
+      v0.11.x (pinned) has no VM/RAPL-less estimation; the old ML-model-server
+      approach is documented upstream as legacy/deprecated. Building the
+      estimator as designed, no shrinkage.
 - [ ] Estimator exporter: RAPL probe, model, cgroup attribution; 5th sensor
       container, opt-in, no probes
 - [ ] otel-agent: `measured` stamping on the Kepler scrape + estimator scrape
