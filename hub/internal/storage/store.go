@@ -539,19 +539,29 @@ type EnergyPoint struct {
 	WattHours float64
 }
 
-// ServiceEnergy is one service's energy over a window: the Wh total plus the
-// bucketed series. An empty Service is the unattributed bucket — energy whose
-// pod could not be mapped to a workload (the coverage-ratio denominator's
-// missing part, per the green AEP).
+// ServiceEnergy is one service's energy over a window for ONE quality tier:
+// the Wh total plus the bucketed series. An empty Service is the
+// unattributed bucket — energy whose pod could not be mapped to a workload
+// (the coverage-ratio denominator's missing part, per the green AEP).
+// Quality is "measured" (Kepler/RAPL), "estimated" (tdp-estimator), or ""
+// (a series with no avuruops_quality attribute at all — pre-AEP data or a
+// misconfigured sensor; callers must not assume "" means measured). A
+// service with both measured and estimated energy in the window appears as
+// TWO rows, one per quality — callers must never sum across Quality values
+// without being explicit about it (the green TDP estimation AEP: never
+// silently blend).
 type ServiceEnergy struct {
 	Service   string
+	Quality   string
 	WattHours float64
 	Points    []EnergyPoint
 }
 
-// NodeEnergy is one node's energy over a window (Wh total + bucketed series).
+// NodeEnergy is one node's energy over a window for ONE quality tier (Wh
+// total + bucketed series) — same Quality semantics as ServiceEnergy.
 type NodeEnergy struct {
 	Node      string
+	Quality   string
 	WattHours float64
 	Points    []EnergyPoint
 }
