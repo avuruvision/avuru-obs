@@ -45,6 +45,34 @@ func TestCapabilitiesDefaultAllModules(t *testing.T) {
 	}
 }
 
+// TestCapabilitiesCollectionRuntimeControl: the SPA decides whether to show
+// the collection editor from this flag, so it must track Config exactly —
+// including the default-off case, where the routes are not even registered.
+func TestCapabilitiesCollectionRuntimeControl(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		want bool
+	}{{"default off", false}, {"enabled", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			fake := &storagetest.Fake{}
+			Register(mux, func() storage.Store { return fake }, Config{CollectionRuntimeControlEnabled: tc.want})
+
+			rec := get(t, mux, "/api/v1/capabilities")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+			}
+			var resp capabilitiesResponse
+			if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if resp.CollectionRuntimeControl != tc.want {
+				t.Errorf("collectionRuntimeControl = %v, want %v", resp.CollectionRuntimeControl, tc.want)
+			}
+		})
+	}
+}
+
 func TestModuleRouteGating(t *testing.T) {
 	mux := muxWithModules(t, "core")
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/avuru/avuru-obs/hub/internal/alerting"
 	"github.com/avuru/avuru-obs/hub/internal/auth"
+	"github.com/avuru/avuru-obs/hub/internal/collection"
 	"github.com/avuru/avuru-obs/hub/internal/green"
 	"github.com/avuru/avuru-obs/hub/internal/health"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
@@ -75,14 +76,23 @@ type Config struct {
 	// not registered and gateway enforcement is simply unused (the drop-in
 	// default). Chart-generated, injected as AVURUOBS_INGEST_INTERNAL_TOKEN.
 	IngestInternalToken string
+	// CollectionRuntimeControlEnabled gates GET/PUT/DELETE
+	// /api/v1/collection/overlay and is echoed in GET /api/v1/capabilities
+	// (design/2026-07-27-collection-control-plane.md). Chart-generated,
+	// injected as AVURUOBS_COLLECTION_RUNTIME_CONTROL_ENABLED.
+	CollectionRuntimeControlEnabled bool
+	// CollectionApplier pushes an accepted overlay to the cluster. nil
+	// defaults to collection.NoopApplier{} in Register.
+	CollectionApplier collection.Applier
 }
 
 // API holds handler dependencies.
 type API struct {
-	provider StoreProvider
-	cfg      Config
-	modules  modules.Set
-	tenants  tenantCache
+	provider          StoreProvider
+	cfg               Config
+	modules           modules.Set
+	tenants           tenantCache
+	collectionApplier collection.Applier
 }
 
 // store resolves the current backend or fails with 503.
@@ -100,6 +110,11 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 		active = modules.AllSet()
 	}
 	a := &API{provider: provider, cfg: cfg, modules: active}
+	if cfg.CollectionApplier != nil {
+		a.collectionApplier = cfg.CollectionApplier
+	} else {
+		a.collectionApplier = collection.NoopApplier{}
+	}
 
 	// core — never disableable (the wedge: service map + traces + RED).
 	mux.HandleFunc("GET /healthz", handleHealthz)
@@ -120,6 +135,14 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 	// unused (the safe default).
 	if cfg.IngestInternalToken != "" {
 		mux.Handle("POST /internal/v1/ingest-keys/validate", handle(a.handleValidateIngestKey))
+	}
+	// Runtime collection overlay (design/2026-07-27-collection-control-plane.md)
+	// — default off; the route set (and its RBAC in the chart) only exists
+	// when an install opts in.
+	if cfg.CollectionRuntimeControlEnabled {
+		mux.Handle("GET /api/v1/collection/overlay", a.securedAdmin(a.handleGetCollectionOverlay))
+		mux.Handle("PUT /api/v1/collection/overlay", a.securedAdmin(a.handlePutCollectionOverlay))
+		mux.Handle("DELETE /api/v1/collection/overlay", a.securedAdmin(a.handleDeleteCollectionOverlay))
 	}
 	// system/status is instance-wide (disk capacity, retained-row counts) —
 	// not project data, so a single-project viewer or the anonymous demo
