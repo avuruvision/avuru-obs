@@ -418,6 +418,17 @@ sensor:
           cpu: 100m
           memory: 64Mi
 
+# Runtime collection control (design/2026-07-27-collection-control-plane.md):
+# lets an admin toggle sensor signals + sensor.collection.excludeNamespaces
+# from Settings -> Collection instead of only via `helm upgrade`. Default off
+# — an install opts in deliberately (grants the hub a narrow, resourceName-
+# scoped Role on its own sensor ConfigMaps + DaemonSet; see collection-rbac.
+# yaml). v1 has no applier wired yet (a separate follow-up plan) — the API
+# persists overlays but does not yet push them to the cluster.
+collection:
+  runtimeControl:
+    enabled: false
+
 # ClickHouse: single-node StatefulSet by default; flip external.enabled to BYO.
 clickhouse:
   external:

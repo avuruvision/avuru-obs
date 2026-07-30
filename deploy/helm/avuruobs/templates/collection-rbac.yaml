@@ -1,0 +1,87 @@
+{{- /* Runtime collection control (design/2026-07-27-collection-control-plane.md).
+       Nothing to control without a sensor. */}}
+{{- if and .Values.collection.runtimeControl.enabled (not .Values.sensor.enabled) }}
+{{- fail "collection.runtimeControl.enabled requires sensor.enabled — there is no sensor to control." }}
+{{- end }}
+{{- if .Values.collection.runtimeControl.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "avuruobs.fullname" . }}-collection-control
+  labels:
+    {{- include "avuruobs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hub
+---
+# Curated, non-secret subset of .Values the applier (follow-up plan) needs to
+# re-render sensor-config.yaml / sensor-daemonset.yaml server-side. Deliberately
+# NOT `toJson .Values` wholesale: several values subtrees (clickhouse.auth.
+# password, auth.adminPassword) hold plaintext secrets by default and must
+# never land in a ConfigMap (Helm's own release storage is a Secret, not a
+# ConfigMap — this must not regress that). Extend this list only with values
+# the sensor templates actually read; never widen it to "everything".
+# Note `auth`: the sensor templates read exactly auth.ingest.mode (via
+# avuruobs.ingestAuthEnabled) and auth.ingest.provisionSensorKey, so only those
+# two are copied. auth.ingest as a whole is NOT copied — it also carries
+# internalToken, which an operator may set in values and which is secret
+# material by definition (the raw sensor key itself already stays out of the
+# sensor ConfigMap behind a ${env:...} placeholder; same rule here).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "avuruobs.fullname" . }}-collection-base-values
+  labels:
+    {{- include "avuruobs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hub
+data:
+  {{- $baseValues := dict
+        "sensor" .Values.sensor
+        "modules" .Values.modules
+        "image" (dict "registry" .Values.image.registry "pullPolicy" .Values.image.pullPolicy)
+        "auth" (dict "ingest" (dict
+          "mode" .Values.auth.ingest.mode
+          "provisionSensorKey" .Values.auth.ingest.provisionSensorKey))
+        "nameOverride" .Values.nameOverride
+        "fullnameOverride" .Values.fullnameOverride
+  }}
+  values.json: |
+    {{- $baseValues | toJson | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "avuruobs.fullname" . }}-collection-control
+  labels:
+    {{- include "avuruobs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hub
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames:
+      - {{ include "avuruobs.fullname" . }}-collection-base-values
+      - {{ include "avuruobs.fullname" . }}-sensor-obi
+      - {{ include "avuruobs.fullname" . }}-sensor-agent
+      - {{ include "avuruobs.fullname" . }}-sensor-profiler
+      - {{ include "avuruobs.fullname" . }}-sensor-kepler
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["daemonsets"]
+    resourceNames:
+      - {{ include "avuruobs.fullname" . }}-sensor
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "avuruobs.fullname" . }}-collection-control
+  labels:
+    {{- include "avuruobs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hub
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "avuruobs.fullname" . }}-collection-control
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "avuruobs.fullname" . }}-collection-control
+    namespace: {{ .Release.Namespace }}
+{{- end }}
