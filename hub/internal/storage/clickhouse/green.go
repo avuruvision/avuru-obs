@@ -229,3 +229,63 @@ ORDER BY node, quality, t`,
 	})
 	return out, nil
 }
+
+// NodeCoverage computes the three-tier node coverage the green-carbon AEP
+// review asked for: known nodes (any telemetry presence in the window, via
+// the same k8s.node.name resource attribute the whole infra view keys on)
+// cross-referenced against which of them reported measured vs estimated
+// green energy. A node with neither is absent — the gap the tdp-estimation
+// AEP makes visible for the first time.
+func (s *Store) NodeCoverage(ctx context.Context, q storage.GreenQuery) (storage.NodeCoverage, error) {
+	if len(q.NodeEnergyMetrics) == 0 {
+		return storage.NodeCoverage{}, nil
+	}
+	query := fmt.Sprintf(`
+WITH energy AS (
+    SELECT DISTINCT
+        `+nodeAttr+`                    AS node,
+        Attributes['avuruops_quality']  AS quality
+    FROM otel_metrics_sum
+    WHERE Tenant = ? AND TimeUnix >= ? AND TimeUnix < ?
+      AND MetricName IN (%s)
+      AND `+nodeAttr+` != ''
+),
+known AS (
+    -- Known = any node visible in this window's telemetry at all, not only
+    -- kubeletstats presence: a node reporting green energy but (for whatever
+    -- reason) no kubeletstats gauge row in this exact window must still
+    -- count as known, or it would double as both "known" and invisible.
+    SELECT DISTINCT `+nodeAttr+` AS node
+    FROM otel_metrics_gauge
+    WHERE Tenant = ? AND TimeUnix >= ? AND TimeUnix < ?
+      AND `+nodeAttr+` != ''
+    UNION DISTINCT
+    SELECT node FROM energy
+)
+SELECT
+    (SELECT count() FROM known) AS known_nodes,
+    (SELECT count(DISTINCT node) FROM energy WHERE quality = 'measured') AS measured_nodes,
+    (SELECT count(DISTINCT node) FROM energy WHERE quality = 'estimated') AS estimated_nodes`,
+		inList(len(q.NodeEnergyMetrics)))
+
+	args := []any{q.Tenant, q.Range.Start, q.Range.End}
+	for _, m := range q.NodeEnergyMetrics {
+		args = append(args, m)
+	}
+	args = append(args, q.Tenant, q.Range.Start, q.Range.End)
+
+	row := s.conn.QueryRow(ctx, query, args...)
+	// count() returns ClickHouse UInt64 — the driver requires scanning into
+	// *uint64, not *int (discovered by actually running this against a real
+	// ClickHouse, not assumed).
+	var known, measured, estimated uint64
+	if err := row.Scan(&known, &measured, &estimated); err != nil {
+		return storage.NodeCoverage{}, fmt.Errorf("node coverage: %w", err)
+	}
+	cov := storage.NodeCoverage{KnownNodes: int(known), MeasuredNodes: int(measured), EstimatedNodes: int(estimated)}
+	cov.AbsentNodes = cov.KnownNodes - cov.MeasuredNodes - cov.EstimatedNodes
+	if cov.AbsentNodes < 0 {
+		cov.AbsentNodes = 0
+	}
+	return cov, nil
+}

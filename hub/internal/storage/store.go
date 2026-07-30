@@ -566,6 +566,23 @@ type NodeEnergy struct {
 	Points    []EnergyPoint
 }
 
+// NodeCoverage reports, per node, whether it contributed measured,
+// estimated, or no green energy in the window — closing the green-carbon
+// AEP review's follow-up (the RAPL-less share was invisible before this).
+// "Known nodes" is the node universe visible in recent telemetry (the same
+// k8s.node.name resource attribute the whole infra view keys on), not a
+// heartbeat protocol. AbsentNodes = KnownNodes - MeasuredNodes -
+// EstimatedNodes (a node reporting BOTH tiers, which shouldn't normally
+// happen per-node but isn't impossible on a heterogeneous multi-NIC node,
+// counts toward both — AbsentNodes is therefore a lower bound in that edge
+// case, never negative).
+type NodeCoverage struct {
+	KnownNodes     int
+	MeasuredNodes  int
+	EstimatedNodes int
+	AbsentNodes    int
+}
+
 // Store is the telemetry query seam implemented by storage backends.
 type Store interface {
 	Ping(ctx context.Context) error
@@ -619,6 +636,7 @@ type Store interface {
 	// gCO2e is computed by callers.
 	ServiceEnergy(ctx context.Context, q GreenQuery) ([]ServiceEnergy, error)
 	NodeEnergy(ctx context.Context, q GreenQuery) ([]NodeEnergy, error)
+	NodeCoverage(ctx context.Context, q GreenQuery) (NodeCoverage, error)
 	// Alerting (module alerting).
 	LoadAlertStates(ctx context.Context, tenant string) ([]AlertState, error)
 	SaveAlertStates(ctx context.Context, states []AlertState) error
