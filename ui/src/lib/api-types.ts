@@ -293,6 +293,35 @@ export interface UpdateProjectRequest {
   label: string;
 }
 
+// Per-project ingest keys (auth Plan C). List/metadata only ever carries the
+// prefix + hash; the raw secret appears exactly once in CreateIngestKeyResponse.
+export interface IngestKey {
+  keyHash: string;
+  prefix: string;
+  name: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface IngestKeysResponse {
+  keys: IngestKey[];
+}
+
+export interface CreateIngestKeyRequest {
+  name: string;
+}
+
+// The ONE response carrying the raw `key`. It is never returned again — the UI
+// shows it once in a copy dialog and warns it cannot be recovered.
+export interface CreateIngestKeyResponse {
+  key: string;
+  keyHash: string;
+  prefix: string;
+  name: string;
+  project: string;
+  createdAt: string;
+}
+
 export interface AgentSignals {
   traces: string | null;
   logs: string | null;

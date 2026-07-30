@@ -2,6 +2,7 @@
 
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProjectSettingsCard } from "@/components/settings/project-settings-card";
+import { IngestKeysCard } from "@/components/settings/ingest-keys-card";
 import { useSystemStatus } from "@/hooks/use-system-status";
 
 // Coroot-style General settings: the active project (admins create/rename/delete
@@ -13,6 +14,8 @@ export function GeneralTab() {
   return (
     <div className="flex flex-col gap-4">
       <ProjectSettingsCard />
+
+      <IngestKeysCard />
 
       {status && (
         <Card className="overflow-hidden">
