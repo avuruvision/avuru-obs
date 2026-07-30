@@ -7,10 +7,10 @@ import (
 	"testing"
 )
 
-// TestLoadGreenConfigUnsetIsDefault: no AVURUOPS_GREEN_CONFIG → static
+// TestLoadGreenConfigUnsetIsDefault: no AVURUOBS_GREEN_CONFIG → static
 // defaults, no polling.
 func TestLoadGreenConfigUnsetIsDefault(t *testing.T) {
-	t.Setenv("AVURUOPS_GREEN_CONFIG", "")
+	t.Setenv("AVURUOBS_GREEN_CONFIG", "")
 	get, err := loadGreenConfig(context.Background())
 	if err != nil {
 		t.Fatalf("loadGreenConfig: %v", err)
@@ -29,7 +29,7 @@ func TestLoadGreenConfigFromFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("writing config: %v", err)
 	}
-	t.Setenv("AVURUOPS_GREEN_CONFIG", path)
+	t.Setenv("AVURUOBS_GREEN_CONFIG", path)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // stops the watcher goroutine
 
@@ -50,13 +50,13 @@ func TestLoadGreenConfigFromFile(t *testing.T) {
 }
 
 // TestLoadGreenConfigInvalidFailsLoud: a present-but-invalid file is a startup
-// error (like AVURUOPS_MODULES), never a silent default.
+// error (like AVURUOBS_MODULES), never a silent default.
 func TestLoadGreenConfigInvalidFailsLoud(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "green.json")
 	if err := os.WriteFile(path, []byte(`{"region":"XX"}`), 0o600); err != nil {
 		t.Fatalf("writing config: %v", err)
 	}
-	t.Setenv("AVURUOPS_GREEN_CONFIG", path)
+	t.Setenv("AVURUOBS_GREEN_CONFIG", path)
 	if _, err := loadGreenConfig(context.Background()); err == nil {
 		t.Fatal("expected error for unknown region, got nil")
 	}

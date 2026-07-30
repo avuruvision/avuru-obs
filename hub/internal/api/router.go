@@ -30,10 +30,10 @@ type Config struct {
 	RetentionLogsDays     int
 	RetentionMetricsDays  int
 	RetentionProfilesDays int
-	// Projects declared through deployment config (AVURUOPS_PROJECTS) —
+	// Projects declared through deployment config (AVURUOBS_PROJECTS) —
 	// merged with data-observed tenants by GET /api/v1/projects.
 	Projects []string
-	// Modules is the active-module set (AVURUOPS_MODULES); nil means all
+	// Modules is the active-module set (AVURUOBS_MODULES); nil means all
 	// modules — the backward-compatible default. Routes owned by an inactive
 	// module are not registered (404).
 	Modules modules.Set
@@ -73,7 +73,7 @@ type Config struct {
 	// IngestInternalToken authenticates the gateway→hub ingest-key validation
 	// call (auth Plan C). When empty, POST /internal/v1/ingest-keys/validate is
 	// not registered and gateway enforcement is simply unused (the drop-in
-	// default). Chart-generated, injected as AVURUOPS_INGEST_INTERNAL_TOKEN.
+	// default). Chart-generated, injected as AVURUOBS_INGEST_INTERNAL_TOKEN.
 	IngestInternalToken string
 }
 

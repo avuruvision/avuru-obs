@@ -65,7 +65,7 @@ type CriticalEdge struct {
 }
 
 // Config is the whole service-health configuration, loaded from the mounted
-// ConfigMap (AVURUOPS_GROUPS_CONFIG) or Default() when absent.
+// ConfigMap (AVURUOBS_GROUPS_CONFIG) or Default() when absent.
 type Config struct {
 	DefaultTier   Tier            `json:"defaultTier"`
 	Groups        []Group         `json:"groups,omitempty"`
@@ -85,7 +85,7 @@ var builtinDefaults = Thresholds{
 
 // Default is the zero-config configuration: no groups (services auto-group by
 // namespace), DefaultTier T2, built-in thresholds. Mirrors modules.Parse("")
-// and an empty AVURUOPS_PROJECTS — a working, sensible view with no config.
+// and an empty AVURUOBS_PROJECTS — a working, sensible view with no config.
 func Default() Config {
 	return Config{
 		DefaultTier: TierT2,

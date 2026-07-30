@@ -27,7 +27,7 @@ type Config struct {
 	// (e.g. http://hub:8080/internal/v1/ingest-keys/validate).
 	HubValidateURL string `mapstructure:"hub_validate_url"`
 	// InternalToken authenticates the gateway→hub call (chart-generated, shared
-	// with the hub's AVURUOPS_INGEST_INTERNAL_TOKEN).
+	// with the hub's AVURUOBS_INGEST_INTERNAL_TOKEN).
 	InternalToken configopaque.String `mapstructure:"internal_token"`
 	// Mode is off | log | enforce (default log).
 	Mode string `mapstructure:"mode"`

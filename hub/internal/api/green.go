@@ -116,7 +116,7 @@ type greenTotalsDTO struct {
 	AttributedWh float64 `json:"attributedWh"`
 	// MeasuredWh / EstimatedWh split AttributedWh by quality tier (RAPL/
 	// Kepler vs the tdp-estimator) — never silently blended into one number
-	// (green TDP estimation AEP). Rows carrying no avuruops_quality
+	// (green TDP estimation AEP). Rows carrying no avuruobs_quality
 	// attribute at all (pre-AEP data) count toward neither.
 	MeasuredWh     float64 `json:"measuredWh"`
 	EstimatedWh    float64 `json:"estimatedWh"`

@@ -40,7 +40,7 @@ type Budget struct {
 
 // Config is the whole green configuration — carbon factors, metric-name
 // overrides, and budgets — loaded from the mounted ConfigMap
-// (AVURUOPS_GREEN_CONFIG) or Default() when absent.
+// (AVURUOBS_GREEN_CONFIG) or Default() when absent.
 type Config struct {
 	// Region is an ISO 3166-1 alpha-2 country code selecting a bundled
 	// annual-average grid intensity when GridIntensity is unset. Empty →
@@ -83,7 +83,7 @@ func defaultMetrics() Metrics {
 
 // Default is the zero-config configuration: world-average intensity, PUE 1.5,
 // Kepler default metric names, no budgets (inert evaluator). Mirrors an absent
-// AVURUOPS_GREEN_CONFIG, like health.Default / alerting.Default.
+// AVURUOBS_GREEN_CONFIG, like health.Default / alerting.Default.
 func Default() Config {
 	return Config{
 		PUE:                    defaultPUE,

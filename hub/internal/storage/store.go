@@ -544,7 +544,7 @@ type EnergyPoint struct {
 // unattributed bucket — energy whose pod could not be mapped to a workload
 // (the coverage-ratio denominator's missing part, per the green AEP).
 // Quality is "measured" (Kepler/RAPL), "estimated" (tdp-estimator), or ""
-// (a series with no avuruops_quality attribute at all — pre-AEP data or a
+// (a series with no avuruobs_quality attribute at all — pre-AEP data or a
 // misconfigured sensor; callers must not assume "" means measured). A
 // service with both measured and estimated energy in the window appears as
 // TWO rows, one per quality — callers must never sum across Quality values

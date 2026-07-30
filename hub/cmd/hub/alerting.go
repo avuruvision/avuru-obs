@@ -20,19 +20,19 @@ import (
 
 const alertsReloadInterval = 15 * time.Second
 
-// loadAlertingConfig loads AVURUOPS_ALERTS_CONFIG and returns a hot-reloading
+// loadAlertingConfig loads AVURUOBS_ALERTS_CONFIG and returns a hot-reloading
 // accessor (mtime poll, like the groups config). Unset → Default() (inert). A
 // present-but-invalid file fails loud at startup; a later bad edit is logged
 // and ignored (last good config stays live).
 func loadAlertingConfig(ctx context.Context) (func() alerting.Config, error) {
-	path := os.Getenv("AVURUOPS_ALERTS_CONFIG")
+	path := os.Getenv("AVURUOBS_ALERTS_CONFIG")
 	if path == "" {
 		cfg := alerting.Default()
 		return func() alerting.Config { return cfg }, nil
 	}
 	cfg, modTime, err := readAlertingConfig(path)
 	if err != nil {
-		return nil, fmt.Errorf("AVURUOPS_ALERTS_CONFIG: %w", err)
+		return nil, fmt.Errorf("AVURUOBS_ALERTS_CONFIG: %w", err)
 	}
 	slog.Info("alerting config loaded", "path", path, "rules", len(cfg.Rules), "channels", len(cfg.Channels))
 
@@ -82,15 +82,15 @@ func readAlertingConfig(path string) (alerting.Config, time.Time, error) {
 	return cfg, info.ModTime(), nil
 }
 
-// webhookAllowCIDRs parses AVURUOPS_WEBHOOK_ALLOW (comma-separated CIDRs) — the
+// webhookAllowCIDRs parses AVURUOBS_WEBHOOK_ALLOW (comma-separated CIDRs) — the
 // operator override that lets alerting reach a receiver on a private network.
 func webhookAllowCIDRs() []*net.IPNet {
 	var out []*net.IPNet
-	for _, part := range splitCSV(os.Getenv("AVURUOPS_WEBHOOK_ALLOW")) {
+	for _, part := range splitCSV(os.Getenv("AVURUOBS_WEBHOOK_ALLOW")) {
 		if _, cidr, err := net.ParseCIDR(strings.TrimSpace(part)); err == nil {
 			out = append(out, cidr)
 		} else {
-			slog.Warn("ignoring invalid AVURUOPS_WEBHOOK_ALLOW entry", "value", part, "error", err)
+			slog.Warn("ignoring invalid AVURUOBS_WEBHOOK_ALLOW entry", "value", part, "error", err)
 		}
 	}
 	return out

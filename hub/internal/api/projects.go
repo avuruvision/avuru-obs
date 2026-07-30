@@ -52,7 +52,7 @@ func identityUserID(ctx context.Context) string {
 }
 
 // projectDTO is one selectable project. Source records where it came from:
-// "default" (always present), "config" (AVURUOPS_PROJECTS — Coroot's
+// "default" (always present), "config" (AVURUOBS_PROJECTS — Coroot's
 // "defined through the config" mode), "db" (UI-managed; rename/delete allowed),
 // "data" (tenant observed in telemetry; auto-discovered), or "granted" (an
 // RBAC-granted scope with no config/data entry yet — see

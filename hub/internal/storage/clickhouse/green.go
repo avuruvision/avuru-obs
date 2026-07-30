@@ -74,7 +74,7 @@ WITH series_deltas AS (
     SELECT
         Attributes[?]                                    AS pod,
         Attributes[?]                                    AS ns,
-        Attributes['avuruops_quality']                   AS quality,
+        Attributes['avuruobs_quality']                   AS quality,
         toStartOfInterval(TimeUnix, INTERVAL %d SECOND)  AS t,
         %s                                               AS sid,
         greatest(max(Value) - min(Value), 0)             AS joules
@@ -169,7 +169,7 @@ SELECT node, quality, t, sum(joules) / 3600 AS wh
 FROM (
     SELECT
         `+nodeAttr+`                                     AS node,
-        Attributes['avuruops_quality']                   AS quality,
+        Attributes['avuruobs_quality']                   AS quality,
         toStartOfInterval(TimeUnix, INTERVAL %d SECOND)  AS t,
         %s                                               AS sid,
         greatest(max(Value) - min(Value), 0)             AS joules
@@ -244,7 +244,7 @@ func (s *Store) NodeCoverage(ctx context.Context, q storage.GreenQuery) (storage
 WITH energy AS (
     SELECT DISTINCT
         `+nodeAttr+`                    AS node,
-        Attributes['avuruops_quality']  AS quality
+        Attributes['avuruobs_quality']  AS quality
     FROM otel_metrics_sum
     WHERE Tenant = ? AND TimeUnix >= ? AND TimeUnix < ?
       AND MetricName IN (%s)

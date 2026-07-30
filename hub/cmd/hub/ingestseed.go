@@ -26,7 +26,7 @@ type ingestSeedKey struct {
 	Key     string `json:"key"`
 }
 
-// parseIngestSeedKeys parses AVURUOPS_INGEST_SEED_KEYS — a JSON array of
+// parseIngestSeedKeys parses AVURUOBS_INGEST_SEED_KEYS — a JSON array of
 // {project, name, key}. Empty input means "no seed keys", not an error.
 //
 // Malformed entries are rejected loudly rather than skipped: a silently dropped
