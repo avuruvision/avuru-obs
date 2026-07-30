@@ -25,6 +25,35 @@ jobs:
   cla:
     runs-on: ubuntu-latest
     steps:
+      # contributor-assistant stores signatures on the orphan `cla-signatures`
+      # branch and fails hard when it is missing ("Branch cla-signatures not
+      # found") — it never creates the branch itself. A branch cleanup that
+      # sweeps it away turns every CLA check red, so recreate it here instead
+      # of blocking contributors until a maintainer notices.
+      - name: Ensure cla-signatures branch exists
+        if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/$REPO/git/ref/heads/cla-signatures" >/dev/null 2>&1; then
+            echo "cla-signatures branch present"
+            exit 0
+          fi
+          echo "cla-signatures branch missing - recreating it as an orphan"
+          blob=$(jq -n '{content: "{\n   \"signedContributors\": []\n}", encoding: "utf-8"}' \
+            | gh api --method POST "repos/$REPO/git/blobs" --input - --jq .sha)
+          tree=$(jq -n --arg sha "$blob" \
+            '{tree: [{path: "signatures/cla.json", mode: "100644", type: "blob", sha: $sha}]}' \
+            | gh api --method POST "repos/$REPO/git/trees" --input - --jq .sha)
+          commit=$(jq -n --arg tree "$tree" \
+            '{message: "chore: re-init CLA signatures store", tree: $tree, parents: []}' \
+            | gh api --method POST "repos/$REPO/git/commits" --input - --jq .sha)
+          gh api --method POST "repos/$REPO/git/refs" \
+            -f ref=refs/heads/cla-signatures -f sha="$commit" >/dev/null
+          echo "recreated cla-signatures at $commit"
+
       - name: CLA Assistant
         if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
         uses: contributor-assistant/github-action@v2.6.1
