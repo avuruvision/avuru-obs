@@ -314,6 +314,59 @@ spec:
           resources:
             {{- toYaml .Values.sensor.green.resources | nindent 12 }}
         {{- end }}
+        {{- if include "avuruops.collectGreenEstimation" . }}
+        # tdp-estimator — modeled CPU power for nodes with no RAPL/powercap
+        # (first-party, opt-in). Deliberately has NO liveness/readiness/
+        # startup probes, same "do no harm" posture as Kepler: a probe
+        # failure here must never flap the sensor pod. Reuses host-sys/
+        # host-proc (defined below under the collectGreen gate, guaranteed
+        # present since estimation requires green) mounted at their real
+        # absolute paths — the estimator's RAPL probe and cgroup walk use
+        # literal /sys, /proc paths, not a remapped /host/... prefix.
+        - name: tdp-estimator
+          image: {{ include "avuruops.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.green.estimation.image.repository "tag" .Values.sensor.green.estimation.image.tag) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --listen=:{{ .Values.sensor.green.estimation.port }}
+            - --node-name=$(NODE_NAME)
+            - --idle-watts={{ .Values.sensor.green.estimation.idleWatts }}
+            - --max-watts={{ .Values.sensor.green.estimation.maxWatts }}
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          securityContext:
+            # Same rationale as Kepler's securityContext just above: the RAPL
+            # probe reads the root-owned powercap sysfs, and running
+            # unprivileged would make the probe silently fail closed (report
+            # "no RAPL" on a node that HAS it), which would violate the "never
+            # report both measured and estimated" invariant. Mirrors Kepler's
+            # own toggle rather than inventing a separate one.
+            runAsUser: 0
+            runAsGroup: 0
+            readOnlyRootFilesystem: true
+            {{- if .Values.sensor.green.privileged }}
+            privileged: true
+            {{- else }}
+            capabilities:
+              add:
+                - DAC_READ_SEARCH
+                - SYS_PTRACE
+                - PERFMON
+              drop:
+                - ALL
+            {{- end }}
+          volumeMounts:
+            - name: host-sys
+              mountPath: /sys
+              readOnly: true
+            - name: host-proc
+              mountPath: /proc
+              readOnly: true
+          resources:
+            {{- toYaml .Values.sensor.green.estimation.resources | nindent 12 }}
+        {{- end }}
       volumes:
         {{- if .Values.sensor.obi.enabled }}
         - name: obi-config
