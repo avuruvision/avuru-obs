@@ -21,11 +21,11 @@ import (
 // Endpoints default to the compose stack's published ports (hub is 18080:8080
 // in docker-compose); each is env-overridable so a shared dev machine can run
 // the suite against an isolated compose project with remapped host ports (the
-// Playwright AVURUOPS_BASE_URL precedent). CI sets nothing and keeps the defaults.
+// Playwright AVURUOBS_BASE_URL precedent). CI sets nothing and keeps the defaults.
 var (
-	hubURL    = envOr("AVURUOPS_E2E_HUB_URL", "http://localhost:18080")
-	hotrodURL = envOr("AVURUOPS_E2E_HOTROD_URL", "http://localhost:8088")
-	chURL     = envOr("AVURUOPS_E2E_CH_URL", "http://localhost:8123")
+	hubURL    = envOr("AVURUOBS_E2E_HUB_URL", "http://localhost:18080")
+	hotrodURL = envOr("AVURUOBS_E2E_HOTROD_URL", "http://localhost:8088")
+	chURL     = envOr("AVURUOBS_E2E_CH_URL", "http://localhost:8123")
 )
 
 const seededTraceID = "aaaa1111bbbb2222cccc3333dddd4444"
@@ -49,7 +49,7 @@ var apiClient = http.DefaultClient
 // TestMain authenticates once for the whole package before running any
 // test: the hub may still be bootstrapping the admin user (bootstrapAdmin
 // waits for its ClickHouse connection, then creates `admin` with
-// AVURUOPS_AUTH_ADMIN_PASSWORD — see the Makefile's `e2e` target) when the
+// AVURUOBS_AUTH_ADMIN_PASSWORD — see the Makefile's `e2e` target) when the
 // suite starts, so login is retried rather than attempted once.
 func TestMain(m *testing.M) {
 	client, err := waitForAdminLogin(60 * time.Second)

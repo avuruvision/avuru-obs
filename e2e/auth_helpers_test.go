@@ -18,7 +18,7 @@ import (
 	"strings"
 )
 
-// adminPassword mirrors AVURUOPS_AUTH_ADMIN_PASSWORD as pinned by both
+// adminPassword mirrors AVURUOBS_AUTH_ADMIN_PASSWORD as pinned by both
 // harnesses — the Makefile's `e2e` target (compose) and e2e-helm.sh's
 // `--set auth.adminPassword=e2e-admin-pw` (kind/helm) — a fixed, known
 // password so the suites can log in deterministically (the normal dev path

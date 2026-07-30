@@ -5,12 +5,12 @@
 #
 # Usage (from repo root; the admin password matches the e2e suite's TestMain):
 #
-#   AVURUOPS_AUTH_ADMIN_PASSWORD=e2e-admin-pw docker compose \
+#   AVURUOBS_AUTH_ADMIN_PASSWORD=e2e-admin-pw docker compose \
 #     -f deploy/compose/docker-compose.yaml \
 #     -f deploy/compose/docker-compose.oidc-e2e.yaml \
 #     --profile oidc-e2e up -d --build --wait hub mock-oidc
 #
-#   cd e2e && AVURUOPS_E2E_OIDC=1 go test -tags=e2e -count=1 -run OIDC ./...
+#   cd e2e && AVURUOBS_E2E_OIDC=1 go test -tags=e2e -count=1 -run OIDC ./...
 #   cd ui  && OIDC_E2E=1 npx playwright test e2e/auth.spec.ts   # login-page SSO assertions
 #
 # --profile oidc-e2e is REQUIRED whenever this file is in the -f chain: the
@@ -18,15 +18,15 @@
 services:
   hub:
     environment:
-      AVURUOPS_AUTH_OIDC_CONFIG: /etc/avuruops-oidc/oidc-e2e.yaml
+      AVURUOBS_AUTH_OIDC_CONFIG: /etc/avuruobs-oidc/oidc-e2e.yaml
       # Any value works — the mock accepts all client authentication.
-      AVURUOPS_AUTH_OIDC_CLIENT_SECRET: e2e-oidc-secret
+      AVURUOBS_AUTH_OIDC_CLIENT_SECRET: e2e-oidc-secret
       # External base URL: the redirect_uri registered with the IdP must be
       # reachable by the host-side test client → the hub's published port.
-      AVURUOPS_PUBLIC_URL: http://localhost:18080
+      AVURUOBS_PUBLIC_URL: http://localhost:18080
     volumes:
       # Merged with the hub's base mounts (compose merges volumes by target).
-      - ./oidc-e2e.yaml:/etc/avuruops-oidc/oidc-e2e.yaml:ro
+      - ./oidc-e2e.yaml:/etc/avuruobs-oidc/oidc-e2e.yaml:ro
     depends_on:
       mock-oidc:
         condition: service_started

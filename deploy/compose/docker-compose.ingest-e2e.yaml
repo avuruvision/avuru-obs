@@ -10,26 +10,26 @@
 # Usage (from repo root; keep the project name isolated so a shared dev machine
 # does not lose an unrelated stack — see agent_docs/testing.md):
 #
-#   AVURUOPS_AUTH_ADMIN_PASSWORD=e2e-admin-pw docker compose -p avuru-obs-ingest-e2e \
+#   AVURUOBS_AUTH_ADMIN_PASSWORD=e2e-admin-pw docker compose -p avuru-obs-ingest-e2e \
 #     -f deploy/compose/docker-compose.yaml \
 #     -f deploy/compose/docker-compose.ingest-e2e.yaml \
 #     up -d --build --wait clickhouse hub gateway gateway-log
 #
-#   cd e2e && AVURUOPS_E2E_INGEST=1 go test -tags=e2e -count=1 -run IngestKey ./...
+#   cd e2e && AVURUOBS_E2E_INGEST=1 go test -tags=e2e -count=1 -run IngestKey ./...
 services:
   hub:
     environment:
       # Registers POST /internal/v1/ingest-keys/validate (absent when empty) and
       # seeds the key the test authenticates with, so the suite never has to
       # create one through the admin API before it can send telemetry.
-      AVURUOPS_INGEST_INTERNAL_TOKEN: e2e-internal-token
-      AVURUOPS_INGEST_SEED_KEYS: '[{"project":"payments","name":"e2e","key":"avuruk_e2e0000000000000000000000000000"}]'
+      AVURUOBS_INGEST_INTERNAL_TOKEN: e2e-internal-token
+      AVURUOBS_INGEST_SEED_KEYS: '[{"project":"payments","name":"e2e","key":"avuruk_e2e0000000000000000000000000000"}]'
 
   gateway:
     volumes: !override
       - ./gateway/config.ingest-e2e.yaml:/etc/avuru/config.yaml:ro
     environment:
-      AVURUOPS_INGEST_INTERNAL_TOKEN: e2e-internal-token
+      AVURUOBS_INGEST_INTERNAL_TOKEN: e2e-internal-token
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -46,7 +46,7 @@ services:
     volumes:
       - ./gateway/config.ingest-e2e-log.yaml:/etc/avuru/config.yaml:ro
     environment:
-      AVURUOPS_INGEST_INTERNAL_TOKEN: e2e-internal-token
+      AVURUOBS_INGEST_INTERNAL_TOKEN: e2e-internal-token
     ports:
       - "4327:4317"
       - "4328:4318"

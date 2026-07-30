@@ -6,7 +6,7 @@
 #   # then open http://localhost:3001
 #
 # The images are published by the release workflow, so pick a released tag:
-#   AVURUOPS_VERSION=v0.2.0 docker compose -f docker-compose.release.yaml up --wait
+#   AVURUOBS_VERSION=v0.2.0 docker compose -f docker-compose.release.yaml up --wait
 # The default floats to the latest v0.2 patch once that line has shipped.
 #
 # This is a laptop sandbox, not a deployment — Kubernetes is the real install
@@ -38,25 +38,25 @@ services:
   # One-shot schema migrator (mirrors the k8s Helm post-install/post-upgrade
   # hook). gateway + hub wait for it to complete before starting.
   migrate:
-    image: ghcr.io/avuruvision/avuru-obs-hub:${AVURUOPS_VERSION:-v0.2}
+    image: ghcr.io/avuruvision/avuru-obs-hub:${AVURUOBS_VERSION:-v0.2}
     command: ["migrate"]
     environment:
-      AVURUOPS_CLICKHOUSE_ADDR: clickhouse:9000
-      AVURUOPS_CLICKHOUSE_USER: avuru
-      AVURUOPS_CLICKHOUSE_PASSWORD: avuru
-      AVURUOPS_MODULES: "core,logs,infra-metrics,profiling,error-tracking"
-      AVURUOPS_RETENTION_TRACES_DAYS: "7"
-      AVURUOPS_RETENTION_LOGS_DAYS: "3"
-      AVURUOPS_RETENTION_METRICS_DAYS: "7"
-      AVURUOPS_RETENTION_PROFILES_DAYS: "3"
-      AVURUOPS_RETENTION_ERRORS_DAYS: "30"
+      AVURUOBS_CLICKHOUSE_ADDR: clickhouse:9000
+      AVURUOBS_CLICKHOUSE_USER: avuru
+      AVURUOBS_CLICKHOUSE_PASSWORD: avuru
+      AVURUOBS_MODULES: "core,logs,infra-metrics,profiling,error-tracking"
+      AVURUOBS_RETENTION_TRACES_DAYS: "7"
+      AVURUOBS_RETENTION_LOGS_DAYS: "3"
+      AVURUOBS_RETENTION_METRICS_DAYS: "7"
+      AVURUOBS_RETENTION_PROFILES_DAYS: "3"
+      AVURUOBS_RETENTION_ERRORS_DAYS: "30"
     depends_on:
       clickhouse:
         condition: service_healthy
     restart: "no"
 
   gateway:
-    image: ghcr.io/avuruvision/avuru-obs-gateway:${AVURUOPS_VERSION:-v0.2}
+    image: ghcr.io/avuruvision/avuru-obs-gateway:${AVURUOBS_VERSION:-v0.2}
     command: ["--config=/etc/avuru/config.yaml"]
     configs:
       - source: gateway-config
@@ -71,11 +71,11 @@ services:
     # No container healthcheck: the distro image is distroless (no shell).
 
   hub:
-    image: ghcr.io/avuruvision/avuru-obs-hub:${AVURUOPS_VERSION:-v0.2}
+    image: ghcr.io/avuruvision/avuru-obs-hub:${AVURUOBS_VERSION:-v0.2}
     environment:
-      AVURUOPS_CLICKHOUSE_ADDR: clickhouse:9000
-      AVURUOPS_CLICKHOUSE_USER: avuru
-      AVURUOPS_CLICKHOUSE_PASSWORD: avuru
+      AVURUOBS_CLICKHOUSE_ADDR: clickhouse:9000
+      AVURUOBS_CLICKHOUSE_USER: avuru
+      AVURUOBS_CLICKHOUSE_PASSWORD: avuru
     ports:
       - "127.0.0.1:8080:8080" # raw hub API (the UI proxies /api here)
     depends_on:
@@ -90,7 +90,7 @@ services:
   # Static UI (own nginx pod). Single-origin: serves the SPA at / and
   # reverse-proxies /api -> hub. Open http://localhost:3001.
   ui:
-    image: ghcr.io/avuruvision/avuru-obs-ui:${AVURUOPS_VERSION:-v0.2}
+    image: ghcr.io/avuruvision/avuru-obs-ui:${AVURUOBS_VERSION:-v0.2}
     ports:
       - "3001:80"
     depends_on:

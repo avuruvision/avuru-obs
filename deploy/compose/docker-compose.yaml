@@ -33,18 +33,18 @@ services:
       dockerfile: hub/Dockerfile
     command: ["migrate"]
     environment:
-      AVURUOPS_CLICKHOUSE_ADDR: clickhouse:9000
-      AVURUOPS_CLICKHOUSE_USER: avuru
-      AVURUOPS_CLICKHOUSE_PASSWORD: avuru
+      AVURUOBS_CLICKHOUSE_ADDR: clickhouse:9000
+      AVURUOBS_CLICKHOUSE_USER: avuru
+      AVURUOBS_CLICKHOUSE_PASSWORD: avuru
       # Modules this sandbox runs (empty/unset = all). Drop an entry to skip
       # its schema — the hub then 404s its API and the UI hides its entry.
       # alerting owns 0008_alerts.sql, so it must be listed for the tables.
-      AVURUOPS_MODULES: "core,logs,infra-metrics,profiling,error-tracking,alerting"
-      AVURUOPS_RETENTION_TRACES_DAYS: "7"
-      AVURUOPS_RETENTION_LOGS_DAYS: "3"
-      AVURUOPS_RETENTION_METRICS_DAYS: "7"
-      AVURUOPS_RETENTION_PROFILES_DAYS: "3"
-      AVURUOPS_RETENTION_ERRORS_DAYS: "30"
+      AVURUOBS_MODULES: "core,logs,infra-metrics,profiling,error-tracking,alerting"
+      AVURUOBS_RETENTION_TRACES_DAYS: "7"
+      AVURUOBS_RETENTION_LOGS_DAYS: "3"
+      AVURUOBS_RETENTION_METRICS_DAYS: "7"
+      AVURUOBS_RETENTION_PROFILES_DAYS: "3"
+      AVURUOBS_RETENTION_ERRORS_DAYS: "30"
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -77,35 +77,35 @@ services:
       context: ../..
       dockerfile: hub/Dockerfile
     environment:
-      AVURUOPS_CLICKHOUSE_ADDR: clickhouse:9000
-      AVURUOPS_CLICKHOUSE_USER: avuru
-      AVURUOPS_CLICKHOUSE_PASSWORD: avuru
+      AVURUOBS_CLICKHOUSE_ADDR: clickhouse:9000
+      AVURUOBS_CLICKHOUSE_USER: avuru
+      AVURUOBS_CLICKHOUSE_PASSWORD: avuru
       # Deterministic switcher list for e2e (staging fixtures are seeded
       # under the `staging` tenant; discovery would also find it from data).
-      AVURUOPS_PROJECTS: default,staging
+      AVURUOBS_PROJECTS: default,staging
       # Service-health grouping config: seed volumes are tiny, so minSampleCount
       # is 1 here (the built-in default of 5 would read the fixtures as idle).
-      AVURUOPS_GROUPS_CONFIG: /etc/avuruops/groups.json
+      AVURUOBS_GROUPS_CONFIG: /etc/avuruobs/groups.json
       # Alerting rules: fire immediately on the seeded down service so the e2e
       # can assert. Delivery targets an unroutable URL (the loop persists state
       # regardless; delivery is unit-tested, incl. the SSRF guard).
-      AVURUOPS_ALERTS_CONFIG: /etc/avuruops-alerts/alerts.json
-      # AVURUOPS_AUTH_* pass-through for local dev/smoke-testing (Task 9 adds
+      AVURUOBS_ALERTS_CONFIG: /etc/avuruobs-alerts/alerts.json
+      # AVURUOBS_AUTH_* pass-through for local dev/smoke-testing (Task 9 adds
       # the fuller anonymous/OIDC compose wiring). Unset/empty keeps today's
       # behavior: auth stays enabled, and the admin password is generated and
       # logged once at first boot.
-      AVURUOPS_AUTH_ADMIN_PASSWORD: ${AVURUOPS_AUTH_ADMIN_PASSWORD:-}
+      AVURUOBS_AUTH_ADMIN_PASSWORD: ${AVURUOBS_AUTH_ADMIN_PASSWORD:-}
       # Green energy/carbon config: explicit factors (deterministic gCO2e for
       # e2e) + a budget over the seeded `payments` group, delivered via the
       # `sink` alerting channel. green is auto-active here (the hub sets no
-      # AVURUOPS_MODULES, so all modules run) and owns no schema — it reads the
+      # AVURUOBS_MODULES, so all modules run) and owns no schema — it reads the
       # otel_metrics_* tables seeded by metrics_kepler.json /
       # metrics_kubeletstats_pods.json.
-      AVURUOPS_GREEN_CONFIG: /etc/avuruops-green/green.json
+      AVURUOBS_GREEN_CONFIG: /etc/avuruobs-green/green.json
     volumes:
-      - ./groups.json:/etc/avuruops/groups.json:ro
-      - ./alerts.json:/etc/avuruops-alerts/alerts.json:ro
-      - ./green.json:/etc/avuruops-green/green.json:ro
+      - ./groups.json:/etc/avuruobs/groups.json:ro
+      - ./alerts.json:/etc/avuruobs-alerts/alerts.json:ro
+      - ./green.json:/etc/avuruobs-green/green.json:ro
     ports:
       - "18080:8080"
     depends_on:
