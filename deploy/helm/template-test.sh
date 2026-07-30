@@ -395,20 +395,38 @@ echo "== ingest keys: secret material never lands in a ConfigMap"
 # outside the Secret. A ${env:...} placeholder in the ConfigMap is the point.
 leakcheck="$(mktemp)"
 cat > "$leakcheck" <<'PYEOF'
-import sys, yaml, base64
-docs = [d for d in yaml.safe_load_all(sys.stdin) if d]
-sec = {}
-for d in docs:
-    if d.get("kind") == "Secret" and d["metadata"]["name"].endswith("-ingest"):
-        sec = {k: base64.b64decode(v).decode() for k, v in d.get("data", {}).items()}
-assert sec, "no ingest Secret rendered"
+# Stdlib only — no PyYAML. This runs on a bare CI runner, and a missing import
+# would fail the job for a reason that has nothing to do with the chart.
+# Substring containment over the raw document text is the right test anyway:
+# the question is "do these bytes appear anywhere they shouldn't", not "does
+# this parse".
+import sys, base64, re
+
+text = sys.stdin.read()
+docs = [d for d in re.split(r"(?m)^---\s*$", text) if d.strip()]
+
+def kind_of(doc):
+    m = re.search(r"(?m)^kind:\s*(\S+)", doc)
+    return m.group(1) if m else ""
+
+def meta_name(doc):
+    m = re.search(r"(?ms)^metadata:\s*\n(.*?)(?=^\S|\Z)", doc)
+    n = re.search(r"(?m)^\s+name:\s*(\S+)", m.group(1)) if m else None
+    return n.group(1) if n else ""
+
+secret = next((d for d in docs
+               if kind_of(d) == "Secret" and meta_name(d).endswith("-ingest")), None)
+assert secret, "no ingest Secret rendered"
+
 for label in ("internal-token", "sensor-key"):
-    raw = sec.get(label)
-    assert raw, f"{label} missing from the ingest Secret"
+    m = re.search(r'(?m)^\s+%s:\s*"?([A-Za-z0-9+/=]+)"?\s*$' % re.escape(label), secret)
+    assert m, f"{label} missing from the ingest Secret"
+    raw = base64.b64decode(m.group(1)).decode()
+    b64 = m.group(1)
     for d in docs:
-        body = yaml.safe_dump(d)
-        if raw in body or base64.b64encode(raw.encode()).decode() in body:
-            assert d.get("kind") == "Secret", f"{label} leaked into {d.get('kind')}"
+        if (raw in d or b64 in d) and kind_of(d) != "Secret":
+            raise AssertionError(
+                f"{label} leaked into {kind_of(d) or 'an unknown document'}/{meta_name(d)}")
 PYEOF
 printf '%s' "$out" | python3 "$leakcheck" || fail "ingest secret material leaked outside a Secret"
 rm -f "$leakcheck"

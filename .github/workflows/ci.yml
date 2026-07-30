@@ -65,17 +65,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
-      - name: lint + template
-        run: |
-          helm lint deploy/helm/avuruops
-          helm template avuruops deploy/helm/avuruops > /dev/null
-      # The render-time assertion suite (deploy/helm/template-test.sh). `helm
-      # template > /dev/null` only proves the chart renders; this proves it
-      # renders the RIGHT thing — including that ingest-key secret material
-      # never leaves a Secret object.
-      - name: render-time assertions
+      # deploy/helm/template-test.sh: lints the chart against the default,
+      # staging and prod overlays and makes 40+ renders with assertions on what
+      # actually comes out — a strict superset of `helm lint` + `helm template
+      # > /dev/null`, which only proved the chart renders, not that it renders
+      # the right thing. It is what catches ingest-key secret material escaping
+      # a Secret object into a ConfigMap.
+      - name: lint + render-time assertions
         run: make helm-check
-          helm template avuruops deploy/helm/avuruops --set clickhouse.external.enabled=true --set clickhouse.external.address=ch:9000 --set clickhouse.external.existingSecret=ch > /dev/null
+      # The one case template-test.sh does not cover.
+      - name: template against external ClickHouse
+        run: |
+          helm template avuruops deploy/helm/avuruops \
+            --set clickhouse.external.enabled=true \
+            --set clickhouse.external.address=ch:9000 \
+            --set clickhouse.external.existingSecret=ch > /dev/null
 
   # Real install smoke on a kind cluster (deploy/helm/e2e-helm.sh owns the
   # lifecycle: build+load images → helm install → seed OTLP → assert via the
