@@ -177,6 +177,15 @@ func run() error {
 		go bootstrapAdmin(ctx, authSvc, provider)
 	}
 
+	// Chart-provisioned ingest keys (the sensor's). Parsed eagerly so a
+	// malformed seed fails the boot loudly instead of surfacing later as
+	// "enforce mode silently dropped our telemetry".
+	seedKeys, err := parseIngestSeedKeys(os.Getenv("AVURUOPS_INGEST_SEED_KEYS"))
+	if err != nil {
+		return err
+	}
+	go seedIngestKeys(ctx, provider, seedKeys)
+
 	active, err := activeModules()
 	if err != nil {
 		return err
