@@ -32,6 +32,7 @@ var Ordered = []string{
 	"0011_auth_oidc_groups.sql",
 	"0012_projects.sql",
 	"0013_auth_ingest_keys.sql",
+	"0014_collection_overlay.sql",
 }
 
 // ByModule tags each migration with the module(s) whose schema it owns; the
@@ -62,4 +63,7 @@ var ByModule = map[string][]modules.Name{
 	"0012_projects.sql": {modules.Core},
 	// Per-project ingest keys — auth gates ingest, so core.
 	"0013_auth_ingest_keys.sql": {modules.Core},
+	// collection_overlay — plain feature flag, not a modules.Name; the table
+	// exists on every install, only the API routes and RBAC are flag-gated.
+	"0014_collection_overlay.sql": {modules.Core},
 }

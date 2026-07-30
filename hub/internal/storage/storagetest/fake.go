@@ -60,6 +60,12 @@ type Fake struct {
 	SavedChannels         []storage.AlertChannel
 	DeletedChannels       []string
 
+	// Collection overlay fake.
+	Overlay       storage.CollectionOverlay
+	OverlaySet    bool
+	OverlayErr    error
+	SavedOverlays []storage.CollectionOverlay
+
 	// Auth fakes. Users is keyed by ID, UsersByEmail by email (both hold the
 	// same values); Grants by user ID; Sessions by token hash.
 	Users        map[string]storage.AuthUser
@@ -316,6 +322,23 @@ func (f *Fake) DeleteAlertChannel(_ context.Context, name string) error {
 		}
 	}
 	return storage.ErrNotFound
+}
+
+func (f *Fake) LoadCollectionOverlay(_ context.Context) (storage.CollectionOverlay, error) {
+	if f.OverlayErr != nil {
+		return storage.CollectionOverlay{}, f.OverlayErr
+	}
+	if !f.OverlaySet {
+		return storage.CollectionOverlay{}, storage.ErrNotFound
+	}
+	return f.Overlay, nil
+}
+
+func (f *Fake) SaveCollectionOverlay(_ context.Context, ov storage.CollectionOverlay) error {
+	f.SavedOverlays = append(f.SavedOverlays, ov)
+	f.Overlay = ov
+	f.OverlaySet = true
+	return nil
 }
 
 func (f *Fake) CountAuthUsers(context.Context) (uint64, error) {
