@@ -318,10 +318,6 @@ func (f *Fake) DeleteAlertChannel(_ context.Context, name string) error {
 	return storage.ErrNotFound
 }
 
-func (f *Fake) CountAuthUsers(context.Context) (uint64, error) {
-	return uint64(len(f.Users)), nil
-}
-
 func (f *Fake) GetAuthUser(_ context.Context, id string) (storage.AuthUser, error) {
 	u, ok := f.Users[id]
 	if !ok {

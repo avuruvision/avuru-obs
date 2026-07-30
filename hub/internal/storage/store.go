@@ -656,7 +656,6 @@ type Store interface {
 	// unknown, revoked or expired sessions. RevokeAuthSession likewise
 	// returns ErrNotFound for a token that is unknown, already revoked, or
 	// already expired.
-	CountAuthUsers(ctx context.Context) (uint64, error)
 	GetAuthUser(ctx context.Context, id string) (AuthUser, error)
 	GetAuthUserByEmail(ctx context.Context, email string) (AuthUser, error)
 	ListAuthUsers(ctx context.Context) ([]AuthUser, error)

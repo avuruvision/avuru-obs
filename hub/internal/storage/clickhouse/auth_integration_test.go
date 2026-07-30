@@ -57,14 +57,8 @@ func TestAuthRoundtrip(t *testing.T) {
 			t.Errorf("GetAuthUserByEmail wrong: %+v", byEmail)
 		}
 
-		n, err := store.CountAuthUsers(ctx)
-		if err != nil {
-			t.Fatalf("CountAuthUsers: %v", err)
-		}
-		if n != 1 {
-			t.Errorf("CountAuthUsers = %d, want 1", n)
-		}
-
+		// ListAuthUsers doubles as the FINAL-collapse assertion: u1 was
+		// written twice above and must come back as exactly one row.
 		all, err := store.ListAuthUsers(ctx)
 		if err != nil {
 			t.Fatalf("ListAuthUsers: %v", err)
