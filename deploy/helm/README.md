@@ -44,6 +44,8 @@ No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale.
 | `ingress.enabled` / `ingress.host` | `false` / `avuruops.local` | Expose the hub UI |
 | `auth.enabled` | `true` | Login + per-project RBAC, secure by default (bootstrap `admin` password in the release Secret — see the install NOTES) |
 | `auth.oidc.enabled` | `false` | Enterprise SSO via any OIDC IdP: set `issuer`/`clientId`/`publicUrl`, the client secret via `existingSecret` (key `oidc-client-secret`) or `clientSecret`, and IdP-group → role-on-projects `mapping` rules; `forceSSO` hides the local login form |
+| `auth.ingest.mode` | `log` | Per-project ingest API keys, checked in the gateway: `off` \| `log` (validate + count, reject nothing — pipeline unchanged, so existing unkeyed senders keep working) \| `enforce` (reject unkeyed/invalid, and the key's project becomes the authoritative tenant) |
+| `auth.ingest.provisionSensorKey` | `true` | Mint and seed a key for the sensor, so `enforce` never silences avuru's own agent |
 | `gateway.tenant` | `""` | Tag ALL telemetry through this gateway with a project/environment (see Projects) |
 | `projects` | `[]` | Declare the project list the hub advertises to the UI switcher |
 | `sensor.priorityClass.create` | `false` | Run the sensor below default priority ("do no harm") |
@@ -81,6 +83,33 @@ collects nothing. Turning a module on later is a values change plus
 `helm upgrade` — the migrator is idempotent and applies the newly-active
 schema. Turning one **off** leaves existing tables in place (no data is
 dropped); delete them yourself if you want the space back.
+
+## Authenticating ingest (per-project API keys)
+
+Without keys, a gateway trusts whatever tenant a sender claims. Keys replace
+that with a credential: the key's project *is* the tenant.
+
+The rollout is deliberately three-staged so you never black-hole a sender you
+forgot about. **Do not skip straight to `enforce`.**
+
+```bash
+# 1. Ship the default (mode: log). Nothing is rejected and the pipeline is
+#    unchanged — this stage exists to find senders you don't know about.
+helm upgrade avuruops ... # auth.ingest.mode=log is the default
+
+# 2. Mint a key per sender: UI → Settings → General → Ingest API keys, or
+#    POST /api/v1/projects/{project}/keys. The secret is shown ONCE.
+#    Put it in the sender's OTLP exporter:
+#      OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer avuruk_..."
+
+# 3. Watch the gateway's would-be-denial counter reach zero, then flip:
+helm upgrade avuruops ... --set auth.ingest.mode=enforce
+```
+
+A non-zero denial count in `log` mode is exactly the list of senders that would
+break under `enforce`. The chart provisions the sensor's own key automatically
+(`auth.ingest.provisionSensorKey`), so avuru's own agent is never the one that
+breaks. Set `auth.ingest.mode=off` to remove the surface entirely.
 
 ## Upgrading
 

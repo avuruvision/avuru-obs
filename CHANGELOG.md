@@ -13,6 +13,29 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **Per-project ingest API keys (Phase 2).** Telemetry can now be
+  **authenticated at the write side**, replacing topology-based trust of a
+  client-supplied `avuru.tenant`. Admins mint keys in Settings → General →
+  Ingest API keys (or `POST /api/v1/projects/{project}/keys`); the raw secret is
+  shown **exactly once** and only its SHA-256 is stored. The gateway validates
+  keys through a new in-repo collector extension (`avuruingestauth`) against a
+  hub control-plane endpoint — **the hub is never in the telemetry byte-path** —
+  with a 30 s verdict cache and a 5 min stale grace so a hub blip cannot drop
+  traffic.
+  Rolled out through `auth.ingest.mode`:
+  - `off` — no key checking.
+  - `log` (**default**) — validate and count would-be denials, reject nothing.
+    The pipeline is byte-identical to a pre-ingest-keys install, so **the
+    drop-in OTLP promise survives the upgrade**: existing unkeyed senders keep
+    landing unchanged.
+  - `enforce` — unkeyed or invalid OTLP is rejected, and the key's project
+    becomes the **authoritative tenant**, overriding anything the sender claims.
+    A sender that lies about its tenant lands where its key says.
+
+  The chart provisions and seeds the sensor's own key, so enabling `enforce`
+  never silences avuru's own agent. The internal token and sensor key are
+  generated once, reused across upgrades, and live only in a Secret — asserted
+  at render time.
 - **UI-managed projects (Phase 1).** Projects now have a persistent identity you
   control from the app. Admins **create, rename, and delete** projects in
   Settings → General; the switcher and General tab reflect them immediately,

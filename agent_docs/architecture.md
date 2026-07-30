@@ -103,6 +103,21 @@ Disabling a module never drops existing tables; it stops managing them.
   `forceSSO` only hides the UI's password form; the local admin API login
   remains as break-glass
 - Tenancy: every ClickHouse table carries a `tenant` column (default `default`)
+- Ingest authentication: per-project keys (`auth_ingest_key`, SHA-256 only —
+  the raw key is shown once at creation and never stored). Validation happens
+  **in the gateway**, via the in-repo `avuruingestauth` collector extension
+  calling the hub's `POST /internal/v1/ingest-keys/validate` (guarded by a
+  chart-generated shared token). **The hub is never in the telemetry
+  byte-path** — it answers a control-plane question and nothing more, so hub
+  availability bounds key *changes*, not ingest. The extension caches positive
+  AND negative verdicts (30 s) and serves stale ones through a hub outage
+  (5 min grace), failing open in `log` and closed in `enforce`.
+  `auth.ingest.mode` is the rollout dial: `off` | `log` (default) | `enforce`.
+  Only `enforce` wires the `tenantfromauth` processor, which stamps
+  `avuru.tenant` from the validated key's project — it must run **after**
+  `resource/tenant`, whose upsert would otherwise win. `log` therefore leaves
+  the pipeline byte-identical to a pre-ingest-keys install, which is what keeps
+  the drop-in promise below intact across the upgrade
 - Retention: per-signal TTL policy objects, not hardcoded TTLs
 
 ## Migration requirement: drop-in replacement for Jaeger/OTLP backends
