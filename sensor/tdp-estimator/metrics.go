@@ -57,14 +57,18 @@ func (r *registry) removePod(name, namespace string) {
 
 // ServeHTTP renders the Prometheus text exposition format for exactly the
 // four AEP metric names the pod/node kinds need
-// (kepler_{node,pod}_cpu_joules_total) — no HELP/TYPE lines are required by
-// the format, and the otel-agent's prometheus receiver reads bare metric
-// lines fine (matching Kepler's own minimal exposition).
+// (kepler_{node,pod}_cpu_joules_total). A `# TYPE ... counter` line MUST
+// precede each family: without it the metric is "untyped", and the
+// otel-agent's prometheus receiver maps untyped series to Gauge datapoints
+// (otel_metrics_gauge) instead of Sum (otel_metrics_sum) — silently breaking
+// the hub's green SQL and this estimator's whole purpose of matching Kepler's
+// own (TYPE-hinted) counter semantics.
 func (r *registry) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	if r.nodeName != "" {
+		fmt.Fprintf(w, "# TYPE kepler_node_cpu_joules_total counter\n")
 		fmt.Fprintf(w, "kepler_node_cpu_joules_total{node_name=%q} %s\n", r.nodeName, strconv.FormatFloat(r.nodeJ, 'f', -1, 64))
 	}
 	keys := make([]podKey, 0, len(r.podJ))
@@ -77,6 +81,9 @@ func (r *registry) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 		}
 		return keys[i].name < keys[j].name
 	})
+	if len(keys) > 0 {
+		fmt.Fprintf(w, "# TYPE kepler_pod_cpu_joules_total counter\n")
+	}
 	for _, k := range keys {
 		fmt.Fprintf(w, "kepler_pod_cpu_joules_total{pod_name=%q,pod_namespace=%q} %s\n",
 			k.name, k.namespace, strconv.FormatFloat(r.podJ[k], 'f', -1, 64))
