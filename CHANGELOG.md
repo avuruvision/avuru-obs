@@ -63,6 +63,23 @@ When a release is cut, that block is renamed to the version with its date.
 - **Contributor License Agreement live.** Every first-time contributor signs
   the [Individual CLA](CLA.md) via a one-comment bot flow; §2.2 pledges all
   contributions remain available under AGPL-3.0 forever.
+- **Green TDP estimation for RAPL-less nodes.** The green module now works on
+  the infrastructure most teams actually run: on a node with no RAPL/powercap
+  — the overwhelming majority of public-cloud VMs — a new opt-in estimator
+  models CPU power from utilization instead of leaving `/green` empty. Every
+  number it produces is stamped **estimated** end to end (SQL, API, UI, and
+  the CSRD export's methodology block) and is never blended with real
+  RAPL-measured numbers, so what you see is always honestly labeled — trend
+  and regression grade (±30-50% typical error), never presented as
+  audit-grade. `/green` gains a coverage panel (known/measured/estimated/
+  absent nodes) that finally makes the RAPL-less share visible instead of
+  silently invisible, and carbon budgets include estimated energy (so an
+  all-VM fleet's budget can still trip) while flagging how much of a
+  threshold breach is modeled versus measured. Opt in with
+  `sensor.green.estimation.enabled` (requires `sensor.green.enabled`); the
+  bundled CPU power-coefficient table is sourced and cited (Cloud Carbon
+  Footprint, cross-checked against the original SPECpower-derived notebook).
+  See the [AEP](design/2026-07-28-green-tdp-estimation.md).
 
 ### Fixed
 
