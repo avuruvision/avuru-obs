@@ -27,9 +27,14 @@ func TestNewIngestKey(t *testing.T) {
 }
 
 func TestHashIngestKeyStable(t *testing.T) {
-	// Same input → same hash (lookups are by exact hash).
-	if HashIngestKey("avuruk_abc") != HashIngestKey("avuruk_abc") {
-		t.Fatal("hash not deterministic")
+	// Same input → same hash (lookups are by exact hash, so a drifting hash
+	// would silently invalidate every stored key). Bound through variables
+	// rather than compared inline: staticcheck rejects identical expressions
+	// either side of an operator (SA4000).
+	first := HashIngestKey("avuruk_abc")
+	second := HashIngestKey("avuruk_abc")
+	if first != second {
+		t.Fatalf("hash not deterministic: %q vs %q", first, second)
 	}
 	if HashIngestKey("avuruk_abc") == HashIngestKey("avuruk_abd") {
 		t.Fatal("distinct inputs collided")
