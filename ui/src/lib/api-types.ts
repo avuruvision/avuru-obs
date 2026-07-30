@@ -547,9 +547,24 @@ export interface GreenFactors {
 
 export interface GreenTotals {
   attributedWh: number;
+  // measuredWh/estimatedWh split attributedWh by quality tier (RAPL/Kepler
+  // vs the tdp-estimator) — never blended into one number (green TDP
+  // estimation AEP).
+  measuredWh: number;
+  estimatedWh: number;
   unattributedWh: number;
   coverage: number; // attributed / (attributed + unattributed), 0..1
   gco2e: number; // carbon for attributed + unattributed energy
+  nodeCoverage: GreenNodeCoverage;
+}
+
+// Per-node green coverage: how many known nodes reported measured energy,
+// estimated energy, or neither (absent) in the window.
+export interface GreenNodeCoverage {
+  known: number;
+  measured: number;
+  estimated: number;
+  absent: number;
 }
 
 export interface GreenEnergyPoint {
@@ -557,12 +572,14 @@ export interface GreenEnergyPoint {
   wh: number;
 }
 
-// One row of the per-service energy table. requests/mgCO2ePerRequest/points are
-// omitempty in Go: absent for the synthetic (other)/(unattributed) rows or a
-// service that saw no requests.
+// One row of the per-service energy table. requests/mgCO2ePerRequest/points/
+// estimatedWh are omitempty in Go: absent for the synthetic (other)/
+// (unattributed) rows, a service that saw no requests, or energy that is
+// entirely measured.
 export interface GreenServiceEnergy {
   service: string;
   wh: number;
+  estimatedWh?: number;
   gco2e: number;
   requests?: number;
   mgCO2ePerRequest?: number;
@@ -591,6 +608,9 @@ export interface GreenBudget {
   ratio: number;
   status: "ok" | "warn" | "exceeded";
   burnDown?: GreenBurnPoint[];
+  // Fraction of usedKgCO2e that came from modeled (tdp-estimator) rather
+  // than measured energy — omitted when 0.
+  estimatedShare?: number;
 }
 
 export interface GreenBudgetsResponse {

@@ -12,6 +12,7 @@ import { ServiceEnergyTable } from "./service-energy-table";
 import { BudgetCards } from "./budget-cards";
 import { ExportPanel } from "./export-panel";
 import { GreenEmptyState } from "./green-empty-state";
+import { QualityBadge } from "./quality-badge";
 
 // Carbon dashboard orchestrator: the factors in force (with a methodology
 // popover), the headline totals, the per-service table, budgets, and the CSRD
@@ -44,12 +45,16 @@ export function GreenScreen() {
   const totalRequests = services.reduce((sum, s) => sum + (s.requests ?? 0), 0);
   const avgMg = totalRequests > 0 ? (totals!.gco2e * 1000) / totalRequests : undefined;
   const budgetList = budgets.data?.budgets ?? [];
+  const estimatedShare = totals!.attributedWh > 0 ? totals!.estimatedWh / totals!.attributedWh : 0;
+  const coverage = totals!.nodeCoverage;
+  const showCoverage = coverage && (coverage.estimated > 0 || coverage.absent > 0);
 
   return (
     <div className="flex flex-col gap-5">
       <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle>Energy &amp; carbon</CardTitle>
+          <QualityBadge estimatedShare={estimatedShare} />
           <MethodologyDetails factors={data.factors} totals={totals!} />
         </CardHeader>
 
@@ -61,6 +66,15 @@ export function GreenScreen() {
           <StatTile label="Avg intensity" value={formatMgPerReq(avgMg)} />
           <StatTile label="Attribution coverage" value={formatPercent(totals!.coverage)} />
         </div>
+
+        {showCoverage && (
+          <div className="grid gap-px border-t border-neutral bg-neutral sm:grid-cols-4 text-xs">
+            <StatTile label="Nodes known" value={String(coverage.known)} />
+            <StatTile label="Measured" value={String(coverage.measured)} />
+            <StatTile label="Estimated" value={String(coverage.estimated)} />
+            <StatTile label="Absent" value={String(coverage.absent)} />
+          </div>
+        )}
       </Card>
 
       <div className="flex flex-col gap-2">
