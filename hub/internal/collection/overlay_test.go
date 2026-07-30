@@ -40,6 +40,21 @@ func TestParseOverlay_RejectsEmptyNamespaceEntry(t *testing.T) {
 	}
 }
 
+// json.Decoder.Decode stops after the first value, so without an explicit
+// end-of-input check a body could smuggle arbitrary trailing content past the
+// closed schema.
+func TestParseOverlay_RejectsTrailingData(t *testing.T) {
+	for _, raw := range []string{
+		`{"obiEnabled":true} {"freeformCollectorConfig":"x"}`,
+		`{"obiEnabled":true} not json at all`,
+		`{"obiEnabled":true}{}`,
+	} {
+		if _, err := ParseOverlay(raw); err == nil {
+			t.Fatalf("ParseOverlay(%q) accepted trailing data — the whole input must be the overlay", raw)
+		}
+	}
+}
+
 func TestOverlay_EncodeParseRoundTrip(t *testing.T) {
 	obi := false
 	ns := []string{"payments", "billing"}

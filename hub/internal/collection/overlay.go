@@ -7,7 +7,9 @@ package collection
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -43,6 +45,12 @@ func ParseOverlay(raw string) (Overlay, error) {
 	var o Overlay
 	if err := dec.Decode(&o); err != nil {
 		return Overlay{}, fmt.Errorf("parse overlay: %w", err)
+	}
+	// Decode reads only the FIRST JSON value and would ignore anything after
+	// it, so a body like `{"obiEnabled":true} {"whatever":1}` would parse
+	// clean. "Closed schema" has to mean the whole input, not its prefix.
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return Overlay{}, fmt.Errorf("parse overlay: unexpected trailing data after the overlay object")
 	}
 	if err := validateNamespaces(o.ExcludeNamespaces); err != nil {
 		return Overlay{}, err
