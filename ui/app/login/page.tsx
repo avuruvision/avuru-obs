@@ -7,6 +7,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CenteredSpinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/cn";
+import { useProject } from "@/lib/project-context";
 import type { AuthConfig, Me } from "@/lib/api-types";
 
 // Config is always answerable (/auth/config is registered even with auth off),
@@ -35,6 +36,7 @@ function safeNext(): string {
 }
 
 export default function LoginPage() {
+  const { setProject } = useProject();
   const [config, setConfig] = useState<AuthConfig | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -83,7 +85,13 @@ export default function LoginPage() {
     setError(null);
     setBusy(true);
     try {
-      await apiPost<Me>("/api/v1/auth/demo", {});
+      const me = await apiPost<Me>("/api/v1/auth/demo", {});
+      // The demo viewer's only grant is a single project scope, never the
+      // global "*" admin scope (hub/internal/auth/service.go EnsureDemoUser)
+      // — land there instead of "default", which it has no access to and
+      // would 403 on every request.
+      const scope = me.grants.find((g) => g.scope !== "*")?.scope;
+      if (scope) setProject(scope);
       // Full navigation so providers/queries re-initialise with the session.
       window.location.assign(safeNext());
     } catch (err) {
