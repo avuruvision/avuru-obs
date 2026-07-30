@@ -80,8 +80,8 @@ Beyond the core signals, v0.2 adds the day-2 layer:
 artifact — no repo to add:
 
 ```bash
-helm install avuruops oci://ghcr.io/avuruvision/charts/avuruops \
-  --version <X.Y.Z> -n avuruops --create-namespace
+helm install avuruobs oci://ghcr.io/avuruvision/charts/avuruobs \
+  --version <X.Y.Z> -n avuruobs --create-namespace
 ```
 
 Or let the installer resolve the latest release and wait for rollout (it only

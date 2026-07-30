@@ -1,6 +1,6 @@
 # Runbook: application pods fail probes after installing avuru-obs
 
-Symptom: after `helm install avuruops`, application pods in **other**
+Symptom: after `helm install avuruobs`, application pods in **other**
 namespaces go NotReady / CrashLoopBackOff on liveness or readiness probes.
 Deleting the avuru-obs namespace makes them healthy again.
 
@@ -82,8 +82,8 @@ with collection ticks. Mitigation: raise
 Run top to bottom; after each step, `kubectl rollout restart` ONE affected
 app and observe probes for ~5 minutes before moving on.
 
-1. `helm upgrade avuruops ... --set sensor.obi.enabled=false`
-2. `helm upgrade avuruops ... --set sensor.enabled=false`
+1. `helm upgrade avuruobs ... --set sensor.obi.enabled=false`
+2. `helm upgrade avuruobs ... --set sensor.enabled=false`
 3. Reduce/relocate ClickHouse (`values-staging.yaml`-style footprint, or
    `clickhouse.external.enabled=true`)
 

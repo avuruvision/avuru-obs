@@ -26,16 +26,16 @@ The overlay tags all of its telemetry `avuru.tenant=demo`, so it lands in the
 ## Prerequisites
 
 - A Kubernetes cluster (kind is fine) with **avuru obs installed** — Helm
-  release `avuruops`. See [Setup › Kubernetes](../../helm/README.md).
+  release `avuruobs`. See [Setup › Kubernetes](../../helm/README.md).
 - `helm` and `kubectl`. The demo needs roughly **6 GB RAM / 4 CPU** free; it is
   heavier than the wedge/HotROD demos.
 
 ## Run
 
-Install into the **same namespace** as avuru obs so `avuruops-gateway` resolves:
+Install into the **same namespace** as avuru obs so `avuruobs-gateway` resolves:
 
 ```bash
-NS=avuruops ./install.sh
+NS=avuruobs ./install.sh
 ```
 
 or manually:
@@ -43,7 +43,7 @@ or manually:
 ```bash
 helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
 helm upgrade --install astronomy open-telemetry/opentelemetry-demo \
-  --version 0.40.10 -n avuruops --create-namespace \
+  --version 0.40.10 -n avuruobs --create-namespace \
   -f values-avuru.yaml
 ```
 
@@ -54,11 +54,11 @@ UI and the service map fills in — over OTLP, no eBPF sensor involved.
 
 The demo chart derives every component's `OTEL_EXPORTER_OTLP_ENDPOINT` from a
 single `OTEL_COLLECTOR_NAME` env var. [`values-avuru.yaml`](./values-avuru.yaml)
-overrides it to `avuruops-gateway` and disables the demo's bundled collector,
+overrides it to `avuruobs-gateway` and disables the demo's bundled collector,
 Jaeger, Prometheus, Grafana and OpenSearch — so avuru obs is the only backend.
 
 Different namespace? Set the value to the gateway FQDN, e.g.
-`avuruops-gateway.avuruops.svc.cluster.local`.
+`avuruobs-gateway.avuruobs.svc.cluster.local`.
 
 ## CI / pipeline (avuru-ops)
 
@@ -76,7 +76,7 @@ Overrides go through `EXTRA_HELM_ARGS`, so CI never has to fork the script:
   images into Harbor, then point the chart at them —
   `EXTRA_HELM_ARGS="--set default.image.repository=<harbor>/avuru/otel-demo"`.
 - **Separate namespace** (not the avuru obs one): pass the gateway FQDN —
-  `EXTRA_HELM_ARGS="--set default.envOverrides[0].value=avuruops-gateway.avuru-obs.svc.cluster.local"`.
+  `EXTRA_HELM_ARGS="--set default.envOverrides[0].value=avuruobs-gateway.avuru-obs.svc.cluster.local"`.
 
 Note: the Astronomy Shop pulls ~15 service images from `ghcr.io` plus a few
 dependency images. On nodes without internet egress, mirror them (as above) or
@@ -85,5 +85,5 @@ provide a pull-through cache — otherwise the demo pods `ImagePullBackOff`.
 ## Tear down
 
 ```bash
-helm uninstall astronomy -n avuruops
+helm uninstall astronomy -n avuruobs
 ```

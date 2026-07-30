@@ -1,6 +1,6 @@
 # deploy/helm — the Avuru Obs chart
 
-`avuruops/` is the vendor-neutral product chart: an OTLP backend on ClickHouse
+`avuruobs/` is the vendor-neutral product chart: an OTLP backend on ClickHouse
 that already-instrumented apps reach by pointing their exporter at the gateway.
 One `helm install` brings up the gateway, a single-node ClickHouse, the hub API,
 the UI, the sensor DaemonSet, and a schema-migration hook.
@@ -9,14 +9,14 @@ The chart is published to GHCR as an OCI artifact — install it by version, no
 repo to add:
 
 ```bash
-helm install avuruops oci://ghcr.io/avuruvision/charts/avuruops \
-  --version <X.Y.Z> -n avuruops --create-namespace
-# point apps at:  http://avuruops-gateway:4318   (or :4317 gRPC)
-# UI:  kubectl -n avuruops port-forward svc/avuruops-ui 8080:80   (then http://localhost:8080/)
+helm install avuruobs oci://ghcr.io/avuruvision/charts/avuruobs \
+  --version <X.Y.Z> -n avuruobs --create-namespace
+# point apps at:  http://avuruobs-gateway:4318   (or :4317 gRPC)
+# UI:  kubectl -n avuruobs port-forward svc/avuruobs-ui 8080:80   (then http://localhost:8080/)
 ```
 
 Contributors installing local changes use the chart in-tree instead:
-`helm install avuruops ./avuruops -n avuruops --create-namespace`.
+`helm install avuruobs ./avuruobs -n avuruobs --create-namespace`.
 
 ## What it deploys
 
@@ -41,7 +41,7 @@ No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale.
 | `modules.logs.enabled` / `modules.infraMetrics.enabled` / `modules.profiling.enabled` / `modules.errorTracking.enabled` | `true` | Run a signal family, or not — one switch for schema + API + pipeline + collection + UI (see Modules) |
 | `gateway.sentry.enabled` / `ingress.sentryHost` | `false` / `""` | Accept existing Sentry SDKs (needs the error-tracking + logs modules); give the ingest its own host |
 | `retention.traces` / `retention.logs` | `7` / `3` | Per-signal TTL in days |
-| `ingress.enabled` / `ingress.host` | `false` / `avuruops.local` | Expose the hub UI |
+| `ingress.enabled` / `ingress.host` | `false` / `avuruobs.local` | Expose the hub UI |
 | `auth.enabled` | `true` | Login + per-project RBAC, secure by default (bootstrap `admin` password in the release Secret — see the install NOTES) |
 | `auth.oidc.enabled` | `false` | Enterprise SSO via any OIDC IdP: set `issuer`/`clientId`/`publicUrl`, the client secret via `existingSecret` (key `oidc-client-secret`) or `clientSecret`, and IdP-group → role-on-projects `mapping` rules; `forceSSO` hides the local login form |
 | `auth.ingest.mode` | `log` | Per-project ingest API keys, checked in the gateway: `off` \| `log` (validate + count, reject nothing — pipeline unchanged, so existing unkeyed senders keep working) \| `enforce` (reject unkeyed/invalid, and the key's project becomes the authoritative tenant) |
@@ -71,7 +71,7 @@ existing install upgrades unchanged.
 
 ```bash
 # Traces-only install: lighter ClickHouse, service map still live in <5 min.
-helm upgrade --install avuruops deploy/helm/avuruops \
+helm upgrade --install avuruobs deploy/helm/avuruobs \
   --set modules.logs.enabled=false \
   --set modules.infraMetrics.enabled=false \
   --set modules.profiling.enabled=false
@@ -95,7 +95,7 @@ forgot about. **Do not skip straight to `enforce`.**
 ```bash
 # 1. Ship the default (mode: log). Nothing is rejected and the pipeline is
 #    unchanged — this stage exists to find senders you don't know about.
-helm upgrade avuruops ... # auth.ingest.mode=log is the default
+helm upgrade avuruobs ... # auth.ingest.mode=log is the default
 
 # 2. Mint a key per sender: UI → Settings → General → Ingest API keys, or
 #    POST /api/v1/projects/{project}/keys. The secret is shown ONCE.
@@ -103,7 +103,7 @@ helm upgrade avuruops ... # auth.ingest.mode=log is the default
 #      OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer avuruk_..."
 
 # 3. Watch the gateway's would-be-denial counter reach zero, then flip:
-helm upgrade avuruops ... --set auth.ingest.mode=enforce
+helm upgrade avuruobs ... --set auth.ingest.mode=enforce
 ```
 
 A non-zero denial count in `log` mode is exactly the list of senders that would
@@ -114,8 +114,8 @@ breaks. Set `auth.ingest.mode=off` to remove the surface entirely.
 ## Upgrading
 
 ```bash
-helm upgrade avuruops oci://ghcr.io/avuruvision/charts/avuruops \
-  --version <new> -n avuruops   # reuse your -f values / --set flags
+helm upgrade avuruobs oci://ghcr.io/avuruvision/charts/avuruobs \
+  --version <new> -n avuruobs   # reuse your -f values / --set flags
 ```
 
 Schema changes are applied by the `migrate` Job, a `post-install,post-upgrade`
@@ -169,7 +169,7 @@ kubectl -n payments patch deploy checkout --type=merge \
   -p '{"spec":{"template":{"metadata":{"labels":{"avuru.obs/instrument":"false"}}}}}'
 
 # Stop collecting an entire namespace:
-helm upgrade avuruops ./avuruops --reuse-values \
+helm upgrade avuruobs ./avuruobs --reuse-values \
   --set 'sensor.collection.excludeNamespaces={kube-system,kube-node-lease,kube-public,payments}'
 
 # Pull the sensor off one node right now (no helm upgrade):
@@ -206,7 +206,7 @@ scales with the number of processes per node, not with retention.
 
 This chart is the canonical artifact. An enterprise overlay (separate repo)
 layers Harbor image refs, Kustomize patches, and Keycloak/oauth2-proxy via
-`helm template ./avuruops -f overlay-values.yaml | kustomize ...` — it never forks
+`helm template ./avuruobs -f overlay-values.yaml | kustomize ...` — it never forks
 the chart.
 
 ## Verification
