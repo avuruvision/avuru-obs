@@ -28,7 +28,7 @@ Go) enforced by `golangci-lint` — this file only lists project-specific rules.
    `encoding/json`; validation explicit at the handler boundary.
 6. **Logging**: `log/slog` structured logging; never `fmt.Println`. Include
    `trace_id`-style correlation fields where available.
-7. **Config**: env vars with `AVURUOPS_` prefix, parsed once in `cmd/hub`,
+7. **Config**: env vars with `AVURUOBS_` prefix, parsed once in `cmd/hub`,
    passed down as typed structs. No global config reads from packages.
 8. **Tests**: table-driven; fakes over mocks; `httptest` for handler tests.
    Keep files under ~300 lines; split by responsibility, not by type.

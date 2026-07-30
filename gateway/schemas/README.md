@@ -17,7 +17,7 @@ See the M2 design spec: `docs/superpowers/specs/2026-06-15-m2-deployable-otlp-ba
 - **Append-only**: never edit an applied migration; fixes are new migrations.
   The `schema_migrations` ledger records applied versions; re-runs are no-ops.
 - Retention/TTL is **not** in the `.sql` — it is applied env-driven by
-  `hub migrate` (`AVURUOPS_RETENTION_TRACES_DAYS` / `AVURUOPS_RETENTION_LOGS_DAYS`),
+  `hub migrate` (`AVURUOBS_RETENTION_TRACES_DAYS` / `AVURUOBS_RETENTION_LOGS_DAYS`),
   so per-deployment retention is a Helm value, not a schema edit.
 - **The exporter owns the column contract**: `otel_traces`/`otel_logs` columns
   are frozen verbatim from the pinned `clickhouseexporter` (currently

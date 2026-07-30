@@ -1,7 +1,7 @@
 # sensor/ — DaemonSet assembly
 
 The "sensor" is the per-node DaemonSet pod. It is shipped by the Helm chart
-(`deploy/helm/avuruops/templates/sensor-*.yaml`, `sensor.enabled=true` by
+(`deploy/helm/avuruobs/templates/sensor-*.yaml`, `sensor.enabled=true` by
 default). Composition:
 
 | Container | Source | Role | Ships |

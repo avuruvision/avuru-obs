@@ -10,7 +10,7 @@ enough:
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/avuruvision/avuru-obs/main/deploy/compose/docker-compose.release.yaml
 docker compose -f docker-compose.release.yaml up --wait   # open http://localhost:3001
-# pick a release:  AVURUOPS_VERSION=v0.2.0 docker compose -f docker-compose.release.yaml up --wait
+# pick a release:  AVURUOBS_VERSION=v0.2.0 docker compose -f docker-compose.release.yaml up --wait
 ```
 
 **From source — the dev loop** (builds hub/ui/gateway locally):
@@ -37,7 +37,7 @@ Notes:
   (`hub migrate` against the embedded `hub/internal/storage/migrations/*.sql`)
   — the same mechanism as the k8s Helm hook. `gateway` and `hub` wait for it
   to complete. Re-running is idempotent (`schema_migrations` ledger); retention
-  TTL comes from `AVURUOPS_RETENTION_{TRACES,LOGS}_DAYS`.
+  TTL comes from `AVURUOBS_RETENTION_{TRACES,LOGS}_DAYS`.
 - ClickHouse is capped at 2 GB (`low-resources.xml`). Give the Docker VM
   ≥6 GB total (8 GB recommended): `colima start --memory 8`.
 - `seed/` holds deterministic OTLP fixtures used by `make e2e` (M1 step 6).

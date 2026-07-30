@@ -11,7 +11,7 @@ From the repo root:
 ```bash
 # 1. Start the release sandbox on collision-free ports, isolated from any
 #    other compose project on the machine (never omit -p).
-AVURUOPS_VERSION=v0.2.0 docker compose -p avuru-shots \
+AVURUOBS_VERSION=v0.2.0 docker compose -p avuru-shots \
   -f deploy/compose/docker-compose.release.yaml \
   -f tools/screenshots/compose.screenshots.yaml up --wait
 
@@ -28,7 +28,7 @@ docker compose -p avuru-shots down -v
 
 ## Notes
 
-- Pin `AVURUOPS_VERSION` to the exact released tag being shown.
+- Pin `AVURUOBS_VERSION` to the exact released tag being shown.
 - The capture warms HotROD for ~90s first so the service map and trace
   waterfall carry realistic multi-service traffic; `/errors`, `/health`,
   `/alerts` and `/green` render from the seeded fixtures and are deterministic.

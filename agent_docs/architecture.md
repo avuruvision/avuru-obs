@@ -68,7 +68,7 @@ with the hub (`/`→UI, `/api`→hub). The hub API is the client-agnostic contra
 ## Modules (which signal families an install runs)
 
 A **module** is one signal family gated end to end by a single switch
-(`modules.<name>.enabled` → `AVURUOPS_MODULES`): schema, Hub API routes,
+(`modules.<name>.enabled` → `AVURUOBS_MODULES`): schema, Hub API routes,
 gateway pipeline, sensor collection, and UI entry. Everything is enabled by
 default, so this is subtraction only — never install friction. See
 [the AEP](../design/2026-07-15-module-framework.md).
@@ -96,9 +96,9 @@ Disabling a module never drops existing tables; it stops managing them.
   `GET /api/v1/auth/oidc/callback`) and mints the same server-side session as
   a local login; IdP groups → grants mapping is applied at **read time** on
   every request (group moves re-scope access without re-login). Config is a
-  mounted YAML file (`AVURUOPS_AUTH_OIDC_CONFIG`, hot-reloaded ~15s; client
-  secret separately via `AVURUOPS_AUTH_OIDC_CLIENT_SECRET`); IdP discovery is
-  fail-loud at startup, and `AVURUOPS_PUBLIC_URL` must be the install's
+  mounted YAML file (`AVURUOBS_AUTH_OIDC_CONFIG`, hot-reloaded ~15s; client
+  secret separately via `AVURUOBS_AUTH_OIDC_CLIENT_SECRET`); IdP discovery is
+  fail-loud at startup, and `AVURUOBS_PUBLIC_URL` must be the install's
   external base URL — it builds the absolute redirect_uri IdPs require.
   `forceSSO` only hides the UI's password form; the local admin API login
   remains as break-glass

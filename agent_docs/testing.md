@@ -28,7 +28,7 @@ Write or update tests **alongside** the implementation, not after.
      fails on any server-only Next.js feature, by design.
 
 4. **The TTV gate (the product metric as a test)**
-   - GitLab CI job: create a `kind` cluster → `helm install avuruops` → deploy
+   - GitLab CI job: create a `kind` cluster → `helm install avuruobs` → deploy
      the demo app → poll the Hub API → **assert service map nodes/edges,
      traces, and logs are visible within 5 minutes**. A red TTV gate blocks
      release.
@@ -52,11 +52,11 @@ only against the `oidc-e2e` compose profile — the default stacks have no IdP,
 and both test gates default OFF, so `make e2e` / `make e2e-ui` are unaffected.
 
 ```bash
-AVURUOPS_AUTH_ADMIN_PASSWORD=e2e-admin-pw docker compose \
+AVURUOBS_AUTH_ADMIN_PASSWORD=e2e-admin-pw docker compose \
   -f deploy/compose/docker-compose.yaml \
   -f deploy/compose/docker-compose.oidc-e2e.yaml \
   --profile oidc-e2e up -d --build --wait hub mock-oidc
-cd e2e && AVURUOPS_E2E_OIDC=1 go test -tags=e2e -count=1 -run OIDC ./...
+cd e2e && AVURUOBS_E2E_OIDC=1 go test -tags=e2e -count=1 -run OIDC ./...
 cd ui  && OIDC_E2E=1 npx playwright test e2e/auth.spec.ts   # login-page SSO assertions
 ```
 
