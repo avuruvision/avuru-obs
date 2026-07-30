@@ -44,11 +44,19 @@ gateway-image:
 # from this list is a module CI does not gate.
 GATEWAY_MODULES := sentryreceiver avuruingestauth tenantfromauth
 
+# Every in-repo sensor module (like the gateway modules) is its own Go
+# module — a module missing from this list is a module CI does not gate.
+SENSOR_MODULES := tdp-estimator
+
 check:
 	cd hub && go build ./... && go test -race ./...
 	@for m in $(GATEWAY_MODULES); do \
 		echo "== gateway/$$m"; \
 		( cd gateway/$$m && go build ./... && go vet ./... && go test ./... ) || exit 1; \
+	done
+	@for m in $(SENSOR_MODULES); do \
+		echo "== sensor/$$m"; \
+		( cd sensor/$$m && go build ./... && go vet ./... && go test ./... ) || exit 1; \
 	done
 	cd ui && npm run lint && npm run build
 

@@ -68,6 +68,8 @@ jobs:
             dockerfile: ui/Dockerfile
           - component: gateway
             dockerfile: gateway/Dockerfile
+          - component: tdp-estimator
+            dockerfile: sensor/tdp-estimator/Dockerfile
     steps:
       # Explicit ref: on workflow_dispatch the default checkout is the branch
       # HEAD, which by then carries the next -SNAPSHOT — the dispatch fallback
