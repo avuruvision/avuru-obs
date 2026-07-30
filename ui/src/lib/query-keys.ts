@@ -64,4 +64,7 @@ export const queryKeys = {
   // Channels are instance-global delivery endpoints (no project element,
   // like systemStatus) — the notification payload carries the tenant.
   alertChannels: ["alerts", "channels"] as const,
+  // Ingest keys are scoped to a project (they authenticate that project's
+  // telemetry), so the project leads the key like any per-project data key.
+  ingestKeys: (p: string) => [p, "ingest-keys"] as const,
 };

@@ -31,6 +31,7 @@ var Ordered = []string{
 	"0010_auth.sql",
 	"0011_auth_oidc_groups.sql",
 	"0012_projects.sql",
+	"0013_auth_ingest_keys.sql",
 }
 
 // ByModule tags each migration with the module(s) whose schema it owns; the
@@ -59,4 +60,6 @@ var ByModule = map[string][]modules.Name{
 	"0011_auth_oidc_groups.sql": {modules.Core},
 	// UI-managed projects (create/rename/delete). Auth-adjacent core state.
 	"0012_projects.sql": {modules.Core},
+	// Per-project ingest keys — auth gates ingest, so core.
+	"0013_auth_ingest_keys.sql": {modules.Core},
 }

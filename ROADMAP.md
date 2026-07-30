@@ -69,10 +69,12 @@ implementation.
 
 - **Projects completion:** **project CRUD** — admins create/rename/delete
   projects from the UI, config-defined entries stay read-only — and a
-  **one-click read-only demo** have **shipped (Phase 1)**. Still to come:
-  per-project **API keys** at ingest (replaces topology-based trust of
-  `avuru.tenant` and the tenancy header — the auth seam it needs shipped in
-  v0.2), **member projects** (multi-cluster aggregation), per-project
+  **one-click read-only demo** have **shipped (Phase 1)**. Per-project **API
+  keys at ingest** have **shipped (Phase 2)**: keys are validated in the gateway
+  by an in-repo collector auth extension and, in `enforce` mode, the key's
+  project becomes the authoritative tenant — replacing topology-based trust of
+  `avuru.tenant`. Default `log` mode keeps the drop-in promise intact.
+  Still to come: **member projects** (multi-cluster aggregation), per-project
   retention, per-project system status, and chart component toggles so
   secondary clusters install gateway(+sensor)-only against a shared
   ClickHouse. See the

@@ -32,6 +32,11 @@ processors:
   # split environments into projects; resource/tenant stays the static
   # fallback for unmatched telemetry.
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.154.0
+  # tenantfromauth: in enforce mode, overwrites avuru.tenant from the ingest
+  # key's validated project (attached by the avuruingestauth extension). MUST be
+  # placed before batch in the pipeline — batch discards the request context.
+  # Built from the in-repo module via the replaces entry below.
+  - gomod: github.com/avuru/avuru-obs/gateway/tenantfromauth v0.1.0
   # tailsamplingprocessor added when the sampling knob ships (post-v0.1 default is 100% ingest)
 
 exporters:
@@ -40,6 +45,11 @@ exporters:
 extensions:
   # healthcheck lives in contrib (no core equivalent).
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.154.0
+  # avuruingestauth: per-project ingest-key server authenticator (auth Plan C).
+  # In-repo module; validates keys against the hub and — in enforce mode —
+  # attaches the key's project as auth data for tenantfromauth. Built from the
+  # replaces entry below.
+  - gomod: github.com/avuru/avuru-obs/gateway/avuruingestauth v0.1.0
   # opampextension added with the v0.2 OpAMP server (hub-managed config)
 
 # Local module: the Sentry receiver lives in-repo (gateway/sentryreceiver).
@@ -47,6 +57,11 @@ extensions:
 # the module to /src/sentryreceiver so ../sentryreceiver resolves there too.
 replaces:
   - github.com/avuru/avuru-obs/gateway/sentryreceiver => ../sentryreceiver
+  # Local module: the ingest-key authenticator lives in-repo
+  # (gateway/avuruingestauth). Same relative-path pattern as sentryreceiver; the
+  # Dockerfile copies it to /src/avuruingestauth so ../avuruingestauth resolves.
+  - github.com/avuru/avuru-obs/gateway/avuruingestauth => ../avuruingestauth
+  - github.com/avuru/avuru-obs/gateway/tenantfromauth => ../tenantfromauth
   # Security floor: GHSA-hrxh-6v49-42gf (HIGH — gRPC-Go xDS RBAC / HTTP/2). The
   # collector 0.154.0 line resolves google.golang.org/grpc to v1.81.1, which the
   # image scan fails on; pin the fixed v1.82.1 in the distro. Drop this when a

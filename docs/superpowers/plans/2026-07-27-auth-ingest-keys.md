@@ -1,5 +1,24 @@
 # Auth Ingest Keys + Gateway Enforcement (Plan C of 3) Implementation Plan
 
+> **STATUS: COMPLETE (2026-07-30)** — shipped on `feature/auth-ingest-keys`.
+> This file has been corrected in place against what was actually built, so it
+> is now a record rather than a proposal. Two of its original instructions were
+> **wrong** and would have shipped a silently broken enforce mode; both are
+> called out inline as `CORRECTION`. Read those before reusing this plan's
+> patterns for Phase 3.
+>
+> Summary of what changed during execution:
+>
+> | Where | Plan said | Reality |
+> |---|---|---|
+> | Task 1 | migration `0012` | **`0013`** — Phase 1 took `0012_projects.sql` |
+> | Task 1 | `migrate_test.go`, `-run TestMigrate` | `TestMigrateIsIdempotent` in `clickhouse/integration_test.go`, integration-tagged |
+> | Task 7 | stamp tenant **before** `resource/tenant` | **after** — `resource/tenant` upserts, so the static tenant would win |
+> | Task 7 | wire `tenantfromauth` whenever ingest auth is on | **enforce only** — it is a no-op in `log`, and omitting it keeps `log` byte-identical |
+> | Task 9 | mirror the "alert-channels settings component" | channels live in `ui/src/components/alerts/`; the sibling is `settings/project-settings-card.tsx` |
+> | Task 11 | `deploy/helm/values.yaml`, `templates/*` | `deploy/helm/avuruops/values.yaml`, `avuruops/templates/*` |
+> | Task 11 | `staticKeys` with `secretRef` indirection | dropped for `provisionSensorKey` + a hub seeder (see Task 11) |
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Depends on:** Plan A (`2026-07-21-auth-core.md`) merged. Independent of Plan B —
@@ -14,7 +33,7 @@ trust of a client-supplied `avuru.tenant`) — rolled out safely through
 `design/2026-07-21-auth-oidc-rbac.md`.
 
 **Architecture:** A fourth auth table `auth_ingest_key` (SHA-256 hash, project,
-prefix, name, revoked). Admin CRUD in the hub (`/projects/{project}/keys`, secret
+prefix, name, revoked). Admin CRUD in the hub (`/projects/{id}/keys`, secret
 shown once). A hub-internal `POST /internal/v1/ingest-keys/validate` guarded by a
 chart-generated hub↔gateway token. In the gateway, a new in-repo module
 `gateway/avuruingestauth` implements the collector's server-auth extension: it
@@ -38,15 +57,21 @@ conventional commits, **no AI trailer**; `go test ./...` + `go vet` before commi
 ### Task 1: Migration — `auth_ingest_key`
 
 **Files:**
-- Create: `hub/internal/storage/migrations/0012_auth_ingest_keys.sql`
-- Test: `hub/internal/storage/clickhouse/migrate_test.go` (existing suite)
+- Create: `hub/internal/storage/migrations/0013_auth_ingest_keys.sql`
+- Test: `hub/internal/storage/clickhouse/integration_test.go` (existing suite)
 
-- [ ] **Step 1: Write the migration**
+> **CORRECTION (stale).** The plan was written before Projects Phase 1 merged
+> and claimed slot `0012`; that is `0012_projects.sql`. This migration is
+> **`0013`**. The migration test is `TestMigrateIsIdempotent`, not
+> `TestMigrate`, and it is integration-tagged — it needs a real ClickHouse.
+
+- [x] **Step 1: Write the migration**
 
 ```sql
 -- Per-project ingest keys (auth Plan C). The raw key is shown once at creation;
 -- only its SHA-256 hex is stored. Prefix is the key's first 12 chars, kept in
 -- clear for UI identification ("avuruk_ab12cd…"). Revocation is a tombstone.
+-- NOTE: file is 0013_auth_ingest_keys.sql (0012 is Projects Phase 1).
 CREATE TABLE IF NOT EXISTS otel.auth_ingest_key
 (
     `KeyHash`   String,
@@ -62,16 +87,20 @@ ENGINE = ReplacingMergeTree(UpdatedAt)
 ORDER BY (KeyHash);
 ```
 
-- [ ] **Step 2: Run the migration test**
+- [x] **Step 2: Run the migration test**
 
-Run: `cd hub && go test ./internal/storage/clickhouse/ -run TestMigrate -v`
-Expected: PASS (`0001`–`0012` apply cleanly).
+Run (needs a real ClickHouse; on this box Ryuk must be off):
+```bash
+cd hub && TESTCONTAINERS_RYUK_DISABLED=true \
+  go test -tags=integration ./internal/storage/clickhouse/ -run TestMigrateIsIdempotent -v
+```
+Expected: PASS (`0001`–`0013` apply cleanly, and re-applying is a no-op).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
-git add hub/internal/storage/migrations/0012_auth_ingest_keys.sql
-git commit -m "feat(hub): migration — auth_ingest_key table"
+git add hub/internal/storage/migrations/0013_auth_ingest_keys.sql
+git commit -m "feat(hub): migration 0013 — auth_ingest_key table"
 ```
 
 ---
@@ -84,7 +113,7 @@ git commit -m "feat(hub): migration — auth_ingest_key table"
 - Modify: `hub/internal/storage/storagetest/fake.go`
 - Test: `hub/internal/storage/clickhouse/ingestkeys_test.go`
 
-- [ ] **Step 1: Add the type + interface methods**
+- [x] **Step 1: Add the type + interface methods**
 
 ```go
 // AuthIngestKey is one per-project ingest credential. KeyHash is hex(sha256(raw)).
@@ -111,7 +140,7 @@ ListIngestKeys(ctx context.Context, project string) ([]AuthIngestKey, error)
 RevokeIngestKey(ctx context.Context, project, keyHash string) error
 ```
 
-- [ ] **Step 2: Write the failing integration test**
+- [x] **Step 2: Write the failing integration test**
 
 ```go
 func TestIngestKeyLifecycle(t *testing.T) {
@@ -135,12 +164,12 @@ func TestIngestKeyLifecycle(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Run to verify it fails**
+- [x] **Step 3: Run to verify it fails**
 
 Run: `cd hub && go test ./internal/storage/... -run TestIngestKey -v`
 Expected: FAIL (methods undefined).
 
-- [ ] **Step 4: Implement** `clickhouse/ingestkeys.go` and the fake
+- [x] **Step 4: Implement** `clickhouse/ingestkeys.go` and the fake
 
 Follow the `alert_channel` / `auth_grant` implementations: INSERT for create and
 revoke (revoke re-inserts the row with `Revoked=1`, newer `UpdatedAt`); SELECT
@@ -148,12 +177,12 @@ revoke (revoke re-inserts the row with `Revoked=1`, newer `UpdatedAt`); SELECT
 ? AND Revoked = 0 ORDER BY CreatedAt` for list. The fake stores keys in a
 `map[string]AuthIngestKey` keyed by hash and filters revoked on read.
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 Run: `cd hub && go test ./internal/storage/... -run TestIngestKey -v`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add hub/internal/storage/
@@ -168,7 +197,7 @@ git commit -m "feat(hub): storage — ingest key store (create/get/list/revoke)"
 - Create: `hub/internal/auth/ingestkey.go`
 - Create: `hub/internal/auth/ingestkey_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestNewIngestKey(t *testing.T) {
@@ -190,12 +219,12 @@ func TestNewIngestKey(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `cd hub && go test ./internal/auth/ -run TestNewIngestKey -v`
 Expected: FAIL (undefined).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```go
 package auth
@@ -227,12 +256,12 @@ func HashIngestKey(raw string) string {
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `cd hub && go test ./internal/auth/ -run TestNewIngestKey -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add hub/internal/auth/ingestkey.go hub/internal/auth/ingestkey_test.go
@@ -241,14 +270,14 @@ git commit -m "feat(hub): ingest key generation + hashing"
 
 ---
 
-### Task 4: API — admin key CRUD (`/projects/{project}/keys`)
+### Task 4: API — admin key CRUD (`/projects/{id}/keys`)
 
 **Files:**
 - Create: `hub/internal/api/ingest_keys.go`
 - Create: `hub/internal/api/ingest_keys_test.go`
 - Modify: `hub/internal/api/router.go` (register routes under `securedAdmin`)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestCreateIngestKeyReturnsSecretOnce(t *testing.T) {
@@ -274,12 +303,12 @@ func TestCreateIngestKeyReturnsSecretOnce(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `cd hub && go test ./internal/api/ -run TestCreateIngestKey -v`
 Expected: FAIL (handlers undefined).
 
-- [ ] **Step 3: Implement `ingest_keys.go`**
+- [x] **Step 3: Implement `ingest_keys.go`**
 
 `handleCreateIngestKey`: decode `{name}`, `raw, prefix, hash := auth.NewIngestKey()`,
 `CreateIngestKey`, respond `201 {key: raw, prefix, name, project}` — the ONLY time
@@ -288,20 +317,22 @@ name, createdBy, createdAt}]`. `handleRevokeIngestKey`: `RevokeIngestKey(project
 hash)` → 204 (`ErrNotFound` → 404). The `{project}` path value is authorized by
 `securedAdmin` (global admin manages keys, per the AEP).
 
-- [ ] **Step 4: Register routes**
+- [x] **Step 4: Register routes**
 
 ```go
-mux.Handle("GET /api/v1/projects/{project}/keys", a.securedAdmin(a.handleListIngestKeys))
-mux.Handle("POST /api/v1/projects/{project}/keys", a.securedAdmin(a.handleCreateIngestKey))
-mux.Handle("DELETE /api/v1/projects/{project}/keys/{hash}", a.securedAdmin(a.handleRevokeIngestKey))
+// NOTE: the path value is {id}, matching the existing /api/v1/projects/{id}
+// routes from Phase 1 — not {project}.
+mux.Handle("GET /api/v1/projects/{id}/keys", a.securedAdmin(a.handleListIngestKeys))
+mux.Handle("POST /api/v1/projects/{id}/keys", a.securedAdmin(a.handleCreateIngestKey))
+mux.Handle("DELETE /api/v1/projects/{id}/keys/{hash}", a.securedAdmin(a.handleRevokeIngestKey))
 ```
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 Run: `cd hub && go test ./internal/api/ -run TestIngestKey -v && go test ./internal/api/ -run TestCreateIngestKey -v`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add hub/internal/api/ingest_keys.go hub/internal/api/ingest_keys_test.go hub/internal/api/router.go
@@ -317,7 +348,7 @@ git commit -m "feat(hub): admin ingest-key CRUD with one-time secret display"
 - Create: `hub/internal/api/ingest_validate_test.go`
 - Modify: `hub/internal/api/router.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestValidateIngestKey(t *testing.T) {
@@ -348,12 +379,12 @@ func TestValidateIngestKey(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `cd hub && go test ./internal/api/ -run TestValidateIngestKey -v`
 Expected: FAIL (handler undefined).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `handleValidateIngestKey`: constant-time compare of the `Authorization: Bearer`
 against `a.cfg.IngestInternalToken` (401 on mismatch); decode `{key}`;
@@ -368,12 +399,12 @@ if a.cfg.IngestInternalToken != "" {
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `cd hub && go test ./internal/api/ -run TestValidateIngestKey -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add hub/internal/api/ingest_validate.go hub/internal/api/ingest_validate_test.go hub/internal/api/router.go
@@ -391,7 +422,7 @@ git commit -m "feat(hub): internal ingest-key validation endpoint (gateway-facin
 Model the module on `gateway/sentryreceiver` (local OCB module + `replaces`
 entry). The collector's `extensionauth.Server` interface is the seam.
 
-- [ ] **Step 1: Scaffold the module**
+- [x] **Step 1: Scaffold the module**
 
 `go.mod` mirrors `sentryreceiver/go.mod` module path
 `github.com/avuru/avuru-obs/gateway/avuruingestauth`, requiring
@@ -418,7 +449,7 @@ type Config struct {
 `factory.go`: `extension.NewFactory(component.MustNewType("avuruingestauth"),
 createDefaultConfig, createExtension, component.StabilityLevelAlpha)`.
 
-- [ ] **Step 2: Write the failing extension test** (fake hub)
+- [x] **Step 2: Write the failing extension test** (fake hub)
 
 ```go
 func TestAuthenticateModes(t *testing.T) {
@@ -455,12 +486,12 @@ func TestAuthenticateModes(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Run to verify it fails**
+- [x] **Step 3: Run to verify it fails**
 
 Run: `cd gateway/avuruingestauth && go test ./... -run TestAuthenticate -v`
 Expected: FAIL (extension undefined).
 
-- [ ] **Step 4: Implement `extension.go`**
+- [x] **Step 4: Implement `extension.go`**
 
 Implement `extensionauth.Server`. `Authenticate(ctx, headers)`:
 1. Read the key from `Authorization: Bearer <k>` or `X-Avuru-Api-Key`.
@@ -487,12 +518,12 @@ method set and how auth attributes surface to processors via
 contrib `basicauth`/`bearertokenauth` extensions as reference implementations.
 Adjust the attribute-exposure code to match the confirmed API before proceeding.
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 Run: `cd gateway/avuruingestauth && go test ./... -v`
 Expected: PASS.
 
-- [ ] **Step 6: Register in the OCB manifest**
+- [x] **Step 6: Register in the OCB manifest**
 
 Add under `extensions:` and `replaces:` in `ocb-manifest.yaml`:
 ```yaml
@@ -501,7 +532,7 @@ Add under `extensions:` and `replaces:` in `ocb-manifest.yaml`:
   - github.com/avuru/avuru-obs/gateway/avuruingestauth => ../avuruingestauth
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add gateway/avuruingestauth/ gateway/ocb-manifest.yaml
@@ -522,7 +553,26 @@ processor reads the `project` auth attribute set by `avuruingestauth` and, in
 traces/metrics/logs record — so the key's project wins over any client-supplied
 tenant.
 
-- [ ] **Step 1: Write the failing test**
+> **CORRECTION 1 (design bug — would have shipped a broken enforce mode).**
+> Step 4 below originally said to place `tenantfromauth` "**after** the receiver
+> and **before** `resource/tenant`". That is wrong. `resource/tenant` is an
+> **`upsert`** of the static `gateway.tenant`, so stamping the key's project
+> first means the static value overwrites it moments later. The key would never
+> win, enforce mode would look configured and do nothing, and nothing in the
+> pipeline would report a problem. `tenantfromauth` must run **LAST** in the
+> tenant stage: `transform/tenant, resource/tenant, tenantfromauth, batch`.
+>
+> **CORRECTION 2 (design bug — caught by an existing assertion).** The plan
+> wired this processor whenever ingest auth was enabled. Wire it in
+> **`enforce` only**. In `log` mode the extension attaches no validated project,
+> so the processor is a no-op hop on every record; worse, adding it to the
+> pipeline broke `template-test.sh`'s pre-existing
+> `processors: [resource/tenant, batch]` assertion — which is precisely the
+> assertion guarding that an upgrade does not change the pipeline. Gating on
+> `enforce` keeps `log` **byte-identical** to a pre-ingest-keys install, which
+> is the whole reason `log` is the default.
+
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestStampsTenantFromAuth(t *testing.T) {
@@ -541,12 +591,12 @@ func TestStampsTenantFromAuth(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `cd gateway/tenantfromauth && go test ./... -v`
 Expected: FAIL (processor undefined).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 A `processorhelper`-based processor for all three signals. Each record's resource
 attributes get `avuru.tenant` set from `client.FromContext(ctx).Auth.GetAttribute("project")`
@@ -556,18 +606,33 @@ is byte-identical to today and the existing `resource/tenant` +
 `transform/tenant` processors remain the fallback. Reuse the **same collector
 version pins** as `sentryreceiver`.
 
-- [ ] **Step 4: Wire the pipeline**
+- [x] **Step 4: Wire the pipeline**
 
 In the chart's collector config template, place `avuruingestauth` on the OTLP
-receiver's `auth:` and add `tenantfromauth` to the pipelines **after** the
-receiver and before `resource/tenant`, gated by `auth.ingest.enabled`.
+receiver's `auth:` for **both** protocols (grpc and http), gated by
+`mode != off`.
 
-- [ ] **Step 5: Run + register**
+Add `tenantfromauth` **last in the tenant stage** and **only in `enforce`**
+(see the two CORRECTIONs above). As shipped, via two helpers in `_helpers.tpl`:
+
+```
+avuruops.ingestAuthEnabled   -> mode != "off"      (extension + Secret + env)
+avuruops.ingestTenantStamp   -> mode == "enforce"  (processor + pipeline stage)
+```
+
+which renders, with `gateway.tenant` set:
+
+```yaml
+processors: [transform/tenant, resource/tenant, tenantfromauth, batch]  # enforce
+processors: [transform/tenant, resource/tenant, batch]                  # log / off
+```
+
+- [x] **Step 5: Run + register**
 
 Run: `cd gateway/tenantfromauth && go test ./... -v` → PASS. Add the `gomod` +
 `replaces` entries to `ocb-manifest.yaml`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add gateway/tenantfromauth/ gateway/ocb-manifest.yaml
@@ -582,24 +647,24 @@ git commit -m "feat(gateway): tenantfromauth processor — key project overrides
 - Modify: `hub/cmd/hub/main.go` (config: `IngestInternalToken`)
 - Build check: the gateway image
 
-- [ ] **Step 1: Hub env wiring**
+- [x] **Step 1: Hub env wiring**
 
 Read `AVURUOPS_INGEST_INTERNAL_TOKEN` in `run()` and pass into
 `api.Config{IngestInternalToken: …}`. Empty → the internal endpoint is not
 registered (Task 5 guard) and gateway enforcement is simply unused.
 
-- [ ] **Step 2: Build the gateway image (OCB resolves both new modules)**
+- [x] **Step 2: Build the gateway image (OCB resolves both new modules)**
 
 Run: `make gateway-image` (or the `gateway/Dockerfile` build)
 Expected: OCB builds `avuru-gateway` with both local modules resolved via
 `replaces`; no version-drift errors against the 0.154.0 line.
 
-- [ ] **Step 3: Build + vet the hub**
+- [x] **Step 3: Build + vet the hub**
 
 Run: `cd hub && go build ./... && go vet ./... && go test ./...`
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add hub/cmd/hub/main.go
@@ -611,29 +676,42 @@ git commit -m "feat(hub): wire ingest internal token"
 ### Task 9: UI — Settings → project → API keys
 
 **Files:**
-- Create: `ui/src/components/settings/ingest-keys.tsx`
-- Modify: `ui/app/settings/page.tsx` (mount the panel per selected project)
-- Modify: `ui/src/lib/api-types.ts`
+- Create: `ui/src/components/settings/ingest-keys-card.tsx`
+- Create: `ui/src/hooks/use-ingest-keys.ts`
+- Modify: `ui/src/components/settings/general-tab.tsx` (mount beside `project-settings-card.tsx`)
+- Modify: `ui/src/lib/api-types.ts`, `ui/src/lib/query-keys.ts`
 - Test: `ui/e2e/ingest-keys.spec.ts`
 
-- [ ] **Step 1: Build the panel**
+> **CORRECTION (stale).** Step 1 says to mirror "the existing alert-channels
+> **settings** component". Alert channels are not in settings — they live in
+> `ui/src/components/alerts/channels-panel.tsx`. The right sibling to mirror is
+> `settings/project-settings-card.tsx` (Phase 1). Also, Phase 1 restructured
+> settings into `settings-screen.tsx` with in-place `?tab=` tabs, so the mount
+> point is `general-tab.tsx`, not `app/settings/page.tsx`.
+
+- [x] **Step 1: Build the panel**
 
 Admin-only panel: list keys (prefix, name, created-by, created-at), a "Create
 key" action that POSTs and shows the returned raw key **once** in a copy-once
 dialog with a clear "you won't see this again" warning, and a revoke action.
-Mirror the existing alert-channels settings component for structure/styling.
+Mirror `settings/project-settings-card.tsx` for structure/styling.
 
-- [ ] **Step 2: Build**
+As shipped, the list DTO also carries `keyHash` — a deliberate departure from
+Task 4's sketch, which listed only `{prefix, name, createdBy, createdAt}`. The
+hash is the stable delete handle (preimage-resistant, not a secret), so revoke
+needs no extra lookup and the raw key still appears in exactly one response.
+
+- [x] **Step 2: Build**
 
 Run: `cd ui && npm run lint && npm run build`
 Expected: static export succeeds.
 
-- [ ] **Step 3: Playwright**
+- [x] **Step 3: Playwright**
 
 `ingest-keys.spec.ts`: create shows the secret once; reload hides it; revoke
 removes the row.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add ui/src/components/settings/ingest-keys.tsx ui/app/settings/page.tsx ui/src/lib/api-types.ts ui/e2e/ingest-keys.spec.ts
@@ -648,7 +726,7 @@ git commit -m "feat(ui): Settings → project → API keys (one-time secret disp
 - Create: `e2e/ingest_keys_test.go` (`//go:build e2e`)
 - Modify: `deploy/compose/docker-compose.yaml`
 
-- [ ] **Step 1: Write the e2e**
+- [x] **Step 1: Write the e2e**
 
 In an **isolated compose project** (`-p avuru-obs-e2e`, `ports: !override`): boot
 the stack with `auth.ingest.mode=enforce`, a seeded key for `payments`; assert (a)
@@ -656,12 +734,12 @@ an OTLP export with the key lands and is stamped `avuru.tenant=payments` (query
 the hub), (b) an unkeyed export is rejected, (c) flipping the compose env to
 `log` makes the unkeyed export land again (drop-in promise holds).
 
-- [ ] **Step 2: Run**
+- [x] **Step 2: Run**
 
 Run: `make e2e`
 Expected: PASS — enforce rejects unkeyed, log accepts, tenant stamped from the key.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add e2e/ingest_keys_test.go deploy/compose/docker-compose.yaml
@@ -673,37 +751,63 @@ git commit -m "test(e2e): ingest-key enforce rejects unkeyed OTLP; log never dro
 ### Task 11: Helm — secrets, sensor key, mode value
 
 **Files:**
-- Modify: `deploy/helm/values.yaml`, `deploy/helm/templates/*`
-- Modify: `deploy/helm/README.md`
+- Modify: `deploy/helm/avuruops/values.yaml`, `deploy/helm/avuruops/templates/*`
+- Create: `deploy/helm/avuruops/templates/ingest-secret.yaml`
+- Modify: `deploy/helm/README.md`, `deploy/helm/template-test.sh`
+- Create: `hub/cmd/hub/ingestseed.go` (+ test) — see the seeding note below
 
-- [ ] **Step 1: values + secrets**
+> **CORRECTION (stale).** The chart lives at `deploy/helm/avuruops/`, not
+> `deploy/helm/`. `template-test.sh` and `README.md` are one level up, at
+> `deploy/helm/`.
+
+- [x] **Step 1: values + secrets**
+
+As shipped:
 
 ```yaml
 auth:
   ingest:
-    mode: log            # off | log | enforce
-    internalToken: ""    # auto-generated when empty (like the admin password)
-    staticKeys: []       # [{project, name, secretRef:{name,key}}] chart-declared
+    mode: log                 # off | log | enforce
+    internalToken: ""         # generated when empty, reused on upgrade (lookup)
+    provisionSensorKey: true  # mint + seed the sensor's own key
+    sensorKeyProject: ""      # defaults to gateway.tenant, else "default"
+    cacheTTL: 30s
+    staleGrace: 5m
 ```
 
-Templates: generate `internalToken` when empty (persisted like the bootstrap
-admin secret); inject it into both the hub (`AVURUOPS_INGEST_INTERNAL_TOKEN`) and
-the gateway extension config; auto-generate the **sensor's** key for the default
-project and mount it into the sensor's OTLP exporter headers; render
-`staticKeys` from their secretRefs into `auth_ingest_key` seed rows via a hub
-init hook OR document them as admin-created (choose the seed-hook path; note it).
+**`staticKeys` was dropped.** The plan's `secretRef` indirection cannot work at
+render time — Helm cannot read an arbitrary user Secret to build the seed
+payload, and `lookup` is empty under `helm template`. Operator-managed keys are
+therefore **admin-created** through the UI/API, which is the honest boundary.
 
-- [ ] **Step 2: helm template test**
+**What replaced it — and why it is not optional.** `enforce` rejects unkeyed
+OTLP, and the sensor is itself an unkeyed OTLP sender, so a naive enforce flip
+silences avuru's own agent. The chart mints the sensor's key (it is the only
+place that can hand the *same raw value* to both the sensor and the hub, since
+the hub stores only the hash) and writes two Secret keys: `sensor-key` for the
+exporter header, and `seed-keys` (JSON) which the hub seeds idempotently by
+hash at startup — `hub/cmd/hub/ingestseed.go`, retrying like `bootstrapAdmin`
+because `auth_ingest_key` may not be migrated yet on first boot.
 
-Run: `cd deploy/helm && ./template-test.sh`
+**Both** sensor containers need the credential, not just one: the agent gets it
+via its exporter `headers`, and OBI via `OTEL_EXPORTER_OTLP_HEADERS` (it exports
+straight to the gateway, bypassing the agent's collector config).
+
+- [x] **Step 2: helm template test**
+
+Run: `make helm-check` (wraps `deploy/helm/template-test.sh`)
 Expected: renders for `mode: off|log|enforce`; internal token appears only in
 Secrets, never a ConfigMap; sensor gets a key header.
 
-- [ ] **Step 3: Commit**
+Five assertion blocks were added, including one that decodes the rendered
+Secret and proves those exact bytes appear in no other object kind. That one
+was mutation-tested — plant a leak and it fails; it is not vacuous.
+
+- [x] **Step 3: Commit**
 
 ```bash
 git add deploy/helm/
-git commit -m "feat(deploy): ingest-key Helm values, internal token, sensor key, mode"
+git commit -m "feat(deploy): ingest-key Helm values, internal token, sensor key, mode dial"
 ```
 
 ---
@@ -713,19 +817,19 @@ git commit -m "feat(deploy): ingest-key Helm values, internal token, sensor key,
 **Files:**
 - Modify: `CHANGELOG.md`, `agent_docs/architecture.md`, `ROADMAP.md`, `deploy/helm/README.md`
 
-- [ ] **Step 1: Changelog + architecture + roadmap**
+- [x] **Step 1: Changelog + architecture + roadmap**
 
 Add the ingest-keys entry under `## [Unreleased] / ### Added` (note default `log`,
 the drop-in promise, the gateway extension). Update the auth section of
 `architecture.md` (control-plane validation, hub never in byte-path). Tick the
 two roadmap boxes (ingest keys; gateway extension + modes).
 
-- [ ] **Step 2: docs-align (EN + FR)**
+- [x] **Step 2: docs-align (EN + FR)**
 
 Run the `docs-align` skill: changelog, feature-status matrix, API reference for
 the key CRUD endpoints, and a short "authenticating ingest" guide.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add CHANGELOG.md agent_docs/architecture.md ROADMAP.md deploy/helm/README.md
@@ -734,21 +838,33 @@ git commit -m "docs: ingest keys + gateway enforcement (changelog, architecture,
 
 ---
 
-## Final verification for Plan C
+## Final verification for Plan C — ALL GREEN (2026-07-30)
 
-- [ ] `cd hub && go build ./... && go test -race ./... && go vet ./... && make lint` — green.
-- [ ] `cd gateway/avuruingestauth && go test ./...` and `cd gateway/tenantfromauth && go test ./...` — green.
-- [ ] `make gateway-image` — OCB builds with both new local modules.
-- [ ] `cd ui && npm run lint && npm run build` — static export succeeds.
-- [ ] `make e2e` (isolated project) — enforce rejects unkeyed OTLP; log accepts and never drops; tenant stamped from the key.
-- [ ] `helm template` — internal token only in Secrets; renders for every mode.
-- [ ] **The drop-in promise holds:** with default `mode: log`, an existing unkeyed OTLP sender keeps landing after upgrade.
-- [ ] `docs-align` run (EN + FR) committed.
+- [x] `cd hub && go build ./... && go vet ./... && go test -race ./...` — green (10 packages).
+- [x] `golangci-lint run` (hub) — 0 issues. Fixed one real SA4000 in `internal/auth/ingestkey_test.go`.
+- [x] All three gateway modules build/vet/test — green.
+- [x] `make gateway-image` — OCB builds with both new local modules (98.7MB image).
+- [x] `cd ui && npm run lint && npm run build` — static export succeeds; 3 Playwright specs pass.
+- [x] e2e (isolated compose project) — enforce rejects unkeyed AND wrong keys; log accepts and never drops; tenant stamped from the key. **Actually run against a live stack**, not compile-only.
+- [x] `make helm-check` — 49 assertions; internal token only in Secrets; renders for every mode.
+- [x] **The drop-in promise holds:** `log` renders the identical pipeline, asserted at render time.
+- [x] `docs-align` run (EN + FR) committed on `docs/ingest-keys`.
 
-## Open spike (carry into execution)
+**CI gaps closed while doing this** (neither was in the plan): the in-repo
+gateway modules are separate Go modules whose tests had **never run in CI** —
+true of `sentryreceiver` too, they were only compiled as a side effect of the
+image build — and `template-test.sh` never ran in CI either. Both are now gated,
+and `make check` loops the same module list so local and CI agree.
 
-The one genuinely uncertain integration is how `avuruingestauth`'s validated
-project reaches `tenantfromauth` via `client.FromContext(ctx).Auth` under
-collector **0.154.0** (Task 6 Step 4, Task 7 Step 3). Resolve it first — it gates
-the enforce-mode tenant stamping — using the contrib `bearertokenauth` extension
-as the reference. `log` and `off` modes do not depend on it and can ship first.
+## Open spike — RESOLVED
+
+How `avuruingestauth`'s validated project reaches `tenantfromauth` via
+`client.FromContext(ctx).Auth` under collector **0.154.0** was the one genuinely
+uncertain integration. It works as sketched: the extension attaches auth data
+whose `GetAttribute("project")` the processor reads, and `PutStr` overwrites
+`avuru.tenant` unconditionally when that attribute is present, passing through
+untouched when it is absent.
+
+That `PutStr` is *unconditional* is exactly what made CORRECTION 1 in Task 7
+necessary — it overwrites, but it can equally *be* overwritten by a later
+`resource/tenant` upsert. Ordering, not capability, was the real risk here.

@@ -494,6 +494,20 @@ type Project struct {
 	UpdatedAt time.Time
 }
 
+// AuthIngestKey is one per-project ingest credential (auth Plan C). KeyHash is
+// hex(sha256(raw)) — the raw key is shown to the admin once at creation and
+// never stored. Prefix is the raw key's first 12 chars, kept in clear for UI
+// identification ("avuruk_ab12…"). Revocation is a tombstone.
+type AuthIngestKey struct {
+	KeyHash   string
+	Project   string
+	Name      string
+	Prefix    string
+	CreatedBy string
+	Revoked   bool
+	CreatedAt time.Time
+}
+
 // GreenQuery filters ServiceEnergy / NodeEnergy (module green). Metric names
 // and attribute keys come from the green module's config — the backend must
 // not hardcode Kepler naming (an AEP verify item; operators can rename
@@ -638,6 +652,15 @@ type Store interface {
 	GetProject(ctx context.Context, id string) (Project, error)
 	SaveProject(ctx context.Context, p Project) error
 	DeleteProject(ctx context.Context, id string) error
+	// Ingest keys (auth Plan C). GetIngestKeyByHash returns ErrNotFound for an
+	// unknown OR revoked key (the gateway caches this as a negative verdict).
+	// CreateIngestKey inserts a live key. ListIngestKeys returns the live keys
+	// for one project, newest first. RevokeIngestKey tombstones by hash and
+	// returns ErrNotFound when no live key with that hash exists in the project.
+	CreateIngestKey(ctx context.Context, k AuthIngestKey) error
+	GetIngestKeyByHash(ctx context.Context, keyHash string) (AuthIngestKey, error)
+	ListIngestKeys(ctx context.Context, project string) ([]AuthIngestKey, error)
+	RevokeIngestKey(ctx context.Context, project, keyHash string) error
 }
 
 // AlertChannel is a UI-managed delivery channel (global, not per-tenant).

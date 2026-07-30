@@ -279,3 +279,32 @@ otel
       name: {{ include "avuruops.clickhouseSecretName" . }}
       key: clickhouse-password
 {{- end -}}
+
+{{/* Name of the Secret holding ingest-key material (internal token, the
+     provisioned sensor key, and its hub seed record). */}}
+{{- define "avuruops.ingestSecretName" -}}
+{{- printf "%s-ingest" (include "avuruops.fullname" .) -}}
+{{- end -}}
+
+{{/* Project the chart-provisioned sensor key belongs to. Follows gateway.tenant
+     so a single-project install needs no extra configuration — the sensor's key
+     lands in the same project its telemetry is already stamped with. */}}
+{{- define "avuruops.ingestSensorProject" -}}
+{{- .Values.auth.ingest.sensorKeyProject | default .Values.gateway.tenant | default "default" -}}
+{{- end -}}
+
+{{/* The ingest-key AUTHENTICATOR is wired for log and enforce (log validates and
+     counts would-be denials without rejecting). Same true/"" contract as the
+     collect* helpers — consume via `if include`, never compare to "false". */}}
+{{- define "avuruops.ingestAuthEnabled" -}}
+{{- if ne .Values.auth.ingest.mode "off" -}}true{{- end -}}
+{{- end -}}
+
+{{/* The tenant-STAMPING processor is wired for enforce only. In log mode the
+     extension never attaches a validated project, so tenantfromauth would be a
+     no-op hop on every record — and leaving it out keeps the log-mode pipeline
+     byte-identical to a pre-ingest-keys install, which is exactly the drop-in
+     guarantee the default is there to protect. */}}
+{{- define "avuruops.ingestTenantStamp" -}}
+{{- if eq .Values.auth.ingest.mode "enforce" -}}true{{- end -}}
+{{- end -}}

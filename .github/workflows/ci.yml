@@ -27,6 +27,25 @@ jobs:
           # docs-only PR) and silently drifts lint rules between runs.
           version: v2.12.2
 
+  # The in-repo gateway modules are separate Go modules that the hub job never
+  # touches. Before this job they were only ever compiled — as a side effect of
+  # the image build — so their tests never ran in CI. That is not good enough
+  # for avuruingestauth, which decides whether telemetry is authenticated, and
+  # tenantfromauth, which decides which tenant it lands in.
+  gateway-modules:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [sentryreceiver, avuruingestauth, tenantfromauth]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - name: build + vet + test
+        working-directory: gateway/${{ matrix.module }}
+        run: go build ./... && go vet ./... && go test ./...
+
   ui:
     runs-on: ubuntu-latest
     steps:
@@ -46,11 +65,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
-      - name: lint + template
+      # deploy/helm/template-test.sh: lints the chart against the default,
+      # staging and prod overlays and makes 40+ renders with assertions on what
+      # actually comes out — a strict superset of `helm lint` + `helm template
+      # > /dev/null`, which only proved the chart renders, not that it renders
+      # the right thing. It is what catches ingest-key secret material escaping
+      # a Secret object into a ConfigMap.
+      - name: lint + render-time assertions
+        run: make helm-check
+      # The one case template-test.sh does not cover.
+      - name: template against external ClickHouse
         run: |
-          helm lint deploy/helm/avuruops
-          helm template avuruops deploy/helm/avuruops > /dev/null
-          helm template avuruops deploy/helm/avuruops --set clickhouse.external.enabled=true --set clickhouse.external.address=ch:9000 --set clickhouse.external.existingSecret=ch > /dev/null
+          helm template avuruops deploy/helm/avuruops \
+            --set clickhouse.external.enabled=true \
+            --set clickhouse.external.address=ch:9000 \
+            --set clickhouse.external.existingSecret=ch > /dev/null
 
   # Real install smoke on a kind cluster (deploy/helm/e2e-helm.sh owns the
   # lifecycle: build+load images → helm install → seed OTLP → assert via the

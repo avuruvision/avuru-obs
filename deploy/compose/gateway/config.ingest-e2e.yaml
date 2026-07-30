@@ -1,0 +1,73 @@
+# Gateway config for the ingest-key e2e (auth Plan C), ENFORCE mode.
+#
+# Mirrors the Helm render: the avuruingestauth extension authenticates every
+# OTLP request against the hub's control-plane validate endpoint, and
+# tenantfromauth runs LAST in the processor chain so the validated key's project
+# wins over anything the client claimed in avuru.tenant.
+#
+# Used only by docker-compose.ingest-e2e.yaml — the default sandbox config
+# (config.yaml) is untouched and stays unauthenticated.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        auth:
+          authenticator: avuruingestauth
+      http:
+        endpoint: 0.0.0.0:4318
+        auth:
+          authenticator: avuruingestauth
+
+processors:
+  # Deliberately mirrors the chart's ordering trap: resource/tenant upserts a
+  # static tenant, and tenantfromauth must run AFTER it for the key to win.
+  resource/tenant:
+    attributes:
+      - key: avuru.tenant
+        value: "default"
+        action: upsert
+  tenantfromauth: {}
+  batch:
+    send_batch_size: 4096
+    timeout: 2s
+
+exporters:
+  clickhouse:
+    endpoint: tcp://clickhouse:9000
+    username: avuru
+    password: avuru
+    database: otel
+    create_schema: false
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 2s
+      max_elapsed_time: 60s
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  avuruingestauth:
+    hub_validate_url: http://hub:8080/internal/v1/ingest-keys/validate
+    internal_token: ${env:AVURUOPS_INGEST_INTERNAL_TOKEN}
+    mode: enforce
+    # Short TTL so the test does not have to wait out a stale verdict.
+    cache_ttl: 2s
+    stale_grace: 30s
+
+service:
+  extensions: [health_check, avuruingestauth]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [resource/tenant, tenantfromauth, batch]
+      exporters: [clickhouse]
+    logs:
+      receivers: [otlp]
+      processors: [resource/tenant, tenantfromauth, batch]
+      exporters: [clickhouse]
+    metrics:
+      receivers: [otlp]
+      processors: [resource/tenant, tenantfromauth, batch]
+      exporters: [clickhouse]

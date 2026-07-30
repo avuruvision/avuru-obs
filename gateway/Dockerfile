@@ -12,6 +12,10 @@ COPY gateway/ocb-manifest.yaml .
 # The Sentry receiver is an in-repo module; the manifest's replaces resolves
 # ../sentryreceiver relative to the generated ./build/go.mod (i.e. /src/sentryreceiver).
 COPY gateway/sentryreceiver ./sentryreceiver
+# Ingest-key authenticator + tenant-stamping processor — same in-repo pattern
+# (../avuruingestauth, ../tenantfromauth relative to the generated build/go.mod).
+COPY gateway/avuruingestauth ./avuruingestauth
+COPY gateway/tenantfromauth ./tenantfromauth
 RUN CGO_ENABLED=0 builder --config ocb-manifest.yaml
 
 FROM gcr.io/distroless/static-debian12:nonroot

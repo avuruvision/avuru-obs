@@ -11,13 +11,23 @@ data:
            the logs module (its table) as well as error-tracking + the flag.
            Shared with the container/Service ports and the ingress route. */}}
     {{- $sentry := include "avuruops.sentryEnabled" . }}
+    {{- $ingestAuth := include "avuruops.ingestAuthEnabled" . }}
+    {{- $ingestStamp := include "avuruops.ingestTenantStamp" . }}
     receivers:
       otlp:
         protocols:
           grpc:
             endpoint: 0.0.0.0:4317
+            {{- if $ingestAuth }}
+            auth:
+              authenticator: avuruingestauth
+            {{- end }}
           http:
             endpoint: 0.0.0.0:4318
+            {{- if $ingestAuth }}
+            auth:
+              authenticator: avuruingestauth
+            {{- end }}
     {{- if $sentry }}
       # Sentry SDK ingest (error-tracking module). Browser SDKs POST
       # cross-origin, so CORS must be open; expose :4319 via ingress to accept
@@ -33,6 +43,12 @@ data:
         {{- end }}
     {{- end }}
     processors:
+    {{- if $ingestStamp }}
+      # Stamps avuru.tenant from the ingest key's validated project (enforce
+      # only — in log mode the extension attaches no project, so this would be a
+      # no-op hop on every record).
+      tenantfromauth: {}
+    {{- end }}
     {{- if .Values.gateway.tenantByNamespace }}
       # Per-namespace project mapping: stamps avuru.tenant from the sender's
       # k8s.namespace.name resource attribute (set by the sensor), so ONE
@@ -96,12 +112,30 @@ data:
     extensions:
       health_check:
         endpoint: 0.0.0.0:13133
+    {{- if $ingestAuth }}
+      # Per-project ingest keys. The hub answers a control-plane validation call
+      # only — it is never in the telemetry byte-path. staleGrace keeps cached
+      # verdicts serving through a hub blip so a control-plane outage cannot
+      # drop traffic.
+      avuruingestauth:
+        hub_validate_url: http://{{ include "avuruops.fullname" . }}-hub:80/internal/v1/ingest-keys/validate
+        internal_token: ${env:AVURUOPS_INGEST_INTERNAL_TOKEN}
+        mode: {{ .Values.auth.ingest.mode | quote }}
+        cache_ttl: {{ .Values.auth.ingest.cacheTTL | quote }}
+        stale_grace: {{ .Values.auth.ingest.staleGrace | quote }}
+    {{- end }}
     service:
-      extensions: [health_check]
+      extensions: [health_check{{ if $ingestAuth }}, avuruingestauth{{ end }}]
       pipelines:
     {{- $tenantStage := "" }}
     {{- if .Values.gateway.tenantByNamespace }}{{ $tenantStage = "transform/tenant, " }}{{ end }}
     {{- if .Values.gateway.tenant }}{{ $tenantStage = printf "%sresource/tenant, " $tenantStage }}{{ end }}
+    {{- /* tenantfromauth runs LAST in the tenant stage, not first: resource/tenant
+           upserts the static gateway.tenant, so stamping the key's project before
+           it would let the static value silently win and defeat enforce mode's
+           whole point. Running last makes the validated key the final authority.
+           Absent entirely outside enforce, so log/off pipelines are unchanged. */}}
+    {{- if $ingestStamp }}{{ $tenantStage = printf "%stenantfromauth, " $tenantStage }}{{ end }}
     {{- /* A module's pipeline is dropped when the module is off: its tables
            don't exist, so accepting the signal would only produce export
            errors. `traces` is core and always present, so the collector
