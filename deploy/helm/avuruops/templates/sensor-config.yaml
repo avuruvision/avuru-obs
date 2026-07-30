@@ -178,6 +178,16 @@ data:
                 - source_labels: [__name__]
                   regex: {{ .Values.sensor.green.metrics.keep | quote }}
                   action: keep
+              {{- if include "avuruops.collectGreenEstimation" . }}
+            - job_name: tdp-estimator
+              scrape_interval: {{ .Values.sensor.green.estimation.scrapeInterval }}
+              static_configs:
+                - targets: ["127.0.0.1:{{ .Values.sensor.green.estimation.port }}"]
+              metric_relabel_configs:
+                - source_labels: [__name__]
+                  regex: {{ .Values.sensor.green.metrics.keep | quote }}
+                  action: keep
+              {{- end }}
     {{- end }}
     processors:
       memory_limiter:
@@ -275,6 +285,21 @@ data:
             statements:
               - set(attributes["k8s.pod.name"], attributes[{{ .Values.green.metrics.podNameAttr | quote }}]) where attributes[{{ .Values.green.metrics.podNameAttr | quote }}] != nil
               - set(attributes["k8s.namespace.name"], attributes[{{ .Values.green.metrics.podNamespaceAttr | quote }}]) where attributes[{{ .Values.green.metrics.podNamespaceAttr | quote }}] != nil
+      # Quality stamping: measured (Kepler, real RAPL) vs estimated
+      # (tdp-estimator, modeled) — never inferred from absence, always an
+      # explicit label on every datapoint (AEP). The prometheus receiver sets
+      # resource.attributes["service.name"] from each scrape job's job_name —
+      # confirmed empirically against the pinned otel/opentelemetry-
+      # collector-contrib:0.154.0 image (see the AEP design spec §5.4).
+      transform/green_quality:
+        error_mode: ignore
+        metric_statements:
+          - context: datapoint
+            statements:
+              - set(attributes["avuruops_quality"], "measured") where resource.attributes["service.name"] == "kepler"
+              {{- if include "avuruops.collectGreenEstimation" . }}
+              - set(attributes["avuruops_quality"], "estimated") where resource.attributes["service.name"] == "tdp-estimator"
+              {{- end }}
       # Promote the standard keys to resource attributes so k8sattributes can
       # associate the pod and filter/collection can match the namespace. The
       # datapoint keeps pod_name/pod_namespace (not listed here) for the hub.
@@ -337,7 +362,7 @@ data:
           # collection guardrails → gateway, onto the existing otel_metrics_*
           # path. No new tables; the hub aggregates Wh/gCO2e at query time.
           receivers: [prometheus/green]
-          processors: [memory_limiter, filter/green, transform/green, groupbyattrs/green, resource/green, k8sattributes{{ if $collectionFilter }}, filter/collection{{ end }}, batch]
+          processors: [memory_limiter, filter/green, transform/green, transform/green_quality, groupbyattrs/green, resource/green, k8sattributes{{ if $collectionFilter }}, filter/collection{{ end }}, batch]
           exporters: [otlphttp]
     {{- end }}
 {{- end }}
