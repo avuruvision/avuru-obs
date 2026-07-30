@@ -243,3 +243,11 @@ func (c Config) EffectiveIntensity() (float64, string) {
 	}
 	return worldIntensity, fmt.Sprintf("bundled world average (%s)", intensityDataset)
 }
+
+// EstimationCoefficientDataset names the bundled TDP power-coefficient
+// table's provenance for the CSRD export's estimation subsection
+// (green_report.go). Kept in sync BY HAND with
+// sensor/tdp-estimator/coefficients_table.go's coefficientDataset constant —
+// the two live in separate Go modules and cannot share an import; a change
+// to one must update the other.
+const EstimationCoefficientDataset = "Cloud Carbon Footprint 2026-07 (Azure/notebook preferred on conflict)"

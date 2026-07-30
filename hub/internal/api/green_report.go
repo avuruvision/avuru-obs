@@ -24,6 +24,22 @@ import (
 // is auditable. It must state exactly what greenFactors.gco2e computes.
 const greenFormulaLiteral = "gCO2e = Wh × intensity/1000 × PUE"
 
+// tdpFormulaLiteral is quoted verbatim in the export when any estimated
+// energy is present — must stay in sync with sensor/tdp-estimator/model.go's
+// nodePower expression.
+const tdpFormulaLiteral = "P = P_idle + u × (P_max - P_idle)"
+
+// tdpErrorBand is the green TDP estimation AEP's documented typical absolute
+// error for the TDP model — cited so the export never reads as
+// reporting-grade for the estimated portion.
+const tdpErrorBand = "±30-50% typical absolute error (trend/regression grade, not audit grade)"
+
+type greenEstimationDTO struct {
+	FormulaLiteral     string `json:"formula"`
+	CoefficientDataset string `json:"coefficientDataset"`
+	ErrorBand          string `json:"errorBand"`
+}
+
 type greenMethodologyDTO struct {
 	GeneratedAt     string   `json:"generatedAt"`
 	PeriodStart     string   `json:"periodStart"`
@@ -36,6 +52,11 @@ type greenMethodologyDTO struct {
 	CoverageNote    string   `json:"coverageNote"`
 	Metrics         []string `json:"metrics"`
 	HubVersion      string   `json:"hubVersion"`
+	// Estimation is populated only when the window contains any estimated
+	// energy — omitted entirely (nil) for a fully-measured or fully-empty
+	// report, so the export stays unchanged for installs that never enable
+	// TDP estimation.
+	Estimation *greenEstimationDTO `json:"estimation,omitempty"`
 }
 
 type greenReportResponse struct {
@@ -99,7 +120,7 @@ func buildMethodology(cfg green.Config, f greenFactors, tr storage.TimeRange, to
 			"%.1f%% of measured energy was attributed to services; %.3f Wh could not be mapped to a workload and is reported as %s",
 			totals.Coverage*100, totals.UnattributedWh, greenUnattributedRow)
 	}
-	return greenMethodologyDTO{
+	meth := greenMethodologyDTO{
 		GeneratedAt:     time.Now().UTC().Format(time.RFC3339),
 		PeriodStart:     tr.Start.UTC().Format(time.RFC3339),
 		PeriodEnd:       tr.End.UTC().Format(time.RFC3339),
@@ -112,6 +133,14 @@ func buildMethodology(cfg green.Config, f greenFactors, tr storage.TimeRange, to
 		Metrics:         metrics,
 		HubVersion:      Version,
 	}
+	if totals.EstimatedWh > 0 {
+		meth.Estimation = &greenEstimationDTO{
+			FormulaLiteral:     tdpFormulaLiteral,
+			CoefficientDataset: green.EstimationCoefficientDataset,
+			ErrorBand:          tdpErrorBand,
+		}
+	}
+	return meth
 }
 
 // writeGreenCSV renders the export: `# key,value` methodology lines then the
@@ -140,6 +169,13 @@ func writeGreenCSV(w http.ResponseWriter, tr storage.TimeRange, meth greenMethod
 		{"coverageNote", meth.CoverageNote},
 		{"metrics", strings.Join(meth.Metrics, " ")},
 		{"hubVersion", meth.HubVersion},
+	}
+	if meth.Estimation != nil {
+		meta = append(meta,
+			[2]string{"estimationFormula", meth.Estimation.FormulaLiteral},
+			[2]string{"estimationCoefficientDataset", meth.Estimation.CoefficientDataset},
+			[2]string{"estimationErrorBand", meth.Estimation.ErrorBand},
+		)
 	}
 	for _, kv := range meta {
 		if err := cw.Write([]string{"# " + kv[0], kv[1]}); err != nil {

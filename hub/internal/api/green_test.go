@@ -579,3 +579,33 @@ func TestBuildGreenBudgets_EstimatedShare(t *testing.T) {
 		t.Errorf("EstimatedShare = %v, want 0.75", b.EstimatedShare)
 	}
 }
+
+func TestBuildMethodology_EstimationSubsection(t *testing.T) {
+	cfg := green.Default()
+	f := greenFactors{intensity: 480, pue: 1.5}
+	totals := greenTotalsDTO{AttributedWh: 100, MeasuredWh: 40, EstimatedWh: 60, Coverage: 1}
+	tr := storage.TimeRange{Start: time.Now().Add(-time.Hour), End: time.Now()}
+
+	meth := buildMethodology(cfg, f, tr, totals)
+	if meth.Estimation == nil {
+		t.Fatal("Estimation subsection is nil, want populated (totals.EstimatedWh > 0)")
+	}
+	if meth.Estimation.FormulaLiteral == "" || meth.Estimation.ErrorBand == "" {
+		t.Errorf("Estimation = %+v, want non-empty formula and error band", meth.Estimation)
+	}
+	if meth.Estimation.CoefficientDataset == "" {
+		t.Errorf("Estimation.CoefficientDataset is empty, want the bundled dataset label")
+	}
+}
+
+func TestBuildMethodology_NoEstimationSubsectionWhenFullyMeasured(t *testing.T) {
+	cfg := green.Default()
+	f := greenFactors{intensity: 480, pue: 1.5}
+	totals := greenTotalsDTO{AttributedWh: 100, MeasuredWh: 100, EstimatedWh: 0, Coverage: 1}
+	tr := storage.TimeRange{Start: time.Now().Add(-time.Hour), End: time.Now()}
+
+	meth := buildMethodology(cfg, f, tr, totals)
+	if meth.Estimation != nil {
+		t.Errorf("Estimation = %+v, want nil (report stays unchanged for fully-measured installs)", meth.Estimation)
+	}
+}
