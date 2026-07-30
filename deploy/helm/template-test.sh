@@ -466,4 +466,97 @@ printf '%s' "$out" | python3 "$leakcheck" || fail "ingest secret material leaked
 rm -f "$leakcheck"
 ok "internal token and sensor key appear only in Secret objects"
 
+echo "== collection runtime control: off by default -> no RBAC, but the env still renders"
+out="$(render)"
+grep -q 'collection-control' <<<"$out" && fail "collection-control RBAC rendered without the opt-in"
+grep -q 'collection-base-values' <<<"$out" && fail "base-values ConfigMap rendered without the opt-in"
+# Scoped to the hub Deployment on purpose: the sensor DaemonSet always carries
+# its own serviceAccountName, so a whole-render grep would never be meaningful.
+hub="$(render -s templates/hub-deploy.yaml)"
+grep -q 'serviceAccountName' <<<"$hub" && fail "hub pod bound to a ServiceAccount without the opt-in"
+# The env is NOT conditional. The hub reads it on every start and the Go side
+# defaults the routes off — a missing env would be silent drift between chart
+# and binary, not a safe default.
+grep -A1 'name: AVURUOBS_COLLECTION_RUNTIME_CONTROL_ENABLED' <<<"$hub" | grep -q 'value: "false"' \
+  || fail "AVURUOBS_COLLECTION_RUNTIME_CONTROL_ENABLED missing or not \"false\" in the default render"
+ok "no ServiceAccount/Role/RoleBinding/ConfigMap; env present and \"false\""
+
+echo "== collection runtime control: the env is emitted with auth off too"
+# Regression guard: the env sits next to AVURUOBS_AUTH_ENABLED, immediately
+# before the `if .Values.auth.enabled` block. Slipping inside that block would
+# make the collection API silently unreachable on an auth-disabled install.
+hub="$(render -s templates/hub-deploy.yaml --set auth.enabled=false)"
+grep -A1 'name: AVURUOBS_COLLECTION_RUNTIME_CONTROL_ENABLED' <<<"$hub" | grep -q 'value: "false"' \
+  || fail "collection env lost with auth.enabled=false (it landed inside the auth conditional)"
+hub="$(render -s templates/hub-deploy.yaml --set auth.enabled=false --set collection.runtimeControl.enabled=true)"
+grep -A1 'name: AVURUOBS_COLLECTION_RUNTIME_CONTROL_ENABLED' <<<"$hub" | grep -q 'value: "true"' \
+  || fail "collection env lost with auth.enabled=false and the flag on"
+ok "env independent of auth.enabled, both off and on"
+
+echo "== collection runtime control: enabled -> SA + Role + RoleBinding + base-values ConfigMap"
+out="$(render --set collection.runtimeControl.enabled=true)"
+for kv in "ServiceAccount:test-avuruobs-collection-control" \
+          "ConfigMap:test-avuruobs-collection-base-values" \
+          "Role:test-avuruobs-collection-control" \
+          "RoleBinding:test-avuruobs-collection-control"; do
+  grep -q "name: ${kv#*:}" <<<"$out" || fail "${kv%%:*} ${kv#*:} not rendered"
+done
+grep -q 'kind: RoleBinding' <<<"$out" || fail "RoleBinding kind missing"
+# Least privilege is the whole point (AEP: nothing cluster-wide, nothing on
+# another namespace's resources): the Role must be namespaced and name every
+# object it may touch. Scoped to this one template — the sensor's own RBAC
+# legitimately renders a ClusterRole, so a full-render grep proves nothing.
+crbac="$(render --set collection.runtimeControl.enabled=true -s templates/collection-rbac.yaml)"
+grep -q 'ClusterRole' <<<"$crbac" && fail "collection control granted a ClusterRole (must stay namespaced)"
+role="$(sed -n '/^kind: Role$/,/^---/p' <<<"$crbac")"
+[ -n "$role" ] || fail "could not isolate the collection-control Role"
+for n in test-avuruobs-collection-base-values test-avuruobs-sensor-obi test-avuruobs-sensor-agent \
+         test-avuruobs-sensor-profiler test-avuruobs-sensor-kepler test-avuruobs-sensor; do
+  grep -qE "^ +- $n\$" <<<"$role" || fail "Role does not name $n in resourceNames"
+done
+grep -q 'resources: \["daemonsets"\]' <<<"$role" || fail "Role missing the daemonsets rule"
+grep -q 'verbs: \["get", "patch"\]' <<<"$role" || fail "daemonsets verbs wider/narrower than get+patch"
+grep -q 'verbs: \["get", "update", "patch"\]' <<<"$role" || fail "configmaps verbs wider/narrower than get+update+patch"
+grep -q 'delete\|create\|"\*"' <<<"$role" && fail "collection-control Role grants create/delete/wildcard"
+hub="$(render -s templates/hub-deploy.yaml --set collection.runtimeControl.enabled=true)"
+grep -q 'serviceAccountName: test-avuruobs-collection-control' <<<"$hub" \
+  || fail "hub Deployment not bound to the collection-control ServiceAccount"
+grep -A1 'name: AVURUOBS_COLLECTION_RUNTIME_CONTROL_ENABLED' <<<"$hub" | grep -q 'value: "true"' \
+  || fail "collection env not \"true\" with the flag on"
+ok "4 objects render; namespaced Role names the 4 sensor ConfigMaps + the DaemonSet; hub bound + env \"true\""
+
+echo "== collection runtime control: guard requires a sensor to control"
+render --set collection.runtimeControl.enabled=true --set sensor.enabled=false >/dev/null 2>&1 \
+  && fail "runtime control rendered with sensor.enabled=false (nothing to control)"
+ok "flag without sensor.enabled fails at template time"
+
+echo "== collection runtime control: base-values ConfigMap is valid JSON and secret-free"
+out="$(render --set collection.runtimeControl.enabled=true)"
+base_values="$(awk '/^  values\.json: \|$/{f=1;next} /^---$/{f=0} f' <<<"$out")"
+[ -n "$base_values" ] || fail "could not isolate the base-values values.json block"
+# The dict|toJson|nindent construct is fiddly — prove the key holds ONE valid
+# JSON document, not a mis-indented fragment.
+python3 -c 'import json,sys; d=json.load(sys.stdin); print("  ok: values.json parses ("+",".join(sorted(d))+")")' \
+  <<<"$base_values" || fail "values.json is not a single valid JSON document"
+# Curated, not wholesale: clickhouse.auth.password and auth.adminPassword are
+# plaintext secrets by default, and Helm's own release storage is a Secret, not
+# a ConfigMap. `"avuru"` is the default ClickHouse user AND password — as a
+# complete JSON string it can only come from a leaked clickhouse subtree
+# (a bare `avuru` substring is meaningless here, every label says avuruobs).
+grep -q '"clickhouse"' <<<"$base_values" && fail "clickhouse subtree copied into the base-values ConfigMap"
+grep -q '"avuru"' <<<"$base_values" && fail "default ClickHouse credential leaked into the base-values ConfigMap"
+grep -qE '"(password|adminPassword|clientSecret|internalToken|existingSecret)"' <<<"$base_values" \
+  && fail "a secret-bearing key leaked into the base-values ConfigMap"
+# And with the secrets actually set to something greppable, so the assertion
+# above cannot pass merely because the defaults are empty strings.
+out="$(render --set collection.runtimeControl.enabled=true \
+  --set clickhouse.auth.password=leaky-ch-password \
+  --set auth.adminPassword=leaky-admin-password \
+  --set auth.ingest.internalToken=leaky-internal-token)"
+base_values="$(awk '/^  values\.json: \|$/{f=1;next} /^---$/{f=0} f' <<<"$out")"
+for s in leaky-ch-password leaky-admin-password leaky-internal-token; do
+  grep -q "$s" <<<"$base_values" && fail "$s leaked into the base-values ConfigMap"
+done
+ok "single valid JSON document; no clickhouse/admin/ingest secret material"
+
 echo "ALL TEMPLATE ASSERTIONS PASSED"
