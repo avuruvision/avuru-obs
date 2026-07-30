@@ -1,4 +1,4 @@
-# Homelab overrides: ONE avuruops install watching BOTH Avuru environments
+# Homelab overrides: ONE avuruobs install watching BOTH Avuru environments
 # (prod = avuru-services, staging = avuru-services-staging) on the shared
 # cluster. Environment separation is the tenant/project axis: the gateway maps
 # each namespace to its project, the UI project switcher separates the views,
@@ -72,7 +72,7 @@ ui:
 ingress:
   enabled: true
   className: nginx
-  host: avuruops.devops.lab
+  host: avuruobs.devops.lab
   annotations: {}
 
 # Auth is built into the hub (auth.enabled defaults true) — no oauth2-proxy at
@@ -82,8 +82,8 @@ ingress:
 #    enabled: true
 #    issuer: http://keycloak.devops.lab:8080/realms/avuru
 #    clientId: avuru-obs
-#    existingSecret: avuruops-oidc   # key: oidc-client-secret
-#    publicUrl: http://avuruops.devops.lab
+#    existingSecret: avuruobs-oidc   # key: oidc-client-secret
+#    publicUrl: http://avuruobs.devops.lab
 #    mapping:
 #      - group: obs-admins
 #        role: admin

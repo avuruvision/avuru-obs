@@ -1,4 +1,4 @@
-# Staging overrides for the avuruops chart. The chart stays agnostic; this file
+# Staging overrides for the avuruobs chart. The chart stays agnostic; this file
 # carries the environment. image.registry is injected by deploy.jenkinsfile
 # (--set image.registry=$HARBOR_URL), so it is NOT set here.
 
@@ -44,7 +44,7 @@ sensor:
 ingress:
   enabled: true
   className: nginx
-  host: avuruops-staging.example.com
+  host: avuruobs-staging.example.com
   annotations: {}
 
 # Auth is built into the hub (auth.enabled defaults true) — no oauth2-proxy at
@@ -54,8 +54,8 @@ ingress:
 #    enabled: true
 #    issuer: https://keycloak.example.com/realms/avuru
 #    clientId: avuru-obs
-#    existingSecret: avuruops-oidc   # key: oidc-client-secret
-#    publicUrl: https://avuruops-staging.example.com
+#    existingSecret: avuruobs-oidc   # key: oidc-client-secret
+#    publicUrl: https://avuruobs-staging.example.com
 #    mapping:
 #      - group: obs-admins
 #        role: admin
