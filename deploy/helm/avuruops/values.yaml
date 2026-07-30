@@ -392,6 +392,31 @@ sensor:
       limits:
         cpu: 200m
         memory: 256Mi
+    # TDP-based power estimation for RAPL-less nodes (opt-in, requires
+    # sensor.green.enabled). See design/2026-07-28-green-tdp-estimation.md.
+    # Every series it emits is stamped avuruops_quality="estimated" by the
+    # otel-agent — never blended with Kepler's measured numbers.
+    estimation:
+      enabled: false
+      image:
+        repository: ""  # set to the published avuru-obs-tdp-estimator image
+        tag: ""          # pinned to the release tag, like the other first-party images
+      # Loopback-bound, like Kepler's own port (28282) — never exposed on the
+      # pod network.
+      port: 28283
+      scrapeInterval: 30s
+      # Operator-set P_idle/P_max override (Helm-values tier, wins over the
+      # bundled table, loses to a per-node obs.avuru.io/power-*-watts
+      # annotation). 0 = defer to the bundled table / generic fallback.
+      idleWatts: 0
+      maxWatts: 0
+      resources:
+        requests:
+          cpu: 25m
+          memory: 32Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
 
 # ClickHouse: single-node StatefulSet by default; flip external.enabled to BYO.
 clickhouse:

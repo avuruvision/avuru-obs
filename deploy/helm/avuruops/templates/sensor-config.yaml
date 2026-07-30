@@ -16,6 +16,9 @@
 {{- if and .Values.sensor.enabled (include "avuruops.collectGreen" .) (not .Values.sensor.agent.enabled) }}
 {{- fail "sensor.green.enabled requires sensor.agent.enabled — Kepler's energy metrics are scraped by a prometheus receiver in the otel-agent; with the agent off nothing collects them." }}
 {{- end }}
+{{- if and .Values.sensor.green.estimation.enabled (not .Values.sensor.green.enabled) }}
+{{- fail "sensor.green.estimation.enabled requires sensor.green.enabled — the estimator is a fallback for the same Kepler energy signal, not a standalone source." }}
+{{- end }}
 {{- if and .Values.sensor.enabled .Values.sensor.obi.enabled }}
 {{- /* optIn guards live INSIDE the render gate: values that produce no
        manifests must never fail an install (e.g. optIn kept in a shared
