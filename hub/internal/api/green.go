@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/auth"
@@ -112,12 +113,26 @@ type greenFactorsDTO struct {
 }
 
 type greenTotalsDTO struct {
-	AttributedWh   float64 `json:"attributedWh"`
+	AttributedWh float64 `json:"attributedWh"`
+	// MeasuredWh / EstimatedWh split AttributedWh by quality tier (RAPL/
+	// Kepler vs the tdp-estimator) — never silently blended into one number
+	// (green TDP estimation AEP). Rows carrying no avuruops_quality
+	// attribute at all (pre-AEP data) count toward neither.
+	MeasuredWh     float64 `json:"measuredWh"`
+	EstimatedWh    float64 `json:"estimatedWh"`
 	UnattributedWh float64 `json:"unattributedWh"`
 	// Coverage = attributed / (attributed + unattributed); 0 when nothing
 	// was measured. Quoted by the report's methodology block.
-	Coverage float64 `json:"coverage"`
-	GCO2e    float64 `json:"gco2e"`
+	Coverage     float64         `json:"coverage"`
+	GCO2e        float64         `json:"gco2e"`
+	NodeCoverage nodeCoverageDTO `json:"nodeCoverage"`
+}
+
+type nodeCoverageDTO struct {
+	Known     int `json:"known"`
+	Measured  int `json:"measured"`
+	Estimated int `json:"estimated"`
+	Absent    int `json:"absent"`
 }
 
 type greenPointDTO struct {
@@ -128,7 +143,11 @@ type greenPointDTO struct {
 type greenServiceDTO struct {
 	Service string  `json:"service"`
 	Wh      float64 `json:"wh"`
-	GCO2e   float64 `json:"gco2e"`
+	// EstimatedWh is the portion of Wh that came from the tdp-estimator, not
+	// Kepler/RAPL — 0 (omitted) when the service's energy is entirely
+	// measured, never inferred, always summed from actual estimated rows.
+	EstimatedWh float64 `json:"estimatedWh,omitempty"`
+	GCO2e       float64 `json:"gco2e"`
 	// Requests is the RED span count over the window; mgCO2ePerRequest is
 	// omitted (not derived) when a service saw no requests.
 	Requests         uint64          `json:"requests,omitempty"`
@@ -175,8 +194,13 @@ func (a *API) handleGreenSummary(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	cov, err := store.NodeCoverage(r.Context(), greenQuery(cfg, ten, tr, 0))
+	if err != nil {
+		return err
+	}
 	f := resolveFactors(cfg)
 	services, totals := buildGreenRows(rows, requests, f, topN)
+	totals.NodeCoverage = nodeCoverageDTO{Known: cov.KnownNodes, Measured: cov.MeasuredNodes, Estimated: cov.EstimatedNodes, Absent: cov.AbsentNodes}
 	writeJSON(w, http.StatusOK, greenSummaryResponse{
 		Window:   healthWindowDTO{Start: tr.Start.UTC().Format(time.RFC3339), End: tr.End.UTC().Format(time.RFC3339)},
 		Factors:  greenFactorsDTO{GridIntensity: f.intensity, IntensitySource: f.source, PUE: f.pue, Dataset: green.IntensityDataset},
@@ -208,11 +232,22 @@ func (a *API) serviceRequests(r *http.Request, store storage.Store, tenant strin
 // carbon conversion, request join, and the topN fold. With topN > 0 the
 // attributed tail folds into one summed (other) row (no series). The
 // unattributed bucket keeps its own named row, always last, never folded.
+// A service may arrive as MULTIPLE storage rows (one per quality tier) —
+// they are merged into exactly one output row per service before topN runs,
+// so a service's measured and estimated energy always appear as one row
+// with Wh = measured+estimated and EstimatedWh keeping the split visible
+// (never silently blended into a single unlabeled number).
 func buildGreenRows(rows []storage.ServiceEnergy, requests map[string]uint64, f greenFactors, topN int) ([]greenServiceDTO, greenTotalsDTO) {
 	var totals greenTotalsDTO
-	services := make([]greenServiceDTO, 0, len(rows))
+	type acc struct {
+		wh, estimatedWh float64
+		points          []storage.EnergyPoint
+	}
+	byService := make(map[string]*acc, len(rows))
+	order := make([]string, 0, len(rows))
 	var unattrPoints []greenPointDTO
 	hasUnattributed := false
+
 	for _, row := range rows {
 		if row.Service == "" {
 			hasUnattributed = true
@@ -221,12 +256,44 @@ func buildGreenRows(rows []storage.ServiceEnergy, requests map[string]uint64, f 
 			continue
 		}
 		totals.AttributedWh += row.WattHours
-		services = append(services, toGreenServiceDTO(row.Service, row, requests[row.Service], f))
+		switch row.Quality {
+		case "measured":
+			totals.MeasuredWh += row.WattHours
+		case "estimated":
+			totals.EstimatedWh += row.WattHours
+		}
+		a, ok := byService[row.Service]
+		if !ok {
+			a = &acc{}
+			byService[row.Service] = a
+			order = append(order, row.Service)
+		}
+		a.wh += row.WattHours
+		if row.Quality == "estimated" {
+			a.estimatedWh += row.WattHours
+		}
+		a.points = append(a.points, row.Points...)
 	}
+
+	services := make([]greenServiceDTO, 0, len(order))
+	for _, name := range order {
+		a := byService[name]
+		dto := toGreenServiceDTO(name, storage.ServiceEnergy{Service: name, WattHours: a.wh, Points: a.points}, requests[name], f)
+		dto.EstimatedWh = a.estimatedWh
+		services = append(services, dto)
+	}
+	sort.SliceStable(services, func(i, j int) bool {
+		if services[i].Wh != services[j].Wh {
+			return services[i].Wh > services[j].Wh
+		}
+		return services[i].Service < services[j].Service
+	})
+
 	if topN > 0 && len(services) > topN {
 		other := greenServiceDTO{Service: greenOtherRow}
 		for _, s := range services[topN:] {
 			other.Wh += s.Wh
+			other.EstimatedWh += s.EstimatedWh
 			other.GCO2e += s.GCO2e
 			other.Requests += s.Requests
 		}

@@ -525,3 +525,28 @@ func TestServiceMapSurvivesEnergyError(t *testing.T) {
 		t.Errorf("energy keys present despite storage error: %s", body)
 	}
 }
+
+func TestBuildGreenRows_QualitySplit(t *testing.T) {
+	rows := []storage.ServiceEnergy{
+		{Service: "web", Quality: "measured", WattHours: 10},
+		{Service: "web", Quality: "estimated", WattHours: 5},
+	}
+	f := greenFactors{intensity: 480, pue: 1.5}
+	services, totals := buildGreenRows(rows, nil, f, 0)
+
+	if len(services) != 1 {
+		t.Fatalf("len(services) = %d, want 1 (one merged row per service)", len(services))
+	}
+	if !almost(services[0].Wh, 15) {
+		t.Errorf("services[0].Wh = %v, want 15 (measured+estimated summed for the total)", services[0].Wh)
+	}
+	if !almost(services[0].EstimatedWh, 5) {
+		t.Errorf("services[0].EstimatedWh = %v, want 5", services[0].EstimatedWh)
+	}
+	if !almost(totals.MeasuredWh, 10) || !almost(totals.EstimatedWh, 5) {
+		t.Errorf("totals = %+v, want MeasuredWh=10 EstimatedWh=5", totals)
+	}
+	if !almost(totals.AttributedWh, 15) {
+		t.Errorf("totals.AttributedWh = %v, want 15 (never silently blended, but the total IS the sum)", totals.AttributedWh)
+	}
+}
