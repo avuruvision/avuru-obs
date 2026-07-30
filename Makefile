@@ -39,9 +39,17 @@ ui-image:
 gateway-image:
 	docker build -f gateway/Dockerfile -t avuru-obs-gateway:local .
 
+# Every in-repo gateway module is its own Go module (OCB resolves them via
+# `replaces`), so each needs building and testing explicitly — a module missing
+# from this list is a module CI does not gate.
+GATEWAY_MODULES := sentryreceiver avuruingestauth tenantfromauth
+
 check:
 	cd hub && go build ./... && go test -race ./...
-	cd gateway/sentryreceiver && go build ./... && go vet ./... && go test ./...
+	@for m in $(GATEWAY_MODULES); do \
+		echo "== gateway/$$m"; \
+		( cd gateway/$$m && go build ./... && go vet ./... && go test ./... ) || exit 1; \
+	done
 	cd ui && npm run lint && npm run build
 
 # Fixed, known admin password so the authenticated e2e harness (e2e/auth_helpers.go)
