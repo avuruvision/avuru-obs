@@ -648,6 +648,14 @@ type Store interface {
 	ListAlertChannels(ctx context.Context) ([]AlertChannel, error)
 	SaveAlertChannel(ctx context.Context, ch AlertChannel) error
 	DeleteAlertChannel(ctx context.Context, name string) error
+	// Collection overlay (runtime sensor toggle — design/
+	// 2026-07-27-collection-control-plane.md). LoadCollectionOverlay returns
+	// ErrNotFound when no overlay has ever been saved. SaveCollectionOverlay
+	// upserts the singleton; saving an empty ("{}"-equivalent) Overlay is how
+	// the API layer implements "reset to chart defaults" — there is no
+	// separate delete method.
+	LoadCollectionOverlay(ctx context.Context) (CollectionOverlay, error)
+	SaveCollectionOverlay(ctx context.Context, ov CollectionOverlay) error
 	// Auth (core): local users, per-project grants, server-side sessions.
 	// GetAuthUserByEmail/GetAuthUser return ErrNotFound for unknown users;
 	// disabled users ARE returned (callers decide). SaveAuthUser upserts by
@@ -689,6 +697,15 @@ type Store interface {
 	GetIngestKeyByHash(ctx context.Context, keyHash string) (AuthIngestKey, error)
 	ListIngestKeys(ctx context.Context, project string) ([]AuthIngestKey, error)
 	RevokeIngestKey(ctx context.Context, project, keyHash string) error
+}
+
+// CollectionOverlay is the persisted runtime collection overlay (design/
+// 2026-07-27-collection-control-plane.md). Overlay is an opaque JSON blob —
+// its schema is owned and validated by package collection, not here.
+type CollectionOverlay struct {
+	Overlay   string
+	UpdatedAt time.Time
+	UpdatedBy string
 }
 
 // AlertChannel is a UI-managed delivery channel (global, not per-tenant).

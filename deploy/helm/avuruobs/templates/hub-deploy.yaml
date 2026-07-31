@@ -17,6 +17,12 @@ spec:
         {{- include "avuruobs.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: hub
     spec:
+      {{- if .Values.collection.runtimeControl.enabled }}
+      {{- /* Only the runtime-collection opt-in gives the hub pod an identity:
+             the default install stays on the namespace's default SA with no
+             API rights at all (see collection-rbac.yaml). */}}
+      serviceAccountName: {{ include "avuruobs.fullname" . }}-collection-control
+      {{- end }}
       {{- with .Values.image.pullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -58,6 +64,11 @@ spec:
             {{- end }}
             - name: AVURUOBS_AUTH_ENABLED
               value: {{ .Values.auth.enabled | quote }}
+            {{- /* Always emitted (like AVURUOBS_AUTH_ENABLED above), and
+                   deliberately OUTSIDE the auth.enabled block that opens
+                   below — the collection routes are gated on this flag alone. */}}
+            - name: AVURUOBS_COLLECTION_RUNTIME_CONTROL_ENABLED
+              value: {{ .Values.collection.runtimeControl.enabled | quote }}
             {{- if .Values.auth.enabled }}
             - name: AVURUOBS_AUTH_ADMIN_PASSWORD
               valueFrom:
