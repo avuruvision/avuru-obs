@@ -11,6 +11,19 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-07-31
+
+**Tenancy you can trust.** v0.2 secured the read side — login, roles,
+per-project grants, SSO. v0.3 closes the write side and makes the project
+itself a thing you administer: create, rename and delete projects from the UI,
+then mint **per-project ingest keys** so a sender no longer just *claims* a
+tenant — in `enforce` mode the key decides where its telemetry lands,
+overriding anything the payload says. Around that: a **one-click read-only
+demo** anyone can click through, **green energy on RAPL-less cloud VMs** (the
+majority of real fleets), the groundwork for runtime collection control, and
+the deploy layer renamed to match the project — `avuruops` → **`avuruobs`**
+(breaking; see Changed).
+
 ### Added
 
 - **Per-project ingest API keys (Phase 2).** Telemetry can now be
@@ -52,6 +65,20 @@ When a release is cut, that block is renamed to the version with its date.
   Opt-in via `auth.demo.enabled`; pair with the OpenTelemetry Astronomy Shop
   overlay ([deploy/demo/astronomy](deploy/demo/astronomy)) tagged
   `avuru.tenant=demo` for live data across every module.
+- **Runtime collection control — control-plane groundwork.** The hub can now
+  store and serve a bounded, schema-validated **collection overlay**
+  (`GET/PUT/DELETE /api/v1/collection/overlay`): whole-signal on/off plus the
+  shared namespace-exclusion list, as a closed schema — no free-form collector
+  YAML is ever accepted from a client, so the API adds no injection surface.
+  Gated by `collection.runtimeControl.enabled` (**default off**), which also
+  provisions a dedicated ServiceAccount and a namespaced Role scoped to the
+  four named sensor ConfigMaps and the one named sensor DaemonSet — nothing
+  cluster-wide. This release ships the storage, validation, API and RBAC only:
+  the applier is a logging no-op and Settings → Collection stays read-only, so
+  an overlay is persisted but does **not** yet change what the sensor
+  collects. Editing collection at runtime lands in a later release; keep using
+  Helm values. See the
+  [AEP](design/2026-07-27-collection-control-plane.md).
 
 - **Licensing clarity.** [LICENSING.md](LICENSING.md) states the model in
   full: AGPL-3.0 community edition forever (backed by the CLA §2.2 pledge),
@@ -81,6 +108,36 @@ When a release is cut, that block is renamed to the version with its date.
   Footprint, cross-checked against the original SPECpower-derived notebook).
   See the [AEP](design/2026-07-28-green-tdp-estimation.md).
 
+### Changed
+
+- **BREAKING — `avuruops` is now `avuruobs` everywhere.** The deploy layer and
+  the env-var contract now match the project's actual name. Renamed: the Helm
+  chart (`deploy/helm/avuruobs`, published at
+  `oci://ghcr.io/<org>/charts/avuruobs`), the `AVURUOPS_*` environment-variable
+  prefix (→ `AVURUOBS_*`), the config mount paths, the generated Kubernetes
+  resource names, and the green-quality telemetry attribute
+  `avuruops_quality` (→ `avuruobs_quality`).
+
+  **Upgrading from 0.2.x is not a plain `helm upgrade`.** Chart resource names
+  and the `app.kubernetes.io/name` selector label derive from the chart name,
+  and selector labels are immutable — an in-place upgrade of a release
+  installed as `avuruops` would try to rename every object and fail. Two
+  supported paths:
+  - *Keep the existing release:* `helm upgrade avuruops
+    oci://ghcr.io/<org>/charts/avuruobs --version 0.3.0 --set
+    nameOverride=avuruops`, which pins the old name and fullname so no object
+    is renamed.
+  - *Start clean:* `helm uninstall avuruops` then install as `avuruobs`. The
+    ClickHouse PVC is not deleted with the release, so retained telemetry
+    survives if you re-point the new release at it; otherwise data starts
+    fresh.
+
+  If you set any `AVURUOPS_*` variable yourself (Compose, bare `docker run`,
+  your own manifests), rename it — the chart handles its own. Green series
+  written before the upgrade carry `avuruops_quality` and therefore read as
+  *unknown* quality (the same tier as pre-AEP data), never as measured; they
+  age out by retention.
+
 ### Fixed
 
 - **A fresh install with demo mode on could end up with no admin account.** The
@@ -92,11 +149,27 @@ When a release is cut, that block is renamed to the version with its date.
   correct password from the release Secret. The demo viewer no longer counts
   toward that check, so the admin is created whichever write lands first — and
   an install already stuck in this state repairs itself on the next restart.
+- **The demo visitor lands on the demo project, not `default`.** A one-click
+  demo sign-in now opens on the project the viewer can actually see, and the
+  active project is re-validated against the signed-in identity — so a project
+  left over from a previous session can no longer stick and produce an empty
+  view. `GET /api/v1/projects` is marked `no-store` so one user's project list
+  is never served from cache to the next.
+- **Helm install could fail on a fresh cluster.** The auth and ingest Secret
+  templates indexed into the result of `lookup` before checking it found
+  anything, so rendering broke when the Secret did not exist yet — precisely
+  the first-install case.
+- **Login behind a reverse proxy.** The UI now forwards the client `Host`
+  with its port, so sign-in works when the port is not the scheme default.
 - **Settings Users tab no longer hides the tab bar.** It is now an in-place tab
   (`?tab=users`) instead of a separate page, so the tab navigation stays put;
   `/settings/users` is kept as a redirect for deep links.
 - Login page brand casing ("avuru obs" → "Avuru Obs"), matching every other
   surface.
+
+### Security
+
+- Gateway: pinned `golang.org/x/text` to v0.39.0 (CVE-2026-56852).
 
 ## [0.2.0] — 2026-07-28
 
@@ -348,7 +421,8 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
 
 <!--
 Release links:
-[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/avuruvision/avuru-obs/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/avuruvision/avuru-obs/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/avuruvision/avuru-obs/releases/tag/v0.1.0
 -->

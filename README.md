@@ -30,8 +30,8 @@ light up — no SDK, no sidecars, no YAML archaeology.
 
 </details>
 
-> **Status: v0.2.0 released** (2026-07-28); `main` is under active development
-> toward v0.3. See [CHANGELOG.md](CHANGELOG.md) for what shipped,
+> **Status: v0.3.0 released** (2026-07-31); `main` is under active development
+> toward v0.4. See [CHANGELOG.md](CHANGELOG.md) for what shipped,
 > [ROADMAP.md](ROADMAP.md) for where it's headed and
 > [`agent_docs/architecture.md`](agent_docs/architecture.md) for the living
 > architecture.
@@ -54,7 +54,7 @@ hub (Go binary: API + OpAMP config plane)   ◄── UI (static SPA, own pod)
 - **Drop-in**: already on OTLP/Jaeger? Point your exporter at the gateway —
   no SDK or code changes (a hard product requirement).
 
-Beyond the core signals, v0.2 adds the day-2 layer:
+Beyond the core signals, the day-2 layer:
 
 - **Error tracking** — deduplicated, triageable issues derived in-database
   from spans and logs; browser SDKs report by changing a Sentry DSN (opt-in
@@ -73,6 +73,18 @@ Beyond the core signals, v0.2 adds the day-2 layer:
   enterprise SSO via any OIDC IdP (Keycloak, Entra, Okta, ...) in OSS — IdP
   groups map to per-project roles, `forceSSO` for IdP-only fleets — with no
   extra components (no oauth2-proxy, no Dex).
+- **Projects you administer, and telemetry that proves whose it is** *(v0.3)* —
+  create, rename and delete projects from the UI, then mint **per-project
+  ingest keys**: in `enforce` mode the key decides where data lands, so a
+  sender that lies about its tenant lands where its key says. Default `log`
+  mode changes nothing about the pipeline, so the drop-in promise survives the
+  upgrade.
+- **Green that works on cloud VMs** *(v0.3)* — public-cloud instances expose no
+  RAPL, so an opt-in power model fills the gap; every estimated number is
+  labeled as such end to end and never blended with measured joules.
+- **A demo you can hand to anyone** *(v0.3)* — one click signs a visitor in as
+  a read-only viewer scoped to a single project; the shared password never
+  reaches the browser.
 
 ## Quickstart
 

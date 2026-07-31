@@ -62,31 +62,38 @@ Everything below shipped in v0.2.0; the full detail lives in
 | **Topology from OBI flows** | Service-map edges from OBI network-flow data; the cancelled Rust L4 tracer removed |
 | **License** | Relicensed Apache-2.0 → **AGPL-3.0** |
 
-## v0.3 (directional)
+## v0.3 — tenancy you can trust — ALL SHIPPED (v0.3.0)
+
+Everything below shipped in v0.3.0; the full detail lives in
+[CHANGELOG.md](CHANGELOG.md) and the linked AEPs.
+
+| Theme | Shipped |
+|---|---|
+| **Projects — CRUD & demo (Phase 1)** | Admins create/rename/delete projects from the UI; built-in and config-defined entries stay read-only; a **one-click read-only demo** signs a visitor in as a scoped viewer with the shared password never leaving the server — [AEP](design/2026-07-27-projects-completion.md) |
+| **Ingest API keys (Phase 2)** | Per-project keys validated in the gateway by an in-repo collector auth extension (the hub never enters the telemetry byte-path); in `enforce` the key's project is the authoritative tenant, replacing topology-based trust of `avuru.tenant`; default `log` mode keeps the drop-in promise intact — [AEP](design/2026-07-27-projects-completion.md) |
+| **Green TDP estimation** | Power model for the RAPL-less nodes most fleets run on; every number labeled *estimated* end to end and never blended with measured joules; `/green` coverage panel — [AEP](design/2026-07-28-green-tdp-estimation.md) |
+| **Runtime collection control — groundwork** | Overlay storage, closed-schema validation, `GET/PUT/DELETE /api/v1/collection/overlay`, default-off flag with a least-privilege namespaced Role. The applier is still a logging no-op and the UI stays read-only — [AEP](design/2026-07-27-collection-control-plane.md) |
+| **Licensing & CLA** | [LICENSING.md](LICENSING.md) states the model in full (AGPL-3.0 community edition forever, per CLA §2.2); CLA bot live; `make notices` generates [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) |
+| **Rename** | `avuruops` → `avuruobs` across the chart, `AVURUOBS_*` env prefix, mount paths, resource names and the green-quality attribute — **breaking**, see the upgrade note in [CHANGELOG.md](CHANGELOG.md) |
+
+## v0.4 (directional)
 
 Each of the larger items already has a draft AEP — design work done, awaiting
 implementation.
 
-- **Projects completion:** **project CRUD** — admins create/rename/delete
-  projects from the UI, config-defined entries stay read-only — and a
-  **one-click read-only demo** have **shipped (Phase 1)**. Per-project **API
-  keys at ingest** have **shipped (Phase 2)**: keys are validated in the gateway
-  by an in-repo collector auth extension and, in `enforce` mode, the key's
-  project becomes the authoritative tenant — replacing topology-based trust of
-  `avuru.tenant`. Default `log` mode keeps the drop-in promise intact.
-  Still to come: **member projects** (multi-cluster aggregation), per-project
-  retention, per-project system status, and chart component toggles so
-  secondary clusters install gateway(+sensor)-only against a shared
-  ClickHouse. See the
+- **Projects completion (Phase 3):** **member projects** (multi-cluster
+  aggregation), per-project retention, per-project system status, and chart
+  component toggles so secondary clusters install gateway(+sensor)-only
+  against a shared ClickHouse. Phases 1 (CRUD + demo) and 2 (ingest keys)
+  shipped in v0.3.0. See the
   [AEP](design/2026-07-27-projects-completion.md).
-- **Runtime collection control plane:** the Helm collection knobs (per-signal,
-  per-namespace, per-pod label, per-node label) become switchable from the UI:
-  the hub persists a bounded, schema-validated collection overlay and patches
-  the sensor ConfigMaps (rollout via the existing config checksum), gated by a
-  default-off flag and a namespace-scoped Role on the named resources only.
-  OpAMP remains the destination — status reporting first, remote-config once
-  OBI grows a client. Query-time filtering was rejected: it saves no
-  collection or storage cost. See the
+- **Runtime collection control plane — completion:** v0.3.0 shipped the
+  overlay storage, schema validation, API and RBAC; what remains is the real
+  applier (patch the sensor ConfigMaps, roll out via the existing config
+  checksum) and the editable Settings → Collection UI, still behind the
+  default-off flag. OpAMP remains the destination — status reporting first,
+  remote-config once OBI grows a client. Query-time filtering was rejected: it
+  saves no collection or storage cost. See the
   [AEP](design/2026-07-27-collection-control-plane.md).
 - **Wider ingest compatibility:** Jaeger, Zipkin, Prometheus and Loki push
   receivers alongside OTLP, plus forwarding exporters (OTLP/Kafka) so
@@ -99,10 +106,6 @@ implementation.
 - **More clients:** the Hub API is the client-agnostic contract; the SPA is one
   thin client. A **Grafana** data source and a **CLI** are planned. See the
   [AEP](design/2026-07-27-clients-grafana-cli.md).
-- **Green TDP estimation:** VMs expose no RAPL, so a power model
-  (`P_idle + u × (P_max − P_idle)`) produces per-service numbers explicitly
-  labeled *estimated*, never blended with measured joules. See the
-  [draft AEP](design/2026-07-28-green-tdp-estimation.md).
 - **Endpoint checks:** health when there is no traffic. See the
   [draft AEP](design/2026-07-20-endpoint-checks.md).
 - **Deeper profiling:** off-CPU and memory profiles as the upstream OTel eBPF
