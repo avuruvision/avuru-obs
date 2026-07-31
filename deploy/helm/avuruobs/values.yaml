@@ -15,7 +15,7 @@ image:
 # Hub: REST API only (the `migrate` subcommand runs the schema hook). The UI is
 # a separate deployable; the hub API is the client-agnostic contract.
 hub:
-  repository: avuruobs/hub
+  repository: ghcr.io/avuruvision/avuru-obs-hub
   tag: "" # defaults to .Chart.AppVersion
   replicas: 1
   resources:
@@ -28,7 +28,7 @@ hub:
 # UI: static SPA served by nginx, its own pod (separate resources/scaling).
 # Single-origin: the ingress routes `/`→ui and `/api`→hub (no CORS).
 ui:
-  repository: avuruobs/ui
+  repository: ghcr.io/avuruvision/avuru-obs-ui
   tag: "" # defaults to .Chart.AppVersion
   replicas: 1
   resources:
@@ -44,7 +44,7 @@ ui:
 #   otel/opentelemetry-collector-contrib : 0.154.0
 gateway:
   image:
-    repository: avuruobs/gateway
+    repository: ghcr.io/avuruvision/avuru-obs-gateway
     tag: "" # defaults to .Chart.AppVersion
   replicas: 1
   # Project/environment this gateway feeds (one project per cluster): stamps
@@ -399,8 +399,8 @@ sensor:
     estimation:
       enabled: false
       image:
-        repository: ""  # set to the published avuru-obs-tdp-estimator image
-        tag: ""          # pinned to the release tag, like the other first-party images
+        repository: ghcr.io/avuruvision/avuru-obs-tdp-estimator
+        tag: "" # defaults to .Chart.AppVersion, like the other first-party images
       # Loopback-bound, like Kepler's own port (28282) — never exposed on the
       # pod network.
       port: 28283

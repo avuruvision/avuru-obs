@@ -112,9 +112,15 @@ jobs:
           sbom: ${{ needs.meta.outputs.dry_run != 'true' }}
           build-args: |
             VERSION=${{ needs.meta.outputs.tag }}
+          # Three tags: the git tag (vX.Y.Z), the moving minor (vX.Y), and the
+          # bare SemVer (X.Y.Z). The bare form is what the chart resolves to
+          # when an image tag is left empty — Helm's .Chart.AppVersion carries
+          # no leading "v" — so publishing it is what makes a default
+          # `helm install` pull without any --set.
           tags: |
             ${{ env.IMAGE_PREFIX }}-${{ matrix.component }}:${{ needs.meta.outputs.tag }}
             ${{ env.IMAGE_PREFIX }}-${{ matrix.component }}:${{ needs.meta.outputs.minor }}
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.component }}:${{ needs.meta.outputs.version }}
       # Sign the multi-arch index by digest: one signature then covers every
       # platform manifest under it, and a digest cannot be moved the way a tag
       # can. Verification recipe lives in RELEASING.md.

@@ -324,7 +324,7 @@ spec:
         # absolute paths — the estimator's RAPL probe and cgroup walk use
         # literal /sys, /proc paths, not a remapped /host/... prefix.
         - name: tdp-estimator
-          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.green.estimation.image.repository "tag" .Values.sensor.green.estimation.image.tag) }}
+          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.green.estimation.image.repository "tag" (.Values.sensor.green.estimation.image.tag | default .Chart.AppVersion)) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --listen=:{{ .Values.sensor.green.estimation.port }}

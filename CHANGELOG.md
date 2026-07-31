@@ -11,6 +11,23 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A default `helm install` now pulls the images it is supposed to.** The
+  chart's image defaults never matched what the release workflow publishes, in
+  two independent ways: the repositories read `avuruobs/hub` (Docker Hub) while
+  releases push `ghcr.io/avuruvision/avuru-obs-hub`, and the tag defaults to
+  `.Chart.AppVersion` — bare SemVer, no leading `v` — while only `vX.Y.Z` and
+  `vX.Y` were ever pushed. Both are fixed: the four first-party repositories
+  now point at GHCR, and the release workflow additionally publishes the bare
+  `X.Y.Z` tag. Installs that already pass `--set …repository`/`…tag` (CI e2e,
+  private-registry overlays via `image.registry`) are unaffected.
+- **Green TDP estimation had no image at all.** `sensor.green.estimation.image`
+  shipped with an empty repository and no tag default, so enabling the feature
+  rendered an unusable image reference. It now defaults to the published
+  `avuru-obs-tdp-estimator` at the chart's app version, and `make version-set`
+  stamps that image alongside the other three.
+
 ## [0.3.0] — 2026-07-31
 
 **Tenancy you can trust.** v0.2 secured the read side — login, roles,
