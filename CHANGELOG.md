@@ -11,6 +11,14 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-07-31
+
+**A default install pulls again.** A patch for one defect with two halves:
+the chart's image coordinates never matched what the release workflow
+publishes, so `helm install` with no `--set` could not resolve the hub, UI,
+gateway or TDP-estimator images. Nothing else changes — no schema migration,
+no API or config surface.
+
 ### Fixed
 
 - **A default `helm install` now pulls the images it is supposed to.** The
@@ -438,7 +446,8 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
 
 <!--
 Release links:
-[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/avuruvision/avuru-obs/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/avuruvision/avuru-obs/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/avuruvision/avuru-obs/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/avuruvision/avuru-obs/releases/tag/v0.1.0
