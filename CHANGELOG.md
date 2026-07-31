@@ -83,6 +83,15 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Fixed
 
+- **A fresh install with demo mode on could end up with no admin account.** The
+  admin bootstrap only ran when the install had no users at all, and the demo
+  viewer — which the server creates itself, from a sibling goroutine — could be
+  written first. The bootstrap then read that as "already provisioned" and
+  skipped the admin, on that boot and every boot after: `admin` did not exist,
+  so every sign-in attempt failed with `Invalid email or password` even with the
+  correct password from the release Secret. The demo viewer no longer counts
+  toward that check, so the admin is created whichever write lands first — and
+  an install already stuck in this state repairs itself on the next restart.
 - **Settings Users tab no longer hides the tab bar.** It is now an in-place tab
   (`?tab=users`) instead of a separate page, so the tab navigation stays put;
   `/settings/users` is kept as a redirect for deep links.

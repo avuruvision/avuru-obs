@@ -26,9 +26,9 @@ var (
 // bootstrapAdminID is the FIXED id used to create the bootstrap admin user.
 //
 // The bootstrap admin uses a FIXED id: two replicas racing past the
-// CountAuthUsers check then insert the same ReplacingMergeTree key and
-// collapse to one row — a random id would leave two divergent 'admin'
-// users, one keeping the bootstrap password forever.
+// "no operator-created user yet" check then insert the same
+// ReplacingMergeTree key and collapse to one row — a random id would leave
+// two divergent 'admin' users, one keeping the bootstrap password forever.
 const bootstrapAdminID = "bootstrap-admin"
 
 // Service is the auth core: local login, sessions, bootstrap. Store is a
@@ -192,22 +192,38 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 	return err
 }
 
-// Bootstrap creates the global-admin `admin` user when no users exist. Called
-// once at startup, after the store connects. created reports whether THIS
-// call is the one that created the admin (false, nil means a user already
-// existed) — callers that generate a random password need this to know
-// whether to disclose it.
+// Bootstrap creates the global-admin `admin` user when no operator-created
+// user exists. Called once at startup, after the store connects. created
+// reports whether THIS call is the one that created the admin (false, nil
+// means a user already existed) — callers that generate a random password
+// need this to know whether to disclose it.
+//
+// The demo viewer is excluded from that check: the server creates it itself
+// and refreshes it on every boot, so it is no evidence that an admin exists.
+// It is also written by ensureDemoUser, a SIBLING GOROUTINE of the admin
+// bootstrap (cmd/hub/main.go), so on a fresh demo-enabled install it wins the
+// race often enough to be the norm rather than the exception. Counting it
+// left such installs with no admin at all and no way back: the guard stayed
+// satisfied on every subsequent boot, so the account could only be created by
+// hand-writing the row. Ignoring it makes the outcome independent of who wins
+// the race AND self-healing on the next restart for installs already in that
+// state.
 func (s *Service) Bootstrap(ctx context.Context, adminPassword string) (created bool, err error) {
 	st, err := s.st()
 	if err != nil {
 		return false, err
 	}
-	n, err := st.CountAuthUsers(ctx)
+	// Listing rather than counting: the exclusion is by id, and the table is
+	// tiny (the same assumption that lets email uniqueness live in the app
+	// layer and every read use FINAL).
+	users, err := st.ListAuthUsers(ctx)
 	if err != nil {
-		return false, fmt.Errorf("counting users: %w", err)
+		return false, fmt.Errorf("listing users: %w", err)
 	}
-	if n > 0 {
-		return false, nil
+	for _, u := range users {
+		if u.ID != demoViewerID {
+			return false, nil
+		}
 	}
 	hash, err := HashPassword(adminPassword)
 	if err != nil {

@@ -153,6 +153,63 @@ func TestBootstrapCreatesAdminOnce(t *testing.T) {
 	}
 }
 
+// The demo viewer must NOT satisfy the "already provisioned" guard: it is
+// created by the server itself, not by an operator, so it is no evidence that
+// an admin exists. bootstrapAdmin and ensureDemoUser run as concurrent
+// goroutines (cmd/hub/main.go), so on a fresh install with auth.demo.enabled
+// the demo write can land first — a plain user count then reads as "this
+// install already has users", admin is never created, and every admin login
+// fails with no way to recover short of hand-writing the row.
+func TestBootstrapCreatesAdminWhenOnlyDemoUserExists(t *testing.T) {
+	f := &storagetest.Fake{}
+	svc := testService(f)
+	ctx := context.Background()
+
+	// The demo goroutine wins the race.
+	if err := svc.EnsureDemoUser(ctx, "demo@avuru.obs", "demo-pw"); err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := svc.Bootstrap(ctx, "root-pw")
+	if err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+	if !created {
+		t.Fatal("bootstrap after the demo user landed: created=false, want true")
+	}
+	// The admin must be usable, not merely present.
+	if _, _, err := svc.Login(ctx, "admin", "root-pw", "1.2.3.4"); err != nil {
+		t.Fatalf("admin login after bootstrap: %v", err)
+	}
+	// The demo viewer is untouched by the admin bootstrap.
+	if _, _, err := svc.Login(ctx, "demo@avuru.obs", "demo-pw", "1.2.3.4"); err != nil {
+		t.Fatalf("demo login after bootstrap: %v", err)
+	}
+}
+
+// The converse of the above: a REAL user still blocks the bootstrap. Skipping
+// the demo viewer must not widen into "recreate admin whenever it is missing",
+// which would hand a fresh admin password to an install whose operator
+// deliberately runs without one (SSO-only, or admin disabled per the AEP).
+func TestBootstrapSkipsWhenRealUserExists(t *testing.T) {
+	f := &storagetest.Fake{}
+	seedUser(t, f, "a@x.io", "pw", []storage.AuthGrant{{UserID: "u-a@x.io", Scope: "*", Role: "admin"}})
+	svc := testService(f)
+	ctx := context.Background()
+
+	if err := svc.EnsureDemoUser(ctx, "demo@avuru.obs", "demo-pw"); err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := svc.Bootstrap(ctx, "root-pw")
+	if err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+	if created {
+		t.Fatal("bootstrap with a real user present: created=true, want false")
+	}
+}
+
 func TestLogoutUnknownTokenIsNoop(t *testing.T) {
 	f := &storagetest.Fake{}
 	svc := testService(f)

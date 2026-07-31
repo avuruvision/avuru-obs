@@ -10,18 +10,6 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
-// CountAuthUsers returns the number of live users (FINAL-collapsed; the table
-// is tiny so FINAL is cheap). Used to detect the "no admin yet" bootstrap
-// state.
-func (s *Store) CountAuthUsers(ctx context.Context) (uint64, error) {
-	row := s.conn.QueryRow(ctx, `SELECT count() FROM auth_user FINAL`)
-	var n uint64
-	if err := row.Scan(&n); err != nil {
-		return 0, fmt.Errorf("count auth users: %w", err)
-	}
-	return n, nil
-}
-
 // GetAuthUser returns one user by id, or ErrNotFound. Disabled users ARE
 // returned — callers decide what disabled means for the request at hand.
 func (s *Store) GetAuthUser(ctx context.Context, id string) (storage.AuthUser, error) {
