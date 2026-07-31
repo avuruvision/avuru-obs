@@ -17,7 +17,7 @@ version-set:
 	@perl -i -pe 's/"version": ".*"/"version": "$(V)"/ && ($$done=1) if !$$done' ui/package.json
 	@perl -i -pe 's/^version: .*/version: $(V)/ && ($$done=1) if !$$done' deploy/helm/avuruobs/Chart.yaml
 	@perl -i -pe 's/^appVersion: .*/appVersion: "$(V)"/ && ($$done=1) if !$$done' deploy/helm/avuruobs/Chart.yaml
-	@perl -i -pe 's{(avuru-obs-(?:hub|ui|gateway)):\S+}{$$1:$(V)}g' deploy/helm/avuruobs/Chart.yaml
+	@perl -i -pe 's{(avuru-obs-(?:hub|ui|gateway|tdp-estimator)):\S+}{$$1:$(V)}g' deploy/helm/avuruobs/Chart.yaml
 	@echo "version set to $(V) (VERSION, ui/package.json, Chart.yaml)"
 
 # Regenerates THIRD-PARTY-NOTICES.md (Apache §4 attribution for bundled

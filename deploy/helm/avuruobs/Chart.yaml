@@ -41,3 +41,5 @@ annotations:
       image: ghcr.io/avuruvision/avuru-obs-ui:0.3.0
     - name: gateway
       image: ghcr.io/avuruvision/avuru-obs-gateway:0.3.0
+    - name: tdp-estimator
+      image: ghcr.io/avuruvision/avuru-obs-tdp-estimator:0.3.0
