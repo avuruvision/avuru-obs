@@ -1,6 +1,6 @@
 # Thin root dispatcher ONLY — build logic lives in each component
 # (agent_docs/development.md). Keep it that way.
-.PHONY: hub ui ui-image gateway-image check helm-check e2e e2e-helm e2e-ui dev dev-clean version version-set notices
+.PHONY: hub ui ui-image gateway-image check helm-check e2e e2e-helm e2e-ui dev dev-clean version version-set notices sync-hub-chart
 
 COMPOSE := docker compose -f deploy/compose/docker-compose.yaml
 
@@ -21,10 +21,10 @@ version-set:
 	@echo "version set to $(V) (VERSION, ui/package.json, Chart.yaml)"
 
 # Sync the sensor-relevant chart files into the hub so the collection applier
-# can render them via go:embed (design/2026-07-27-collection-control-plane.md).
+# can render them via go:embed — which cannot reach outside the hub module,
+# hence the committed copy (design/2026-07-27-collection-control-plane.md).
 # A unit test (hub/internal/collection/chartsync_test.go) fails when these
 # drift from deploy/helm/avuruobs — rerun this target after editing them.
-.PHONY: sync-hub-chart
 sync-hub-chart:
 	mkdir -p hub/internal/collection/chart/templates
 	cp deploy/helm/avuruobs/Chart.yaml hub/internal/collection/chart/Chart.yaml

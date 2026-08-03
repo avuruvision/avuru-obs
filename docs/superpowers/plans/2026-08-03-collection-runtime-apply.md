@@ -436,7 +436,10 @@ import (
 	"helm.sh/helm/v3/pkg/engine"
 )
 
-//go:embed chart/Chart.yaml chart/values.yaml chart/templates
+// The all: prefix is load-bearing — without it, go:embed silently EXCLUDES
+// underscore-prefixed files, i.e. templates/_helpers.tpl, and every sensor
+// template calls helpers defined there.
+//go:embed chart/Chart.yaml chart/values.yaml all:chart/templates
 var chartFS embed.FS
 
 // SensorManifests is the rendered, decoded output the applier reconciles the
