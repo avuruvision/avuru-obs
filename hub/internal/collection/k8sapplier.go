@@ -186,6 +186,16 @@ func (a *K8sApplier) patchDaemonSet(ctx context.Context, m *SensorManifests, che
 	if live.Spec.Template.Annotations[OverlayChecksumAnnotation] == checksum {
 		// Identical render: patching anyway would bump the pod template and
 		// roll every sensor pod in the cluster for no change.
+		//
+		// The tradeoff this buys, stated plainly: the checksum describes the
+		// RENDER, not the live objects, so it stays equal even when someone
+		// edited a sensor ConfigMap out of band. The ConfigMap loop above has
+		// already restored that drift, but WITHOUT a rollout — the running
+		// collectors keep the config they started with until something else
+		// restarts them or the next real overlay change moves the checksum.
+		// Accepted deliberately: the alternative is hashing live state, which
+		// would roll every sensor pod in the cluster on any no-op re-apply
+		// (defaulting, a mutating webhook, a field manager rewrite).
 		return nil
 	}
 

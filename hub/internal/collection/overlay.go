@@ -1,8 +1,8 @@
 // Package collection owns the runtime "collection overlay" — the closed,
 // UI-editable subset of sensor config (design/
-// 2026-07-27-collection-control-plane.md). It has no storage or Kubernetes
-// dependency: it is pure data + validation, callable from both the API layer
-// and (in the follow-up plan) the applier.
+// 2026-07-27-collection-control-plane.md). The overlay type itself has no
+// storage or Kubernetes dependency: it is pure data + validation, shared by
+// the API layer and the applier.
 package collection
 
 import (

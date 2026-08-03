@@ -161,6 +161,58 @@ func TestK8sApplier_Idempotent(t *testing.T) {
 	}
 }
 
+// TestK8sApplier_DriftRestoreSkipsRollout pins the documented half-measure in
+// patchDaemonSet: an out-of-band edit to a sensor ConfigMap IS restored on the
+// next apply, but does NOT trigger a rollout, because the checksum describes
+// the render and the render did not change. The running collectors therefore
+// keep their startup config until something else restarts them. Asserted
+// rather than left implicit — it is the behavior an operator will hit after a
+// `kubectl edit configmap`, and a future change that starts hashing live state
+// (rolling every sensor pod on any no-op) should have to break this test.
+func TestK8sApplier_DriftRestoreSkipsRollout(t *testing.T) {
+	client := seedCluster(t, map[string]string{"checksum/config": "helm-owned"})
+	applier := testApplier(client, "avuruobs")
+
+	if err := applier.Apply(context.Background(), Overlay{}); err != nil {
+		t.Fatalf("first Apply: %v", err)
+	}
+	reconciled := liveConfigMap(t, client, "avuruobs-sensor-obi").Data["obi-config.yml"]
+	checksum := liveDaemonSet(t, client).Spec.Template.Annotations[OverlayChecksumAnnotation]
+	if reconciled == "" || checksum == "" {
+		t.Fatalf("first Apply did not reconcile: config %q, checksum %q", reconciled, checksum)
+	}
+
+	// Out-of-band drift: someone edits the collector config by hand.
+	drifted := liveConfigMap(t, client, "avuruobs-sensor-obi").DeepCopy()
+	drifted.Data["obi-config.yml"] = "# hand-edited\n"
+	if _, err := client.CoreV1().ConfigMaps(testNamespace).Update(
+		context.Background(), drifted, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("simulate drift: %v", err)
+	}
+
+	// Count DaemonSet patches only: the ConfigMap restore is an update on
+	// configmaps and must not be conflated with a pod-template rollout.
+	var dsPatches int
+	client.PrependReactor("patch", "daemonsets", func(k8stesting.Action) (bool, runtime.Object, error) {
+		dsPatches++
+		return false, nil, nil
+	})
+
+	if err := applier.Apply(context.Background(), Overlay{}); err != nil {
+		t.Fatalf("second Apply: %v", err)
+	}
+
+	if got := liveConfigMap(t, client, "avuruobs-sensor-obi").Data["obi-config.yml"]; got != reconciled {
+		t.Errorf("drifted ConfigMap not restored:\n got %q\nwant %q", got, reconciled)
+	}
+	if got := liveDaemonSet(t, client).Spec.Template.Annotations[OverlayChecksumAnnotation]; got != checksum {
+		t.Errorf("overlay checksum changed on a drift restore: got %q, want %q", got, checksum)
+	}
+	if dsPatches != 0 {
+		t.Errorf("a drift restore rolled the sensor pods: %d DaemonSet patch(es)", dsPatches)
+	}
+}
+
 func TestK8sApplier_RefusesUnexpectedNames(t *testing.T) {
 	client := seedCluster(t, map[string]string{"checksum/config": "helm-owned"})
 	updates, patches, creates := countWrites(client)
