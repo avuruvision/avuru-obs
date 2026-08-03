@@ -241,9 +241,12 @@ func applyOverlayToValues(baseValues map[string]any, overlay Overlay) (map[strin
 		setNested(vals, *overlay.GreenEnabled, "sensor", "green", "enabled")
 	}
 	if overlay.ExcludeNamespaces != nil {
-		// Namespace names are validated at the API boundary (ParseOverlay);
-		// they are rendered into collector config, so nothing unvalidated may
-		// reach here.
+		// Re-validated, not merely assumed valid: ParseOverlay is the API
+		// boundary, but nothing stops a caller inside the process from
+		// building an Overlay{} literal (a test, a future reconcile loop, a
+		// migration replaying stored JSON). These strings are rendered into
+		// collector config, so the last gate before the renderer re-checks
+		// them rather than trusting the path they arrived by.
 		if err := validateNamespaces(overlay.ExcludeNamespaces); err != nil {
 			return nil, err
 		}

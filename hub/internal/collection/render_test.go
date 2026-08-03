@@ -169,6 +169,80 @@ func TestRenderSensorManifests_GreenRendersEveryDocument(t *testing.T) {
 	}
 }
 
+// The chart's own `fail` guards are the install-time contract; a hub-side
+// re-render must reproduce them verbatim rather than rendering something the
+// operator could never have installed.
+func TestRenderSensorManifests_ChartGuardSurfaces(t *testing.T) {
+	base := baseValuesFixture(t)
+	base["modules"] = map[string]any{
+		"green":        map[string]any{"enabled": true},
+		"infraMetrics": map[string]any{"enabled": false},
+	}
+	_, err := RenderSensorManifests(base, Overlay{}, "avuruobs", "avuruobs")
+	if err == nil {
+		t.Fatal("green without infra-metrics rendered instead of failing")
+	}
+	if !strings.Contains(err.Error(), "modules.green.enabled requires modules.infraMetrics.enabled") {
+		t.Fatalf("chart guard message not surfaced: %v", err)
+	}
+}
+
+// The base values come from a ConfigMap an operator can edit; a wrong type
+// there must be an error, not a panic in the hub's request path.
+func TestRenderSensorManifests_BadBaseValuesType(t *testing.T) {
+	base := baseValuesFixture(t)
+	base["sensor"] = "not-a-map"
+	got, err := RenderSensorManifests(base, Overlay{}, "avuruobs", "avuruobs")
+	if err == nil {
+		t.Fatalf("string in place of the sensor subtree rendered clean: %+v", got)
+	}
+}
+
+// Overlay{} built directly, bypassing ParseOverlay: proves the renderer's own
+// namespace re-validation is live and not dead defensive code.
+func TestRenderSensorManifests_InvalidOverlayNamespace(t *testing.T) {
+	ns := []string{"Bad_NS!"}
+	_, err := RenderSensorManifests(baseValuesFixture(t), Overlay{ExcludeNamespaces: &ns}, "avuruobs", "avuruobs")
+	if err == nil {
+		t.Fatal("invalid namespace name reached the renderer without an error")
+	}
+	if !strings.Contains(err.Error(), "excludeNamespaces") {
+		t.Fatalf("error does not name the offending field: %v", err)
+	}
+}
+
+// The applier caches base values and renders repeatedly from them; aliasing a
+// slice or a nested map into the copy would let one render corrupt the next.
+func TestDeepCopyDoesNotShareSlices(t *testing.T) {
+	base := baseValuesFixture(t)
+	base["sensor"] = map[string]any{
+		"collection": map[string]any{
+			"excludeNamespaces": []any{"a", "b"},
+		},
+		"extra": []any{map[string]any{"k": "original"}},
+	}
+
+	off := false
+	// An overlay that touches neither path, so anything shared would be
+	// shared by the copy itself and not by an overlay write.
+	got, err := applyOverlayToValues(base, Overlay{ObiEnabled: &off})
+	if err != nil {
+		t.Fatalf("applyOverlayToValues: %v", err)
+	}
+
+	copied := got["sensor"].(map[string]any)
+	copied["collection"].(map[string]any)["excludeNamespaces"].([]any)[0] = "mutated"
+	copied["extra"].([]any)[0].(map[string]any)["k"] = "mutated"
+
+	orig := base["sensor"].(map[string]any)
+	if v := orig["collection"].(map[string]any)["excludeNamespaces"].([]any)[0]; v != "a" {
+		t.Fatalf("base slice element aliased into the copy: got %v", v)
+	}
+	if v := orig["extra"].([]any)[0].(map[string]any)["k"]; v != "original" {
+		t.Fatalf("map nested inside a base slice aliased into the copy: got %v", v)
+	}
+}
+
 func containerNames(m *SensorManifests) map[string]bool {
 	names := map[string]bool{}
 	if m.DaemonSet == nil {
