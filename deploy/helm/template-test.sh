@@ -606,4 +606,14 @@ python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("collec
   <<<"$base_values" || fail "base-values ConfigMap missing collection.runtimeControl.enabled=true"
 ok "base-values includes collection"
 
+echo "== collection runtime control: base-values carries gateway.tenant"
+# gateway.tenant sits outside the sensor/modules subtrees but sensor-config.yaml
+# renders it as the profiler exporter's X-Avuru-Tenant header. Absent here, the
+# first overlay write would silently retag a tenanted install as `default`.
+out="$(render --set gateway.tenant=acme --set collection.runtimeControl.enabled=true)"
+base_values="$(awk '/^  values\.json: \|$/{f=1;next} /^---$/{f=0} f' <<<"$out")"
+python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("gateway",{}).get("tenant")=="acme" else 1)' \
+  <<<"$base_values" || fail "base-values ConfigMap missing gateway.tenant=acme"
+ok "base-values includes gateway.tenant"
+
 echo "ALL TEMPLATE ASSERTIONS PASSED"

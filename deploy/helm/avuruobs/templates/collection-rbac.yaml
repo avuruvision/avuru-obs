@@ -38,6 +38,16 @@ metadata:
 # (via avuruobs.collectionPlaceholders). Without it the hub-side re-render would
 # see the flag off and drop the placeholder ConfigMaps for disabled signals —
 # exactly the objects it may only update, never create.
+# Note `gateway`/`image.pullSecrets`/`green.metrics`: these sit OUTSIDE the
+# subtrees above but the sensor templates read them all the same —
+# gateway.tenant (profiler exporter's X-Avuru-Tenant header),
+# image.pullSecrets (sensor pod imagePullSecrets), green.metrics.podNameAttr /
+# podNamespaceAttr (the Kepler pod→workload attribute rename). Missing here,
+# the hub's re-render would see the chart defaults instead of the operator's
+# settings and produce sensor manifests differing from the installed ones by
+# more than the overlay — silently reverting a tenant header on the next
+# overlay write. This dict is exactly the non-secret values the sensor
+# templates read — nothing more, nothing less.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -50,7 +60,12 @@ data:
         "sensor" .Values.sensor
         "modules" .Values.modules
         "collection" .Values.collection
-        "image" (dict "registry" .Values.image.registry "pullPolicy" .Values.image.pullPolicy)
+        "gateway" (dict "tenant" .Values.gateway.tenant)
+        "green" (dict "metrics" .Values.green.metrics)
+        "image" (dict
+          "registry" .Values.image.registry
+          "pullPolicy" .Values.image.pullPolicy
+          "pullSecrets" .Values.image.pullSecrets)
         "auth" (dict "ingest" (dict
           "mode" .Values.auth.ingest.mode
           "provisionSensorKey" .Values.auth.ingest.provisionSensorKey))
