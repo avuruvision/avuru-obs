@@ -1,0 +1,419 @@
+{{- /* A DaemonSet with zero containers is invalid — render only when at
+       least one sensor container is active. The trailing collectGreen term is
+       unreachable while sensor-config's collectGreen-requires-agent guard
+       holds ($agentActive already covers every successful green render); kept
+       as belt-and-braces against a future change to that guard. */}}
+{{- $agentActive := and .Values.sensor.agent.enabled (or (include "avuruobs.collectLogs" .) (include "avuruobs.collectInfraMetrics" .) (include "avuruobs.collectGreen" .)) }}
+{{- if and .Values.sensor.enabled (or .Values.sensor.obi.enabled $agentActive (include "avuruobs.collectProfiles" .) (include "avuruobs.collectGreen" .)) }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "avuruobs.fullname" . }}-sensor
+  labels:
+    {{- include "avuruobs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sensor
+spec:
+  selector:
+    matchLabels:
+      {{- include "avuruobs.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: sensor
+  template:
+    metadata:
+      labels:
+        {{- include "avuruobs.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: sensor
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/sensor-config.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "avuruobs.fullname" . }}-sensor
+      # eBPF containers discover and inspect host processes.
+      hostPID: true
+      {{- if .Values.sensor.obi.network.enabled }}
+      # OBI's network-flow feature observes node-level L4 traffic and needs the
+      # host network namespace. Scoped to sensor.obi.network.enabled only.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- end }}
+      {{- if or .Values.sensor.priorityClass.create .Values.sensor.priorityClass.name }}
+      priorityClassName: {{ .Values.sensor.priorityClass.name | default (printf "%s-sensor" (include "avuruobs.fullname" .)) }}
+      {{- end }}
+      {{- with .Values.sensor.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.sensor.collection.nodeOptOutLabel }}
+      # Per-node kill switch: `kubectl label node <n> {{ .Values.sensor.collection.nodeOptOutLabel }}=false`
+      # removes the sensor pod from that node — no helm upgrade needed.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: {{ .Values.sensor.collection.nodeOptOutLabel }}
+                    operator: NotIn
+                    values: ["false"]
+      {{- end }}
+      {{- with .Values.sensor.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        # Kernel preflight: eBPF needs >=5.8 with BTF. Warn loudly, NEVER
+        # block — on unsupported nodes the pod stays up for the non-eBPF
+        # containers (logs/metrics) while OBI alone may fail.
+        - name: kernel-preflight
+          image: busybox:1.37
+          command:
+            - /bin/sh
+            - -c
+            - |
+              KVER="$(uname -r)"
+              MAJ="${KVER%%.*}"; REST="${KVER#*.}"; MIN="${REST%%.*}"
+              OK=1
+              if [ "$MAJ" -lt 5 ] || { [ "$MAJ" -eq 5 ] && [ "$MIN" -lt 8 ]; }; then OK=0; fi
+              [ -f /sys/kernel/btf/vmlinux ] || OK=0
+              if [ "$OK" = "1" ]; then
+                echo "sensor preflight: kernel $KVER with BTF — eBPF supported"
+              else
+                echo "**********************************************************"
+                echo "sensor preflight WARNING: kernel $KVER, BTF $( [ -f /sys/kernel/btf/vmlinux ] && echo present || echo MISSING )"
+                echo "eBPF zero-code instrumentation needs kernel >=5.8 with BTF."
+                echo "OBI will likely fail on this node; logs/metrics collection"
+                echo "is unaffected. Set sensor.obi.enabled=false to silence."
+                echo "**********************************************************"
+              fi
+              {{- if include "avuruobs.collectGreen" . }}
+              # Green energy: Kepler measures CPU energy from Intel/AMD RAPL via
+              # the powercap sysfs tree (read from this container's own /sys, the
+              # same way the BTF check above reads /sys/kernel). WARN (never
+              # block) when it is absent — most cloud VMs expose no RAPL, and
+              # Kepler must sit idle without flapping the pod (no probes for
+              # exactly this reason).
+              if [ -d /sys/class/powercap/intel-rapl ] || [ -d /sys/devices/virtual/powercap/intel-rapl ]; then
+                echo "sensor preflight: powercap/intel-rapl present — Kepler can measure energy"
+              else
+                echo "**********************************************************"
+                echo "sensor preflight WARNING: no powercap/intel-rapl under /sys —"
+                echo "this node exposes no RAPL. Kepler will report no (or fake) energy;"
+                echo "the /green coverage ratio makes this visible. Enable"
+                echo "sensor.green.fakeCpuMeter for CI, or disable sensor.green on"
+                echo "RAPL-less nodes. Other collection is unaffected."
+                echo "**********************************************************"
+              fi
+              {{- end }}
+              exit 0
+      containers:
+        {{- if .Values.sensor.obi.enabled }}
+        # OBI — zero-code traces + RED metrics via eBPF (upstream, pinned).
+        - name: obi
+          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.obi.image.repository "tag" .Values.sensor.obi.image.tag) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            {{- if .Values.sensor.obi.privileged }}
+            privileged: true
+            {{- else }}
+            capabilities:
+              add:
+                - BPF
+                - PERFMON
+                - SYS_PTRACE
+                - NET_RAW
+                - CHECKPOINT_RESTORE
+                - DAC_READ_SEARCH
+                - SYS_RESOURCE
+              drop:
+                - ALL
+            {{- end }}
+          env:
+            - name: OTEL_EBPF_CONFIG_PATH
+              value: /config/obi-config.yml
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://{{ include "avuruobs.fullname" . }}-gateway:4318
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: http/protobuf
+            {{- if and (include "avuruobs.ingestAuthEnabled" .) .Values.auth.ingest.provisionSensorKey }}
+            {{- /* OBI exports straight to the gateway rather than through the
+                   agent's collector config, so it needs the key on its own.
+                   OTEL_EXPORTER_OTLP_HEADERS is the standard OTel env; the
+                   $(VAR) form is Kubernetes env interpolation, which requires
+                   AVURUOBS_INGEST_KEY to be declared before it. */}}
+            - name: AVURUOBS_INGEST_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "avuruobs.ingestSecretName" . }}
+                  key: sensor-key
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              value: "Authorization=Bearer $(AVURUOBS_INGEST_KEY)"
+            {{- end }}
+          volumeMounts:
+            - name: obi-config
+              mountPath: /config
+              readOnly: true
+            - name: var-run-obi
+              mountPath: /var/run/obi
+            - name: cgroup
+              mountPath: /sys/fs/cgroup
+              readOnly: true
+          resources:
+            {{- toYaml .Values.sensor.obi.resources | nindent 12 }}
+        {{- end }}
+        {{- if $agentActive }}
+        # Node collector — tails container stdout/stderr into the gateway
+        # (zero-config logs tier). Runs as root: /var/log/pods is root-owned.
+        - name: otel-agent
+          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.agent.image.repository "tag" .Values.sensor.agent.image.tag) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["--config=/etc/avuru/config.yaml"]
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            readOnlyRootFilesystem: true
+          env:
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            {{- if and (include "avuruobs.ingestAuthEnabled" .) .Values.auth.ingest.provisionSensorKey }}
+            {{- /* Consumed as ${env:AVURUOBS_INGEST_KEY} by the otlphttp
+                   exporter's Authorization header in sensor-config.yaml. */}}
+            - name: AVURUOBS_INGEST_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "avuruobs.ingestSecretName" . }}
+                  key: sensor-key
+            {{- end }}
+          volumeMounts:
+            - name: agent-config
+              mountPath: /etc/avuru
+              readOnly: true
+            - name: varlogpods
+              mountPath: /var/log/pods
+              readOnly: true
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+            - name: agent-storage
+              mountPath: /var/lib/otel-agent
+          ports:
+            - name: agent-health
+              containerPort: 13134
+          livenessProbe:
+            httpGet:
+              path: /
+              port: agent-health
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: agent-health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.sensor.agent.resources | nindent 12 }}
+        {{- end }}
+        {{- if include "avuruobs.collectProfiles" . }}
+        # Continuous CPU profiling (OTel eBPF profiler distro). Profiles are
+        # ALPHA: the feature gate is required, and export goes straight to the
+        # hub's ingest seam.
+        - name: profiler
+          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.profiler.image.repository "tag" .Values.sensor.profiler.image.tag) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --config=/etc/avuru/config.yaml
+            - --feature-gates=+service.profilesSupport
+          securityContext:
+            privileged: true
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: profiler-config
+              mountPath: /etc/avuru
+              readOnly: true
+            - name: kernel-debug
+              mountPath: /sys/kernel/debug
+            - name: kernel-tracing
+              mountPath: /sys/kernel/tracing
+          ports:
+            - name: prof-health
+              containerPort: 13135
+          livenessProbe:
+            httpGet:
+              path: /
+              port: prof-health
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: prof-health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.sensor.profiler.resources | nindent 12 }}
+        {{- end }}
+        {{- if include "avuruobs.collectGreen" . }}
+        # Kepler — per-pod/node CPU energy from RAPL/powercap (CNCF upstream,
+        # pinned). Scraped over loopback by the otel-agent's prometheus/green
+        # receiver. Deliberately has NO liveness/readiness/startup probes: a
+        # RAPL-less node leaves Kepler idle/unhealthy and it must NEVER flap the
+        # sensor pod (the "do no harm" probe-canary gate). kube mode and the
+        # node name are passed on the CLI; host sysfs/procfs are read-only.
+        - name: kepler
+          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.green.image.repository "tag" .Values.sensor.green.image.tag) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --config.file=/etc/kepler/config.yaml
+            - --kube.enable
+            - --kube.node-name=$(NODE_NAME)
+          securityContext:
+            # Root, pinned explicitly (the otel-agent precedent): the powercap
+            # sysfs is root-owned, and the non-privileged capability path below
+            # only takes effect for UID 0.
+            runAsUser: 0
+            runAsGroup: 0
+            readOnlyRootFilesystem: true
+            {{- if .Values.sensor.green.privileged }}
+            # privileged=true is the reliable default for the powercap/RAPL
+            # sysfs reads across container runtimes and kernels.
+            privileged: true
+            {{- else }}
+            # Least-privilege alternative — VERIFY on RAPL hardware that these
+            # capabilities suffice for the powercap sysfs reads before relying
+            # on it (a documented AEP verify item).
+            capabilities:
+              add:
+                - DAC_READ_SEARCH
+                - SYS_PTRACE
+                - PERFMON
+              drop:
+                - ALL
+            {{- end }}
+          env:
+            # Kepler's kubelet pod-informer needs the node it runs on.
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: kepler-config
+              mountPath: /etc/kepler
+              readOnly: true
+            # Host sysfs (RAPL/powercap) and procfs, read-only, under /host —
+            # the config points host.sysfs/host.procfs at these paths.
+            - name: host-sys
+              mountPath: /host/sys
+              readOnly: true
+            - name: host-proc
+              mountPath: /host/proc
+              readOnly: true
+          resources:
+            {{- toYaml .Values.sensor.green.resources | nindent 12 }}
+        {{- end }}
+        {{- if include "avuruobs.collectGreenEstimation" . }}
+        # tdp-estimator — modeled CPU power for nodes with no RAPL/powercap
+        # (first-party, opt-in). Deliberately has NO liveness/readiness/
+        # startup probes, same "do no harm" posture as Kepler: a probe
+        # failure here must never flap the sensor pod. Reuses host-sys/
+        # host-proc (defined below under the collectGreen gate, guaranteed
+        # present since estimation requires green) mounted at their real
+        # absolute paths — the estimator's RAPL probe and cgroup walk use
+        # literal /sys, /proc paths, not a remapped /host/... prefix.
+        - name: tdp-estimator
+          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.green.estimation.image.repository "tag" (.Values.sensor.green.estimation.image.tag | default .Chart.AppVersion)) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --listen=:{{ .Values.sensor.green.estimation.port }}
+            - --node-name=$(NODE_NAME)
+            - --idle-watts={{ .Values.sensor.green.estimation.idleWatts }}
+            - --max-watts={{ .Values.sensor.green.estimation.maxWatts }}
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          securityContext:
+            # Same rationale as Kepler's securityContext just above: the RAPL
+            # probe reads the root-owned powercap sysfs, and running
+            # unprivileged would make the probe silently fail closed (report
+            # "no RAPL" on a node that HAS it), which would violate the "never
+            # report both measured and estimated" invariant. Mirrors Kepler's
+            # own toggle rather than inventing a separate one.
+            runAsUser: 0
+            runAsGroup: 0
+            readOnlyRootFilesystem: true
+            {{- if .Values.sensor.green.privileged }}
+            privileged: true
+            {{- else }}
+            capabilities:
+              add:
+                - DAC_READ_SEARCH
+                - SYS_PTRACE
+                - PERFMON
+              drop:
+                - ALL
+            {{- end }}
+          volumeMounts:
+            - name: host-sys
+              mountPath: /sys
+              readOnly: true
+            - name: host-proc
+              mountPath: /proc
+              readOnly: true
+          resources:
+            {{- toYaml .Values.sensor.green.estimation.resources | nindent 12 }}
+        {{- end }}
+      volumes:
+        {{- if .Values.sensor.obi.enabled }}
+        - name: obi-config
+          configMap:
+            name: {{ include "avuruobs.fullname" . }}-sensor-obi
+        - name: var-run-obi
+          emptyDir: {}
+        - name: cgroup
+          hostPath:
+            path: /sys/fs/cgroup
+        {{- end }}
+        {{- if include "avuruobs.collectProfiles" . }}
+        - name: profiler-config
+          configMap:
+            name: {{ include "avuruobs.fullname" . }}-sensor-profiler
+        - name: kernel-debug
+          hostPath:
+            path: /sys/kernel/debug
+        - name: kernel-tracing
+          hostPath:
+            path: /sys/kernel/tracing
+        {{- end }}
+        {{- if $agentActive }}
+        - name: agent-config
+          configMap:
+            name: {{ include "avuruobs.fullname" . }}-sensor-agent
+        - name: varlogpods
+          hostPath:
+            path: /var/log/pods
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers
+            type: DirectoryOrCreate
+        - name: agent-storage
+          hostPath:
+            path: /var/lib/avuruobs/otel-agent
+            type: DirectoryOrCreate
+        {{- end }}
+        {{- if include "avuruobs.collectGreen" . }}
+        - name: kepler-config
+          configMap:
+            name: {{ include "avuruobs.fullname" . }}-sensor-kepler
+        - name: host-sys
+          hostPath:
+            path: /sys
+        - name: host-proc
+          hostPath:
+            path: /proc
+        {{- end }}
+{{- end }}

@@ -20,6 +20,19 @@ version-set:
 	@perl -i -pe 's{(avuru-obs-(?:hub|ui|gateway|tdp-estimator)):\S+}{$$1:$(V)}g' deploy/helm/avuruobs/Chart.yaml
 	@echo "version set to $(V) (VERSION, ui/package.json, Chart.yaml)"
 
+# Sync the sensor-relevant chart files into the hub so the collection applier
+# can render them via go:embed (design/2026-07-27-collection-control-plane.md).
+# A unit test (hub/internal/collection/chartsync_test.go) fails when these
+# drift from deploy/helm/avuruobs — rerun this target after editing them.
+.PHONY: sync-hub-chart
+sync-hub-chart:
+	mkdir -p hub/internal/collection/chart/templates
+	cp deploy/helm/avuruobs/Chart.yaml hub/internal/collection/chart/Chart.yaml
+	cp deploy/helm/avuruobs/values.yaml hub/internal/collection/chart/values.yaml
+	cp deploy/helm/avuruobs/templates/_helpers.tpl hub/internal/collection/chart/templates/_helpers.tpl
+	cp deploy/helm/avuruobs/templates/sensor-config.yaml hub/internal/collection/chart/templates/sensor-config.yaml
+	cp deploy/helm/avuruobs/templates/sensor-daemonset.yaml hub/internal/collection/chart/templates/sensor-daemonset.yaml
+
 # Regenerates THIRD-PARTY-NOTICES.md (Apache §4 attribution for bundled
 # dependencies) — required fresh before every release (RELEASE-CHECKLIST.md).
 notices:

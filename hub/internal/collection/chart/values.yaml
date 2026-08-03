@@ -1,0 +1,595 @@
+# Avuru Obs — default values.
+# Downstream overlays (e.g. a Harbor/Kustomize project) override image.registry,
+# ingress.host, persistence, retention, and clickhouse.external without forking.
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  # Registry prefixed to every component repository (e.g. "harbor.example.com").
+  # Empty = pull from the repository as-is (Docker Hub / GHCR style).
+  registry: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# Hub: REST API only (the `migrate` subcommand runs the schema hook). The UI is
+# a separate deployable; the hub API is the client-agnostic contract.
+hub:
+  repository: ghcr.io/avuruvision/avuru-obs-hub
+  tag: "" # defaults to .Chart.AppVersion
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+# UI: static SPA served by nginx, its own pod (separate resources/scaling).
+# Single-origin: the ingress routes `/`→ui and `/api`→hub (no CORS).
+ui:
+  repository: ghcr.io/avuruvision/avuru-obs-ui
+  tag: "" # defaults to .Chart.AppVersion
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+# Gateway: OTLP receiver → ClickHouse exporter. Default = the Avuru minimal
+# OCB distro (gateway/ocb-manifest.yaml). The stock contrib image works with
+# the same config — override repository/tag to fall back:
+#   otel/opentelemetry-collector-contrib : 0.154.0
+gateway:
+  image:
+    repository: ghcr.io/avuruvision/avuru-obs-gateway
+    tag: "" # defaults to .Chart.AppVersion
+  replicas: 1
+  # Project/environment this gateway feeds (one project per cluster): stamps
+  # `avuru.tenant` on ALL telemetry passing through (and the profiler's
+  # ingest header). "" = everything lands in the `default` project. Senders
+  # never change — this is server-side tagging (drop-in OTLP stays true).
+  tenant: ""
+  # Per-namespace project mapping for shared clusters hosting several
+  # environments: stamps `avuru.tenant` from the sender's k8s.namespace.name
+  # resource attribute (set by the sensor). Unmatched telemetry (node metrics,
+  # SDKs without k8s attributes) falls back to `tenant` above. Requires the
+  # avuruobs gateway image with the transform processor (the stock
+  # otel/opentelemetry-collector-contrib fallback image also ships it).
+  # NOTE: profiling bypasses the gateway (direct hub ingest) and stays on the
+  # static `tenant`.
+  tenantByNamespace: {}
+  #  avuru-services: production
+  #  avuru-services-staging: staging
+  # Sentry SDK ingest (error-tracking module). OFF by default: it opens a
+  # network surface (:4319) for browser/app error reporting. Needs the
+  # error-tracking AND logs modules (events are stored as log records). Expose
+  # :4319 via ingress for browser clients; CORS must allow their origins.
+  sentry:
+    enabled: false
+    allowedOrigins:
+      - "*"
+    projects: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      memory: 512Mi
+
+# Modules: which signal families this install runs. One switch gates a module
+# end to end — its schema (`hub migrate` skips the DDL), its Hub API routes
+# (404 when off), its gateway pipeline, its sensor collection, and its UI
+# entry. The service map + traces + RED core is always on and has no switch.
+# Defaults enable everything: an existing install upgrades unchanged.
+# Turning a module on later is a values change + `helm upgrade` (the migrator
+# is idempotent and applies the newly-active DDL).
+modules:
+  logs:
+    enabled: true
+  # Node/pod metrics AND the sensor inventory (it reads collector
+  # self-metrics), plus any OTLP metrics you send: all live in these tables.
+  infraMetrics:
+    enabled: true
+  profiling:
+    enabled: true
+  # Error tracking: exceptions (span events, error spans, ERROR/FATAL logs)
+  # become deduplicated, triageable issues. Default on — it derives from data
+  # you already send. The Sentry-SDK ingest PORT is a separate opt-in
+  # (gateway.sentry.enabled), off by default.
+  errorTracking:
+    enabled: true
+  # Service health: rolls per-service RED health up into consolidated group
+  # health with criticality tiers (T0/T1/T2/T3) and dependency propagation.
+  # Derived from trace data you already send — owns no schema. See
+  # serviceGroups below for the grouping/tier configuration.
+  serviceHealth:
+    enabled: true
+  # Alerting: a hub evaluator watches service-health status and fires a webhook
+  # when a rule's target crosses into a bad state for a duration. Default on but
+  # INERT until you configure rules below (alerting.rules). The webhook is the
+  # hub's only outbound call — guarded (SSRF, retries, HMAC).
+  alerting:
+    enabled: true
+  # Green: per-service energy (Wh) and carbon (gCO2e) derived from the Kepler
+  # energy metrics the sensor scrapes, correlated with the pod→workload map.
+  # Born OFF: the signal is hardware-dependent (RAPL/powercap), so a default-on
+  # module would silently flip on for every existing install on the next
+  # upgrade. REQUIRES modules.infraMetrics (the pod→workload join reads the
+  # kubeletstats attributes) — a chart guard enforces it. Collect energy by ALSO
+  # setting sensor.green.enabled; see the green: and sensor.green: blocks below.
+  green:
+    enabled: false
+
+# Alerting rules and channels. Rendered to a ConfigMap the hub reads (mounted at
+# AVURUOBS_ALERTS_CONFIG) when modules.alerting.enabled. No rules = nothing
+# fires. Hot-reloads within ~15s on a `kubectl edit`, no restart. A channel is a
+# generic webhook (Slack/PagerDuty/Opsgenie/Alertmanager all accept these).
+alerting:
+  evalIntervalSec: 30
+  windowMinutes: 5
+  # CIDRs that override the SSRF guard so alerting can reach a webhook receiver
+  # on a private network (e.g. an in-cluster Alertmanager). Default: none —
+  # loopback/link-local/private/metadata targets are refused.
+  webhookAllow: []
+  #  - 10.0.0.0/8
+  channels: []
+  #  - name: ops
+  #    type: webhook
+  #    url: https://hooks.example.com/services/xxx
+  #    secret: "optional-hmac-signing-secret"
+  rules: []
+  #  - name: payments-critical
+  #    when: down            # down | degraded | not-healthy
+  #    for: 5m
+  #    selector:
+  #      groups: [payments]  # or services: [...] or tiers: [T0]
+  #    channel: ops
+
+# Service Health grouping/tier configuration. Rendered to a ConfigMap the hub
+# reads (mounted at AVURUOBS_GROUPS_CONFIG) when modules.serviceHealth.enabled.
+# Empty groups = auto-group every service by its Kubernetes namespace at
+# defaultTier. Edit and `helm upgrade`, OR `kubectl edit` the rendered
+# ConfigMap — the hub hot-reloads it within ~15s, no restart or redeploy.
+serviceGroups:
+  # Tier applied to services not matched by any group below. T0|T1|T2|T3.
+  defaultTier: T2
+  # Named groups override the namespace auto-grouping. A service matches by
+  # explicit name or by namespace.
+  groups: []
+  #  - name: payments
+  #    tier: T0
+  #    selector:
+  #      namespaces: [payments]
+  #      services: []
+  # SLO-lite thresholds. Precedence: services > tiers > defaults > built-in.
+  thresholds:
+    defaults: {}
+    #  errorRateWarn: 0.01
+    #  errorRateCrit: 0.05
+    #  latencyP95ObjectiveMs: 500
+    #  minSampleCount: 5
+    tiers: {}
+    #  T0: { errorRateWarn: 0.005, errorRateCrit: 0.02, latencyP95ObjectiveMs: 300 }
+    services: {}
+    #  payments: { latencyP95ObjectiveMs: 800 }
+  # Force specific edges critical even when the target isn't T0 (rare).
+  criticalEdges: []
+  #  - { from: web, to: legacy-billing }
+
+# Green energy/carbon configuration. Rendered to a ConfigMap the hub reads
+# (mounted at AVURUOBS_GREEN_CONFIG) when modules.green.enabled. gCO2e is
+# computed at query time as Wh × gridIntensity/1000 × PUE — energy never leaves
+# the cluster and no external API is called. The hub hot-reloads this within
+# ~15s on a `kubectl edit`, no restart. Metric names must match the Kepler
+# series the sensor keeps (sensor.green.metrics.keep); the single source of
+# truth is design/2026-07-22-green-carbon.md.
+green:
+  # ISO 3166-1 alpha-2 country selecting a bundled annual-average grid intensity
+  # (gCO2e/kWh). "" = world average. Ignored when gridIntensity is set; an
+  # unknown code with no gridIntensity fails the hub loud (no silent fallback).
+  region: ""
+  # Operator-set grid carbon intensity (gCO2e/kWh); wins over the bundled
+  # region/world average. 0 = use the bundled lookup.
+  gridIntensity: 0
+  # Power Usage Effectiveness of the facility (>= 1.0). 0 renders as the hub's
+  # conservative 1.5 default; set your datacenter's measured PUE.
+  pue: 0
+  # Kepler metric/label names the read path queries. Defaults are the pinned
+  # v0.11.x names from the AEP metric table; override ONLY to track a Kepler
+  # rename (a documented verify-on-hardware item), and keep them in step with
+  # sensor.green.metrics.keep.
+  metrics:
+    podEnergy:
+      - kepler_pod_cpu_joules_total
+    nodeEnergy:
+      - kepler_node_cpu_joules_total
+    podNameAttr: pod_name
+    podNamespaceAttr: pod_namespace
+  # Monthly gCO2e budgets per serviceGroups group: warn at warnRatio (default
+  # 0.8 = 80%), exceeded at 100%, with a month-end projection. Delivery reuses
+  # the alerting channels (alerting.channels above); with modules.alerting off,
+  # budgets degrade to dashboard status only (used/projected/ratio still shown).
+  # No budgets = the evaluator is inert.
+  budgets: []
+  #  - name: platform-monthly
+  #    group: payments
+  #    monthlyKgCO2e: 50      # kg CO2e per month for the group
+  #    warnRatio: 0.8         # warn threshold as a fraction of the budget
+  #    channel: ops           # an alerting.channels name
+  # How often the budget evaluator recomputes month-to-date usage, in seconds.
+  # 0 renders as the hub's 300s default.
+  budgetCheckIntervalSec: 0
+
+# Sensor: per-node DaemonSet for zero-code signal collection (eBPF). v0.1
+# wires OBI (zero-code traces + RED); the otel-agent (logs, kubeletstats) and
+# profiler containers join in later milestones.
+# Kernel ≥5.8 with BTF is required for eBPF; a preflight initContainer warns
+# loudly (but never blocks) when the node can't support it.
+sensor:
+  enabled: true
+  nodeSelector: {}
+  tolerations: []
+  # "Do no harm": run the sensor below default priority so that under node
+  # pressure it is throttled/evicted BEFORE user applications. Opt-in in the
+  # 0.1.x line (scheduling behavior change); values-prod turns it on.
+  priorityClass:
+    create: false
+    name: "" # use an existing PriorityClass instead of creating one
+    value: -10
+  # Collection guardrails shared by every sensor container. The release's own
+  # namespace is ALWAYS excluded in the templates and never listed here.
+  collection:
+    # Namespaces never collected (traces, logs, pod metrics). OBI's built-in
+    # defaults already skip kube-system — listed explicitly so the guarantee
+    # doesn't depend on upstream defaults. Set [] to collect everything.
+    excludeNamespaces:
+      - kube-system
+      - kube-node-lease
+      - kube-public
+    # Pods labeled <optOutLabel>=false are never eBPF-instrumented and their
+    # logs/pod-metrics are dropped at the node agent. Escape hatch for
+    # probe-sensitive workloads (docs/runbooks/app-probe-failures.md).
+    optOutLabel: avuru.obs/instrument
+    # Nodes labeled <nodeOptOutLabel>=false get NO sensor pod at all — a pure
+    # runtime toggle (kubectl label node), no helm upgrade needed.
+    nodeOptOutLabel: avuru.obs/collect
+  # Node collector: tails container stdout/stderr (zero-config logs). Infra
+  # metrics (kubeletstats) join this container in M3.
+  agent:
+    enabled: true
+    image:
+      repository: otel/opentelemetry-collector-contrib
+      tag: "0.154.0" # keep in lockstep with the gateway pin (tech_stack.md)
+    logs:
+      enabled: true
+    # Node/pod CPU, memory, network from the kubelet (Supporting signal tier).
+    kubeletstats:
+      enabled: true
+      interval: 30s
+    resources:
+      requests:
+        cpu: 50m
+        memory: 96Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+  # Continuous CPU profiling (OTel eBPF profiler collector distro). Ships
+  # OTLP Profiles (ALPHA) directly to the hub's profiles-ingest seam — the
+  # gateway's ClickHouse exporter has no profiles support yet.
+  # EXPERIMENTAL, opt-in: the upstream eBPF loader hard-fails on some
+  # kernels (observed on arm64 lima/colima), and a crash-looping container
+  # would block `helm --wait` — enable where your nodes support it.
+  profiler:
+    enabled: false
+    image:
+      repository: otel/opentelemetry-collector-ebpf-profiler
+      tag: "0.155.0" # pin exact; hub's profilesadapter is pinned to the same line
+    # 19-29 Hz is the sane production band; higher = more detail, more CPU.
+    samplesPerSecond: 20
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  obi:
+    enabled: true
+    image:
+      repository: otel/ebpf-instrument
+      tag: "v0.9.0" # pre-1.0 — pin exact, never float (agent_docs/tech_stack.md)
+    # privileged=true is the reliable default across container runtimes and
+    # kernels. Set false to run with the least-privilege capability set
+    # (BPF/PERFMON/SYS_PTRACE/NET_RAW/CHECKPOINT_RESTORE/DAC_READ_SEARCH/
+    # SYS_RESOURCE) instead — needs kernel ≥5.11.
+    privileged: true
+    # Discovery scope for zero-code L7 instrumentation (uprobes). `namespaces`
+    # is a glob allowlist; excludes extend sensor.collection.excludeNamespaces.
+    # NOTE: the CPU limit bounds only OBI's userspace half — uprobe overhead
+    # runs in the TARGET process and is charged to the app's cgroup (see
+    # docs/runbooks/app-probe-failures.md).
+    # MITIGATION for neighbour-pod impact: NARROW `namespaces` to the services
+    # that actually need L7 spans and turn on `network.enabled` below — the
+    # service map stays complete via kernel flows (no uprobes), while the heavy
+    # L7 instrumentation is scoped down. Also consider priorityClass and moving
+    # ClickHouse off the app nodes (runbook cause #2).
+    discovery:
+      # optOut (default): instrument everything in `namespaces` minus the
+      # excludes. optIn: uprobes ONLY on pods labeled <optOutLabel>="true";
+      # logs/metrics/inventory unaffected (docs/runbooks/sensor-rollout.md).
+      mode: optOut
+      namespaces: ["*"]
+      excludeNamespaces: []
+    # Network flows (OBI `network` feature): kernel L4 topology + per-edge
+    # health for workloads the L7 probes don't parse — map completeness WITHOUT
+    # uprobes (no app-cgroup cost, unlike L7 instrumentation above). Off by
+    # default. REQUIRES modules.infraMetrics (flows land in otel_metrics_*); a
+    # chart guard enforces it. When on, the sensor pod also enables hostNetwork
+    # so OBI can observe node flows. Verify the key surface against OBI v0.9.0.
+    network:
+      enabled: false
+      # Per-edge connection health from OBI's TCP-stats metrics —
+      # obi.stat.tcp.rtt (RTT) and obi.stat.tcp.failed.connections (resets/
+      # failures) — surfaced on the service-map edges. Only effective when
+      # network.enabled. Default on with network; verify the exact OBI v0.9.0
+      # stats-feature key + attribute surface (folded into the e2e-helm run).
+      stats: true
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi
+  # Green energy collection: CNCF Kepler (github.com/sustainable-computing-io/
+  # kepler) joins the DaemonSet as a fourth pinned upstream container, opt-in. A
+  # prometheus receiver in the otel-agent scrapes its energy endpoint onto the
+  # existing OTLP → gateway → otel_metrics_* path (no new tables). Deliberately
+  # module-named (unlike the component-named obi/profiler): it pairs with
+  # modules.green and carries green-specific scrape config. REQUIRES
+  # modules.green.enabled + modules.infraMetrics.enabled + sensor.agent.enabled;
+  # chart guards enforce all three. The container gets NO liveness/readiness
+  # probes on purpose — a RAPL-less node leaves Kepler idle/unhealthy, and it
+  # must never flap the sensor pod (the "do no harm" probe-canary gate).
+  green:
+    enabled: false
+    image:
+      repository: quay.io/sustainable_computing_io/kepler
+      # Pin exact — NEVER float to :latest. v0.11.x is the rebooted (Go) Kepler
+      # line whose metric names match the AEP table; verify metric names/labels,
+      # config keys and port on RAPL hardware before prod (design AEP limitation).
+      tag: "v0.11.4"
+    # Kepler's Prometheus port, bound to loopback (127.0.0.1) so only the
+    # same-pod otel-agent can scrape it — never exposed on the pod network.
+    # CAVEAT: with sensor.obi.network.enabled the sensor pod runs hostNetwork,
+    # so this binds the HOST loopback — reachable by host-local processes, and
+    # a host-side collision on the port crash-loops only the kepler container
+    # (no probes, the pod itself is unaffected).
+    port: 28282
+    # How often the otel-agent scrapes Kepler's endpoint.
+    scrapeInterval: 30s
+    # privileged=true is the reliable default for reading RAPL/powercap across
+    # runtimes and kernels. Set false to drop to a least-privilege capability
+    # set (DAC_READ_SEARCH/SYS_PTRACE/PERFMON) instead — VERIFY on RAPL hardware
+    # that those suffice for the powercap sysfs reads before relying on it.
+    privileged: true
+    # Kepler's dev fake-cpu-meter: synthesise energy where no RAPL exists (kind/
+    # CI, most cloud VMs). Default false — v1 reports only what was measured; the
+    # e2e-helm leg flips it true to prove do-no-harm with energy actually flowing.
+    fakeCpuMeter: false
+    metrics:
+      # Only these Kepler series are kept (prometheus receiver relabel_config).
+      # Matches the AEP metric table exactly; cpu_watts is collected for future
+      # use, joules_total is what v1 queries. Keep in step with green.metrics.
+      keep: "kepler_(node|pod)_cpu_(watts|joules_total)"
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+    # TDP-based power estimation for RAPL-less nodes (opt-in, requires
+    # sensor.green.enabled). See design/2026-07-28-green-tdp-estimation.md.
+    # Every series it emits is stamped avuruobs_quality="estimated" by the
+    # otel-agent — never blended with Kepler's measured numbers.
+    estimation:
+      enabled: false
+      image:
+        repository: ghcr.io/avuruvision/avuru-obs-tdp-estimator
+        tag: "" # defaults to .Chart.AppVersion, like the other first-party images
+      # Loopback-bound, like Kepler's own port (28282) — never exposed on the
+      # pod network.
+      port: 28283
+      scrapeInterval: 30s
+      # Operator-set P_idle/P_max override (Helm-values tier, wins over the
+      # bundled table, loses to a per-node obs.avuru.io/power-*-watts
+      # annotation). 0 = defer to the bundled table / generic fallback.
+      idleWatts: 0
+      maxWatts: 0
+      resources:
+        requests:
+          cpu: 25m
+          memory: 32Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+
+# Runtime collection control (design/2026-07-27-collection-control-plane.md):
+# lets an admin toggle sensor signals + sensor.collection.excludeNamespaces
+# from Settings -> Collection instead of only via `helm upgrade`. Default off
+# — an install opts in deliberately (grants the hub a narrow, resourceName-
+# scoped Role on its own sensor ConfigMaps + DaemonSet; see collection-rbac.
+# yaml). v1 has no applier wired yet (a separate follow-up plan) — the API
+# persists overlays but does not yet push them to the cluster.
+collection:
+  runtimeControl:
+    enabled: false
+
+# ClickHouse: single-node StatefulSet by default; flip external.enabled to BYO.
+clickhouse:
+  external:
+    enabled: false
+    address: "" # host:9000 (native protocol) when external.enabled
+    database: otel
+    username: avuru
+    existingSecret: "" # Secret with key `clickhouse-password`; overrides auth.password
+  image:
+    repository: clickhouse/clickhouse-server
+    tag: "26.3"
+  auth:
+    username: avuru
+    password: avuru # in-chart default — override or use existingSecret in prod
+    existingSecret: ""
+  persistence:
+    enabled: true
+    storageClassName: "" # "" = cluster default StorageClass
+    size: 50Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      memory: 4Gi
+
+# Projects the hub advertises to the UI switcher (the config-defined list).
+# Tenants observed in the data are auto-discovered and
+# merged; `default` always exists. Typically one entry per environment
+# (matching each cluster's gateway.tenant) on a shared-ClickHouse install.
+projects: []
+
+# Authentication + project-scoped RBAC. Secure by default (v0.2): the hub
+# rejects unauthenticated requests to every route except /healthz and the
+# login endpoints. See the bootstrap password in the install NOTES.
+auth:
+  # Secure by default. `false` restores the fully-open pre-v0.2 behavior.
+  enabled: true
+  # Bootstrap admin password. Empty → a random one is generated into the
+  # release Secret on first install and REUSED on upgrades (lookup).
+  adminPassword: ""
+  # Or bring your own Secret (key: admin-password); wins over adminPassword.
+  existingSecret: ""
+  sessionTTLHours: 168
+  # Anonymous, project-scoped read access (public demo). Both must be set.
+  anonymous:
+    role: ""        # "viewer" to enable
+    projects: []    # explicit list — never implicit "*"
+  # One-click read-only demo login ("Try the demo" on the login page): a
+  # bootstrapped viewer scoped to the `demo` project. Opt-in — a normal install
+  # ships no demo user or tenant. Pair with the Astronomy Shop overlay
+  # (deploy/demo/astronomy) for live data. Requires auth.enabled.
+  demo:
+    enabled: false
+    email: demo@avuru.obs
+    # Demo viewer password. Empty → generated into the auth Secret and reused on
+    # upgrades (like adminPassword). With auth.existingSecret set, add a
+    # `demo-password` key to that Secret yourself.
+    password: ""
+  # Per-project ingest API keys, authenticated in the GATEWAY (not the hub — the
+  # hub is never in the telemetry byte-path; it only answers the gateway's
+  # control-plane validation call).
+  #
+  # mode is the rollout dial, and `log` is the safe default that keeps the
+  # drop-in OTLP promise intact on upgrade:
+  #   off      no key checking at all
+  #   log      validate and count would-be denials, never reject, never stamp
+  #            the tenant — an existing unkeyed sender keeps landing unchanged
+  #   enforce  reject unkeyed/invalid OTLP, and the key's project becomes the
+  #            authoritative tenant, overriding any client-supplied
+  #            avuru.tenant (this is what replaces topology-based trust)
+  #
+  # Create keys in the UI (Settings → General → Ingest API keys) or via
+  # POST /api/v1/projects/{project}/keys. The raw secret is shown exactly once.
+  ingest:
+    mode: log
+    # Authenticates the gateway→hub validation call. Empty → generated into the
+    # auth Secret on first install and reused on upgrades (like adminPassword).
+    internalToken: ""
+    # The sensor is itself an unkeyed OTLP sender, so enforce mode would silence
+    # avuru's own agent. The chart therefore provisions a key for the sensor's
+    # project and seeds it through the hub. Leave true unless you manage the
+    # sensor's credential yourself.
+    provisionSensorKey: true
+    # Project the provisioned sensor key belongs to. Defaults to gateway.tenant
+    # when set, else "default".
+    sensorKeyProject: ""
+    # Verdict cache bounds in the gateway. staleGrace lets a cached verdict keep
+    # serving through a hub blip so a control-plane outage never drops telemetry.
+    cacheTTL: 30s
+    staleGrace: 5m
+  # Enterprise SSO via any OpenID Connect IdP (Keycloak, Entra, Okta, Google,
+  # Dex, ...). The hub runs the authorization-code + PKCE flow itself — no
+  # oauth2-proxy, no extra pod. Register <publicUrl>/api/v1/auth/oidc/callback
+  # as the client's redirect URL at the IdP. Everything below except enabled/
+  # clientSecret/existingSecret/publicUrl is rendered into a ConfigMap the hub
+  # hot-reloads within ~15s (`kubectl edit` re-runs discovery and re-maps
+  # groups, no restart); IdP discovery is fail-loud at hub startup, so a wrong
+  # issuer stops the rollout instead of silently shipping a broken login.
+  # Requires auth.enabled (a chart guard enforces it).
+  oidc:
+    enabled: false
+    # IdP issuer URL, exactly as the IdP states it —
+    # <issuer>/.well-known/openid-configuration must resolve. Required.
+    issuer: ""
+    # OAuth2 client id registered with the IdP. Required.
+    clientId: ""
+    # Client secret in-values — labs only (it sits in your values in clear).
+    # Prefer existingSecret in production; ignored when that is set.
+    clientSecret: ""
+    # Or bring your own Secret (key: oidc-client-secret); wins over
+    # clientSecret. With NEITHER set the hub attempts a public (secret-less)
+    # client — most IdPs refuse that for the code flow, so set one of the two.
+    existingSecret: ""
+    # ID-token claim carrying the user's groups ("groups" fits Keycloak/Okta/
+    # Dex; Entra emits "roles" unless configured otherwise).
+    groupsClaim: groups
+    # IdP group → role-on-projects rules, applied at READ time on every
+    # request — moving a user between IdP groups re-scopes them on their next
+    # request, no re-login. Every matched rule contributes its grants.
+    mapping: []
+    #  - group: platform-team
+    #    role: admin          # admin | editor | viewer
+    #    projects: ["*"]      # explicit project list, or "*" for all
+    #  - group: developers
+    #    role: viewer
+    #    projects: [staging]
+    # Grants for an SSO user matching NO mapping rule: defaultRole on
+    # defaultProjects. "" = such a login succeeds but sees zero projects.
+    defaultRole: ""
+    defaultProjects: []
+    # Hide the local password form in the UI — SSO becomes the only visible
+    # way in. The local admin API login keeps working as break-glass; flip
+    # this only after the IdP round-trip is proven.
+    forceSSO: false
+    # External base URL of this install (e.g. https://obs.example.com — with
+    # ingress.enabled typically https://<ingress.host>). Builds the absolute
+    # redirect_uri the IdP requires (AVURUOBS_PUBLIC_URL); unset, the hub
+    # degrades to a relative URL most IdPs reject (loud warning in its log).
+    publicUrl: ""
+
+# Per-signal retention in DAYS, applied as ClickHouse TTL by `hub migrate`.
+retention:
+  traces: 7
+  logs: 3
+  metrics: 7
+  profiles: 3
+  # Errors keep longer: low volume after grouping, and issue history matters.
+  errors: 30
+
+ingress:
+  enabled: false
+  className: ""
+  host: avuruobs.local
+  # Hostname for Sentry SDK ingest, when gateway.sentry.enabled. It needs one
+  # of its own: SDKs POST to /api/<project>/envelope/, which the main host
+  # routes to the hub. "" = no ingress route (reach :4319 in-cluster, or via
+  # your own). Put it in gateway.sentry.allowedOrigins' reach for browsers.
+  sentryHost: ""
+  annotations: {}
+  tls: []
+
+service:
+  type: ClusterIP
