@@ -616,4 +616,20 @@ python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("gatewa
   <<<"$base_values" || fail "base-values ConfigMap missing gateway.tenant=acme"
 ok "base-values includes gateway.tenant"
 
+echo "== collection runtime control: base-values carries image.pullSecrets + green.metrics"
+# The other two subtrees the sensor templates read from outside sensor/modules.
+# Miss image.pullSecrets and the hub's re-render drops imagePullSecrets from the
+# sensor pod — every sensor image then fails to pull on a private registry.
+# Miss green.metrics and the Kepler scrape loses the pod→workload attribute
+# rename, breaking the energy join on the next overlay write.
+out="$(render --set 'image.pullSecrets[0].name=regcred' \
+              --set green.metrics.podNameAttr=custom_pod \
+              --set collection.runtimeControl.enabled=true)"
+base_values="$(awk '/^  values\.json: \|$/{f=1;next} /^---$/{f=0} f' <<<"$out")"
+python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if [s.get("name") for s in d.get("image",{}).get("pullSecrets",[])]==["regcred"] else 1)' \
+  <<<"$base_values" || fail "base-values ConfigMap missing image.pullSecrets"
+python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("green",{}).get("metrics",{}).get("podNameAttr")=="custom_pod" else 1)' \
+  <<<"$base_values" || fail "base-values ConfigMap missing green.metrics.podNameAttr=custom_pod"
+ok "base-values includes image.pullSecrets and green.metrics"
+
 echo "ALL TEMPLATE ASSERTIONS PASSED"
