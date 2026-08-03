@@ -265,6 +265,18 @@ otel
 {{- if and (include "avuruobs.collectGreen" .) .Values.sensor.green.estimation.enabled -}}true{{- end -}}
 {{- end -}}
 
+{{/* Runtime collection control placeholder gate: when the hub may toggle
+     signals at runtime, EVERY sensor ConfigMap must already exist. Kubernetes
+     RBAC cannot restrict `create` by resourceName, so the applier's Role is
+     create-free by construction (see collection-rbac.yaml) and can only
+     `update` objects the chart already rendered. Signals that are off
+     therefore render as placeholder ConfigMaps the applier fills in place.
+     Same true/"" contract as the collect* helpers — consume via `if include`,
+     never compare to "false". */}}
+{{- define "avuruobs.collectionPlaceholders" -}}
+{{- if and .Values.collection.runtimeControl.enabled .Values.sensor.enabled -}}true{{- end -}}
+{{- end -}}
+
 {{/* Sentry SDK ingest is live only when the flag AND both modules it leans on
      are on: events land as log records (logs) that the hub derives issues from
      (error-tracking). Gates the receiver, the container port, the Service port

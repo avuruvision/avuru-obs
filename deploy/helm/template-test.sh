@@ -567,4 +567,43 @@ for s in leaky-ch-password leaky-admin-password leaky-internal-token; do
 done
 ok "single valid JSON document; no clickhouse/admin/ingest secret material"
 
+echo "== collection runtime control: placeholder ConfigMaps for disabled signals"
+# Kubernetes RBAC cannot restrict `create` by resourceName, so the control Role
+# is create-free (asserted above) — which only works if every sensor ConfigMap
+# the applier may rewrite already exists. Off by default: a disabled signal
+# renders nothing at all.
+out="$(render)"
+grep -q "name: test-avuruobs-sensor-profiler" <<<"$out" && fail "profiler ConfigMap rendered on a default install (profiler disabled, runtime control off)"
+out="$(render --set collection.runtimeControl.enabled=true)"
+for cm in sensor-obi sensor-agent sensor-profiler sensor-kepler; do
+  grep -q "name: test-avuruobs-$cm" <<<"$out" || fail "runtime control on: $cm ConfigMap missing (applier cannot create, only update)"
+done
+grep -q "Placeholder: signal disabled" <<<"$out" || fail "disabled-signal ConfigMap did not render placeholder content"
+# Every signal off: all four are placeholders, none silently dropped.
+out="$(render --set collection.runtimeControl.enabled=true --set sensor.obi.enabled=false \
+  --set sensor.agent.enabled=false --set modules.logs.enabled=false)"
+[ "$(grep -c 'Placeholder: signal disabled' <<<"$out")" -eq 4 ] \
+  || fail "expected 4 placeholder ConfigMaps with every signal off"
+ok "placeholder ConfigMaps render when runtime control is on"
+
+echo "== collection runtime control: hub identity env"
+hub="$(render -s templates/hub-deploy.yaml --set collection.runtimeControl.enabled=true)"
+grep -q 'AVURUOBS_RELEASE_NAMESPACE' <<<"$hub" || fail "hub missing AVURUOBS_RELEASE_NAMESPACE downward-API env"
+grep -A3 'name: AVURUOBS_RELEASE_NAMESPACE' <<<"$hub" | grep -q 'fieldPath: metadata.namespace' \
+  || fail "AVURUOBS_RELEASE_NAMESPACE not sourced from the downward API (must never be guessed)"
+grep -q 'AVURUOBS_COLLECTION_FULLNAME' <<<"$hub" || fail "hub missing AVURUOBS_COLLECTION_FULLNAME env"
+hub="$(render -s templates/hub-deploy.yaml)"
+grep -q 'AVURUOBS_RELEASE_NAMESPACE' <<<"$hub" && fail "identity env rendered with runtime control off"
+ok "hub identity env gated on the flag, namespace via downward API"
+
+echo "== collection runtime control: base-values carries collection subtree"
+# The hub re-renders the sensor templates from this ConfigMap; without the
+# collection subtree its render would see the flag off and drop the very
+# placeholders it may only update.
+out="$(render --set collection.runtimeControl.enabled=true)"
+base_values="$(awk '/^  values\.json: \|$/{f=1;next} /^---$/{f=0} f' <<<"$out")"
+python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("collection",{}).get("runtimeControl",{}).get("enabled") is True else 1)' \
+  <<<"$base_values" || fail "base-values ConfigMap missing collection.runtimeControl.enabled=true"
+ok "base-values includes collection"
+
 echo "ALL TEMPLATE ASSERTIONS PASSED"

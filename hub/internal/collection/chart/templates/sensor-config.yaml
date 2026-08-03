@@ -19,11 +19,17 @@
 {{- if and .Values.sensor.green.estimation.enabled (not .Values.sensor.green.enabled) }}
 {{- fail "sensor.green.estimation.enabled requires sensor.green.enabled — the estimator is a fallback for the same Kepler energy signal, not a standalone source." }}
 {{- end }}
-{{- if and .Values.sensor.enabled .Values.sensor.obi.enabled }}
-{{- /* optIn guards live INSIDE the render gate: values that produce no
-       manifests must never fail an install (e.g. optIn kept in a shared
-       values file on a cluster that runs with the sensor off). */}}
+{{- /* $mode is read unconditionally (like the guards above) so it stays in
+       scope for the data block below, which now sits under its own
+       conditional — the resource itself may render as a placeholder. */}}
 {{- $mode := .Values.sensor.obi.discovery.mode }}
+{{- $obiActive := and .Values.sensor.enabled .Values.sensor.obi.enabled }}
+{{- if $obiActive }}
+{{- /* optIn guards live INSIDE the signal gate: values that produce no OBI
+       config must never fail an install (e.g. optIn kept in a shared values
+       file on a cluster that runs with the sensor off) — including the
+       placeholder case below, where the ConfigMap renders but no discovery
+       block does. */}}
 {{- if eq $mode "optIn" }}
 {{- if not .Values.sensor.collection.optOutLabel }}
 {{- fail "sensor.obi.discovery.mode=optIn requires sensor.collection.optOutLabel — opt-in selects pods carrying that label set to \"true\"." }}
@@ -32,6 +38,10 @@
 {{- fail "sensor.obi.discovery.mode=optIn requires a non-empty sensor.obi.discovery.namespaces — with no instrument entries the opt-in selector is never rendered and OBI falls back to its own discovery defaults." }}
 {{- end }}
 {{- end }}
+{{- end }}
+{{- /* Renders whenever the signal is on OR runtime control needs the object to
+       exist for the applier to update (it may never create). */}}
+{{- if or $obiActive (include "avuruobs.collectionPlaceholders" .) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -41,6 +51,7 @@ metadata:
     app.kubernetes.io/component: sensor
 data:
   obi-config.yml: |
+{{- if $obiActive }}
     # Zero-code instrumentation scoped by sensor.collection / sensor.obi
     # .discovery values. The release's own namespace is ALWAYS excluded (the
     # platform must not trace itself); kube-system & co are excluded via
@@ -110,11 +121,15 @@ data:
             - k8s.dst.owner.name
     {{- end }}
     {{- end }}
+{{- else }}
+    # Placeholder: signal disabled. Managed by runtime collection control —
+    # the hub rewrites this ConfigMap when the signal is toggled on.
+{{- end }}
 {{- end }}
 {{- /* The agent needs >=1 active pipeline or the collector crash-loops. A
        module gates its own collection (see avuruobs.collect* helpers). */}}
 {{- $agentActive := and .Values.sensor.enabled .Values.sensor.agent.enabled (or (include "avuruobs.collectLogs" .) (include "avuruobs.collectInfraMetrics" .) (include "avuruobs.collectGreen" .)) }}
-{{- if $agentActive }}
+{{- if or $agentActive (include "avuruobs.collectionPlaceholders" .) }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -125,6 +140,7 @@ metadata:
     app.kubernetes.io/component: sensor
 data:
   config.yaml: |
+{{- if $agentActive }}
     receivers:
     {{- if include "avuruobs.collectLogs" . }}
       filelog:
@@ -365,8 +381,13 @@ data:
           processors: [memory_limiter, filter/green, transform/green, transform/green_quality, groupbyattrs/green, resource/green, k8sattributes{{ if $collectionFilter }}, filter/collection{{ end }}, batch]
           exporters: [otlphttp]
     {{- end }}
+{{- else }}
+    # Placeholder: signal disabled. Managed by runtime collection control —
+    # the hub rewrites this ConfigMap when the signal is toggled on.
 {{- end }}
-{{- if and .Values.sensor.enabled (include "avuruobs.collectProfiles" .) }}
+{{- end }}
+{{- $profilerActive := and .Values.sensor.enabled (include "avuruobs.collectProfiles" .) }}
+{{- if or $profilerActive (include "avuruobs.collectionPlaceholders" .) }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -377,6 +398,7 @@ metadata:
     app.kubernetes.io/component: sensor
 data:
   config.yaml: |
+{{- if $profilerActive }}
     receivers:
       profiling:
         samples_per_second: {{ .Values.sensor.profiler.samplesPerSecond }}
@@ -417,8 +439,13 @@ data:
           receivers: [profiling]
           processors: [memory_limiter]
           exporters: [otlphttp]
+{{- else }}
+    # Placeholder: signal disabled. Managed by runtime collection control —
+    # the hub rewrites this ConfigMap when the signal is toggled on.
 {{- end }}
-{{- if and .Values.sensor.enabled (include "avuruobs.collectGreen" .) }}
+{{- end }}
+{{- $keplerActive := and .Values.sensor.enabled (include "avuruobs.collectGreen" .) }}
+{{- if or $keplerActive (include "avuruobs.collectionPlaceholders" .) }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -435,6 +462,7 @@ data:
   # same-pod otel-agent can reach it. These keys track the pinned Kepler and are
   # a documented verify-on-hardware item (design AEP) — confirm against RAPL.
   config.yaml: |
+{{- if $keplerActive }}
     log:
       level: info
       format: text
@@ -455,4 +483,8 @@ data:
       fake-cpu-meter:
         enabled: true
     {{- end }}
+{{- else }}
+    # Placeholder: signal disabled. Managed by runtime collection control —
+    # the hub rewrites this ConfigMap when the signal is toggled on.
+{{- end }}
 {{- end }}
