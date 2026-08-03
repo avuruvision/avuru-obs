@@ -76,6 +76,11 @@ func (a *API) handlePutCollectionOverlay(w http.ResponseWriter, r *http.Request)
 	}
 
 	updatedBy := requestedBy(r)
+	// Everything above is per-request validation and must not serialize; from
+	// here the save and the apply are one unit (see collectionMu).
+	a.collectionMu.Lock()
+	defer a.collectionMu.Unlock()
+
 	if err := store.SaveCollectionOverlay(r.Context(), storage.CollectionOverlay{
 		Overlay: encoded, UpdatedBy: updatedBy,
 	}); err != nil {
@@ -107,6 +112,11 @@ func (a *API) handleDeleteCollectionOverlay(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		return fmt.Errorf("encode empty overlay: %w", err)
 	}
+	// Same save→apply pairing as the PUT path: a reset racing a PUT must not
+	// leave the sensors on the overlay storage no longer records.
+	a.collectionMu.Lock()
+	defer a.collectionMu.Unlock()
+
 	if err := store.SaveCollectionOverlay(r.Context(), storage.CollectionOverlay{
 		Overlay: encoded, UpdatedBy: updatedBy,
 	}); err != nil {
