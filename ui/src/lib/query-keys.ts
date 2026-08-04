@@ -67,4 +67,7 @@ export const queryKeys = {
   // Ingest keys are scoped to a project (they authenticate that project's
   // telemetry), so the project leads the key like any per-project data key.
   ingestKeys: (p: string) => [p, "ingest-keys"] as const,
+  // The collection overlay drives the release-wide sensor DaemonSet, so it is
+  // instance-global (no project element, like alertChannels).
+  collectionOverlay: ["collection", "overlay"] as const,
 };

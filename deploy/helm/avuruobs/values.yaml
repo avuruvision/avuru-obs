@@ -423,8 +423,8 @@ sensor:
 # from Settings -> Collection instead of only via `helm upgrade`. Default off
 # — an install opts in deliberately (grants the hub a narrow, resourceName-
 # scoped Role on its own sensor ConfigMaps + DaemonSet; see collection-rbac.
-# yaml). v1 has no applier wired yet (a separate follow-up plan) — the API
-# persists overlays but does not yet push them to the cluster.
+# yaml). When on, the hub reconciles saved overlays straight onto the sensor
+# ConfigMaps and rolls the DaemonSet via a hub-owned checksum annotation.
 collection:
   runtimeControl:
     enabled: false
