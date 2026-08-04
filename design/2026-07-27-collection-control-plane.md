@@ -187,13 +187,13 @@ audit subsystem.
 ## Roadmap (v1 — this AEP)
 
 - [x] AEP accepted
-- [ ] `collection_overlay` store (migration `0014`) + validated
+- [x] `collection_overlay` store (migration `0014`) + validated
       `GET/PUT/DELETE /collection/overlay`
-- [ ] Applier (`client-go`, scoped Role) + ConfigMap render + hub-owned
+- [x] Applier (`client-go`, scoped Role) + ConfigMap render + hub-owned
       checksum annotation on the DaemonSet
-- [ ] `collection.runtimeControl.enabled` flag + chart ServiceAccount/Role/
+- [x] `collection.runtimeControl.enabled` flag + chart ServiceAccount/Role/
       RoleBinding (default off) + `capabilities` field
-- [ ] Settings → Collection becomes writable for signal toggles + namespace
+- [x] Settings → Collection becomes writable for signal toggles + namespace
       excludes (effective config + reset); pod/node opt-out shown as a
       `kubectl` command, not editable
 - [ ] Unit + envtest/kind RBAC test + kind e2e; docs-align (EN/FR)
