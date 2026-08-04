@@ -226,3 +226,94 @@ func TestCollectionOverlayConcurrentPutsConverge(t *testing.T) {
 		t.Fatalf("storage and cluster diverged: stored %s, last applied %s", stored, encoded)
 	}
 }
+
+// effectiveApplier is an applier that can also report an effective config —
+// the shape the real K8sApplier has.
+type effectiveApplier struct {
+	collection.NoopApplier
+}
+
+func (effectiveApplier) Effective(_ context.Context, ov collection.Overlay) (collection.Effective, error) {
+	eff := collection.Effective{Obi: true, ExcludeNamespaces: []string{"kube-system"}}
+	if ov.LogsEnabled == nil || *ov.LogsEnabled {
+		eff.Logs = true
+	}
+	return eff, nil
+}
+
+// TestCollectionOverlayGetIncludesEffective: the overlay alone does not tell an
+// admin what is being collected (a signal can be off because its module is off
+// at install time). The GET carries the resolved state when the applier can
+// report one.
+func TestCollectionOverlayGetIncludesEffective(t *testing.T) {
+	fake := &storagetest.Fake{
+		Overlay:    storage.CollectionOverlay{Overlay: `{"logsEnabled":false}`, UpdatedBy: "admin@example.com"},
+		OverlaySet: true,
+	}
+	rec := get(t, collectionMuxWith(fake, effectiveApplier{}), "/api/v1/collection/overlay")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	resp := decodeOverlay(t, rec.Body.String())
+	if resp.Effective == nil {
+		t.Fatalf("no effective config in the response: %s", rec.Body.String())
+	}
+	if resp.Effective.Logs {
+		t.Errorf("effective config ignored the stored overlay: %s", rec.Body.String())
+	}
+	if !resp.Effective.Obi {
+		t.Errorf("effective config lost the applier's answer: %s", rec.Body.String())
+	}
+}
+
+// The unset case still resolves: chart defaults are exactly what an install
+// with no overlay collects.
+func TestCollectionOverlayGetUnsetIncludesEffective(t *testing.T) {
+	rec := get(t, collectionMuxWith(&storagetest.Fake{}, effectiveApplier{}), "/api/v1/collection/overlay")
+	resp := decodeOverlay(t, rec.Body.String())
+	if resp.Effective == nil || !resp.Effective.Logs {
+		t.Fatalf("no effective config for an install with no overlay: %s", rec.Body.String())
+	}
+}
+
+// TestCollectionOverlayGetOmitsEffectiveWithoutReporter: with no cluster to
+// read base values from, the key is ABSENT — a false-filled Effective would
+// read as "nothing is being collected", which is a very different claim.
+func TestCollectionOverlayGetOmitsEffectiveWithoutReporter(t *testing.T) {
+	rec := get(t, collectionMuxWith(&storagetest.Fake{}, collection.NoopApplier{}), "/api/v1/collection/overlay")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), `"effective"`) {
+		t.Errorf("effective reported without an applier that can resolve it: %s", rec.Body.String())
+	}
+}
+
+// failingEffective is a reachable-but-broken cluster: the overlay read must
+// still succeed, because the stored overlay is what an admin cannot get
+// anywhere else.
+type failingEffective struct {
+	collection.NoopApplier
+}
+
+func (failingEffective) Effective(context.Context, collection.Overlay) (collection.Effective, error) {
+	return collection.Effective{}, errors.New("cluster unreachable")
+}
+
+func TestCollectionOverlayGetSurvivesEffectiveFailure(t *testing.T) {
+	fake := &storagetest.Fake{
+		Overlay:    storage.CollectionOverlay{Overlay: `{"obiEnabled":false}`},
+		OverlaySet: true,
+	}
+	rec := get(t, collectionMuxWith(fake, failingEffective{}), "/api/v1/collection/overlay")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, want the overlay served anyway: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), `"effective"`) {
+		t.Errorf("a failed resolve was reported as a config: %s", rec.Body.String())
+	}
+	resp := decodeOverlay(t, rec.Body.String())
+	if resp.Overlay.ObiEnabled == nil || *resp.Overlay.ObiEnabled {
+		t.Errorf("stored overlay lost: %s", rec.Body.String())
+	}
+}

@@ -17,6 +17,14 @@ type Applier interface {
 	Apply(ctx context.Context, overlay Overlay) error
 }
 
+// EffectiveReporter is implemented by appliers that can resolve the install's
+// base values — GET /api/v1/collection/overlay includes the effective
+// (base ⊕ overlay) config when available. NoopApplier does not implement it
+// (no cluster to read base values from); the field is omitted on such installs.
+type EffectiveReporter interface {
+	Effective(ctx context.Context, overlay Overlay) (Effective, error)
+}
+
 // NoopApplier logs that a real apply was skipped. It is the deliberate
 // fallback on every install where there is no cluster to reconcile: runtime
 // control switched off, compose/local runs, and an in-cluster hub whose

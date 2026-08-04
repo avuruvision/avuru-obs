@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -19,18 +20,20 @@ import (
 const maxOverlayBody = 1 << 16
 
 type collectionOverlayResponse struct {
-	Overlay   collection.Overlay `json:"overlay"`
-	UpdatedAt string             `json:"updatedAt,omitempty"`
-	UpdatedBy string             `json:"updatedBy,omitempty"`
+	Overlay collection.Overlay `json:"overlay"`
+	// Effective is the resolved base ⊕ overlay state — what the sensor
+	// actually collects. Omitted (not false-filled) when this install has no
+	// applier that can read the base values: absent means "unknown here",
+	// which a UI must not confuse with "nothing is being collected".
+	Effective *collection.Effective `json:"effective,omitempty"`
+	UpdatedAt string                `json:"updatedAt,omitempty"`
+	UpdatedBy string                `json:"updatedBy,omitempty"`
 }
 
-// handleGetCollectionOverlay returns the current overlay. "Never saved" is not
-// an error — it is the empty overlay, i.e. everything at chart defaults.
-//
-// The design doc also specifies the EFFECTIVE (base ⊕ overlay) config on this
-// route. That half waits for the applier, which is what owns the base values;
-// serving it before then would mean a second, drifting copy of the chart's
-// defaults living in the API layer.
+// handleGetCollectionOverlay returns the current overlay plus, where the
+// applier can resolve it, the effective config it produces. "Never saved" is
+// not an error — it is the empty overlay, i.e. everything at chart defaults
+// (which still has an effective config worth reporting).
 func (a *API) handleGetCollectionOverlay(w http.ResponseWriter, r *http.Request) error {
 	store, err := a.store()
 	if err != nil {
@@ -38,7 +41,9 @@ func (a *API) handleGetCollectionOverlay(w http.ResponseWriter, r *http.Request)
 	}
 	rec, err := store.LoadCollectionOverlay(r.Context())
 	if errors.Is(err, storage.ErrNotFound) {
-		writeJSON(w, http.StatusOK, collectionOverlayResponse{})
+		writeJSON(w, http.StatusOK, collectionOverlayResponse{
+			Effective: a.effectiveOrNil(r.Context(), collection.Overlay{}),
+		})
 		return nil
 	}
 	if err != nil {
@@ -51,12 +56,33 @@ func (a *API) handleGetCollectionOverlay(w http.ResponseWriter, r *http.Request)
 		// the default error path.
 		return fmt.Errorf("parse stored collection overlay: %w", err)
 	}
-	resp := collectionOverlayResponse{Overlay: ov, UpdatedBy: rec.UpdatedBy}
+	resp := collectionOverlayResponse{
+		Overlay:   ov,
+		Effective: a.effectiveOrNil(r.Context(), ov),
+		UpdatedBy: rec.UpdatedBy,
+	}
 	if !rec.UpdatedAt.IsZero() {
 		resp.UpdatedAt = rec.UpdatedAt.UTC().Format(time.RFC3339)
 	}
 	writeJSON(w, http.StatusOK, resp)
 	return nil
+}
+
+// effectiveOrNil resolves the effective config through the applier when it can
+// report one. A failure is logged and dropped rather than returned: the stored
+// overlay is the part an admin cannot get anywhere else, and a briefly
+// unreachable cluster must not turn this read into a 500.
+func (a *API) effectiveOrNil(ctx context.Context, ov collection.Overlay) *collection.Effective {
+	reporter, ok := a.collectionApplier.(collection.EffectiveReporter)
+	if !ok {
+		return nil
+	}
+	eff, err := reporter.Effective(ctx, ov)
+	if err != nil {
+		slog.Warn("could not resolve the effective collection config", "error", err)
+		return nil
+	}
+	return &eff
 }
 
 // handlePutCollectionOverlay replaces the overlay wholesale (there is no PATCH

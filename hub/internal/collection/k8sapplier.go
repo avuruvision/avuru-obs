@@ -43,7 +43,10 @@ type K8sApplier struct {
 	Fullname string
 }
 
-var _ Applier = (*K8sApplier)(nil)
+var (
+	_ Applier           = (*K8sApplier)(nil)
+	_ EffectiveReporter = (*K8sApplier)(nil)
+)
 
 func (a *K8sApplier) baseValuesName() string { return a.Fullname + "-collection-base-values" }
 
@@ -90,6 +93,17 @@ func (a *K8sApplier) Apply(ctx context.Context, overlay Overlay) error {
 		}
 	}
 	return a.patchDaemonSet(ctx, manifests, checksum)
+}
+
+// Effective answers "what does the sensor actually collect right now" by
+// resolving the same base values Apply renders from. Read-only: a GET must
+// never touch the cluster's objects, only its published values.
+func (a *K8sApplier) Effective(ctx context.Context, overlay Overlay) (Effective, error) {
+	base, err := a.loadBaseValues(ctx)
+	if err != nil {
+		return Effective{}, err
+	}
+	return EffectiveFromValues(base, overlay)
 }
 
 // loadBaseValues reads the curated, non-secret values subset the chart

@@ -280,6 +280,46 @@ func TestK8sApplier_MissingConfigMapFailsClosed(t *testing.T) {
 	}
 }
 
+// The read half of the applier: GET /api/v1/collection/overlay reports the
+// effective config from the SAME base values Apply renders from, so the UI
+// cannot show a state the next apply would contradict.
+func TestK8sApplier_EffectiveFromBaseValues(t *testing.T) {
+	client := seedCluster(t, nil)
+	applier := testApplier(client, "avuruobs")
+
+	eff, err := applier.Effective(context.Background(), Overlay{})
+	if err != nil {
+		t.Fatalf("Effective: %v", err)
+	}
+	if !eff.Obi || !eff.Logs {
+		t.Errorf("default install reports its default signals off: %+v", eff)
+	}
+	if eff.Profiler {
+		t.Errorf("opt-in profiler reported as collecting: %+v", eff)
+	}
+
+	off := false
+	eff, err = applier.Effective(context.Background(), Overlay{LogsEnabled: &off})
+	if err != nil {
+		t.Fatalf("Effective with logs off: %v", err)
+	}
+	if eff.Logs {
+		t.Errorf("overlay turned logs off but Effective still reports them on: %+v", eff)
+	}
+	if !eff.Obi {
+		t.Errorf("the logs overlay disturbed an unrelated signal: %+v", eff)
+	}
+}
+
+// A cluster the hub cannot read must surface as an error, not as a plausible
+// "everything is off" report.
+func TestK8sApplier_EffectiveFailsWithoutBaseValues(t *testing.T) {
+	client := seedCluster(t, nil)
+	if _, err := testApplier(client, "other-release").Effective(context.Background(), Overlay{}); err == nil {
+		t.Fatal("Effective invented a config without the release's base values")
+	}
+}
+
 func TestK8sApplier_SignalToggleChangesContainers(t *testing.T) {
 	client := seedCluster(t, map[string]string{"checksum/config": "helm-owned"})
 	applier := testApplier(client, "avuruobs")
