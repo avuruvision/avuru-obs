@@ -15,6 +15,9 @@ import (
 	"syscall"
 	"time"
 
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+
 	"github.com/avuru/avuru-obs/hub/internal/alerting"
 	"github.com/avuru/avuru-obs/hub/internal/api"
 	"github.com/avuru/avuru-obs/hub/internal/auth"
@@ -228,29 +231,26 @@ func run() error {
 	// reached single-origin via the gateway/ingress. See agent_docs/architecture.md.
 	mux := http.NewServeMux()
 	api.Register(mux, provider, api.Config{
-		RetentionTracesDays:   envIntOr("AVURUOBS_RETENTION_TRACES_DAYS", 7),
-		RetentionLogsDays:     envIntOr("AVURUOBS_RETENTION_LOGS_DAYS", 3),
-		RetentionMetricsDays:  envIntOr("AVURUOBS_RETENTION_METRICS_DAYS", 7),
-		RetentionProfilesDays: envIntOr("AVURUOBS_RETENTION_PROFILES_DAYS", 3),
-		Projects:              splitCSV(envOr("AVURUOBS_PROJECTS", "")),
-		Modules:               active,
-		GroupsConfig:          groupsConfig,
-		AlertsConfig:          alertsConfig,
-		Notifier:              notifier,
-		Auth:                  authSvc,
-		AnonymousIdentity:     anonID,
-		DemoEnabled:           demoEnabled,
-		DemoEmail:             demoEmail,
-		DemoPassword:          demoPassword,
-		GreenConfig:           greenConfig,
-		OIDC:                  oidcProvider,
-		OIDCSettings:          oidcSettings,
-		IngestInternalToken:   envOr("AVURUOBS_INGEST_INTERNAL_TOKEN", ""),
-		// The cluster-side applier ships in a follow-up plan; until then the
-		// overlay persists and reads back correctly, it just doesn't reach the
-		// sensor pods (NoopApplier logs that).
+		RetentionTracesDays:             envIntOr("AVURUOBS_RETENTION_TRACES_DAYS", 7),
+		RetentionLogsDays:               envIntOr("AVURUOBS_RETENTION_LOGS_DAYS", 3),
+		RetentionMetricsDays:            envIntOr("AVURUOBS_RETENTION_METRICS_DAYS", 7),
+		RetentionProfilesDays:           envIntOr("AVURUOBS_RETENTION_PROFILES_DAYS", 3),
+		Projects:                        splitCSV(envOr("AVURUOBS_PROJECTS", "")),
+		Modules:                         active,
+		GroupsConfig:                    groupsConfig,
+		AlertsConfig:                    alertsConfig,
+		Notifier:                        notifier,
+		Auth:                            authSvc,
+		AnonymousIdentity:               anonID,
+		DemoEnabled:                     demoEnabled,
+		DemoEmail:                       demoEmail,
+		DemoPassword:                    demoPassword,
+		GreenConfig:                     greenConfig,
+		OIDC:                            oidcProvider,
+		OIDCSettings:                    oidcSettings,
+		IngestInternalToken:             envOr("AVURUOBS_INGEST_INTERNAL_TOKEN", ""),
 		CollectionRuntimeControlEnabled: collectionRuntimeControlEnabled,
-		CollectionApplier:               collection.NoopApplier{},
+		CollectionApplier:               collectionApplier(collectionRuntimeControlEnabled),
 	})
 
 	// The alerting evaluator is a single background loop (see runAlertingEvaluator);
@@ -475,6 +475,37 @@ func envIntOr(key string, def int) int {
 		slog.Warn("invalid int env, using default", "key", key, "value", v, "default", def)
 	}
 	return def
+}
+
+// collectionApplier picks the real cluster applier when runtime collection
+// control is on AND the hub runs in a cluster with the chart-provided
+// identity env; anything else falls back to the logging no-op so compose
+// stacks and local runs keep working (design/2026-07-27-collection-control-plane.md).
+func collectionApplier(enabled bool) collection.Applier {
+	if !enabled {
+		return collection.NoopApplier{}
+	}
+	ns := os.Getenv("AVURUOBS_RELEASE_NAMESPACE")
+	release := os.Getenv("AVURUOBS_RELEASE_NAME")
+	fullname := os.Getenv("AVURUOBS_COLLECTION_FULLNAME")
+	if ns == "" || release == "" || fullname == "" {
+		slog.Warn("collection runtime control enabled but release identity env missing — overlay will persist without applying",
+			"namespace", ns, "release", release, "fullname", fullname)
+		return collection.NoopApplier{}
+	}
+	cfg, err := rest.InClusterConfig()
+	if err != nil {
+		slog.Warn("collection runtime control enabled but not running in-cluster — overlay will persist without applying", "error", err)
+		return collection.NoopApplier{}
+	}
+	client, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		slog.Warn("collection runtime control: building kubernetes client failed", "error", err)
+		return collection.NoopApplier{}
+	}
+	slog.Info("collection runtime control: cluster applier active",
+		"namespace", ns, "release", release, "fullname", fullname)
+	return &collection.K8sApplier{Client: client, Namespace: ns, ReleaseName: release, Fullname: fullname}
 }
 
 // splitCSV parses a comma-separated env value, trimming blanks (used for
