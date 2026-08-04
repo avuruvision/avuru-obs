@@ -45,3 +45,25 @@ func TestFetchPods(t *testing.T) {
 		t.Errorf("pods[def-456] = %+v, want {cart-1 shop}", pods["def-456"])
 	}
 }
+
+func TestKubeletBaseURL(t *testing.T) {
+	cases := []struct{ host, want string }{
+		{"vmdev1", "https://vmdev1:10250"},          // hostname passthrough (legacy fallback)
+		{"192.168.40.56", "https://192.168.40.56:10250"}, // the NODE_IP path
+		{"fd00::1", "https://[fd00::1]:10250"},      // IPv6 must be bracketed
+	}
+	for _, c := range cases {
+		if got := kubeletBaseURL(c.host); got != c.want {
+			t.Errorf("kubeletBaseURL(%q) = %q, want %q", c.host, got, c.want)
+		}
+	}
+}
+
+func TestResolveKubeletHost(t *testing.T) {
+	if got := resolveKubeletHost("10.0.0.7", "vmdev1"); got != "10.0.0.7" {
+		t.Errorf("explicit kubelet host must win, got %q", got)
+	}
+	if got := resolveKubeletHost("", "vmdev1"); got != "vmdev1" {
+		t.Errorf("empty kubelet host must fall back to node name, got %q", got)
+	}
+}

@@ -157,7 +157,11 @@ data:
       # signal tier). Read-only stats API via the pod ServiceAccount.
       kubeletstats:
         auth_type: serviceAccount
-        endpoint: https://${env:K8S_NODE_NAME}:10250
+        # Node IP, not node name: the pod resolves via cluster DNS
+        # (ClusterFirstWithHostNet), which has no records for bare node
+        # hostnames on most bare-metal clusters — the name variant fails
+        # with "no such host" and kills the whole infra-metrics tier.
+        endpoint: https://${env:K8S_NODE_IP}:10250
         # kubelet serving certs are typically self-signed per node
         insecure_skip_verify: true
         collection_interval: {{ .Values.sensor.agent.kubeletstats.interval }}

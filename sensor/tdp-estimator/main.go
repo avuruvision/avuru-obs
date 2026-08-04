@@ -19,7 +19,8 @@ import (
 func main() {
 	var (
 		listenAddr     = flag.String("listen", ":28283", "address to serve /metrics on (loopback-bound by the pod, see values.yaml)")
-		nodeName       = flag.String("node-name", os.Getenv("NODE_NAME"), "this node's name, for the kubelet /pods lookup and node_name label")
+		nodeName       = flag.String("node-name", os.Getenv("NODE_NAME"), "this node's name, for the node_name label (and the kubelet lookup when --kubelet-host is unset)")
+		kubeletHost    = flag.String("kubelet-host", os.Getenv("NODE_IP"), "host for the kubelet /pods endpoint — the node IP in-cluster, since bare node hostnames rarely resolve in pod DNS; empty falls back to --node-name")
 		sampleInterval = flag.Duration("sample-interval", 5*time.Second, "sampler tick; independent of the otel-agent scrape interval")
 		idleWatts      = flag.Float64("idle-watts", 0, "operator-set P_idle override (0 = defer to table/fallback)")
 		maxWatts       = flag.Float64("max-watts", 0, "operator-set P_max override (0 = defer to table/fallback)")
@@ -42,7 +43,7 @@ func main() {
 	slog.Info("resolved power coefficients", "tier", coeff.Tier, "provenance", coeff.Provenance, "idleWatts", coeff.IdleWatts, "maxWatts", coeff.MaxWatts)
 
 	reg := newRegistry()
-	go runSampler(*nodeName, *sampleInterval, coeff, reg)
+	go runSampler(*nodeName, resolveKubeletHost(*kubeletHost, *nodeName), *sampleInterval, coeff, reg)
 
 	http.Handle("/metrics", reg)
 	slog.Info("serving /metrics", "addr", *listenAddr)
