@@ -56,7 +56,8 @@ var ByModule = map[string][]modules.Name{
 	"0008_alerts.sql": {modules.Alerting},
 	// alert_channel — UI-managed delivery channels.
 	"0009_alert_channels.sql": {modules.Alerting},
-	// Local users, grants, sessions — auth gates everything, so core.
+	// Local users, grants, sessions — auth gates everything, so core. (0010's
+	// header says auth_user has no Deleted column; superseded by 0015.)
 	"0010_auth.sql": {modules.Core},
 	// OidcGroups column on auth_user — captured at SSO login, part of core auth.
 	"0011_auth_oidc_groups.sql": {modules.Core},
