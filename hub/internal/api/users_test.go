@@ -356,6 +356,26 @@ func TestDeleteDemoUserRefused(t *testing.T) {
 	}
 }
 
+// An SSO user's credential lives at the IdP; storing a local hash for them
+// is a silent no-op today and a confusing one — refuse it outright.
+func TestUpdateUserRejectsPasswordForSSOUser(t *testing.T) {
+	mux, c, f := adminMux(t)
+	if err := f.SaveAuthUser(context.Background(), storage.AuthUser{
+		ID: "oidc|sub1", Email: "sso@x.io", Origin: "oidc",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	w := doBody(mux, "PUT", "/api/v1/users/oidc|sub1", c, `{"password":"newpw"}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("password on SSO user: %d, want 400; body %s", w.Code, w.Body.String())
+	}
+	// Name edits on the same user still work.
+	if w := doBody(mux, "PUT", "/api/v1/users/oidc|sub1", c, `{"name":"Renamed"}`); w.Code != http.StatusOK {
+		t.Fatalf("name edit on SSO user: %d", w.Code)
+	}
+}
+
 // TestDeleteOIDCUserSucceeds pins the documented origin=oidc delete
 // semantics: a disabled SSO user's LOCAL record can still be deleted (204).
 // What that means for CompleteSSO re-provisioning on the next IdP login is

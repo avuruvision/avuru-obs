@@ -167,6 +167,13 @@ func (a *API) handleUpdateUser(w http.ResponseWriter, r *http.Request) error {
 	if err := checkSelfLockout(r, u, req); err != nil {
 		return err
 	}
+	// An SSO user's credential lives at the IdP; login never consults
+	// PasswordHash for them, so storing one would silently succeed at
+	// nothing. Allow-listed on "local" (not "!= oidc") so a future origin
+	// defaults to refused, not accepted.
+	if req.Password != nil && *req.Password != "" && u.Origin != "local" {
+		return badRequest("cannot set a password for an SSO user — it is managed by the identity provider")
+	}
 
 	if req.Name != nil {
 		u.Name = *req.Name
