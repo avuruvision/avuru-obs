@@ -11,6 +11,48 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **Full user management from the UI.** Settings → Users now edits a user's
+  name and role grants, resets passwords (with every session of the affected
+  user signed out), and **deletes** users — an explicit second step available
+  only after disabling, amending the original disable-only decision
+  (design/2026-08-06-users-crud-password.md). A new Settings → Account tab
+  lets any signed-in local user change their own password (current password
+  required; other sessions are evicted, the active one stays). Password
+  operations are refused for SSO users — their credential lives at the
+  identity provider.
+
+### Security
+
+- **An admin could mint a working local password for an SSO-only account.**
+  `PUT /api/v1/users/{id}` accepted a `password` for any user regardless of
+  origin, and neither the email lookup nor the password check filtered on it —
+  so the new credential was a genuine, working login that bypassed the
+  identity provider along with its MFA and conditional-access policy. Password
+  edits are now allow-listed on `origin=local` (a future origin defaults to
+  refused), on both the admin route and the new self-service one. Deleting an
+  SSO user is also now spelled out in the UI as what it is: it removes only
+  the local record, and because `disabled` is the flag the SSO callback
+  checks, deleting a *disabled* SSO user **undoes** their lockout.
+- **Rotating IP addresses bypassed the login lockout entirely.** Both rate-limit
+  axes keyed on the client IP (`email|ip` and `ip`), so an attacker spreading
+  guesses across N addresses got N × 5 attempts per minute against a single
+  account and tripped neither — a botnet, or any cloud NAT pool, made the
+  per-account lockout decorative. A third axis now counts failures against the
+  account alone (20 per minute), for password login and self-service password
+  change alike. It is a deliberate trade: sustained failures against one address
+  will keep that account's *login* blocked, bounded to a self-healing one-minute
+  window, never affecting established sessions or successful logins.
+- **An SSO login could take over a local account's email and break its login.**
+  `auth_user` has no unique index and the SSO callback upserts by subject
+  without consulting the address, so an IdP user whose email matched a local
+  account added a second row sharing it — and the password-login lookup, which
+  had no `ORDER BY`, then resolved to an arbitrary one of the two. Anyone able
+  to set their own email claim could aim that at the bootstrap admin. The lookup
+  is now local-first, and password login is allow-listed on `origin=local`
+  rather than relying on SSO rows happening to carry an empty password hash.
+
 ### Fixed
 
 - **Logging in through a reverse proxy that rewrites `Host` no longer 403s.**
@@ -25,6 +67,13 @@ When a release is cut, that block is renamed to the version with its date.
   `Origin`/`Host` pair, which is how you find out what a proxy actually sends.
   An install that sets neither renders the same manifest and behaves exactly as
   before. When `auth.oidc.publicUrl` is set it is trusted automatically.
+- **A password change that half-applied reported itself as "internal error".**
+  If the session sweep or the re-mint failed after the new password was already
+  saved, both the self-service and admin routes answered a generic 500 — which
+  reads as *nothing changed*, sending the user back to a password that no longer
+  works. Both seams now name themselves: the response states that the password
+  did change and what to do next (sign in again with the new one, or that other
+  sessions are still live and should be ended from another device).
 
 - **A default `helm install` now pulls the images it is supposed to.** The
   chart's image defaults never matched what the release workflow publishes, in

@@ -16,17 +16,32 @@ func (s *Store) GetAuthUser(ctx context.Context, id string) (storage.AuthUser, e
 	row := s.conn.QueryRow(ctx, `
 SELECT Id, Email, Name, PasswordHash, toString(Origin), Disabled, OidcGroups, UpdatedAt
 FROM auth_user FINAL
-WHERE Id = ?`, id)
+WHERE Id = ? AND Deleted = 0`, id)
 	return scanAuthUser(row)
 }
 
 // GetAuthUserByEmail returns one user by email, or ErrNotFound. Disabled
 // users ARE returned — callers decide.
+//
+// Email is NOT unique: auth_user has no unique index (0010: "tables are
+// tiny") and CompleteSSO upserts by "oidc|<sub>" without consulting the
+// address, so an SSO login by someone whose IdP email matches an existing
+// local account writes a SECOND row sharing that email. Without an explicit
+// order this query then returned an arbitrary one of them, and the local user
+// intermittently lost password login — anyone able to set their own email
+// claim at the IdP could aim that at "admin".
+//
+// Local rows win, then the lowest Id as a tiebreak. Local-first is not
+// cosmetic: this is the password-login lookup, and only a local row can carry
+// a usable hash, so preferring it is what makes a collided address behave —
+// the local user keeps their password, the SSO user still logs in by id.
 func (s *Store) GetAuthUserByEmail(ctx context.Context, email string) (storage.AuthUser, error) {
 	row := s.conn.QueryRow(ctx, `
 SELECT Id, Email, Name, PasswordHash, toString(Origin), Disabled, OidcGroups, UpdatedAt
 FROM auth_user FINAL
-WHERE Email = ?`, email)
+WHERE Email = ? AND Deleted = 0
+ORDER BY toString(Origin) != 'local', Id
+LIMIT 1`, email)
 	return scanAuthUser(row)
 }
 
@@ -56,6 +71,7 @@ func (s *Store) ListAuthUsers(ctx context.Context) ([]storage.AuthUser, error) {
 	rows, err := s.conn.Query(ctx, `
 SELECT Id, Email, Name, PasswordHash, toString(Origin), Disabled, OidcGroups, UpdatedAt
 FROM auth_user FINAL
+WHERE Deleted = 0
 ORDER BY Email`)
 	if err != nil {
 		return nil, fmt.Errorf("list auth users: %w", err)
@@ -85,6 +101,29 @@ INSERT INTO auth_user (Id, Email, Name, PasswordHash, Origin, Disabled, OidcGrou
 VALUES (?, ?, ?, ?, ?, ?, ?)`, u.ID, u.Email, u.Name, u.PasswordHash, u.Origin, disabled, u.OidcGroups)
 	if err != nil {
 		return fmt.Errorf("save auth user: %w", err)
+	}
+	return nil
+}
+
+// DeleteAuthUser tombstones a user (Deleted=1). Reads filter Deleted = 0, so
+// the row disappears from every lookup while ReplacingMergeTree(UpdatedAt)
+// supersedes the live row — same pattern as DeleteProject. SaveAuthUser's
+// column list omits Deleted, so any later upsert is live again by default.
+// Returns ErrNotFound when no live user has the id (unknown or already
+// deleted) rather than silently writing another tombstone.
+func (s *Store) DeleteAuthUser(ctx context.Context, id string) error {
+	var n uint64
+	if err := s.conn.QueryRow(ctx, `
+SELECT count() FROM auth_user FINAL WHERE Id = ? AND Deleted = 0`, id).Scan(&n); err != nil {
+		return fmt.Errorf("check auth user: %w", err)
+	}
+	if n == 0 {
+		return storage.ErrNotFound
+	}
+	err := s.conn.Exec(ctx, `
+INSERT INTO auth_user (Id, Deleted) VALUES (?, 1)`, id)
+	if err != nil {
+		return fmt.Errorf("delete auth user: %w", err)
 	}
 	return nil
 }

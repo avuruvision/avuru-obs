@@ -179,6 +179,10 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("POST /api/v1/auth/login", handle(a.handleLogin))
 		mux.Handle("POST /api/v1/auth/logout", a.authenticated(a.handleLogout))
 		mux.Handle("GET /api/v1/auth/me", a.authenticated(a.handleMe))
+		// Self-service password change — authenticated(), not securedAdmin:
+		// it rotates the CALLER's own credential, so a zero-grant user must
+		// reach it too.
+		mux.Handle("POST /api/v1/auth/password", a.authenticated(a.handleChangePassword))
 
 		// Demo one-click login — registered only when demo mode is on. Signs in
 		// as the read-only demo viewer server-side (shared password stays server
@@ -199,6 +203,7 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("GET /api/v1/users", a.securedAdmin(a.handleListUsers))
 		mux.Handle("POST /api/v1/users", a.securedAdmin(a.handleCreateUser))
 		mux.Handle("PUT /api/v1/users/{id}", a.securedAdmin(a.handleUpdateUser))
+		mux.Handle("DELETE /api/v1/users/{id}", a.securedAdmin(a.handleDeleteUser))
 	}
 
 	if active.Enabled(modules.Logs) {
