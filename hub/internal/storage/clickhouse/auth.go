@@ -94,7 +94,17 @@ VALUES (?, ?, ?, ?, ?, ?, ?)`, u.ID, u.Email, u.Name, u.PasswordHash, u.Origin, 
 // the row disappears from every lookup while ReplacingMergeTree(UpdatedAt)
 // supersedes the live row — same pattern as DeleteProject. SaveAuthUser's
 // column list omits Deleted, so any later upsert is live again by default.
+// Returns ErrNotFound when no live user has the id (unknown or already
+// deleted) rather than silently writing another tombstone.
 func (s *Store) DeleteAuthUser(ctx context.Context, id string) error {
+	var n uint64
+	if err := s.conn.QueryRow(ctx, `
+SELECT count() FROM auth_user FINAL WHERE Id = ? AND Deleted = 0`, id).Scan(&n); err != nil {
+		return fmt.Errorf("check auth user: %w", err)
+	}
+	if n == 0 {
+		return storage.ErrNotFound
+	}
 	err := s.conn.Exec(ctx, `
 INSERT INTO auth_user (Id, Deleted) VALUES (?, 1)`, id)
 	if err != nil {

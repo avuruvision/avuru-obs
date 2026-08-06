@@ -391,10 +391,14 @@ func (f *Fake) SaveAuthUser(_ context.Context, u storage.AuthUser) error {
 
 // DeleteAuthUser removes the user from both indexes — mirrors the tombstone
 // from the caller's point of view (no read path can observe it afterwards).
+// Returns ErrNotFound for an unknown or already-deleted id, matching
+// DeleteProject.
 func (f *Fake) DeleteAuthUser(_ context.Context, id string) error {
-	if u, ok := f.Users[id]; ok {
-		delete(f.UsersByEmail, u.Email)
+	u, ok := f.Users[id]
+	if !ok {
+		return storage.ErrNotFound
 	}
+	delete(f.UsersByEmail, u.Email)
 	delete(f.Users, id)
 	return nil
 }

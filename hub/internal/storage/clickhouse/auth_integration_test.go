@@ -384,6 +384,15 @@ func TestDeleteAuthUserTombstones(t *testing.T) {
 		}
 	}
 
+	// Deleting again must not silently "succeed" and write another garbage
+	// tombstone: no live row means ErrNotFound, same as DeleteProject.
+	if err := store.DeleteAuthUser(ctx, "del-1"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("DeleteAuthUser on already-deleted user: %v, want ErrNotFound", err)
+	}
+	if err := store.DeleteAuthUser(ctx, "no-such-user"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("DeleteAuthUser on unknown user: %v, want ErrNotFound", err)
+	}
+
 	// Same-Id re-save supersedes the tombstone (newer UpdatedAt wins).
 	if err := store.SaveAuthUser(ctx, storage.AuthUser{ID: "del-1", Email: "del@x.io", Origin: "oidc"}); err != nil {
 		t.Fatal(err)

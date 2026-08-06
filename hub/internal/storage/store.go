@@ -659,8 +659,11 @@ type Store interface {
 	// Auth (core): local users, per-project grants, server-side sessions.
 	// GetAuthUserByEmail/GetAuthUser return ErrNotFound for unknown users;
 	// disabled users ARE returned (callers decide). SaveAuthUser upserts by
-	// ID. DeleteAuthUser tombstones a user; every read path then reports
-	// ErrNotFound. A later SaveAuthUser for the same ID resurrects a fresh
+	// ID. DeleteAuthUser tombstones a user (ErrNotFound if no live user has
+	// the id); every read path then reports ErrNotFound too. It does NOT
+	// touch the user's sessions or grants — callers that want those revoked
+	// too must call RevokeAuthSessionsForUser/ReplaceAuthGrants(nil)
+	// themselves. A later SaveAuthUser for the same ID resurrects a fresh
 	// live row (SSO re-provisioning). ReplaceAuthGrants replaces the user's
 	// grant set (tombstone missing scopes, upsert the rest). GetAuthSession
 	// returns ErrNotFound for unknown, revoked or expired sessions.
