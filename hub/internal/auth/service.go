@@ -90,8 +90,11 @@ func (s *Service) st() (storage.Store, error) {
 // Login authenticates email+password and mints a session token. ip feeds the
 // rate limiter together with the email.
 func (s *Service) Login(ctx context.Context, email, password, ip string) (string, Identity, error) {
-	key := email + "|" + ip
-	if s.limiter.blocked(key, ip) {
+	// acct carries NO ip: it is the axis an attacker cannot escape by moving
+	// address (see ratelimit.go). Prefixed to keep it out of the "email|ip"
+	// key space — an email containing "|" could otherwise forge a collision.
+	key, acct := email+"|"+ip, "login|"+email
+	if s.limiter.blocked(key, ip, acct) {
 		return "", Identity{}, ErrTooManyAttempts
 	}
 	st, err := s.st()
@@ -101,7 +104,7 @@ func (s *Service) Login(ctx context.Context, email, password, ip string) (string
 	u, err := st.GetAuthUserByEmail(ctx, email)
 	if errors.Is(err, storage.ErrNotFound) {
 		CheckDummy(password) // constant-shape timing
-		s.limiter.fail(key, ip)
+		s.limiter.fail(key, ip, acct)
 		return "", Identity{}, ErrInvalidCredentials
 	}
 	if err != nil {
@@ -120,7 +123,7 @@ func (s *Service) Login(ctx context.Context, email, password, ip string) (string
 	// for an account the IdP is supposed to own. Allow-listed on "local" so a
 	// future origin defaults to refused.
 	if !CheckPassword(u.PasswordHash, password) || u.Disabled || u.Origin != "local" {
-		s.limiter.fail(key, ip)
+		s.limiter.fail(key, ip, acct)
 		return "", Identity{}, ErrInvalidCredentials
 	}
 	id, err := s.identityFor(ctx, st, u)
@@ -163,8 +166,11 @@ func (s *Service) ChangePassword(ctx context.Context, userID, current, newPw, ip
 	// space and Login's, where an admin-created email could equal another
 	// user's id. The path keeps its own 30/min ceiling, so the bcrypt cost cap
 	// survives the split.
-	key, ipKey := "pw|"+userID+"|"+ip, "pw|"+ip
-	if s.limiter.blocked(key, ipKey) {
+	// acctKey drops the ip for the same reason Login's does: with ip in every
+	// key, an attacker holding a stolen session and a pool of addresses gets a
+	// fresh 5-guess budget per address against the victim's CURRENT password.
+	key, ipKey, acctKey := "pw|"+userID+"|"+ip, "pw|"+ip, "pw-acct|"+userID
+	if s.limiter.blocked(key, ipKey, acctKey) {
 		return "", ErrTooManyAttempts
 	}
 	st, err := s.st()
@@ -200,7 +206,7 @@ func (s *Service) ChangePassword(ctx context.Context, userID, current, newPw, ip
 		return "", ErrInvalidCredentials
 	}
 	if !CheckPassword(u.PasswordHash, current) {
-		s.limiter.fail(key, ipKey)
+		s.limiter.fail(key, ipKey, acctKey)
 		return "", ErrInvalidCredentials
 	}
 	// bcrypt hashes "" happily, and CheckPassword then accepts "" against that

@@ -294,17 +294,19 @@ func TestRateLimiterPerIPCap(t *testing.T) {
 	fakeNow := time.Now()
 	l.now = func() time.Time { return fakeNow }
 
+	// Every email is unique, so each lands on its own account axis too — this
+	// isolates the per-IP cap as the only one that can be doing the blocking.
 	for i := 0; i < maxLoginAttemptsPerIP; i++ {
 		email := fmt.Sprintf("spray%d@x.io", i)
-		l.fail(email+"|shared-ip", "shared-ip")
+		l.fail(email+"|shared-ip", "shared-ip", "login|"+email)
 	}
-	if !l.blocked("fresh@x.io|shared-ip", "shared-ip") {
+	if !l.blocked("fresh@x.io|shared-ip", "shared-ip", "login|fresh@x.io") {
 		t.Fatalf("after %d unique-email failures from one ip: not blocked, want blocked", maxLoginAttemptsPerIP)
 	}
 
 	// The block self-heals once loginWindow elapses (fixed-window cap).
 	fakeNow = fakeNow.Add(loginWindow + time.Second)
-	if l.blocked("fresh@x.io|shared-ip", "shared-ip") {
+	if l.blocked("fresh@x.io|shared-ip", "shared-ip", "login|fresh@x.io") {
 		t.Fatal("per-ip block should clear after loginWindow elapses")
 	}
 }
@@ -736,7 +738,8 @@ func TestChangePasswordLimiterIsNamespaced(t *testing.T) {
 	// drives it) must leave rotation available. Straight to the limiter, no
 	// bcrypt — the same idiom that test uses.
 	for i := 0; i < maxLoginAttemptsPerIP; i++ {
-		svc.limiter.fail(fmt.Sprintf("spray%d@x.io|flooded-ip", i), "flooded-ip")
+		svc.limiter.fail(fmt.Sprintf("spray%d@x.io|flooded-ip", i), "flooded-ip",
+			fmt.Sprintf("login|spray%d@x.io", i))
 	}
 	if _, err := svc.ChangePassword(ctx, "u-b@x.io", "pw", "new-pw", "flooded-ip"); err != nil {
 		t.Fatalf("rotation during a login flood on the same ip: %v, want it to still work", err)
@@ -932,5 +935,74 @@ func TestChangePasswordReportsHalfAppliedRotations(t *testing.T) {
 				t.Fatalf("the old password still works: %v", err)
 			}
 		})
+	}
+}
+
+// The per-account axis is the one an attacker cannot walk away from. Both
+// other axes carry the source ip in their key, so a guesser spreading attempts
+// over fresh addresses kept "email|ip" fresh every time and never pushed any
+// single ip past its own cap — the account lockout was decorative against
+// anything with more than a handful of addresses.
+func TestLoginAccountLockoutSurvivesIPRotation(t *testing.T) {
+	f := &storagetest.Fake{}
+	seedUser(t, f, "victim@x.io", "pw", nil)
+	seedUser(t, f, "bystander@x.io", "pw2", nil)
+	svc := testService(f)
+	ctx := context.Background()
+
+	var err error
+	attempts := 0
+	for i := 0; i < maxAccountAttempts*3; i++ {
+		attempts++
+		// A different source every single time.
+		_, _, err = svc.Login(ctx, "victim@x.io", "wrong", fmt.Sprintf("10.0.0.%d", i))
+		if errors.Is(err, ErrTooManyAttempts) {
+			break
+		}
+		if !errors.Is(err, ErrInvalidCredentials) {
+			t.Fatalf("attempt %d: %v, want ErrInvalidCredentials", i, err)
+		}
+	}
+	if !errors.Is(err, ErrTooManyAttempts) {
+		t.Fatalf("%d guesses from %d distinct ips never tripped the limiter", attempts, attempts)
+	}
+	if attempts != maxAccountAttempts+1 {
+		t.Fatalf("blocked after %d attempts, want %d", attempts, maxAccountAttempts+1)
+	}
+	// Even the RIGHT password from yet another fresh address is refused while
+	// the account window is open — that is what "locked out" has to mean.
+	if _, _, err := svc.Login(ctx, "victim@x.io", "pw", "10.9.9.9"); !errors.Is(err, ErrTooManyAttempts) {
+		t.Fatalf("correct password from a fresh ip: %v, want ErrTooManyAttempts", err)
+	}
+	// Scoped to the account under attack: this axis must not become a global
+	// login outage, which is the failure mode the per-IP cap already has.
+	if _, _, err := svc.Login(ctx, "bystander@x.io", "pw2", "10.9.9.9"); err != nil {
+		t.Fatalf("an unrelated account was caught in the lockout: %v", err)
+	}
+}
+
+// Same rotation hole on the rotation endpoint: a stolen session plus an
+// address pool would otherwise buy unlimited guesses at the CURRENT password.
+func TestChangePasswordLockoutSurvivesIPRotation(t *testing.T) {
+	f := &storagetest.Fake{}
+	seedUser(t, f, "a@x.io", "pw", nil)
+	svc := testService(f)
+	ctx := context.Background()
+	const uid = "u-a@x.io"
+
+	var err error
+	attempts := 0
+	for i := 0; i < maxAccountAttempts*3; i++ {
+		attempts++
+		_, err = svc.ChangePassword(ctx, uid, "wrong", "new-pw", fmt.Sprintf("10.1.0.%d", i))
+		if errors.Is(err, ErrTooManyAttempts) {
+			break
+		}
+	}
+	if !errors.Is(err, ErrTooManyAttempts) {
+		t.Fatalf("%d guesses from distinct ips never tripped the limiter", attempts)
+	}
+	if attempts != maxAccountAttempts+1 {
+		t.Fatalf("blocked after %d attempts, want %d", attempts, maxAccountAttempts+1)
 	}
 }
