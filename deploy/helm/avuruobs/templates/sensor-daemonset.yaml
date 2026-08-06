@@ -86,22 +86,23 @@ spec:
                 echo "is unaffected. Set sensor.obi.enabled=false to silence."
                 echo "**********************************************************"
               fi
-              {{- if include "avuruobs.collectGreen" . }}
+              {{- if include "avuruobs.collectGreenMeasured" . }}
               # Green energy: Kepler measures CPU energy from Intel/AMD RAPL via
               # the powercap sysfs tree (read from this container's own /sys, the
               # same way the BTF check above reads /sys/kernel). WARN (never
-              # block) when it is absent — most cloud VMs expose no RAPL, and
-              # Kepler must sit idle without flapping the pod (no probes for
-              # exactly this reason).
+              # block) when it is absent — but unlike the BTF check above this is
+              # FATAL to the kepler container: Kepler v0.11.4 exits on an empty
+              # zone list, so it crash-loops and the pod never reports Ready.
               if [ -d /sys/class/powercap/intel-rapl ] || [ -d /sys/devices/virtual/powercap/intel-rapl ]; then
                 echo "sensor preflight: powercap/intel-rapl present — Kepler can measure energy"
               else
                 echo "**********************************************************"
                 echo "sensor preflight WARNING: no powercap/intel-rapl under /sys —"
-                echo "this node exposes no RAPL. Kepler will report no (or fake) energy;"
-                echo "the /green coverage ratio makes this visible. Enable"
-                echo "sensor.green.fakeCpuMeter for CI, or disable sensor.green on"
-                echo "RAPL-less nodes. Other collection is unaffected."
+                echo "this node exposes no RAPL (typical of VMs). Kepler will FAIL"
+                echo "with 'no RAPL zones found' and crash-loop, holding this pod"
+                echo "out of Ready. Set sensor.green.kepler.enabled=false and rely"
+                echo "on sensor.green.estimation (or sensor.green.fakeCpuMeter for"
+                echo "CI only). Other collection is unaffected."
                 echo "**********************************************************"
               fi
               {{- end }}
@@ -256,13 +257,18 @@ spec:
           resources:
             {{- toYaml .Values.sensor.profiler.resources | nindent 12 }}
         {{- end }}
-        {{- if include "avuruobs.collectGreen" . }}
+        {{- if include "avuruobs.collectGreenMeasured" . }}
         # Kepler — per-pod/node CPU energy from RAPL/powercap (CNCF upstream,
         # pinned). Scraped over loopback by the otel-agent's prometheus/green
-        # receiver. Deliberately has NO liveness/readiness/startup probes: a
-        # RAPL-less node leaves Kepler idle/unhealthy and it must NEVER flap the
-        # sensor pod (the "do no harm" probe-canary gate). kube mode and the
-        # node name are passed on the CLI; host sysfs/procfs are read-only.
+        # receiver. Deliberately has NO liveness/readiness/startup probes: it
+        # must never be the reason the sensor pod flaps (the "do no harm"
+        # probe-canary gate). That covers a degraded Kepler, NOT a dead one —
+        # v0.11.4 exits outright where there are no RAPL zones to read, and a
+        # crash-looping container holds the pod out of Ready no matter what the
+        # probe config says. RAPL-less nodes must therefore drop the container:
+        # sensor.green.kepler.enabled=false (the estimator keeps the screen fed).
+        # kube mode and the node name are passed on the CLI; host sysfs/procfs
+        # are read-only.
         - name: kepler
           image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.green.image.repository "tag" .Values.sensor.green.image.tag) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
@@ -406,9 +412,14 @@ spec:
             type: DirectoryOrCreate
         {{- end }}
         {{- if include "avuruobs.collectGreen" . }}
+        {{- if include "avuruobs.collectGreenMeasured" . }}
         - name: kepler-config
           configMap:
             name: {{ include "avuruobs.fullname" . }}-sensor-kepler
+        {{- end }}
+        # Shared by both energy sources, so they hang off the green gate rather
+        # than Kepler's: with kepler.enabled=false the estimator still reads the
+        # host's powercap tree (to know it has none) and /proc (utilization).
         - name: host-sys
           hostPath:
             path: /sys

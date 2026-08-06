@@ -335,6 +335,46 @@ grep -q 'mountPath: /sys' <<<"$estimator_block" || fail "tdp-estimator missing /
 grep -q 'mountPath: /proc' <<<"$estimator_block" || fail "tdp-estimator missing /proc mount (utilization sampling)"
 ok "container + scrape job + quality stamp render on opt-in; no probes; host mounts present"
 
+# Kepler v0.11.4 EXITS when RAPL zone discovery comes up empty ("failed to
+# initialize service rapl: no RAPL zones found") — it does not sit idle, and no
+# probe config can save a process that terminates itself. On a VM fleet the
+# container crash-loops, the sensor pod never reports Ready, and `helm --wait`
+# / `rollout status` fail: the whole sensor is down over an optional signal.
+# So the measured source must be droppable on its own, leaving the estimator.
+echo "== green: kepler.enabled=false leaves the estimator collecting alone"
+out="$(render --set modules.green.enabled=true --set sensor.green.enabled=true \
+  --set sensor.green.kepler.enabled=false \
+  --set sensor.green.estimation.enabled=true)"
+grep -q '\- name: kepler$' <<<"$out" && fail "kepler container rendered with sensor.green.kepler.enabled=false"
+grep -q 'job_name: kepler' <<<"$out" && fail "kepler scrape job survived the container it scrapes"
+grep -q 'name: test-avuruobs-sensor-kepler' <<<"$out" && fail "kepler ConfigMap survived the container it configures"
+grep -qF 'set(attributes["avuruobs_quality"], "measured")' <<<"$out" && fail "measured quality stamp rendered with nothing measuring"
+grep -q '\- name: tdp-estimator$' <<<"$out" || fail "tdp-estimator container missing as the sole source"
+grep -q 'job_name: tdp-estimator' <<<"$out" || fail "tdp-estimator scrape job missing as the sole source"
+grep -q 'prometheus/green:' <<<"$out" || fail "green receiver lost with kepler off"
+grep -q 'metrics/green:' <<<"$out" || fail "green pipeline lost with kepler off"
+grep -qF 'set(attributes["avuruobs_quality"], "estimated") where resource.attributes["service.name"] == "tdp-estimator"' <<<"$out" \
+  || fail "estimated quality stamp lost with kepler off"
+# The host mounts hang off the green gate, not off Kepler — the estimator's own
+# RAPL probe and cgroup walk still need them.
+estimator_block="$(sed -n '/- name: tdp-estimator$/,/resources:/p' <<<"$out")"
+grep -q 'mountPath: /sys' <<<"$estimator_block" || fail "tdp-estimator lost its /sys mount with kepler off"
+grep -q 'mountPath: /proc' <<<"$estimator_block" || fail "tdp-estimator lost its /proc mount with kepler off"
+ok "estimator + scrape job + estimated stamp + host mounts survive; every Kepler surface is gone"
+
+echo "== green: kepler.enabled=false with no estimator -> fails at template time"
+render --set modules.green.enabled=true --set sensor.green.enabled=true \
+  --set sensor.green.kepler.enabled=false >/dev/null 2>&1 \
+  && fail "green collection rendered with no energy source (prometheus/green would have zero scrape jobs)"
+ok "dropping both sources fails loudly instead of shipping an empty scrape config"
+
+echo "== green: kepler.enabled=false no-ops when green collection is off"
+# Same discipline as sensor.green-without-the-module: values that render nothing
+# must never fail an install (a shared values file on a sensor-off cluster).
+render --set sensor.green.kepler.enabled=false >/dev/null 2>&1 \
+  || fail "kepler.enabled=false failed with the green module off instead of no-opping"
+ok "no guard fires while the green surface renders nothing"
+
 echo "== auth oidc: off by default -> no SSO surface"
 out="$(render)"
 grep -q 'AVURUOBS_AUTH_OIDC' <<<"$out" && fail "OIDC env rendered without auth.oidc.enabled"

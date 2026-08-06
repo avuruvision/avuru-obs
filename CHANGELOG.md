@@ -13,6 +13,19 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Fixed
 
+- **A node without RAPL no longer takes the whole sensor down.** Enabling green
+  collection on a fleet of VMs put the sensor DaemonSet into CrashLoopBackOff:
+  the pinned Kepler exits at startup when it finds no powercap zones (`failed
+  to initialize service rapl: no RAPL zones found`) instead of idling, and a
+  container that terminates itself keeps the pod out of Ready no matter how
+  few probes it carries — so `helm --wait` and `kubectl rollout status` failed,
+  and logs, traces and metrics went down with an optional energy signal. The
+  measured source can now be dropped on its own with
+  `sensor.green.kepler.enabled=false`, leaving `sensor.green.estimation` to
+  feed `/green` (a guard refuses to leave both sources off, which would ship an
+  empty scrape config). Installs on RAPL hardware are unaffected — the flag
+  defaults to `true` and those renders are byte-identical.
+
 - **A default `helm install` now pulls the images it is supposed to.** The
   chart's image defaults never matched what the release workflow publishes, in
   two independent ways: the repositories read `avuruobs/hub` (Docker Hub) while
