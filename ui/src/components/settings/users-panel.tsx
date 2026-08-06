@@ -233,7 +233,7 @@ function UserRow({ u, onChanged }: { u: AdminUser; onChanged: () => void }) {
       </tr>
 
       {(panel || error) && (
-        <tr>
+        <tr data-testid={`user-panel-${u.email}`}>
           <td colSpan={5} className="bg-base-200/40 px-4 py-3">
             {panel === "edit" && (
               <EditUserForm
