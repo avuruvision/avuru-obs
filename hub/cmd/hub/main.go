@@ -224,6 +224,13 @@ func run() error {
 		notifier = alerting.NewWebhookNotifier(5*time.Second, 3, webhookAllowCIDRs())
 	}
 
+	// CSRF origin policy, resolved before the router so a bad mode fails the
+	// boot instead of surfacing later as "every write 403s".
+	originCheck, err := originCheckMode()
+	if err != nil {
+		return err
+	}
+
 	// Hub is API-only: the UI is a separate deployable (its own nginx pod),
 	// reached single-origin via the gateway/ingress. See agent_docs/architecture.md.
 	mux := http.NewServeMux()
@@ -239,6 +246,8 @@ func run() error {
 		Notifier:              notifier,
 		Auth:                  authSvc,
 		AnonymousIdentity:     anonID,
+		TrustedOrigins:        trustedOrigins(),
+		OriginCheck:           originCheck,
 		DemoEnabled:           demoEnabled,
 		DemoEmail:             demoEmail,
 		DemoPassword:          demoPassword,
@@ -475,6 +484,36 @@ func envIntOr(key string, def int) int {
 		slog.Warn("invalid int env, using default", "key", key, "value", v, "default", def)
 	}
 	return def
+}
+
+// originCheckMode reads AVURUOBS_AUTH_ORIGIN_CHECK (enforce | log | off).
+// Anything below enforce is announced at boot — a CSRF check that has been
+// disarmed must never be a silent one. A typo fails the boot rather than
+// quietly reverting to enforce: the install would then 403 every write while
+// believing it had lowered the check.
+func originCheckMode() (string, error) {
+	mode := envOr("AVURUOBS_AUTH_ORIGIN_CHECK", api.OriginCheckEnforce)
+	switch mode {
+	case api.OriginCheckEnforce:
+	case api.OriginCheckLog, api.OriginCheckOff:
+		slog.Warn("CSRF origin check lowered from enforce — auth.trustedOrigins is the narrow fix and keeps the check on",
+			"mode", mode)
+	default:
+		return "", fmt.Errorf("AVURUOBS_AUTH_ORIGIN_CHECK must be %q, %q or %q, got %q",
+			api.OriginCheckEnforce, api.OriginCheckLog, api.OriginCheckOff, mode)
+	}
+	return mode, nil
+}
+
+// trustedOrigins is the CSRF allowlist: AVURUOBS_AUTH_TRUSTED_ORIGINS, plus
+// AVURUOBS_PUBLIC_URL when set — an install that already declares its external
+// base URL (for the OIDC redirect) should not have to repeat it here.
+func trustedOrigins() []string {
+	list := splitCSV(envOr("AVURUOBS_AUTH_TRUSTED_ORIGINS", ""))
+	if pub := strings.TrimSpace(os.Getenv("AVURUOBS_PUBLIC_URL")); pub != "" {
+		list = append(list, pub)
+	}
+	return list
 }
 
 // splitCSV parses a comma-separated env value, trimming blanks (used for

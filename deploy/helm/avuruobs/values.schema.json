@@ -386,6 +386,8 @@
         "adminPassword": { "type": "string" },
         "existingSecret": { "type": "string" },
         "sessionTTLHours": { "type": "integer", "minimum": 1 },
+        "trustedOrigins": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "originCheck": { "type": "string", "enum": ["enforce", "log", "off"] },
         "anonymous": {
           "type": "object",
           "properties": {

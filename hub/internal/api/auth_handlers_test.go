@@ -198,6 +198,33 @@ func TestLoginCrossOriginIs403(t *testing.T) {
 	}
 }
 
+// TestLoginBehindProxyWithTrustedOrigin is the reverse-proxy case end to end,
+// on the route that hurts most: the browser sends the origin the user typed,
+// the proxy has replaced Host with the ingress address (httptest's fixed
+// "example.com" stands in for it), and the login still has to succeed —
+// because that origin is declared. Without the declaration this is
+// TestLoginCrossOriginIs403.
+func TestLoginBehindProxyWithTrustedOrigin(t *testing.T) {
+	mux, _ := authedMuxWith(t, Config{TrustedOrigins: []string{"https://demo.avuruobs.io"}})
+	req := httptest.NewRequest("POST", "/api/v1/auth/login",
+		strings.NewReader(`{"email":"e@x.io","password":"pw"}`))
+	req.Header.Set("Origin", "https://demo.avuruobs.io")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("login behind a Host-rewriting proxy: %d body %s", w.Code, w.Body.String())
+	}
+	var signedIn bool
+	for _, c := range w.Result().Cookies() {
+		if c.Name == sessionCookieName && c.Value != "" {
+			signedIn = true
+		}
+	}
+	if !signedIn {
+		t.Fatal("login returned 200 without a session cookie")
+	}
+}
+
 // TestLoginRateLimit429 drives 6 bad logins for the same email from
 // httptest's fixed RemoteAddr (same "email|ip" key every time): the 6th
 // trips maxLoginAttempts and must answer 429 with Retry-After: 60.

@@ -40,7 +40,7 @@ func (a *API) handleAuthConfig(w http.ResponseWriter, _ *http.Request) error {
 // demo email + client IP).
 func (a *API) handleDemoLogin(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Cache-Control", "no-store")
-	if err := checkOrigin(r); err != nil {
+	if err := a.checkOrigin(r); err != nil {
 		return err
 	}
 	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
@@ -92,7 +92,7 @@ func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) error {
 	// Credentialed/identity responses must never be cached (OWASP: a shared
 	// or misconfigured cache serving one user's session state to another).
 	w.Header().Set("Cache-Control", "no-store")
-	if err := checkOrigin(r); err != nil {
+	if err := a.checkOrigin(r); err != nil {
 		return err
 	}
 	// The one unauthenticated POST route — cap the body like the other

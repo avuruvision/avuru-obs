@@ -13,6 +13,19 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Fixed
 
+- **Logging in through a reverse proxy that rewrites `Host` no longer 403s.**
+  The hub's CSRF check compared the browser's `Origin` against the `Host` it
+  received, so any proxy handing the cluster its ingress address instead of the
+  public domain turned every write — the login POST first of all — into
+  `cross-origin request rejected`. Two new chart values fix it without touching
+  the default, which stays strict: `auth.trustedOrigins` names the origins that
+  are legitimate despite not matching `Host` (the check stays on for everything
+  else), and `auth.originCheck` (`enforce` | `log` | `off`) lowers it when the
+  origins can't be enumerated — `log` allows the write and records the
+  `Origin`/`Host` pair, which is how you find out what a proxy actually sends.
+  An install that sets neither renders the same manifest and behaves exactly as
+  before. When `auth.oidc.publicUrl` is set it is trusted automatically.
+
 - **A default `helm install` now pulls the images it is supposed to.** The
   chart's image defaults never matched what the release workflow publishes, in
   two independent ways: the repositories read `avuruobs/hub` (Docker Hub) while

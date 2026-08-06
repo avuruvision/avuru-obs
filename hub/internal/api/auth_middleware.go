@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -29,7 +30,7 @@ func (a *API) secured(min auth.Role, fn func(http.ResponseWriter, *http.Request)
 		if a.cfg.Auth == nil { // auth disabled — pre-auth behavior
 			return fn(w, r)
 		}
-		if err := checkOrigin(r); err != nil {
+		if err := a.checkOrigin(r); err != nil {
 			return err
 		}
 		id, err := a.requestIdentity(w, r)
@@ -52,7 +53,7 @@ func (a *API) authenticated(fn func(http.ResponseWriter, *http.Request) error) h
 		if a.cfg.Auth == nil { // auth disabled — pre-auth behavior
 			return fn(w, r)
 		}
-		if err := checkOrigin(r); err != nil {
+		if err := a.checkOrigin(r); err != nil {
 			return err
 		}
 		id, err := a.requestIdentity(w, r)
@@ -70,7 +71,7 @@ func (a *API) securedAdmin(fn func(http.ResponseWriter, *http.Request) error) ht
 		if a.cfg.Auth == nil {
 			return fn(w, r)
 		}
-		if err := checkOrigin(r); err != nil {
+		if err := a.checkOrigin(r); err != nil {
 			return err
 		}
 		id, err := a.requestIdentity(w, r)
@@ -114,9 +115,26 @@ func (a *API) requestIdentity(w http.ResponseWriter, r *http.Request) (*auth.Ide
 	return nil, unauthorized()
 }
 
+// Modes for Config.OriginCheck, sharing the vocabulary of the chart's other
+// mode knob (auth.ingest.mode). OriginCheckEnforce is also the zero value's
+// meaning, so a Config that never sets the field keeps the strict behavior.
+const (
+	OriginCheckEnforce = "enforce"
+	OriginCheckLog     = "log"
+	OriginCheckOff     = "off"
+)
+
 // checkOrigin rejects state-changing cross-origin requests. Non-browser
 // clients (no Origin header) pass — the session cookie is the credential.
-func checkOrigin(r *http.Request) error {
+//
+// The Origin is compared to the request's own Host, which is the right
+// comparison right up until a reverse proxy rewrites Host (handing the hub the
+// ingress address instead of the public domain): the browser then sends the
+// correct Origin and the hub sees a Host that will never match it, so every
+// write — login included — 403s. Two opt-in ways out, neither of them the
+// default: name the real origin in TrustedOrigins (CSRF protection intact), or
+// lower OriginCheck.
+func (a *API) checkOrigin(r *http.Request) error {
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {
 		return nil
 	}
@@ -124,11 +142,49 @@ func checkOrigin(r *http.Request) error {
 	if origin == "" {
 		return nil
 	}
-	u, err := url.Parse(origin)
-	if err != nil || !strings.EqualFold(u.Host, r.Host) {
-		return forbidden("cross-origin request rejected")
+	if a.cfg.OriginCheck == OriginCheckOff {
+		return nil
 	}
-	return nil
+	// An unparseable Origin never matches anything and falls through to the
+	// mode decision below — it does not get a free pass.
+	if u, err := url.Parse(origin); err == nil && strings.EqualFold(u.Host, r.Host) {
+		return nil
+	}
+	if a.originTrusted(origin) {
+		return nil
+	}
+	if a.cfg.OriginCheck == OriginCheckLog {
+		slog.Warn("cross-origin write allowed by auth.originCheck=log — add this origin to auth.trustedOrigins, then restore enforce",
+			"origin", origin, "host", r.Host, "path", r.URL.Path)
+		return nil
+	}
+	return forbidden("cross-origin request rejected")
+}
+
+// originTrusted reports whether origin is one of the configured trusted
+// origins, comparing normalized forms so a trailing slash or the host's casing
+// in a values file doesn't quietly stop matching.
+func (a *API) originTrusted(origin string) bool {
+	want := normalizeOrigin(origin)
+	if want == "" {
+		return false
+	}
+	for _, t := range a.cfg.TrustedOrigins {
+		if normalizeOrigin(t) == want {
+			return true
+		}
+	}
+	return false
+}
+
+// normalizeOrigin reduces an origin to lowercase scheme://host, or "" when it
+// is not a usable origin (no scheme, no host, unparseable).
+func normalizeOrigin(s string) string {
+	u, err := url.Parse(strings.TrimSpace(s))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return strings.ToLower(u.Scheme + "://" + u.Host)
 }
 
 func holdsAnywhere(id auth.Identity, min auth.Role) bool {
