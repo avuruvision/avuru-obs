@@ -405,3 +405,59 @@ func TestDeleteAuthUserTombstones(t *testing.T) {
 		t.Fatalf("re-saved user Origin = %q", back.Origin)
 	}
 }
+
+// Email is not unique: an SSO login whose IdP email matches a local account
+// writes a second row sharing it. GetAuthUserByEmail must resolve that to the
+// LOCAL row — only it can carry a usable password hash — deterministically.
+//
+// Worth an integration test rather than trusting the fake: the ordering is
+// expressed in ClickHouse SQL ("ORDER BY toString(Origin) != 'local', Id" over
+// a LowCardinality column, under FINAL), so the fake agreeing proves nothing
+// about what the real engine does.
+func TestGetAuthUserByEmailPrefersLocalRow(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	const shared = "collide@example.com"
+	// The SSO row is written FIRST and sorts BEFORE the local one on Id
+	// ("oidc|sub-9" < "u-local-9"), so an id-only tiebreak — or no ORDER BY at
+	// all — would pick it.
+	if err := store.SaveAuthUser(ctx, storage.AuthUser{
+		ID: "oidc|sub-9", Email: shared, Name: "Via IdP", Origin: "oidc",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveAuthUser(ctx, storage.AuthUser{
+		ID: "u-local-9", Email: shared, Name: "Local", PasswordHash: "hash-local", Origin: "local",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Repeated because the failure this guards against was NON-determinism:
+	// one lucky read proves nothing.
+	for i := 0; i < 5; i++ {
+		got, err := store.GetAuthUserByEmail(ctx, shared)
+		if err != nil {
+			t.Fatalf("read %d: %v", i, err)
+		}
+		if got.ID != "u-local-9" {
+			t.Fatalf("read %d resolved to %q, want the local row u-local-9", i, got.ID)
+		}
+		if got.PasswordHash != "hash-local" {
+			t.Fatalf("read %d lost the local hash: %+v", i, got)
+		}
+	}
+
+	// With the local row deleted, the SSO row is what remains — the ordering
+	// picks a winner, it does not filter.
+	if err := store.DeleteAuthUser(ctx, "u-local-9"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetAuthUserByEmail(ctx, shared)
+	if err != nil {
+		t.Fatalf("after deleting the local row: %v", err)
+	}
+	if got.ID != "oidc|sub-9" {
+		t.Fatalf("got %q, want the surviving sso row", got.ID)
+	}
+}
