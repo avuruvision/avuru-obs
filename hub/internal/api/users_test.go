@@ -356,8 +356,9 @@ func TestDeleteDemoUserRefused(t *testing.T) {
 	}
 }
 
-// An SSO user's credential lives at the IdP; storing a local hash for them
-// is a silent no-op today and a confusing one — refuse it outright.
+// The 400 alone doesn't prove the password was never stored — Login
+// resolves by email regardless of Origin, so the login attempt below is
+// what actually proves an SSO account can't get a working local password.
 func TestUpdateUserRejectsPasswordForSSOUser(t *testing.T) {
 	mux, c, f := adminMux(t)
 	if err := f.SaveAuthUser(context.Background(), storage.AuthUser{
