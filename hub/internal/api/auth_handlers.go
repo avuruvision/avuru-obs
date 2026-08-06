@@ -226,6 +226,21 @@ func (a *API) handleChangePassword(w http.ResponseWriter, r *http.Request) error
 	// claiming certainty about anything else.
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		return badRequest("current password is incorrect")
+	// Both of these mean the rotation LANDED. A generic 500 here would render
+	// as "internal error", which the user reads as "nothing changed" — they
+	// retry with the old password, fail, and believe they are locked out. The
+	// status stays 5xx (the server did fail at something) but the body has to
+	// tell the truth about the credential.
+	case errors.Is(err, auth.ErrRotatedSessionsLive):
+		return &apiError{status: http.StatusInternalServerError,
+			message: "your password was changed, but other sessions could not be signed out — sign out everywhere from another device if this was a security incident"}
+	case errors.Is(err, auth.ErrRotatedButSignedOut):
+		// The caller's own session was revoked before the mint failed, so the
+		// cookie they still hold is dead. Clear it rather than let the SPA send
+		// it once more and bounce off a 401 with no explanation.
+		clearSessionCookie(w, r)
+		return &apiError{status: http.StatusInternalServerError,
+			message: "your password was changed, but this session could not be renewed — sign in again with your new password"}
 	case err != nil:
 		return err
 	}

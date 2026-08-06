@@ -217,7 +217,15 @@ func (a *API) handleUpdateUser(w http.ResponseWriter, r *http.Request) error {
 		// change shouldn't have to bump every session either, so this only
 		// fires when the password actually changed.
 		if err := st.RevokeAuthSessionsForUser(r.Context(), u.ID); err != nil {
-			return err
+			// The password is already saved, so the admin must not be told
+			// "internal error" and left assuming the reset failed — they would
+			// retry, or worse, stop here believing the account still holds its
+			// old credential. Same seam as auth.ErrRotatedSessionsLive on the
+			// self-service path.
+			slog.Error("password reset saved but sessions could not be revoked — existing cookies remain valid",
+				"id", u.ID, "email", u.Email, "actor", requestedBy(r), "error", err)
+			return &apiError{status: http.StatusInternalServerError,
+				message: "the password was changed, but this user's existing sessions could not be signed out — they remain valid"}
 		}
 	}
 

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -487,5 +488,106 @@ func TestChangeOwnPasswordRefusedForDemoAccount(t *testing.T) {
 	if got := doBody(mux, "POST", "/api/v1/auth/login", nil,
 		`{"email":"demo@avuru.obs","password":"demo-pw"}`); got.Code != http.StatusOK {
 		t.Fatalf("demo login after the refused change: %d, want 200 (password untouched)", got.Code)
+	}
+}
+
+// revokeBreakingStore fails the session sweep once armed, reproducing the
+// post-save seam in ChangePassword / handleUpdateUser. It is armed only after
+// bootstrap and login are done, so setup still works.
+type revokeBreakingStore struct {
+	*storagetest.Fake
+	armed bool
+}
+
+func (s *revokeBreakingStore) RevokeAuthSessionsForUser(ctx context.Context, id string) error {
+	if s.armed {
+		return errors.New("clickhouse unavailable")
+	}
+	return s.Fake.RevokeAuthSessionsForUser(ctx, id)
+}
+
+// brokenMux is adminMux over a store whose session sweep can be broken.
+func brokenMux(t *testing.T) (*http.ServeMux, *http.Cookie, *revokeBreakingStore) {
+	t.Helper()
+	f := &storagetest.Fake{}
+	st := &revokeBreakingStore{Fake: f}
+	svc := auth.NewService(func() storage.Store { return st }, time.Hour)
+	if _, err := svc.Bootstrap(context.Background(), "root-pw"); err != nil {
+		t.Fatal(err)
+	}
+	token, _, err := svc.Login(context.Background(), "admin", "root-pw", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return st }, Config{Auth: svc})
+	return mux, &http.Cookie{Name: sessionCookieName, Value: token}, st
+}
+
+// A rotation that saved but could not sweep sessions still answers 5xx — the
+// server did fail — but the BODY must say the password changed. The generic
+// "internal error" this used to return reads as "nothing happened", which
+// sends the user back to a password that no longer works.
+func TestChangePasswordHalfAppliedBodyTellsTheTruth(t *testing.T) {
+	mux, c, st := brokenMux(t)
+	st.armed = true
+
+	w := doBody(mux, "POST", "/api/v1/auth/password", c,
+		`{"currentPassword":"root-pw","newPassword":"next-pw"}`)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("got %d, want 500; body %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if strings.Contains(body, "internal error") {
+		t.Fatalf("generic body hides a completed rotation: %s", body)
+	}
+	if !strings.Contains(body, "your password was changed") {
+		t.Fatalf("body must state the password changed: %s", body)
+	}
+
+	// And it is true: the sweep failed, so the OLD session is still usable —
+	// but the new password is the one that logs in from here.
+	st.armed = false
+	if got := doBody(mux, "GET", "/api/v1/auth/me", c, ""); got.Code != http.StatusOK {
+		t.Fatalf("sweep failed, so the old cookie should still work: %d", got.Code)
+	}
+	if _, _, err := auth.NewService(func() storage.Store { return st.Fake }, time.Hour).
+		Login(context.Background(), "admin", "next-pw", "ip"); err != nil {
+		t.Fatalf("the new password is not in effect: %v", err)
+	}
+}
+
+// Same seam on the admin route: the reset landed, so a bare 500 would have the
+// admin believe the account still holds its old credential.
+func TestAdminResetHalfAppliedBodyTellsTheTruth(t *testing.T) {
+	mux, c, st := brokenMux(t)
+
+	w := doBody(mux, "POST", "/api/v1/users", c,
+		`{"email":"dev@x.io","name":"Dev","password":"devpw","grants":[]}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create: %d body %s", w.Code, w.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+
+	st.armed = true
+	w = doBody(mux, "PUT", "/api/v1/users/"+created.ID, c, `{"password":"reset-pw"}`)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("got %d, want 500; body %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if strings.Contains(body, "internal error") {
+		t.Fatalf("generic body hides a completed reset: %s", body)
+	}
+	if !strings.Contains(body, "the password was changed") {
+		t.Fatalf("body must state the password changed: %s", body)
+	}
+	if _, _, err := auth.NewService(func() storage.Store { return st.Fake }, time.Hour).
+		Login(context.Background(), "dev@x.io", "reset-pw", "ip"); err != nil {
+		t.Fatalf("the reset is not in effect: %v", err)
 	}
 }

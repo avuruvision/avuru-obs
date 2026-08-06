@@ -862,3 +862,75 @@ func TestLoginRefusesNonLocalOriginEvenWithAWorkingHash(t *testing.T) {
 		t.Fatalf("unknown origin: got %v, want ErrInvalidCredentials", err)
 	}
 }
+
+// brokenWriteStore fails exactly one of the two post-save writes, leaving the
+// rotation half-applied the way a ClickHouse blip would.
+type brokenWriteStore struct {
+	*storagetest.Fake
+	failRevoke bool
+	failMint   bool
+}
+
+func (b *brokenWriteStore) RevokeAuthSessionsForUser(ctx context.Context, userID string) error {
+	if b.failRevoke {
+		return errors.New("clickhouse unavailable")
+	}
+	return b.Fake.RevokeAuthSessionsForUser(ctx, userID)
+}
+
+func (b *brokenWriteStore) CreateAuthSession(ctx context.Context, s storage.AuthSession) error {
+	if b.failMint {
+		return errors.New("clickhouse unavailable")
+	}
+	return b.Fake.CreateAuthSession(ctx, s)
+}
+
+// Both post-save failures must be reported as what they are. The password has
+// already rotated at this point, so a generic error — which the handler renders
+// as "internal error" — would tell the user nothing changed and send them back
+// to the old password they can no longer use.
+func TestChangePasswordReportsHalfAppliedRotations(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		store func(f *storagetest.Fake) storage.Store
+		want  error
+	}{
+		{
+			name:  "revoke fails: rotated, stale cookies still live",
+			store: func(f *storagetest.Fake) storage.Store { return &brokenWriteStore{Fake: f, failRevoke: true} },
+			want:  ErrRotatedSessionsLive,
+		},
+		{
+			name:  "mint fails: rotated and swept, caller signed out",
+			store: func(f *storagetest.Fake) storage.Store { return &brokenWriteStore{Fake: f, failMint: true} },
+			want:  ErrRotatedButSignedOut,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &storagetest.Fake{}
+			seedUser(t, f, "a@x.io", "pw", nil)
+			st := tc.store(f)
+			svc := NewService(func() storage.Store { return st }, 24*time.Hour)
+			ctx := context.Background()
+
+			token, err := svc.ChangePassword(ctx, "u-a@x.io", "pw", "new-pw", "ip1")
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("got %v, want %v", err, tc.want)
+			}
+			if token != "" {
+				t.Fatalf("token = %q, want empty on a failed rotation", token)
+			}
+			// The claim the sentinel makes must be TRUE: the new password works
+			// and the old one does not. Asserted through Login (against the plain
+			// fake, so the broken write path is out of the way) rather than by
+			// peeking at the hash — that is what the user will experience.
+			plain := testService(f)
+			if _, _, err := plain.Login(ctx, "a@x.io", "new-pw", "ip2"); err != nil {
+				t.Fatalf("the new password is not in effect: %v", err)
+			}
+			if _, _, err := plain.Login(ctx, "a@x.io", "pw", "ip3"); !errors.Is(err, ErrInvalidCredentials) {
+				t.Fatalf("the old password still works: %v", err)
+			}
+		})
+	}
+}

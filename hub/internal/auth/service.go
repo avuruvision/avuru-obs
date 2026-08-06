@@ -29,6 +29,23 @@ var (
 	// (bcrypt refuses >72 bytes). A caller error, distinct from a wrong
 	// current password — they must not share a message.
 	ErrPasswordUnusable = errors.New("the new password cannot be used")
+
+	// ErrRotatedSessionsLive and ErrRotatedButSignedOut report the two
+	// half-applied outcomes of ChangePassword. Both mean THE NEW PASSWORD IS
+	// ALREADY IN EFFECT; they exist so the handler can say so. Without them
+	// each failure fell through to a generic 500 whose "internal error" body
+	// reads as "nothing changed" — the single worst thing to tell someone
+	// about a credential that has in fact just rotated. They would retry with
+	// the old password, fail, and conclude they were locked out.
+	//
+	// ErrRotatedSessionsLive: saved, but the session sweep failed — old
+	// cookies (a thief's included) still work, which matters most in exactly
+	// the incident that prompted the rotation.
+	// ErrRotatedButSignedOut: saved and swept, but no new session could be
+	// minted — the caller's own cookie is gone and only the NEW password gets
+	// them back in.
+	ErrRotatedSessionsLive = errors.New("password rotated but sessions could not be revoked")
+	ErrRotatedButSignedOut = errors.New("password rotated but no new session could be minted")
 )
 
 // bootstrapAdminID is the FIXED id used to create the bootstrap admin user.
@@ -129,11 +146,14 @@ func (s *Service) Login(ctx context.Context, email, password, ip string) (string
 // each is governed — by status and by response time alike.
 //
 // Every rejection returns BEFORE the first write. After it there are two
-// seams, both logged because neither reaches the caller as what it actually
-// is: a failed revoke leaves the password rotated with stale sessions alive,
-// and a failed mint leaves the caller signed out holding a password they
-// believe never took. Save-then-revoke is still the right order — revoking
-// first would log the caller out for a change that never landed.
+// seams: a failed revoke leaves the password rotated with stale sessions
+// alive, and a failed mint leaves the caller signed out holding a password
+// they may believe never took. Each returns its own sentinel
+// (ErrRotatedSessionsLive / ErrRotatedButSignedOut) so the handler can tell
+// the caller the password DID change, and is logged besides — the log is the
+// operator's copy, the sentinel is the user's. Save-then-revoke is still the
+// right order: revoking first would log the caller out for a change that
+// never landed.
 func (s *Service) ChangePassword(ctx context.Context, userID, current, newPw, ip string) (string, error) {
 	// Namespaced away from Login's buckets on BOTH axes. Behind an ingress
 	// every client shares one ip, so a shared per-IP bucket would let 30
@@ -219,13 +239,13 @@ func (s *Service) ChangePassword(ctx context.Context, userID, current, newPw, ip
 	if err := st.RevokeAuthSessionsForUser(ctx, u.ID); err != nil {
 		slog.Error("password rotated but sessions could not be revoked — existing cookies remain valid",
 			"user", u.ID, "error", err)
-		return "", fmt.Errorf("revoking sessions: %w", err)
+		return "", fmt.Errorf("%w: %v", ErrRotatedSessionsLive, err)
 	}
 	token, err := s.mintSession(ctx, st, u.ID)
 	if err != nil {
 		slog.Error("password rotated and sessions revoked but no new session could be minted — the caller is signed out and must use the NEW password",
 			"user", u.ID, "error", err)
-		return "", err
+		return "", fmt.Errorf("%w: %v", ErrRotatedButSignedOut, err)
 	}
 	return token, nil
 }
