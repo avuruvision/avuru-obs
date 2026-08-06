@@ -56,8 +56,8 @@ type Identity struct {
 	Email  string `json:"email"`
 	Name   string `json:"name"`
 	// Origin mirrors AuthUser.Origin ("local" | "oidc"); empty for the
-	// anonymous identity. The SPA uses it to decide whether a password
-	// form applies at all.
+	// anonymous identity. Carried so /auth/me can tell the SPA whether a
+	// password form applies at all — that handler does not emit it yet.
 	Origin    string  `json:"origin"`
 	Anonymous bool    `json:"anonymous"`
 	Grants    []Grant `json:"grants"`

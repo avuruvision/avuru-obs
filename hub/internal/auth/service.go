@@ -110,25 +110,31 @@ func (s *Service) Login(ctx context.Context, email, password, ip string) (string
 // ChangePassword rotates userID's own password after verifying the current
 // one. Success revokes EVERY existing session (an attacker holding a stolen
 // cookie is evicted) and mints a fresh one so the legitimate caller stays
-// signed in. Failed current-password checks feed the same limiter as login —
-// a stolen session must not become a password-guessing oracle.
+// signed in. Failed current-password checks feed the rate limiter — a stolen
+// session must not become a password-guessing oracle.
 //
-// The limiter key is the userID, where Login uses the email: the caller here
-// is already authenticated, so the stable id is what identifies them, and
-// guesses made through this method neither exhaust nor are exhausted by the
-// victim's login budget. Both paths still share the per-IP axis, so one IP's
-// total bcrypt cost stays capped regardless.
+// userID MUST come from the authenticated identity, never from client input.
+// The not-found, origin and demo guards all answer before the bcrypt burn, so
+// a caller free to name any user could enumerate which accounts exist and how
+// each is governed — by status and by response time alike.
 //
-// Every rejection returns BEFORE the first write, so an error from this
-// method always means nothing changed — except at one seam: a revoke that
-// fails after the hash is saved leaves the password rotated with stale
-// sessions alive. That order is still the right one (revoking first would log
-// the caller out for a change that never landed), but the seam is logged
-// because "rotated, attacker not evicted" is the one state an operator must
-// not miss.
+// Every rejection returns BEFORE the first write. After it there are two
+// seams, both logged because neither reaches the caller as what it actually
+// is: a failed revoke leaves the password rotated with stale sessions alive,
+// and a failed mint leaves the caller signed out holding a password they
+// believe never took. Save-then-revoke is still the right order — revoking
+// first would log the caller out for a change that never landed.
 func (s *Service) ChangePassword(ctx context.Context, userID, current, newPw, ip string) (string, error) {
-	key := userID + "|" + ip
-	if s.limiter.blocked(key, ip) {
+	// Namespaced away from Login's buckets on BOTH axes. Behind an ingress
+	// every client shares one ip, so a shared per-IP bucket would let 30
+	// failed logins a minute disable self-service rotation deployment-wide —
+	// unavailable exactly during the credential-stuffing incident that makes
+	// rotating urgent. The prefix also removes a collision between this key
+	// space and Login's, where an admin-created email could equal another
+	// user's id. The path keeps its own 30/min ceiling, so the bcrypt cost cap
+	// survives the split.
+	key, ipKey := "pw|"+userID+"|"+ip, "pw|"+ip
+	if s.limiter.blocked(key, ipKey) {
 		return "", ErrTooManyAttempts
 	}
 	st, err := s.st()
@@ -155,9 +161,23 @@ func (s *Service) ChangePassword(ctx context.Context, userID, current, newPw, ip
 	if u.ID == demoViewerID {
 		return "", ErrDemoUser
 	}
-	if !CheckPassword(u.PasswordHash, current) {
-		s.limiter.fail(key, ip)
+	// Not an authorization guard — a disabled user cannot hold a session to
+	// reach this at all. It is the READ half of a read-modify-write:
+	// SaveAuthUser rewrites the WHOLE row, so proceeding from a disabled copy
+	// would write Disabled=false back and silently undo an admin's lockout.
+	// Answered as ErrInvalidCredentials so account status stays indistinguishable.
+	if u.Disabled {
 		return "", ErrInvalidCredentials
+	}
+	if !CheckPassword(u.PasswordHash, current) {
+		s.limiter.fail(key, ipKey)
+		return "", ErrInvalidCredentials
+	}
+	// bcrypt hashes "" happily, and CheckPassword then accepts "" against that
+	// hash — an empty password is no credential at all. This is an exported
+	// credential API: it cannot rely on a handler to have filtered its input.
+	if newPw == "" {
+		return "", ErrPasswordUnusable
 	}
 	// Hash before saving anything: bcrypt refuses >72 bytes, and that is the
 	// caller's error about the NEW password — it must never surface as
@@ -166,8 +186,24 @@ func (s *Service) ChangePassword(ctx context.Context, userID, current, newPw, ip
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrPasswordUnusable, err)
 	}
-	u.PasswordHash = hash
-	if err := st.SaveAuthUser(ctx, u); err != nil {
+	// Re-read: the row may have been disabled or deleted during the ~500ms of
+	// bcrypt above, and SaveAuthUser writes the WHOLE row (Disabled and the
+	// Deleted tombstone included, neither being in its column list), so a
+	// stale copy would undo either. A PasswordHash that moved under us means
+	// an admin reset the account mid-flight — the "current" password just
+	// verified is no longer current.
+	fresh, err := st.GetAuthUser(ctx, userID)
+	if err != nil || fresh.Disabled || fresh.PasswordHash != u.PasswordHash {
+		return "", ErrInvalidCredentials
+	}
+	fresh.PasswordHash = hash
+	// Two bcrypt ops precede this point, so a client disconnect or proxy
+	// timeout landing in the window below is ordinary tail behavior — and a
+	// cancelled context alone would strand the rotation in exactly the
+	// half-applied states the seams above describe. The write set must run to
+	// completion even if the caller has hung up.
+	ctx = context.WithoutCancel(ctx)
+	if err := st.SaveAuthUser(ctx, fresh); err != nil {
 		return "", fmt.Errorf("saving user: %w", err)
 	}
 	if err := st.RevokeAuthSessionsForUser(ctx, u.ID); err != nil {
@@ -175,7 +211,13 @@ func (s *Service) ChangePassword(ctx context.Context, userID, current, newPw, ip
 			"user", u.ID, "error", err)
 		return "", fmt.Errorf("revoking sessions: %w", err)
 	}
-	return s.mintSession(ctx, st, u.ID)
+	token, err := s.mintSession(ctx, st, u.ID)
+	if err != nil {
+		slog.Error("password rotated and sessions revoked but no new session could be minted — the caller is signed out and must use the NEW password",
+			"user", u.ID, "error", err)
+		return "", err
+	}
+	return token, nil
 }
 
 // mintSession creates a session row for userID and returns the raw cookie token.

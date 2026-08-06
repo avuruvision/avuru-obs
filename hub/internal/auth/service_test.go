@@ -525,6 +525,11 @@ func TestChangePasswordRejectsUnusableNewPassword(t *testing.T) {
 	if errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("an unusable NEW password must not report the CURRENT one as wrong: %v", err)
 	}
+	// The empty password is the more dangerous end of the same check: bcrypt
+	// hashes it happily and CheckPassword then accepts "" against that hash.
+	if _, err := svc.ChangePassword(ctx, id.UserID, "old-pw", "", "ip1"); !errors.Is(err, ErrPasswordUnusable) {
+		t.Fatalf("empty new password: %v, want ErrPasswordUnusable", err)
+	}
 	// The rejection happened before any write: the old password still logs in
 	// and the existing session was not revoked.
 	if _, _, err := svc.Login(ctx, "a@x.io", "old-pw", "ip2"); err != nil {
@@ -532,6 +537,207 @@ func TestChangePasswordRejectsUnusableNewPassword(t *testing.T) {
 	}
 	if _, err := svc.IdentityFromToken(ctx, token); err != nil {
 		t.Fatalf("session revoked by a rejected change: %v", err)
+	}
+}
+
+// readTrackingStore counts GetAuthUser calls and can flip Disabled on a
+// chosen read, standing in for an admin disabling a compromised account
+// during the ~500ms of bcrypt inside ChangePassword.
+type readTrackingStore struct {
+	*storagetest.Fake
+	reads         int
+	disableOnRead int // 0 = never
+}
+
+func (d *readTrackingStore) GetAuthUser(ctx context.Context, id string) (storage.AuthUser, error) {
+	d.reads++
+	if d.reads == d.disableOnRead {
+		u := d.Users[id]
+		u.Disabled = true
+		if err := d.SaveAuthUser(ctx, u); err != nil {
+			return storage.AuthUser{}, err
+		}
+	}
+	return d.Fake.GetAuthUser(ctx, id)
+}
+
+// A disabled user must not rotate their password — not because they could
+// reach this method (they cannot hold a session), but because SaveAuthUser
+// rewrites the WHOLE row: proceeding from a disabled copy would write
+// Disabled=false back and undo the admin's lockout.
+func TestChangePasswordRefusesDisabledUser(t *testing.T) {
+	f := &storagetest.Fake{}
+	seedUser(t, f, "a@x.io", "pw", nil)
+	d := &readTrackingStore{Fake: f}
+	svc := NewService(func() storage.Store { return d }, 24*time.Hour)
+	ctx := context.Background()
+
+	u := f.UsersByEmail["a@x.io"]
+	u.Disabled = true
+	if err := f.SaveAuthUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	writes := len(f.SavedUsers)
+
+	if _, err := svc.ChangePassword(ctx, u.ID, "pw", "new-pw", "ip1"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("disabled user: %v, want ErrInvalidCredentials", err)
+	}
+	if len(f.SavedUsers) != writes {
+		t.Fatalf("a disabled user's change wrote to the store: %+v", f.SavedUsers[writes:])
+	}
+	if got, _ := f.GetAuthUser(ctx, u.ID); !got.Disabled {
+		t.Fatal("the lockout was undone")
+	}
+	// Refused on the FIRST read: a second one means the check slid below the
+	// bcrypt work, where the pre-save re-read would mask it. The re-read is
+	// the backstop for a row that changes mid-flight, not the primary guard.
+	if d.reads != 1 {
+		t.Fatalf("GetAuthUser calls = %d, want 1 (refused before any bcrypt)", d.reads)
+	}
+}
+
+// The other half of the read-modify-write: the row may change AFTER the read
+// that cleared it. Without the pre-save re-read the in-flight save writes the
+// stale Disabled=false row back and undoes the lockout — and since
+// SaveAuthUser's column list omits Deleted and UpdatedAt too, that same stale
+// write resurrects a user deleted in the window, with a fresh password and a
+// fresh session.
+func TestChangePasswordRefusesRowDisabledMidFlight(t *testing.T) {
+	f := &storagetest.Fake{}
+	seedUser(t, f, "a@x.io", "pw", nil)
+	d := &readTrackingStore{Fake: f, disableOnRead: 2}
+	svc := NewService(func() storage.Store { return d }, 24*time.Hour)
+	ctx := context.Background()
+
+	const uid = "u-a@x.io"
+	before := f.Users[uid].PasswordHash
+
+	if _, err := svc.ChangePassword(ctx, uid, "pw", "new-pw", "ip1"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("disabled mid-flight: %v, want ErrInvalidCredentials", err)
+	}
+	if got := f.Users[uid]; got.PasswordHash != before {
+		t.Fatal("the rotation landed on a row that was disabled under it")
+	}
+	if !f.Users[uid].Disabled {
+		t.Fatal("the lockout was undone by the in-flight save")
+	}
+}
+
+// hangupStore emulates a client disconnect landing in ChangePassword's write
+// window: it cancels the request context as the pre-save re-read returns, then
+// refuses writes on a dead context the way a real driver does (the fake
+// ignores ctx entirely). A disconnect EARLIER is harmless — it aborts at the
+// re-read with nothing written — so this is the one instant that matters.
+type hangupStore struct {
+	*storagetest.Fake
+	cancel context.CancelFunc
+	reads  int
+}
+
+func (h *hangupStore) GetAuthUser(ctx context.Context, id string) (storage.AuthUser, error) {
+	h.reads++
+	u, err := h.Fake.GetAuthUser(ctx, id)
+	if h.reads == 2 {
+		h.cancel() // the caller hangs up just as the writes are about to start
+	}
+	return u, err
+}
+
+func (h *hangupStore) SaveAuthUser(ctx context.Context, u storage.AuthUser) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return h.Fake.SaveAuthUser(ctx, u)
+}
+
+func (h *hangupStore) RevokeAuthSessionsForUser(ctx context.Context, userID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return h.Fake.RevokeAuthSessionsForUser(ctx, userID)
+}
+
+func (h *hangupStore) CreateAuthSession(ctx context.Context, s storage.AuthSession) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return h.Fake.CreateAuthSession(ctx, s)
+}
+
+// Two bcrypt ops precede the writes, so a disconnect or proxy timeout in that
+// window is ordinary tail behavior. The save/revoke/mint set must run to
+// completion regardless, or the caller is left half-rotated.
+func TestChangePasswordCompletesWhenCallerHangsUp(t *testing.T) {
+	f := &storagetest.Fake{}
+	seedUser(t, f, "a@x.io", "pw", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	svc := NewService(func() storage.Store { return &hangupStore{Fake: f, cancel: cancel} }, 24*time.Hour)
+
+	token, err := svc.ChangePassword(ctx, "u-a@x.io", "pw", "new-pw", "ip1")
+	if err != nil {
+		t.Fatalf("caller hung up mid-rotation: %v, want the write set to finish anyway", err)
+	}
+	if _, err := svc.IdentityFromToken(context.Background(), token); err != nil {
+		t.Fatalf("the fresh session was not minted: %v", err)
+	}
+	if _, _, err := svc.Login(context.Background(), "a@x.io", "new-pw", "ip2"); err != nil {
+		t.Fatalf("the new password did not land: %v", err)
+	}
+}
+
+// The limiter key is the userID, not the email Login uses, and lives in its
+// own "pw|" namespace: guesses made here must neither exhaust nor be
+// exhausted by the victim's login budget.
+func TestChangePasswordDoesNotExhaustLoginBudget(t *testing.T) {
+	f := &storagetest.Fake{}
+	seedUser(t, f, "a@x.io", "pw", nil)
+	svc := testService(f)
+	ctx := context.Background()
+	const uid = "u-a@x.io"
+
+	for i := 0; i < maxLoginAttempts; i++ {
+		_, _ = svc.ChangePassword(ctx, uid, "WRONG", "x", "ip1")
+	}
+	// Same email, same ip, same window: the login budget is untouched.
+	if _, _, err := svc.Login(ctx, "a@x.io", "pw", "ip1"); err != nil {
+		t.Fatalf("login after %d failed password changes: %v, want it unaffected", maxLoginAttempts, err)
+	}
+	// ...yet this path's own account axis did lock.
+	if _, err := svc.ChangePassword(ctx, uid, "pw", "new-pw", "ip1"); !errors.Is(err, ErrTooManyAttempts) {
+		t.Fatalf("change after %d failures: %v, want ErrTooManyAttempts", maxLoginAttempts, err)
+	}
+}
+
+// Both limiter axes are namespaced per path. The per-IP one matters most:
+// behind an ingress every client shares one ip, so a shared bucket would let
+// a login flood disable password rotation for the whole deployment — exactly
+// when rotating matters.
+func TestChangePasswordLimiterIsNamespaced(t *testing.T) {
+	f := &storagetest.Fake{}
+	seedUser(t, f, "a@x.io", "pw", nil)
+	seedUser(t, f, "b@x.io", "pw", nil)
+	svc := testService(f)
+	ctx := context.Background()
+
+	// One user's failures do not lock another sharing the ip. Asserted with a
+	// wrong password (ErrInvalidCredentials, not ErrTooManyAttempts) so the
+	// limiter verdict is what's read, without paying for a cost-12 hash.
+	for i := 0; i < maxLoginAttempts; i++ {
+		_, _ = svc.ChangePassword(ctx, "u-a@x.io", "WRONG", "x", "shared-ip")
+	}
+	if _, err := svc.ChangePassword(ctx, "u-b@x.io", "WRONG", "x", "shared-ip"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("second user on the same ip: %v, want ErrInvalidCredentials (not locked out)", err)
+	}
+
+	// A login flood saturating the per-IP axis (as TestRateLimiterPerIPCap
+	// drives it) must leave rotation available. Straight to the limiter, no
+	// bcrypt — the same idiom that test uses.
+	for i := 0; i < maxLoginAttemptsPerIP; i++ {
+		svc.limiter.fail(fmt.Sprintf("spray%d@x.io|flooded-ip", i), "flooded-ip")
+	}
+	if _, err := svc.ChangePassword(ctx, "u-b@x.io", "pw", "new-pw", "flooded-ip"); err != nil {
+		t.Fatalf("rotation during a login flood on the same ip: %v, want it to still work", err)
 	}
 }
 
