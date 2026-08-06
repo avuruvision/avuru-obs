@@ -24,23 +24,34 @@ crash-loop because of kernel capability. On such nodes the eBPF containers can
 be disabled individually (`sensor.obi.enabled=false`, …) while logs/metrics
 collection keeps running.
 
-## Kepler degradation story (no RAPL → no data, no harm)
+## Kepler degradation story (no RAPL → drop the container, keep collecting)
 
 The energy signal is hardware-dependent: most public-cloud VMs expose no
 RAPL/powercap, which is why the container is **born off** — a default-on
-energy collector would silently flip on for every install on upgrade. On a
-node without RAPL, Kepler simply measures nothing: v1 reports only what was
-measured (no TDP estimation), `/green` shows a teaching empty state, and the
-preflight initContainer prints a loud warning. On partial fleets (some nodes
-with RAPL, some without) the RAPL-less share is simply absent energy —
-workloads on those nodes report nothing. The export's coverage ratio measures
-how much of the *measured* energy was attributed to workloads, not RAPL reach;
-node-level coverage from the collected node counters is a planned follow-up
-(see the design AEP). To keep a RAPL-less Kepler from ever destabilizing
-collection, the container carries **no liveness/readiness/startup probes** —
-it may sit idle or unhealthy, but it can never flap the sensor pod (the
-"do no harm" probe-canary gate in `deploy/helm/e2e-helm.sh` enforces exactly
-this, with the fake-cpu-meter producing energy during the soak). CI
+energy collector would silently flip on for every install on upgrade.
+
+On a node without RAPL, Kepler does **not** sit there measuring nothing: the
+pinned v0.11.4 fails its startup zone discovery (`failed to initialize service
+rapl: no RAPL zones found`) and exits, so the container crash-loops and the
+sensor pod never reports Ready — which fails `helm --wait` and `kubectl
+rollout status` for the whole sensor, an optional signal taking down the
+collection that was working. RAPL-less nodes therefore set
+**`sensor.green.kepler.enabled=false`**: the container is dropped, and
+`sensor.green.estimation.enabled` (TDP model, stamped
+`avuruobs_quality="estimated"`) carries `/green` on its own. The preflight
+initContainer prints which case a node is in before anything starts. On
+partial fleets, run the measured source only where powercap exists.
+
+The container carries **no liveness/readiness/startup probes** so that a
+*degraded* Kepler can never flap the sensor pod (the "do no harm" probe-canary
+gate in `deploy/helm/e2e-helm.sh` enforces exactly this, with the
+fake-cpu-meter producing energy during the soak). Note what that does and does
+not buy: absent probes keep a live-but-unhealthy container from being
+restarted, but nothing rescues a pod from a container that terminates itself.
+
+The export's coverage ratio measures how much of the *measured* energy was
+attributed to workloads, not RAPL reach; node-level coverage from the
+collected node counters is a planned follow-up (see the design AEP). CI
 environments without RAPL use `sensor.green.fakeCpuMeter=true` (Kepler's dev
 fake meter) — never enable it where real hardware exists, it fabricates
 measurements.

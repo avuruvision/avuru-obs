@@ -352,10 +352,24 @@ sensor:
   # modules.green and carries green-specific scrape config. REQUIRES
   # modules.green.enabled + modules.infraMetrics.enabled + sensor.agent.enabled;
   # chart guards enforce all three. The container gets NO liveness/readiness
-  # probes on purpose — a RAPL-less node leaves Kepler idle/unhealthy, and it
-  # must never flap the sensor pod (the "do no harm" probe-canary gate).
+  # probes on purpose — it must never flap the sensor pod (the "do no harm"
+  # probe-canary gate) — but see kepler.enabled below: on a node with no RAPL
+  # Kepler doesn't idle, it exits, and no probe config can save the pod from a
+  # container that terminates itself.
   green:
+    # The umbrella switch for the whole energy surface — Kepler, the estimator,
+    # the scrape receiver, the metrics/green pipeline and the host mounts.
     enabled: false
+    # Kepler itself, the MEASURED source. Turn OFF on nodes without RAPL
+    # (VMs — the hypervisor doesn't expose the powercap MSRs): Kepler v0.11.4
+    # exits with "no RAPL zones found" rather than sitting idle, so the
+    # container crash-loops, the sensor pod never reports Ready, and `helm
+    # --wait` / `kubectl rollout status` fail on an otherwise healthy sensor.
+    # With this false, estimation.enabled below carries the Green screen alone
+    # (a chart guard refuses to leave both sources off). The sensor's init
+    # container prints which case a node is in before anything starts.
+    kepler:
+      enabled: true
     image:
       repository: quay.io/sustainable_computing_io/kepler
       # Pin exact — NEVER float to :latest. v0.11.x is the rebooted (Go) Kepler
@@ -395,7 +409,8 @@ sensor:
     # TDP-based power estimation for RAPL-less nodes (opt-in, requires
     # sensor.green.enabled). See design/2026-07-28-green-tdp-estimation.md.
     # Every series it emits is stamped avuruobs_quality="estimated" by the
-    # otel-agent — never blended with Kepler's measured numbers.
+    # otel-agent — never blended with Kepler's measured numbers. On a RAPL-less
+    # fleet this is the ONLY source: pair it with kepler.enabled=false above.
     estimation:
       enabled: false
       image:

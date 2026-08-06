@@ -79,28 +79,33 @@ Enabling energy collection (`modules.green.enabled` + `sensor.green.enabled`)
 rolls the sensor DaemonSet — a fourth container joins the pod — so it goes
 through the SAME ladder: canary pool → soak → widen. Green-specific points:
 
-- **Check RAPL homogeneity first.** The canary pool must be representative of
-  the fleet's hardware: on each node class, check
-  `ls /sys/class/powercap/intel-rapl*` (empty or absent = no RAPL = no energy
-  data from that node). A canary pool of RAPL-less nodes proves only that
-  Kepler does no harm — it says nothing about the data path. Mixed fleets are
-  fine and expected — RAPL-less nodes just contribute no energy, so their
-  workloads show none in `/green`; that absence is not a rollout failure.
-  (The coverage ratio measures attribution of *measured* energy, not RAPL
-  reach — it will not flag the RAPL-less share.)
-- **Kepler has no probes by design**, so it can never flap the sensor pod —
-  during the soak, watch the *sensor* pods stay Ready and the kepler container
-  for crash loops (`kubectl logs ds/<release>-sensor -c kepler`); a
-  crash-looping kepler is a config/hardware problem to fix or escape-hatch,
-  not a fleet risk.
+- **Check RAPL homogeneity first — it decides whether Kepler may run at all.**
+  On each node class, check `ls /sys/class/powercap/intel-rapl*` (empty or
+  absent = no RAPL). Kepler v0.11.4 *exits* when that list is empty (`no RAPL
+  zones found`), so on such a node the container crash-loops and the sensor
+  pod never reaches Ready — `helm --wait` and `rollout status` then fail over
+  an optional signal. Nodes without RAPL run with
+  `sensor.green.kepler.enabled=false` and let `sensor.green.estimation` carry
+  `/green`. A canary pool of RAPL-less nodes says nothing about the measured
+  data path — pick one with powercap to prove that. (The coverage ratio
+  measures attribution of *measured* energy, not RAPL reach — it will not flag
+  the RAPL-less share.)
+- **Kepler has no probes by design**, so a *degraded* Kepler can never flap the
+  sensor pod — but a *dead* one still does, because the pod is not Ready until
+  every container is. During the soak, watch the *sensor* pods stay Ready and
+  the kepler container for crash loops (`kubectl logs ds/<release>-sensor -c
+  kepler`); a crash-looping kepler blocks the rollout — fix the config/hardware
+  or take the escape hatch below.
 - **Verify before prod trust**: metric names, config keys, port and RBAC
   against the pinned Kepler are a documented verify-on-RAPL-hardware item
   (design/2026-07-22-green-carbon.md) — treat the first canary soak on real
   RAPL nodes as that verification, and confirm `kepler_*` rows land (the
   `/green` dashboard lights up) before widening.
-- **Escape hatch**: `sensor.green.enabled=false` rolls only the sensor and
-  removes the container; the hub side (`modules.green`) can stay on — the
-  dashboard degrades to its empty state, nothing errors.
+- **Escape hatch**: `sensor.green.kepler.enabled=false` rolls only the sensor
+  and removes the Kepler container, keeping the estimator (and `/green`) alive;
+  `sensor.green.enabled=false` removes the energy surface entirely. Either way
+  the hub side (`modules.green`) can stay on — the dashboard degrades to its
+  empty state, nothing errors.
 
 ## What CI proves — and what it does not
 

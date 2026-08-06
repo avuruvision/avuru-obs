@@ -17,7 +17,15 @@
 {{- fail "sensor.green.enabled requires sensor.agent.enabled — Kepler's energy metrics are scraped by a prometheus receiver in the otel-agent; with the agent off nothing collects them." }}
 {{- end }}
 {{- if and .Values.sensor.green.estimation.enabled (not .Values.sensor.green.enabled) }}
-{{- fail "sensor.green.estimation.enabled requires sensor.green.enabled — the estimator is a fallback for the same Kepler energy signal, not a standalone source." }}
+{{- fail "sensor.green.estimation.enabled requires sensor.green.enabled — sensor.green is the umbrella switch for the energy surface (receiver, pipeline, host mounts) that both sources share. To run the estimator alone on RAPL-less nodes keep sensor.green.enabled and set sensor.green.kepler.enabled=false." }}
+{{- end }}
+{{- /* Both sources off while the green surface renders would leave
+       prometheus/green with an empty scrape_configs — an invalid collector
+       config that crash-loops the otel-agent, i.e. a working sensor traded for
+       an optional signal. Fail at template time instead, scoped like the
+       agent guard above so values that render nothing never fail an install. */}}
+{{- if and .Values.sensor.enabled (include "avuruobs.collectGreen" .) (not .Values.sensor.green.kepler.enabled) (not .Values.sensor.green.estimation.enabled) }}
+{{- fail "sensor.green.enabled with sensor.green.kepler.enabled=false requires sensor.green.estimation.enabled — dropping Kepler leaves the estimator as the only energy source; with both off nothing collects, so turn sensor.green.enabled off instead." }}
 {{- end }}
 {{- if and .Values.sensor.enabled .Values.sensor.obi.enabled }}
 {{- /* optIn guards live INSIDE the render gate: values that produce no
@@ -179,6 +187,7 @@ data:
       prometheus/green:
         config:
           scrape_configs:
+              {{- if include "avuruobs.collectGreenMeasured" . }}
             - job_name: kepler
               scrape_interval: {{ .Values.sensor.green.scrapeInterval }}
               static_configs:
@@ -187,6 +196,7 @@ data:
                 - source_labels: [__name__]
                   regex: {{ .Values.sensor.green.metrics.keep | quote }}
                   action: keep
+              {{- end }}
               {{- if include "avuruobs.collectGreenEstimation" . }}
             - job_name: tdp-estimator
               scrape_interval: {{ .Values.sensor.green.estimation.scrapeInterval }}
@@ -305,7 +315,9 @@ data:
         metric_statements:
           - context: datapoint
             statements:
+              {{- if include "avuruobs.collectGreenMeasured" . }}
               - set(attributes["avuruobs_quality"], "measured") where resource.attributes["service.name"] == "kepler"
+              {{- end }}
               {{- if include "avuruobs.collectGreenEstimation" . }}
               - set(attributes["avuruobs_quality"], "estimated") where resource.attributes["service.name"] == "tdp-estimator"
               {{- end }}
@@ -427,7 +439,7 @@ data:
           processors: [memory_limiter]
           exporters: [otlphttp]
 {{- end }}
-{{- if and .Values.sensor.enabled (include "avuruobs.collectGreen" .) }}
+{{- if and .Values.sensor.enabled (include "avuruobs.collectGreenMeasured" .) }}
 ---
 apiVersion: v1
 kind: ConfigMap
