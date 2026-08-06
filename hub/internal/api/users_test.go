@@ -354,6 +354,34 @@ func TestDeleteDemoUserRefused(t *testing.T) {
 	if !strings.Contains(w.Body.String(), "managed by the server") {
 		t.Fatalf("409 body doesn't explain the demo guard: %s", w.Body.String())
 	}
+
+	// The guard keys on the server-reserved id, not on mutable config: with
+	// demo mode switched off AND DemoEmail pointing elsewhere, the lingering
+	// demo-viewer row is still refused. EnsureDemoUser will recreate it the
+	// moment demo mode comes back, so deleting it now is never the clean-up it
+	// looks like.
+	reconfigured := http.NewServeMux()
+	Register(reconfigured, func() storage.Store { return f }, Config{
+		Auth: svc, DemoEnabled: false, DemoEmail: "someone-else@x.io",
+	})
+	if w := doBody(reconfigured, "DELETE", "/api/v1/users/demo-viewer", c, ""); w.Code != http.StatusConflict {
+		t.Fatalf("delete demo user with demo mode off: %d, want 409; body %s", w.Code, w.Body.String())
+	}
+
+	// The mirror image: an ordinary user who merely shares the configured demo
+	// address is not the demo account and stays deletable.
+	if err := f.SaveAuthUser(context.Background(), storage.AuthUser{
+		ID: "namesake", Email: "namesake@x.io", Origin: "local", Disabled: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	namesakeMux := http.NewServeMux()
+	Register(namesakeMux, func() storage.Store { return f }, Config{
+		Auth: svc, DemoEnabled: true, DemoEmail: "namesake@x.io", DemoPassword: "x",
+	})
+	if w := doBody(namesakeMux, "DELETE", "/api/v1/users/namesake", c, ""); w.Code != http.StatusNoContent {
+		t.Fatalf("delete a user sharing DemoEmail: %d, want 204; body %s", w.Code, w.Body.String())
+	}
 }
 
 // The 400 alone doesn't prove the password was never stored — Login

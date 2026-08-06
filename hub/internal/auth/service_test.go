@@ -498,7 +498,7 @@ func TestChangePasswordGuards(t *testing.T) {
 	if err := svc.EnsureDemoUser(ctx, "demo@x.io", "demo-pw"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.ChangePassword(ctx, demoViewerID, "demo-pw", "b", "ip9"); !errors.Is(err, ErrDemoUser) {
+	if _, err := svc.ChangePassword(ctx, DemoViewerID, "demo-pw", "b", "ip9"); !errors.Is(err, ErrDemoUser) {
 		t.Fatalf("demo user: %v, want ErrDemoUser", err)
 	}
 }

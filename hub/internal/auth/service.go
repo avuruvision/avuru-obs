@@ -158,7 +158,7 @@ func (s *Service) ChangePassword(ctx context.Context, userID, current, newPw, ip
 	// configured credentials on every boot, so a "successful" change would
 	// silently revert. The id is server-reserved, so this stays refused even
 	// with demo mode since switched off — the conservative direction.
-	if u.ID == demoViewerID {
+	if u.ID == DemoViewerID {
 		return "", ErrDemoUser
 	}
 	// Not an authorization guard — a disabled user cannot hold a session to
@@ -342,7 +342,7 @@ func (s *Service) Bootstrap(ctx context.Context, adminPassword string) (created 
 		return false, fmt.Errorf("listing users: %w", err)
 	}
 	for _, u := range users {
-		if u.ID != demoViewerID {
+		if u.ID != DemoViewerID {
 			return false, nil
 		}
 	}
@@ -366,9 +366,16 @@ func (s *Service) Bootstrap(ctx context.Context, adminPassword string) (created 
 	return true, nil
 }
 
-// demoViewerID is the FIXED id for the demo viewer (same rationale as
-// bootstrapAdminID: a random id would let two replicas create divergent rows).
-const demoViewerID = "demo-viewer"
+// DemoViewerID is the server-reserved id of the shared demo account. It is
+// FIXED for the same reason as bootstrapAdminID (a random id would let two
+// replicas create divergent rows), and exported because guards outside this
+// package must recognize the demo row too. Recognize it BY THIS ID, never by
+// a config value: EnsureDemoUser re-creates and re-keys the row from the
+// chart's credentials on every boot, so it stays server-managed no matter what
+// DemoEmail currently says or whether demo mode is switched on at all — while
+// an email comparison would both miss the demo row after the address changes
+// and wrongly capture an unrelated user who happens to share it.
+const DemoViewerID = "demo-viewer"
 
 // EnsureDemoUser idempotently creates/refreshes the read-only demo user
 // (viewer @ "demo") from the configured credentials. Called at startup only
@@ -384,12 +391,12 @@ func (s *Service) EnsureDemoUser(ctx context.Context, email, password string) er
 		return err
 	}
 	// Grant first (harmless orphan if we crash before the user write).
-	if err := st.ReplaceAuthGrants(ctx, demoViewerID, []storage.AuthGrant{
-		{UserID: demoViewerID, Scope: "demo", Role: string(RoleViewer)},
+	if err := st.ReplaceAuthGrants(ctx, DemoViewerID, []storage.AuthGrant{
+		{UserID: DemoViewerID, Scope: "demo", Role: string(RoleViewer)},
 	}); err != nil {
 		return fmt.Errorf("granting demo viewer: %w", err)
 	}
-	u := storage.AuthUser{ID: demoViewerID, Email: email, Name: "Demo (read-only)",
+	u := storage.AuthUser{ID: DemoViewerID, Email: email, Name: "Demo (read-only)",
 		PasswordHash: hash, Origin: "local"}
 	if err := st.SaveAuthUser(ctx, u); err != nil {
 		return fmt.Errorf("creating demo user: %w", err)

@@ -254,7 +254,14 @@ func (a *API) handleDeleteUser(w http.ResponseWriter, r *http.Request) error {
 	// The demo account is server-managed: EnsureDemoUser recreates it (with
 	// its chart-configured password) on every boot, so a "successful" delete
 	// would silently undo itself on the next restart.
-	if a.cfg.DemoEnabled && u.Email == a.cfg.DemoEmail {
+	//
+	// Matched by the server-reserved id, like auth.ChangePassword — never by
+	// the mutable DemoEmail, which both misses the demo row once the address
+	// changes and wrongly blocks deleting an unrelated user who shares it.
+	// DemoEnabled is deliberately not part of the condition either: a
+	// lingering demo-viewer row stays undeletable with demo mode off, because
+	// switching it back on would just recreate the row anyway.
+	if u.ID == auth.DemoViewerID {
 		return &apiError{status: http.StatusConflict, message: "the demo account is managed by the server and is recreated on restart"}
 	}
 	if err := st.RevokeAuthSessionsForUser(r.Context(), u.ID); err != nil {
