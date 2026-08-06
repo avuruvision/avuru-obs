@@ -389,6 +389,16 @@ func (f *Fake) SaveAuthUser(_ context.Context, u storage.AuthUser) error {
 	return nil
 }
 
+// DeleteAuthUser removes the user from both indexes — mirrors the tombstone
+// from the caller's point of view (no read path can observe it afterwards).
+func (f *Fake) DeleteAuthUser(_ context.Context, id string) error {
+	if u, ok := f.Users[id]; ok {
+		delete(f.UsersByEmail, u.Email)
+	}
+	delete(f.Users, id)
+	return nil
+}
+
 // ListAuthGrants returns a Scope-sorted copy of the user's grants (matching
 // the real implementation's ORDER BY), so callers can't mutate the fake's
 // backing slice through the returned value.

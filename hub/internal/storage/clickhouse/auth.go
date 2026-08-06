@@ -16,7 +16,7 @@ func (s *Store) GetAuthUser(ctx context.Context, id string) (storage.AuthUser, e
 	row := s.conn.QueryRow(ctx, `
 SELECT Id, Email, Name, PasswordHash, toString(Origin), Disabled, OidcGroups, UpdatedAt
 FROM auth_user FINAL
-WHERE Id = ?`, id)
+WHERE Id = ? AND Deleted = 0`, id)
 	return scanAuthUser(row)
 }
 
@@ -26,7 +26,7 @@ func (s *Store) GetAuthUserByEmail(ctx context.Context, email string) (storage.A
 	row := s.conn.QueryRow(ctx, `
 SELECT Id, Email, Name, PasswordHash, toString(Origin), Disabled, OidcGroups, UpdatedAt
 FROM auth_user FINAL
-WHERE Email = ?`, email)
+WHERE Email = ? AND Deleted = 0`, email)
 	return scanAuthUser(row)
 }
 
@@ -56,6 +56,7 @@ func (s *Store) ListAuthUsers(ctx context.Context) ([]storage.AuthUser, error) {
 	rows, err := s.conn.Query(ctx, `
 SELECT Id, Email, Name, PasswordHash, toString(Origin), Disabled, OidcGroups, UpdatedAt
 FROM auth_user FINAL
+WHERE Deleted = 0
 ORDER BY Email`)
 	if err != nil {
 		return nil, fmt.Errorf("list auth users: %w", err)
@@ -85,6 +86,19 @@ INSERT INTO auth_user (Id, Email, Name, PasswordHash, Origin, Disabled, OidcGrou
 VALUES (?, ?, ?, ?, ?, ?, ?)`, u.ID, u.Email, u.Name, u.PasswordHash, u.Origin, disabled, u.OidcGroups)
 	if err != nil {
 		return fmt.Errorf("save auth user: %w", err)
+	}
+	return nil
+}
+
+// DeleteAuthUser tombstones a user (Deleted=1). Reads filter Deleted = 0, so
+// the row disappears from every lookup while ReplacingMergeTree(UpdatedAt)
+// supersedes the live row — same pattern as DeleteProject. SaveAuthUser's
+// column list omits Deleted, so any later upsert is live again by default.
+func (s *Store) DeleteAuthUser(ctx context.Context, id string) error {
+	err := s.conn.Exec(ctx, `
+INSERT INTO auth_user (Id, Deleted) VALUES (?, 1)`, id)
+	if err != nil {
+		return fmt.Errorf("delete auth user: %w", err)
 	}
 	return nil
 }

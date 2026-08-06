@@ -4,6 +4,7 @@ package clickhouse
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -349,5 +350,49 @@ func TestAuthUserOidcGroups(t *testing.T) {
 	}
 	if !slices.Equal(got.OidcGroups, groups) {
 		t.Errorf("OidcGroups = %v, want %v (Array(String) round trip)", got.OidcGroups, groups)
+	}
+}
+
+// TestDeleteAuthUserTombstones: the user vanishes from every read path, and a
+// later SaveAuthUser for the same Id (an SSO user signing in again) resurrects
+// a fresh live row — the AEP's documented re-provisioning behavior.
+func TestDeleteAuthUserTombstones(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	u := storage.AuthUser{ID: "del-1", Email: "del@x.io", Origin: "local", Disabled: true}
+	if err := store.SaveAuthUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteAuthUser(ctx, "del-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.GetAuthUser(ctx, "del-1"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("GetAuthUser after delete: %v, want ErrNotFound", err)
+	}
+	if _, err := store.GetAuthUserByEmail(ctx, "del@x.io"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("GetAuthUserByEmail after delete: %v, want ErrNotFound", err)
+	}
+	users, err := store.ListAuthUsers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, got := range users {
+		if got.ID == "del-1" {
+			t.Fatal("deleted user still listed")
+		}
+	}
+
+	// Same-Id re-save supersedes the tombstone (newer UpdatedAt wins).
+	if err := store.SaveAuthUser(ctx, storage.AuthUser{ID: "del-1", Email: "del@x.io", Origin: "oidc"}); err != nil {
+		t.Fatal(err)
+	}
+	back, err := store.GetAuthUser(ctx, "del-1")
+	if err != nil {
+		t.Fatalf("re-saved user not readable: %v", err)
+	}
+	if back.Origin != "oidc" {
+		t.Fatalf("re-saved user Origin = %q", back.Origin)
 	}
 }
