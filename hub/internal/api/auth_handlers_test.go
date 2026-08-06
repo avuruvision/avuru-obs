@@ -282,3 +282,165 @@ func TestLoginBodyTooLargeIs413(t *testing.T) {
 		t.Fatalf("oversized login body: %d, want 413", w.Code)
 	}
 }
+
+// Self-service password change: wrong current -> 400 (NOT 401 — the SPA
+// treats 401 as session-expired and redirects to login), success rotates the
+// cookie, /auth/me carries origin so the SPA knows a password form applies.
+func TestChangeOwnPassword(t *testing.T) {
+	mux, c, _ := adminMux(t)
+
+	me := doBody(mux, "GET", "/api/v1/auth/me", c, "")
+	if me.Code != http.StatusOK || !strings.Contains(me.Body.String(), `"origin":"local"`) {
+		t.Fatalf("me without origin: %d %s", me.Code, me.Body.String())
+	}
+
+	w := doBody(mux, "POST", "/api/v1/auth/password", c, `{"currentPassword":"WRONG","newPassword":"next-pw"}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("wrong current: %d, want 400; body %s", w.Code, w.Body.String())
+	}
+
+	w = doBody(mux, "POST", "/api/v1/auth/password", c, `{"currentPassword":"root-pw","newPassword":"next-pw"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("change: %d body %s", w.Code, w.Body.String())
+	}
+	var fresh *http.Cookie
+	for _, ck := range w.Result().Cookies() {
+		if ck.Name == sessionCookieName && ck.Value != "" {
+			fresh = ck
+		}
+	}
+	if fresh == nil {
+		t.Fatal("no fresh session cookie on the response")
+	}
+	if got := doBody(mux, "GET", "/api/v1/auth/me", c, ""); got.Code != http.StatusUnauthorized {
+		t.Fatalf("old session after rotation: %d, want 401", got.Code)
+	}
+	if got := doBody(mux, "GET", "/api/v1/auth/me", fresh, ""); got.Code != http.StatusOK {
+		t.Fatalf("fresh session: %d", got.Code)
+	}
+}
+
+func TestChangeOwnPasswordRequiresBody(t *testing.T) {
+	mux, c, _ := adminMux(t)
+	w := doBody(mux, "POST", "/api/v1/auth/password", c, `{"currentPassword":"","newPassword":""}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("empty fields: %d, want 400", w.Code)
+	}
+	if w := doBody(mux, "POST", "/api/v1/auth/password", nil, `{"currentPassword":"a","newPassword":"b"}`); w.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d, want 401", w.Code)
+	}
+}
+
+// In anonymous mode a cookie-less caller still gets an identity from the
+// middleware, so "no session" alone would NOT stop here — only the explicit
+// Anonymous check does. Without it the synthetic identity's empty UserID
+// would reach ChangePassword and surface as a confusing 404.
+func TestChangeOwnPasswordRefusedForAnonymous(t *testing.T) {
+	f := &storagetest.Fake{Tenants: []string{"demo"}}
+	anon := &auth.Identity{Name: "Anonymous", Anonymous: true,
+		Grants: []auth.Grant{{Scope: "demo", Role: auth.RoleViewer}}}
+	svc := auth.NewService(func() storage.Store { return f }, time.Hour)
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return f }, Config{Auth: svc, AnonymousIdentity: anon})
+
+	w := doBody(mux, "POST", "/api/v1/auth/password", nil, `{"currentPassword":"a","newPassword":"b"}`)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous password change: %d, want 401; body %s", w.Code, w.Body.String())
+	}
+}
+
+// A new password bcrypt refuses (>72 bytes) is the CALLER's error about the
+// NEW password: 400, never the generic 500 the unmapped sentinel would fall
+// through to — and never sharing the wrong-current-password message, which
+// would send the user hunting for a typo in the field that was fine. This is
+// exactly why auth.ErrPasswordUnusable exists as its own sentinel.
+func TestChangeOwnPasswordRejectsUnusableNewPassword(t *testing.T) {
+	mux, c, _ := adminMux(t)
+	longPw := strings.Repeat("a", 73) // bcrypt caps at 72 bytes
+	w := doBody(mux, "POST", "/api/v1/auth/password", c,
+		`{"currentPassword":"root-pw","newPassword":"`+longPw+`"}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("73-byte new password: %d, want 400; body %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "new password") {
+		t.Fatalf("400 body doesn't blame the new password: %s", w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "current password is incorrect") {
+		t.Fatalf("unusable new password reported as a wrong current password: %s", w.Body.String())
+	}
+	// The current password still works — the rejection landed before any write.
+	if got := doBody(mux, "POST", "/api/v1/auth/password", c,
+		`{"currentPassword":"root-pw","newPassword":"next-pw"}`); got.Code != http.StatusOK {
+		t.Fatalf("change after a rejected new password: %d body %s", got.Code, got.Body.String())
+	}
+}
+
+// An origin=oidc user's credential lives at the IdP; the change is refused
+// with a message that says so (400, not the wrong-password copy). /auth/me
+// reports the origin, which is how the SPA knows not to render the form at all.
+func TestChangeOwnPasswordRejectedForSSOUser(t *testing.T) {
+	mux, _, f := adminMux(t)
+
+	// A sibling *auth.Service over the same fake store mints the SSO session
+	// (same pattern as TestPasswordRotationRevokesSessions) — CompleteSSO is
+	// the only way an origin=oidc user ever gets one.
+	svc := auth.NewService(func() storage.Store { return f }, time.Hour)
+	token, _, err := svc.CompleteSSO(context.Background(), auth.ExternalIdentity{
+		Subject: "sub-pw", Email: "sso@x.io", Name: "SSO",
+	})
+	if err != nil {
+		t.Fatalf("complete sso: %v", err)
+	}
+	c := &http.Cookie{Name: sessionCookieName, Value: token}
+
+	me := doBody(mux, "GET", "/api/v1/auth/me", c, "")
+	if !strings.Contains(me.Body.String(), `"origin":"oidc"`) {
+		t.Fatalf("me for an SSO user: %s", me.Body.String())
+	}
+
+	w := doBody(mux, "POST", "/api/v1/auth/password", c,
+		`{"currentPassword":"anything","newPassword":"next-pw"}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("sso password change: %d, want 400; body %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "identity provider") {
+		t.Fatalf("400 body doesn't name the identity provider: %s", w.Body.String())
+	}
+	// The property that matters: no local credential was minted behind the
+	// IdP's back — Login resolves by email without filtering Origin.
+	if got := doBody(mux, "POST", "/api/v1/auth/login", nil,
+		`{"email":"sso@x.io","password":"next-pw"}`); got.Code != http.StatusUnauthorized {
+		t.Fatalf("login with the refused password: %d, want 401; body %s", got.Code, got.Body.String())
+	}
+}
+
+// The shared demo account is server-managed: EnsureDemoUser re-keys it from
+// the configured credentials on every boot, so a visitor "successfully"
+// changing it would silently revert — and would lock every other visitor out
+// until the next restart. 403, and the demo credentials still work.
+func TestChangeOwnPasswordRefusedForDemoAccount(t *testing.T) {
+	f := &storagetest.Fake{}
+	svc := auth.NewService(func() storage.Store { return f }, time.Hour)
+	if err := svc.EnsureDemoUser(context.Background(), "demo@avuru.obs", "demo-pw"); err != nil {
+		t.Fatal(err)
+	}
+	token, _, err := svc.Login(context.Background(), "demo@avuru.obs", "demo-pw", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return f }, Config{
+		Auth: svc, DemoEnabled: true, DemoEmail: "demo@avuru.obs", DemoPassword: "demo-pw",
+	})
+	c := &http.Cookie{Name: sessionCookieName, Value: token}
+
+	w := doBody(mux, "POST", "/api/v1/auth/password", c,
+		`{"currentPassword":"demo-pw","newPassword":"visitor-pw"}`)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("demo password change: %d, want 403; body %s", w.Code, w.Body.String())
+	}
+	if got := doBody(mux, "POST", "/api/v1/auth/login", nil,
+		`{"email":"demo@avuru.obs","password":"demo-pw"}`); got.Code != http.StatusOK {
+		t.Fatalf("demo login after the refused change: %d, want 200 (password untouched)", got.Code)
+	}
+}
