@@ -56,6 +56,21 @@ type Config struct {
 	// AnonymousIdentity, when non-nil, is served to requests without a valid
 	// session (demo mode: a Viewer scoped to listed projects).
 	AnonymousIdentity *auth.Identity
+	// TrustedOrigins widens the CSRF same-origin check (checkOrigin) with
+	// origins that are legitimate even though they don't match the request's
+	// Host — the reverse-proxy case, where the proxy hands the hub the ingress
+	// address instead of the public domain. Full origins
+	// ("https://obs.example.com"); scheme+host is compared, case- and
+	// trailing-slash-insensitive. Chart-generated (auth.trustedOrigins), plus
+	// AVURUOBS_PUBLIC_URL when set.
+	TrustedOrigins []string
+	// OriginCheck is how a cross-origin write is treated: "" / "enforce"
+	// (default) rejects it, "log" lets it through and logs the Origin/Host pair
+	// that would have been rejected (how you find out what a proxy actually
+	// sends), "off" skips the check entirely. Lowering it disarms a CSRF
+	// defense — TrustedOrigins is the narrow fix. Injected as
+	// AVURUOBS_AUTH_ORIGIN_CHECK.
+	OriginCheck string
 	// Demo mode: when DemoEnabled, POST /api/v1/auth/demo signs in as the
 	// read-only demo viewer using DemoEmail/DemoPassword server-side (the shared
 	// password never reaches the browser), and /auth/config advertises it.

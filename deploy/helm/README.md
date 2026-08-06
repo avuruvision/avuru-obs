@@ -44,6 +44,8 @@ No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale.
 | `ingress.enabled` / `ingress.host` | `false` / `avuruobs.local` | Expose the hub UI |
 | `auth.enabled` | `true` | Login + per-project RBAC, secure by default (bootstrap `admin` password in the release Secret — see the install NOTES) |
 | `auth.oidc.enabled` | `false` | Enterprise SSO via any OIDC IdP: set `issuer`/`clientId`/`publicUrl`, the client secret via `existingSecret` (key `oidc-client-secret`) or `clientSecret`, and IdP-group → role-on-projects `mapping` rules; `forceSSO` hides the local login form |
+| `auth.trustedOrigins` | `[]` | Origins accepted by the CSRF check besides the request's own Host — the fix when a reverse proxy rewrites `Host` to the ingress address and the browser's correct `Origin` no longer matches (every write 403s, login included). Full origins: `["https://obs.example.com"]`; `auth.oidc.publicUrl` is trusted automatically |
+| `auth.originCheck` | `enforce` | How a cross-origin write is treated: `enforce` (reject) \| `log` (allow, and log the `Origin`/`Host` pair — how you learn what the proxy sends) \| `off` (skip the check). Below `enforce` a CSRF defense is disarmed; prefer `auth.trustedOrigins` |
 | `auth.ingest.mode` | `log` | Per-project ingest API keys, checked in the gateway: `off` \| `log` (validate + count, reject nothing — pipeline unchanged, so existing unkeyed senders keep working) \| `enforce` (reject unkeyed/invalid, and the key's project becomes the authoritative tenant) |
 | `auth.ingest.provisionSensorKey` | `true` | Mint and seed a key for the sensor, so `enforce` never silences avuru's own agent |
 | `gateway.tenant` | `""` | Tag ALL telemetry through this gateway with a project/environment (see Projects) |

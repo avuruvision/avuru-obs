@@ -473,6 +473,23 @@ auth:
   # Or bring your own Secret (key: admin-password); wins over adminPassword.
   existingSecret: ""
   sessionTTLHours: 168
+  # CSRF: the hub rejects a write whose Origin doesn't match the Host it sees.
+  # That comparison breaks behind a reverse proxy that REWRITES Host (handing
+  # the cluster its ingress address instead of the public domain): the browser
+  # sends the right Origin, the hub sees a Host that can never match it, and
+  # every write — login included — 403s.
+  #
+  # trustedOrigins is the narrow fix: name the origin(s) users actually type,
+  # and they pass while everything else is still rejected. Full origins, scheme
+  # included: ["https://obs.example.com"]. When auth.oidc.publicUrl is set it is
+  # trusted automatically — no need to repeat it.
+  trustedOrigins: []
+  # The blunt fix, when the origins cannot be enumerated (a LAN reached by IP,
+  # several hostnames). enforce (default) rejects; log lets the write through
+  # and logs the Origin/Host pair that would have been rejected — how you find
+  # out what your proxy actually sends; off skips the check entirely. Anything
+  # below enforce disarms a CSRF defense, so prefer trustedOrigins.
+  originCheck: enforce
   # Anonymous, project-scoped read access (public demo). Both must be set.
   anonymous:
     role: ""        # "viewer" to enable

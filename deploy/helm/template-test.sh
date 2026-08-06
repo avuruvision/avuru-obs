@@ -388,6 +388,27 @@ render "${oidc_on[@]}" --set auth.enabled=false >/dev/null 2>&1 \
   && fail "oidc rendered with auth disabled (hub would silently ignore SSO)"
 ok "missing issuer/clientId fails; SSO-with-auth-off fails"
 
+echo "== auth origin check: strict by default, and silent about it"
+out="$(render)"
+grep -q 'AVURUOBS_AUTH_TRUSTED_ORIGINS' <<<"$out" && fail "trusted-origins env rendered with an empty list"
+grep -q 'AVURUOBS_AUTH_ORIGIN_CHECK' <<<"$out" && fail "origin-check env rendered while at the enforce default"
+ok "an install that touches neither knob renders neither env"
+
+echo "== auth origin check: trustedOrigins renders the allowlist"
+out="$(render --set-json 'auth.trustedOrigins=["https://obs.example.com","https://obs.internal"]')"
+grep -q 'AVURUOBS_AUTH_TRUSTED_ORIGINS' <<<"$out" || fail "trusted-origins env missing"
+grep -q 'value: "https://obs.example.com,https://obs.internal"' <<<"$out" || fail "trusted origins not joined as CSV"
+grep -q 'AVURUOBS_AUTH_ORIGIN_CHECK' <<<"$out" && fail "declaring origins must not lower the mode"
+ok "list joined into one env, mode untouched"
+
+echo "== auth origin check: lowered modes are explicit, and only the valid ones"
+out="$(render --set auth.originCheck=log)"
+grep -q 'name: AVURUOBS_AUTH_ORIGIN_CHECK' <<<"$out" || fail "origin-check env missing in log mode"
+grep -q 'value: "log"' <<<"$out" || fail "log mode not rendered"
+render --set auth.originCheck=allow >/dev/null 2>&1 \
+  && fail "an unknown origin-check mode rendered (schema enum should reject it)"
+ok "log/off render the env; a typo fails the render"
+
 echo "== ingest keys: default (log) keeps the drop-in pipeline unchanged"
 out="$(render)"
 grep -q 'avuruingestauth:' <<<"$out" || fail "authenticator missing in default log mode"
