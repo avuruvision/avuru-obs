@@ -11,6 +11,31 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **Full user management from the UI.** Settings → Users now edits a user's
+  name and role grants, resets passwords (with every session of the affected
+  user signed out), and **deletes** users — an explicit second step available
+  only after disabling, amending the original disable-only decision
+  (design/2026-08-06-users-crud-password.md). A new Settings → Account tab
+  lets any signed-in local user change their own password (current password
+  required; other sessions are evicted, the active one stays). Password
+  operations are refused for SSO users — their credential lives at the
+  identity provider.
+
+### Security
+
+- **An admin could mint a working local password for an SSO-only account.**
+  `PUT /api/v1/users/{id}` accepted a `password` for any user regardless of
+  origin, and neither the email lookup nor the password check filtered on it —
+  so the new credential was a genuine, working login that bypassed the
+  identity provider along with its MFA and conditional-access policy. Password
+  edits are now allow-listed on `origin=local` (a future origin defaults to
+  refused), on both the admin route and the new self-service one. Deleting an
+  SSO user is also now spelled out in the UI as what it is: it removes only
+  the local record, and because `disabled` is the flag the SSO callback
+  checks, deleting a *disabled* SSO user **undoes** their lockout.
+
 ### Fixed
 
 - **Logging in through a reverse proxy that rewrites `Host` no longer 403s.**

@@ -142,10 +142,10 @@ and the tab/actions render from `/auth/me` state the SPA already has.
 
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] Migration `0015` + `DeleteAuthUser` (ClickHouse + storagetest fake)
-- [ ] `DELETE /api/v1/users/{id}` + PUT origin guard + tests
-- [ ] `POST /api/v1/auth/password` + rate-limit reuse + tests
-- [ ] Users panel: inline edit (name/grants), reset password, delete-on-disabled
-- [ ] Settings → Account tab (self-service password change)
-- [ ] Playwright specs (users + account) · changelog · docs-align (EN/FR)
+- [x] AEP accepted
+- [x] Migration `0015` + `DeleteAuthUser` (ClickHouse + storagetest fake)
+- [x] `DELETE /api/v1/users/{id}` + PUT origin guard + tests
+- [x] `POST /api/v1/auth/password` + rate-limit reuse + tests
+- [x] Users panel: inline edit (name/grants), reset password, delete-on-disabled
+- [x] Settings → Account tab (self-service password change)
+- [x] Playwright specs (users + account) · changelog · [ ] docs-align (EN/FR)
