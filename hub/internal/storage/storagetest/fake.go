@@ -66,8 +66,10 @@ type Fake struct {
 	OverlayErr    error
 	SavedOverlays []storage.CollectionOverlay
 
-	// Auth fakes. Users is keyed by ID, UsersByEmail by email (both hold the
-	// same values); Grants by user ID; Sessions by token hash.
+	// Auth fakes. Users is keyed by ID; Grants by user ID; Sessions by token
+	// hash. UsersByEmail is a convenience index for tests that want a user
+	// they only know the address of — GetAuthUserByEmail does NOT read it,
+	// because one entry per address cannot represent two users sharing one.
 	Users        map[string]storage.AuthUser
 	UsersByEmail map[string]storage.AuthUser
 	Grants       map[string][]storage.AuthGrant
@@ -349,12 +351,30 @@ func (f *Fake) GetAuthUser(_ context.Context, id string) (storage.AuthUser, erro
 	return u, nil
 }
 
+// GetAuthUserByEmail mirrors the real store's local-first, lowest-Id ordering
+// (clickhouse/auth.go). It scans Users rather than reading UsersByEmail: email
+// is not unique — an SSO login can add a second row sharing a local user's
+// address — and a map keyed by email cannot represent that at all, so it would
+// silently drop one of the two and hide exactly the collision this ordering
+// exists to resolve.
 func (f *Fake) GetAuthUserByEmail(_ context.Context, email string) (storage.AuthUser, error) {
-	u, ok := f.UsersByEmail[email]
-	if !ok {
+	var out []storage.AuthUser
+	for _, u := range f.Users {
+		if u.Email == email {
+			out = append(out, u)
+		}
+	}
+	if len(out) == 0 {
 		return storage.AuthUser{}, storage.ErrNotFound
 	}
-	return u, nil
+	sort.Slice(out, func(i, j int) bool {
+		li, lj := out[i].Origin == "local", out[j].Origin == "local"
+		if li != lj {
+			return li
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out[0], nil
 }
 
 // ListAuthUsers returns all users ordered by Email, matching the real

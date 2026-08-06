@@ -168,14 +168,12 @@ func (a *API) handleUpdateUser(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	if req.Password != nil && *req.Password != "" {
-		// An SSO user's credential is supposed to live at the IdP only — but
-		// Login resolves by email (GetAuthUserByEmail does not filter on
-		// Origin) and CheckPassword ignores Origin too, special-casing only an
-		// empty hash. So without this guard, setting a password here would
-		// create a genuine, working local credential for an SSO-only account,
-		// silently bypassing the IdP and its MFA/conditional-access policy.
-		// Allow-listed on "local" (not "!= oidc") so a future origin defaults
-		// to refused.
+		// An SSO user's credential is supposed to live at the IdP only. Login
+		// now refuses any non-local origin outright, so this is the second of
+		// two independent guards rather than the only one — kept because the
+		// cheapest way to be sure a stray hash never authenticates is to never
+		// write one onto an IdP-governed row in the first place. Allow-listed
+		// on "local" (not "!= oidc") so a future origin defaults to refused.
 		if u.Origin != "local" {
 			return badRequest("cannot set a password for an SSO user — it is managed by the identity provider")
 		}

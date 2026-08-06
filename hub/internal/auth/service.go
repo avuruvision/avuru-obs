@@ -90,9 +90,19 @@ func (s *Service) Login(ctx context.Context, email, password, ip string) (string
 	if err != nil {
 		return "", Identity{}, fmt.Errorf("looking up user: %w", err)
 	}
-	// CheckPassword runs BEFORE the Disabled check so a disabled account
-	// answers in the same ~bcrypt time as a wrong password (no status oracle).
-	if !CheckPassword(u.PasswordHash, password) || u.Disabled {
+	// CheckPassword runs BEFORE the Disabled and Origin checks so a disabled
+	// or IdP-governed account answers in the same ~bcrypt time as a wrong
+	// password (no status oracle) — CheckPassword burns a dummy hash when the
+	// stored one is empty, which is exactly the SSO case, so the cost is the
+	// same on every branch.
+	//
+	// Origin is checked explicitly rather than left to "an SSO row has an
+	// empty hash": that is an accident of provisioning, not an invariant.
+	// Anything that ever writes a hash onto a non-local row — a future import
+	// path, a hand-written row — would silently turn password login back on
+	// for an account the IdP is supposed to own. Allow-listed on "local" so a
+	// future origin defaults to refused.
+	if !CheckPassword(u.PasswordHash, password) || u.Disabled || u.Origin != "local" {
 		s.limiter.fail(key, ip)
 		return "", Identity{}, ErrInvalidCredentials
 	}
@@ -146,9 +156,9 @@ func (s *Service) ChangePassword(ctx context.Context, userID, current, newPw, ip
 		return "", fmt.Errorf("looking up user: %w", err)
 	}
 	// Allow-listed on "local" (not "!= oidc") so a future origin defaults to
-	// refused: Login resolves by email without filtering Origin and
-	// CheckPassword ignores it too, so writing a hash for an IdP-governed
-	// account would mint a real local credential that bypasses the IdP.
+	// refused. Login rejects non-local origins as well, so this is one of two
+	// independent guards: this one keeps a hash off an IdP-governed row at
+	// all, and Login refuses to honour one that somehow got there.
 	if u.Origin != "local" {
 		return "", ErrExternalPassword
 	}

@@ -789,3 +789,76 @@ func TestRateLimitWindowExpiry(t *testing.T) {
 		t.Fatalf("after window expiry: got %v, want nil", err)
 	}
 }
+
+// An SSO login whose IdP email matches an existing local account writes a
+// SECOND auth_user row sharing that address (CompleteSSO upserts by
+// "oidc|<sub>" and never consults the email). The local user must keep their
+// password login: before GetAuthUserByEmail pinned an order, the lookup
+// returned an arbitrary one of the two rows and the local account
+// intermittently stopped authenticating.
+func TestLoginSurvivesSSOEmailCollision(t *testing.T) {
+	f := &storagetest.Fake{}
+	seedUser(t, f, "a@x.io", "pw", nil)
+	svc := testService(f)
+	ctx := context.Background()
+
+	// The SSO row sorts BEFORE the local one on id ("oidc|..." < "u-a@x.io"),
+	// so a tiebreak on id alone would pick the wrong row — local-first is what
+	// this asserts, not merely determinism.
+	if _, _, err := svc.CompleteSSO(ctx, ExternalIdentity{
+		Subject: "sub-1", Email: "a@x.io", Name: "Alice via IdP",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.GetAuthUser(ctx, "oidc|sub-1"); err != nil {
+		t.Fatalf("sso row not created, collision not reproduced: %v", err)
+	}
+
+	u, err := f.GetAuthUserByEmail(ctx, "a@x.io")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.ID != "u-a@x.io" {
+		t.Fatalf("lookup resolved to %q, want the local row u-a@x.io", u.ID)
+	}
+	// The whole point: the local user can still sign in with their password.
+	if _, _, err := svc.Login(ctx, "a@x.io", "pw", "ip"); err != nil {
+		t.Fatalf("local login after collision: %v", err)
+	}
+}
+
+// Password login is allow-listed on origin=local. An SSO row today has an
+// empty hash and would fail CheckPassword anyway — this asserts the guard does
+// not DEPEND on that, since a hash reaching a non-local row (import path,
+// hand-written row) would otherwise silently re-enable password login for an
+// account the IdP owns.
+func TestLoginRefusesNonLocalOriginEvenWithAWorkingHash(t *testing.T) {
+	f := &storagetest.Fake{}
+	svc := testService(f)
+	ctx := context.Background()
+
+	h, err := bcrypt.GenerateFromPassword([]byte("pw"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SaveAuthUser(ctx, storage.AuthUser{
+		ID: "oidc|sub-2", Email: "sso@x.io", Name: "SSO",
+		PasswordHash: string(h), Origin: "oidc",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := svc.Login(ctx, "sso@x.io", "pw", "ip"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("got %v, want ErrInvalidCredentials", err)
+	}
+	// An unknown origin must fail closed too (allow-list, not a deny-list).
+	if err := f.SaveAuthUser(ctx, storage.AuthUser{
+		ID: "x-1", Email: "future@x.io", Name: "Future",
+		PasswordHash: string(h), Origin: "ldap",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := svc.Login(ctx, "future@x.io", "pw", "ip"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("unknown origin: got %v, want ErrInvalidCredentials", err)
+	}
+}
