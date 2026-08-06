@@ -59,12 +59,29 @@ func (a *API) handleSystemStatus(w http.ResponseWriter, r *http.Request) error {
 		resp.Overall = "down"
 		resp.Components = append(resp.Components,
 			componentHealth{Name: "ClickHouse", Status: "down", Detail: "unreachable"},
+			componentHealth{Name: "Schema", Status: "unknown", Detail: "ClickHouse unreachable"},
 			componentHealth{Name: "Ingestion", Status: "unknown", Detail: "ClickHouse unreachable"},
 		)
 		writeJSON(w, http.StatusOK, resp)
 		return nil
 	}
 	resp.Components = append(resp.Components, componentHealth{Name: "ClickHouse", Status: "healthy", Detail: "reachable"})
+
+	// An unmigrated database is the one failure that makes everything else
+	// meaningless, so it outranks ingestion in the verdict below.
+	schemaReady := true
+	if a.cfg.SchemaStatus != nil {
+		st := a.cfg.SchemaStatus()
+		schemaReady = st.Ready
+		c := componentHealth{Name: "Schema", Status: "healthy",
+			Detail: fmt.Sprintf("%d/%d migrations applied", len(st.Applied), len(st.Expected))}
+		if !schemaReady {
+			c.Status = "down"
+			c.Detail = fmt.Sprintf("%d of %d migrations applied to %q — run `hub migrate`",
+				len(st.Applied), len(st.Expected), st.Database)
+		}
+		resp.Components = append(resp.Components, c)
+	}
 
 	stats, err := store.SystemStats(r.Context())
 	if err != nil {
@@ -118,6 +135,9 @@ func (a *API) handleSystemStatus(w http.ResponseWriter, r *http.Request) error {
 	resp.Overall = "healthy"
 	if ingestion.Status != "healthy" {
 		resp.Overall = "degraded"
+	}
+	if !schemaReady {
+		resp.Overall = "down"
 	}
 	writeJSON(w, http.StatusOK, resp)
 	return nil

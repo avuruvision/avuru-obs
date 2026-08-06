@@ -34,6 +34,13 @@ spec:
           env:
             {{- include "avuruobs.clickhouseEnv" . | nindent 12 }}
             {{- include "avuruobs.modulesEnv" . | nindent 12 }}
+            {{- /* The migrate Job is a post-install/post-upgrade hook, and Helm
+                   runs those only AFTER --wait succeeds: a release that times
+                   out waiting for any component leaves the schema unapplied
+                   while every Deployment rolls out fine. This lets the hub
+                   notice and repair that itself. */}}
+            - name: AVURUOBS_SCHEMA_AUTOMIGRATE
+              value: {{ .Values.hub.autoMigrate | quote }}
             {{- include "avuruobs.groupsEnv" . | nindent 12 }}
             {{- include "avuruobs.alertsEnv" . | nindent 12 }}
             {{- /* with-guard on the OUTPUT, not a restated module condition:

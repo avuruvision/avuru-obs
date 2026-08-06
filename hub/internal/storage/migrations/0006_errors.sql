@@ -7,10 +7,8 @@
 --
 -- The migrator strips `--` comments then splits on `;`, so there is no `;`
 -- inside any statement below and no `--` inside a string literal.
-CREATE DATABASE IF NOT EXISTS otel;
-
 -- One row per error occurrence.
-CREATE TABLE IF NOT EXISTS otel.error_events
+CREATE TABLE IF NOT EXISTS {db}.error_events
 (
     `Timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
     `Tenant` LowCardinality(String) CODEC(ZSTD(1)),
@@ -37,7 +35,7 @@ SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 -- (Tenant, Fingerprint) by UpdatedAt — last write wins (see profiling_stacks
 -- for the same pattern). Regression is computed at read time, so there is no
 -- state machine here to drift.
-CREATE TABLE IF NOT EXISTS otel.error_issue_status
+CREATE TABLE IF NOT EXISTS {db}.error_issue_status
 (
     `Tenant` LowCardinality(String),
     `Fingerprint` UInt64,
@@ -54,8 +52,8 @@ ORDER BY (Tenant, Fingerprint);
 -- is no stack. Tenant is recomputed here: the table DEFAULT does not propagate
 -- into a materialized-view SELECT. Column order matches error_events exactly
 -- (MV-to-table is matched by position).
-CREATE MATERIALIZED VIEW IF NOT EXISTS otel.error_events_from_span_events_mv
-TO otel.error_events
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.error_events_from_span_events_mv
+TO {db}.error_events
 AS
 SELECT
     EvtTime AS Timestamp,
@@ -78,7 +76,7 @@ SELECT
     '' AS SdkName,
     '' AS SdkVersion,
     EvtAttrs AS Attributes
-FROM otel.otel_traces
+FROM {db}.otel_traces
 ARRAY JOIN
     Events.Timestamp AS EvtTime,
     Events.Name AS EvtName,
@@ -90,8 +88,8 @@ WHERE EvtName = 'exception';
 -- THREE IN SYNC; changing it needs a new migration that DROPs and recreates
 -- this view. No stack trace exists, so the fingerprint keys on the operation
 -- and HTTP status.
-CREATE MATERIALIZED VIEW IF NOT EXISTS otel.error_events_from_error_spans_mv
-TO otel.error_events
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.error_events_from_error_spans_mv
+TO {db}.error_events
 AS
 SELECT
     Timestamp,
@@ -111,7 +109,7 @@ SELECT
     '' AS SdkName,
     '' AS SdkVersion,
     SpanAttributes AS Attributes
-FROM otel.otel_traces
+FROM {db}.otel_traces
 WHERE (StatusCode = 'Error'
     OR (StatusCode != 'Ok'
         AND (greatest(toUInt16OrZero(SpanAttributes['http.response.status_code']), toUInt16OrZero(SpanAttributes['http.status_code'])) >= 500

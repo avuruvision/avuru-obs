@@ -14,11 +14,23 @@ metadata:
     # Job's own ~60s CH retry is a safety net. Migrations are additive and the
     # hub tolerates a not-yet-migrated store, so applying schema just after the
     # app rolls is safe.
+    #
+    # NOTE: `--wait` failing (any component slow to become Ready) makes Helm
+    # skip this hook entirely — the release fails while the Deployments roll out
+    # anyway, leaving a healthy-looking install with no schema. That is why the
+    # hub also self-heals (hub.autoMigrate); this Job stays the normal path and
+    # the loud one, since a failing migration fails the release.
     "helm.sh/hook": post-install,post-upgrade
     "helm.sh/hook-weight": "0"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    # NOT hook-succeeded: a Job that deletes itself on success makes "did the
+    # migration ever run?" unanswerable from kubectl, which is exactly the
+    # question an install with missing tables raises. Keep it for an hour
+    # instead — the TTL matters because Helm does not track hook objects in the
+    # release manifest, so `helm uninstall` would otherwise leave it behind.
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   backoffLimit: 6
+  ttlSecondsAfterFinished: 3600
   template:
     metadata:
       labels:
@@ -38,6 +50,10 @@ spec:
           env:
             {{- include "avuruobs.clickhouseEnv" . | nindent 12 }}
             {{- include "avuruobs.modulesEnv" . | nindent 12 }}
+            {{- /* How long to wait for ClickHouse before giving up. A cold
+                   cluster restoring a large volume can outlast the default. */}}
+            - name: AVURUOBS_MIGRATE_WAIT_SECONDS
+              value: {{ .Values.migrate.clickhouseWaitSeconds | quote }}
             - name: AVURUOBS_RETENTION_TRACES_DAYS
               value: {{ .Values.retention.traces | quote }}
             - name: AVURUOBS_RETENTION_LOGS_DAYS

@@ -4,7 +4,9 @@ package clickhouse
 
 import (
 	"context"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,6 +33,14 @@ func startClickHouse(t *testing.T) *Store {
 // startClickHouseContainer runs the pinned ClickHouse image and connects a
 // Store WITHOUT migrating — for tests exercising the migrator itself.
 func startClickHouseContainer(t *testing.T) *Store {
+	t.Helper()
+	store, _ := startClickHouseContainerAddr(t)
+	return store
+}
+
+// startClickHouseContainerAddr also returns the address, so a test can open a
+// second Store against a different database on the same server.
+func startClickHouseContainerAddr(t *testing.T) (*Store, string) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -59,12 +69,13 @@ func startClickHouseContainer(t *testing.T) *Store {
 		t.Fatalf("mapped port: %v", err)
 	}
 
-	store, err := New(ctx, Config{Addr: host + ":" + port.Port(), Database: "otel", Username: "avuru", Password: "avuru"})
+	addr := host + ":" + port.Port()
+	store, err := New(ctx, Config{Addr: addr, Database: "otel", Username: "avuru", Password: "avuru"})
 	if err != nil {
 		t.Fatalf("connecting store: %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	return store
+	return store, addr
 }
 
 // TestMigrateIsIdempotent guards the migrator + retention: tables created, the
@@ -1272,5 +1283,171 @@ func TestNetworkEdgeHealthIntegration(t *testing.T) {
 	}
 	if h.FailedConnections != 7 {
 		t.Errorf("failed connections = %d, want 7", h.FailedConnections)
+	}
+}
+
+// TestSchemaStatusOnEmptyDatabase is the incident, reproduced: a database that
+// exists but was never migrated. The check must report "nothing applied" and
+// return NO error — treating a missing ledger as a backend fault is what would
+// send callers back to retrying blindly instead of repairing.
+func TestSchemaStatusOnEmptyDatabase(t *testing.T) {
+	store := startClickHouseContainer(t) // deliberately NOT migrated
+	ctx := context.Background()
+
+	st, err := store.SchemaStatus(ctx, modules.AllSet())
+	if err != nil {
+		t.Fatalf("SchemaStatus on an unmigrated database: %v", err)
+	}
+	if st.Ready {
+		t.Error("Ready = true on an unmigrated database")
+	}
+	if len(st.Applied) != 0 {
+		t.Errorf("Applied = %v, want none", st.Applied)
+	}
+	if len(st.Missing) != len(migrations.Ordered) {
+		t.Errorf("Missing has %d entries, want all %d", len(st.Missing), len(migrations.Ordered))
+	}
+	if st.Database != "otel" {
+		t.Errorf("Database = %q, want otel", st.Database)
+	}
+}
+
+func TestSchemaStatusAfterMigrate(t *testing.T) {
+	store := startClickHouse(t)
+
+	st, err := store.SchemaStatus(context.Background(), modules.AllSet())
+	if err != nil {
+		t.Fatalf("SchemaStatus: %v", err)
+	}
+	if !st.Ready || len(st.Missing) != 0 {
+		t.Errorf("Ready=%v Missing=%v, want ready with nothing missing", st.Ready, st.Missing)
+	}
+	if len(st.Applied) != len(migrations.Ordered) {
+		t.Errorf("Applied has %d entries, want %d", len(st.Applied), len(migrations.Ordered))
+	}
+}
+
+// TestSchemaStatusModuleRestricted: an install running a subset of modules is
+// COMPLETE for that subset. Comparing against every migration instead would
+// leave the schema gate looping forever on a perfectly healthy install.
+func TestSchemaStatusModuleRestricted(t *testing.T) {
+	store := startClickHouseContainer(t)
+	ctx := context.Background()
+
+	subset, err := modules.Parse("core,error-tracking")
+	if err != nil {
+		t.Fatalf("parsing modules: %v", err)
+	}
+	if err := store.Migrate(ctx, subset); err != nil {
+		t.Fatalf("Migrate(subset): %v", err)
+	}
+
+	st, err := store.SchemaStatus(ctx, subset)
+	if err != nil {
+		t.Fatalf("SchemaStatus(subset): %v", err)
+	}
+	if !st.Ready {
+		t.Errorf("subset install not ready for its own module set: missing %v", st.Missing)
+	}
+
+	// The same store IS incomplete when the logs module is switched on — that's
+	// how enabling a module later gets its schema.
+	full, err := store.SchemaStatus(ctx, modules.AllSet())
+	if err != nil {
+		t.Fatalf("SchemaStatus(all): %v", err)
+	}
+	if full.Ready {
+		t.Error("Ready = true against the full module set after a subset migrate")
+	}
+	for _, want := range []string{"0002_logs.sql", "0007_errors_from_logs.sql"} {
+		if !slices.Contains(full.Missing, want) {
+			t.Errorf("Missing = %v, want it to include %s", full.Missing, want)
+		}
+	}
+}
+
+// TestConcurrentMigrateIsSafe backs the no-lock claim in Migrate's doc: several
+// hub replicas (or a replica racing the chart's migrate Job) must converge
+// without erroring. Asserts distinct versions, since concurrent writers may
+// each append a ledger row for the same version — harmless, because the ledger
+// is read as a set.
+func TestConcurrentMigrateIsSafe(t *testing.T) {
+	store := startClickHouseContainer(t)
+	ctx := context.Background()
+
+	const racers = 4
+	errCh := make(chan error, racers)
+	var wg sync.WaitGroup
+	for i := 0; i < racers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errCh <- store.Migrate(ctx, modules.AllSet())
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("concurrent Migrate: %v", err)
+		}
+	}
+
+	var distinct uint64
+	if err := store.conn.QueryRow(ctx, "SELECT countDistinct(version) FROM otel.schema_migrations").Scan(&distinct); err != nil {
+		t.Fatalf("counting distinct versions: %v", err)
+	}
+	if distinct != uint64(len(migrations.Ordered)) {
+		t.Errorf("ledger has %d distinct versions, want %d", distinct, len(migrations.Ordered))
+	}
+
+	st, err := store.SchemaStatus(ctx, modules.AllSet())
+	if err != nil || !st.Ready {
+		t.Errorf("SchemaStatus after concurrent migrate: ready=%v err=%v", st.Ready, err)
+	}
+}
+
+// TestMigrateHonorsConfiguredDatabase: the .sql files must follow the
+// configured database. They used to hardcode `otel.`, so any other name
+// produced a schema in `otel` and an empty database for the hub to query —
+// an install that answers "table does not exist" to everything.
+func TestMigrateHonorsConfiguredDatabase(t *testing.T) {
+	seed, addr := startClickHouseContainerAddr(t)
+	ctx := context.Background()
+
+	// The connection handshake names a database, so it must exist before we can
+	// dial it — the same reason an external cluster pre-provisions one.
+	if err := seed.conn.Exec(ctx, "CREATE DATABASE IF NOT EXISTS telemetry"); err != nil {
+		t.Fatalf("creating database: %v", err)
+	}
+	store, err := New(ctx, Config{Addr: addr, Database: "telemetry", Username: "avuru", Password: "avuru"})
+	if err != nil {
+		t.Fatalf("connecting to telemetry: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	if err := store.Migrate(ctx, modules.AllSet()); err != nil {
+		t.Fatalf("Migrate against a non-default database: %v", err)
+	}
+
+	st, err := store.SchemaStatus(ctx, modules.AllSet())
+	if err != nil || !st.Ready {
+		t.Fatalf("SchemaStatus: ready=%v err=%v missing=%v", st.Ready, err, st.Missing)
+	}
+	for _, tbl := range []string{"otel_traces", "auth_user", "alert_channel"} {
+		var n uint64
+		if err := store.conn.QueryRow(ctx,
+			"SELECT count() FROM system.tables WHERE database='telemetry' AND name=?", tbl).Scan(&n); err != nil {
+			t.Fatalf("checking table %s: %v", tbl, err)
+		}
+		if n != 1 {
+			t.Errorf("table %s was not created in the configured database", tbl)
+		}
+	}
+
+	// Retention targets the same database — the ALTER used to fail here because
+	// it looked in the configured database for tables the DDL had put in otel.
+	if err := store.ApplyRetention(ctx, Retention{TracesDays: 7}); err != nil {
+		t.Errorf("ApplyRetention against a non-default database: %v", err)
 	}
 }

@@ -46,6 +46,11 @@ type Config struct {
 	// Read-only endpoint use only; the evaluator lives in cmd/hub. nil →
 	// alerting.Default().
 	AlertsConfig func() alerting.Config
+	// SchemaStatus reports whether the ClickHouse schema this install expects
+	// has actually been applied — an accessor, like the configs above, because
+	// cmd/hub's schema gate updates it in the background. nil → the Settings →
+	// Status view simply omits the component.
+	SchemaStatus func() storage.SchemaStatus
 	// Notifier delivers channel test notifications (POST
 	// /api/v1/alerts/channels/{name}/test). Shared with the evaluator so the
 	// SSRF policy is identical. nil → test endpoint answers 503.

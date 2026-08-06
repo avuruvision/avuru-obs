@@ -13,6 +13,33 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Fixed
 
+- **An install whose schema migration never ran now repairs itself instead of
+  failing every query forever.** Schema is applied by a `migrate` Job that Helm
+  runs as a `post-install`/`post-upgrade` hook — and Helm runs those hooks only
+  *after* `--wait` succeeds. A release that timed out waiting for any component
+  (a slow image pull across a DaemonSet is enough) never created the Job, while
+  the Deployments Helm had already applied rolled out normally. The result was a
+  cluster that looked healthy and answered `Unknown table expression identifier
+  'auth_user'` to everything, with four subsystems retrying forever at WARN and
+  none of them naming the problem. The hub now checks its schema on connect and
+  applies the missing migrations itself (`hub.autoMigrate`, on by default; the
+  embedded migrations are idempotent and safe to run concurrently with the Job
+  or another replica). When it can't — no DDL rights, or self-heal switched off
+  — it logs **one** ERROR naming the remedy rather than a warning flood, and
+  Settings → Status gains a **Schema** component showing applied/expected. The
+  migrate Job also stops deleting itself on success, so `kubectl` can answer
+  "did the migration ever run?", and `deploy/install.sh` waits 10m rather than
+  6m before giving up.
+
+- **Setting a ClickHouse database other than `otel` no longer silently breaks
+  the install.** `clickhouse.external.database` is a documented, schema-checked
+  value, but every migration file hardcoded an `otel.` prefix: the DDL landed in
+  `otel` while the hub queried the configured database and found it empty —
+  producing exactly the missing-table failure above, permanently. The migrations
+  now name their database through a placeholder the migrator substitutes, and
+  the configured name is validated as an identifier at boot. Installs on the
+  default `otel` are byte-for-byte unaffected.
+
 - **Logging in through a reverse proxy that rewrites `Host` no longer 403s.**
   The hub's CSRF check compared the browser's `Origin` against the `Host` it
   received, so any proxy handing the cluster its ingress address instead of the

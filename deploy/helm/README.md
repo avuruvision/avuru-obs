@@ -134,11 +134,32 @@ a `schema_migrations` ledger, so:
   older hub ignores tables it doesn't know); it is **not** safe across a
   shape-changing migration. Roll forward; don't roll back across a schema
   change.
-- **A failed migration is kept for inspection.** The hook is
-  `hook-delete-policy: before-hook-creation,hook-succeeded` with
-  `backoffLimit: 6`, so a failed Job stays around (`kubectl logs job/…-migrate`)
-  and is recreated on the next upgrade. `--wait` surfaces the failure rather
-  than leaving a half-migrated store.
+- **The Job is kept for inspection**, failed or not. `hook-delete-policy:
+  before-hook-creation` plus `ttlSecondsAfterFinished: 3600` keeps it for an
+  hour (`kubectl logs job/…-migrate`); it is recreated on the next upgrade.
+  `--wait` surfaces a failure rather than leaving a half-migrated store.
+
+**The hub also repairs the schema itself** (`hub.autoMigrate: true`). This is
+not redundancy for its own sake: Helm runs `post-install`/`post-upgrade` hooks
+only *after* `--wait` succeeds, so a release that times out waiting for any
+component never creates the migrate Job — while the Deployments Helm already
+applied keep rolling out. The result is a cluster that looks healthy and whose
+every query fails on a missing table. When the hub finds its schema incomplete
+it applies the same embedded migrations (idempotent, and safe to run
+concurrently with the Job or another replica), and if it cannot, it logs one
+`ERROR` naming the remedy instead of retrying silently. Settings → Status shows
+a **Schema** component with the applied/expected count.
+
+Set `hub.autoMigrate: false` when schema is owned elsewhere — a DBA-managed
+external ClickHouse, or a query-only hub user without DDL rights. The Job then
+remains the only mechanism.
+
+```bash
+# Did migrations ever run?
+kubectl -n <ns> logs deploy/avuruobs-hub | grep 'clickhouse schema ready'
+kubectl -n <ns> exec avuruobs-clickhouse-0 -- \
+  clickhouse-client -u avuru --password <pw> -q "SELECT count() FROM otel.schema_migrations"
+```
 
 Because collection is driven by ConfigMaps with a checksum annotation, a
 `helm upgrade` that changes sensor/gateway config rolls those pods

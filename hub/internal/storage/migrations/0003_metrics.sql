@@ -8,9 +8,7 @@
 -- Avuru additions rely on DEFAULT (exporter INSERTs stay valid): Tenant
 -- (enterprise seam) + Tenant-leading ORDER BY, as in 0002_logs.sql.
 -- Retention (TTL) is applied separately by `hub migrate` ApplyRetention.
-CREATE DATABASE IF NOT EXISTS otel;
-
-CREATE TABLE IF NOT EXISTS otel.otel_metrics_gauge
+CREATE TABLE IF NOT EXISTS {db}.otel_metrics_gauge
 (
     `ResourceAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
     `ResourceSchemaUrl` String CODEC(ZSTD(1)),
@@ -50,7 +48,7 @@ PARTITION BY toDate(TimeUnix)
 ORDER BY (Tenant, ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 
-CREATE TABLE IF NOT EXISTS otel.otel_metrics_sum
+CREATE TABLE IF NOT EXISTS {db}.otel_metrics_sum
 (
     `ResourceAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
     `ResourceSchemaUrl` String CODEC(ZSTD(1)),
@@ -92,7 +90,7 @@ PARTITION BY toDate(TimeUnix)
 ORDER BY (Tenant, ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 
-CREATE TABLE IF NOT EXISTS otel.otel_metrics_histogram
+CREATE TABLE IF NOT EXISTS {db}.otel_metrics_histogram
 (
     `ResourceAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
     `ResourceSchemaUrl` String CODEC(ZSTD(1)),
@@ -138,7 +136,7 @@ PARTITION BY toDate(TimeUnix)
 ORDER BY (Tenant, ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 
-CREATE TABLE IF NOT EXISTS otel.otel_metrics_exponential_histogram
+CREATE TABLE IF NOT EXISTS {db}.otel_metrics_exponential_histogram
 (
     `ResourceAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
     `ResourceSchemaUrl` String CODEC(ZSTD(1)),
@@ -188,7 +186,7 @@ PARTITION BY toDate(TimeUnix)
 ORDER BY (Tenant, ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 
-CREATE TABLE IF NOT EXISTS otel.otel_metrics_summary
+CREATE TABLE IF NOT EXISTS {db}.otel_metrics_summary
 (
     `ResourceAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
     `ResourceSchemaUrl` String CODEC(ZSTD(1)),

@@ -5,9 +5,7 @@
 -- verbatim; Avuru additions rely on DEFAULT.
 -- Retention (TTL) is applied separately by `hub migrate` ApplyRetention
 -- (env-driven), so it is NOT declared here.
-CREATE DATABASE IF NOT EXISTS otel;
-
-CREATE TABLE IF NOT EXISTS otel.otel_logs
+CREATE TABLE IF NOT EXISTS {db}.otel_logs
 (
     `Timestamp` DateTime64(9) COMMENT 'Event timestamp with nanosecond precision' CODEC(Delta(8), ZSTD(1)),
     `TraceId` String COMMENT 'W3C trace identifier' CODEC(ZSTD(1)),

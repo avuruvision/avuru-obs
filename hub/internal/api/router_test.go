@@ -491,6 +491,70 @@ func TestSystemStatus(t *testing.T) {
 	if dresp.Overall != "down" || !hasComponent(dresp.Components, "ClickHouse", "down") {
 		t.Errorf("down response wrong: %+v", dresp)
 	}
+
+	// The default Config wires no SchemaStatus accessor — the component must be
+	// absent rather than guessed at, so existing installs see no change.
+	if hasComponentNamed(resp.Components, "Schema") {
+		t.Errorf("Schema component present without a SchemaStatus accessor: %+v", resp.Components)
+	}
+}
+
+// TestSystemStatusSchemaComponent: an unapplied schema is the failure that
+// makes every other green light meaningless, so it must drive overall down.
+func TestSystemStatusSchemaComponent(t *testing.T) {
+	now := time.Now().UTC()
+	fake := &storagetest.Fake{Stats: storage.SystemStats{
+		Signals: []storage.SignalStats{{Signal: "traces", Rows: 1, Newest: &now}},
+	}}
+
+	for _, tc := range []struct {
+		name        string
+		status      storage.SchemaStatus
+		wantStatus  string
+		wantOverall string
+	}{
+		{
+			name:        "ready",
+			status:      storage.SchemaStatus{Ready: true, Database: "otel", Expected: []string{"a", "b"}, Applied: []string{"a", "b"}},
+			wantStatus:  "healthy",
+			wantOverall: "healthy",
+		},
+		{
+			name:        "unmigrated",
+			status:      storage.SchemaStatus{Database: "otel", Expected: []string{"a", "b"}, Missing: []string{"a", "b"}},
+			wantStatus:  "down",
+			wantOverall: "down",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			Register(mux, func() storage.Store { return fake }, Config{
+				RetentionTracesDays: 7,
+				SchemaStatus:        func() storage.SchemaStatus { return tc.status },
+			})
+
+			rec := get(t, mux, "/api/v1/system/status")
+			var resp systemStatusResponse
+			if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if !hasComponent(resp.Components, "Schema", tc.wantStatus) {
+				t.Errorf("Schema component = %+v, want status %q", resp.Components, tc.wantStatus)
+			}
+			if resp.Overall != tc.wantOverall {
+				t.Errorf("overall = %q, want %q", resp.Overall, tc.wantOverall)
+			}
+		})
+	}
+}
+
+func hasComponentNamed(cs []componentHealth, name string) bool {
+	for _, c := range cs {
+		if c.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func hasComponent(cs []componentHealth, name, status string) bool {

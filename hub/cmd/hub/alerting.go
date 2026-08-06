@@ -101,7 +101,13 @@ func webhookAllowCIDRs() []*net.IPNet {
 // persisted state, delivers notifications, and writes state + history back.
 // v1 assumes ONE active evaluator (hub replicas default to 1); >1 would
 // duplicate notifications (documented, HA leader election is v2).
-func runAlertingEvaluator(ctx context.Context, provider api.StoreProvider, groupsCfg func() health.Config, alertsCfg func() alerting.Config, greenCfg func() green.Config, notifier alerting.Notifier, projects []string, active modules.Set) {
+func runAlertingEvaluator(ctx context.Context, provider api.StoreProvider, gate *schemaGate, groupsCfg func() health.Config, alertsCfg func() alerting.Config, greenCfg func() green.Config, notifier alerting.Notifier, projects []string, active modules.Set) {
+	// Every tick reads otel_traces and alert_channel; without the schema each
+	// one used to warn twice per interval, forever. Wait instead — the gate
+	// reports the missing schema once, and heals it when it can.
+	if !gate.wait(ctx) {
+		return
+	}
 	slog.Info("alerting evaluator started (single active evaluator)")
 	// Green budgets ride this same tick (never a second ticker) so they share
 	// the diffToSave/deliver path and cannot race it. nil unless both modules

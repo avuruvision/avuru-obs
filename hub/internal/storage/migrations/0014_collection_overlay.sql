@@ -3,7 +3,7 @@
 -- every write down to the single newest overlay — same mutable-state idiom
 -- as alert_channel (0009), but keyed by a fixed Id instead of a natural list
 -- key, since there is exactly one overlay per release, not a named list.
-CREATE TABLE IF NOT EXISTS otel.collection_overlay
+CREATE TABLE IF NOT EXISTS {db}.collection_overlay
 (
     `Id` LowCardinality(String) DEFAULT 'default',
     `Overlay` String,

@@ -18,6 +18,15 @@ hub:
   repository: ghcr.io/avuruvision/avuru-obs-hub
   tag: "" # defaults to .Chart.AppVersion
   replicas: 1
+  # Apply missing ClickHouse migrations from the hub itself when it finds the
+  # schema incomplete. The migrate Job stays the normal path; this is the safety
+  # net for the case that Job never runs — Helm skips post-install/post-upgrade
+  # hooks when `--wait` times out, which leaves a healthy-looking install whose
+  # every query fails on a missing table. The migrations are idempotent and safe
+  # to apply concurrently, so replicas do not need coordinating.
+  # Set false when ClickHouse schema is owned elsewhere (a DBA-managed external
+  # cluster, or a query-only hub user with no DDL rights).
+  autoMigrate: true
   resources:
     requests:
       cpu: 100m
@@ -434,6 +443,10 @@ clickhouse:
   external:
     enabled: false
     address: "" # host:9000 (native protocol) when external.enabled
+    # Any valid identifier — the migrations follow this name. It must ALREADY
+    # EXIST on an external cluster: ClickHouse validates the database during the
+    # connection handshake, so the migrator cannot create the one it is dialing.
+    # (The in-chart StatefulSet creates `otel` on first start.)
     database: otel
     username: avuru
     existingSecret: "" # Secret with key `clickhouse-password`; overrides auth.password
@@ -586,6 +599,14 @@ auth:
     # redirect_uri the IdP requires (AVURUOBS_PUBLIC_URL); unset, the hub
     # degrades to a relative URL most IdPs reject (loud warning in its log).
     publicUrl: ""
+
+# The schema migration Job (a post-install/post-upgrade Helm hook).
+migrate:
+  # Seconds the migrator waits for ClickHouse before failing. Raise it when the
+  # database is slow to accept connections on a cold start (large volume
+  # restore, external cluster still electing) — the Job failing here is one of
+  # the ways an install ends up with no schema.
+  clickhouseWaitSeconds: 60
 
 # Per-signal retention in DAYS, applied as ClickHouse TTL by `hub migrate`.
 retention:

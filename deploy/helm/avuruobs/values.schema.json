@@ -16,7 +16,8 @@
       "properties": {
         "repository": { "type": "string", "minLength": 1 },
         "tag": { "type": "string" },
-        "replicas": { "type": "integer", "minimum": 1 }
+        "replicas": { "type": "integer", "minimum": 1 },
+        "autoMigrate": { "type": "boolean" }
       }
     },
     "ui": {
@@ -357,6 +358,12 @@
             "size": { "type": "string", "minLength": 1 }
           }
         }
+      }
+    },
+    "migrate": {
+      "type": "object",
+      "properties": {
+        "clickhouseWaitSeconds": { "type": "integer", "minimum": 1 }
       }
     },
     "retention": {

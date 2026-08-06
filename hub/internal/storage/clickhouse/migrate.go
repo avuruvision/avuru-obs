@@ -3,11 +3,15 @@ package clickhouse
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/avuru/avuru-obs/hub/internal/modules"
+	"github.com/avuru/avuru-obs/hub/internal/storage"
 	"github.com/avuru/avuru-obs/hub/internal/storage/migrations"
 )
+
+// schemaMigrationsTable is the ledger; its presence is also how SchemaStatus
+// tells "never migrated" apart from "cannot read the database".
+const schemaMigrationsTable = "schema_migrations"
 
 // Migrate applies any unapplied embedded migrations for the active modules,
 // recording each in the `<db>.schema_migrations` ledger. Idempotent:
@@ -15,18 +19,16 @@ import (
 // module later is just a re-run with a bigger set. ClickHouse DDL is not
 // transactional — every statement is `IF NOT EXISTS` and the ledger row is
 // the commit marker.
+//
+// Safe to run CONCURRENTLY (several hub replicas, or a replica racing the
+// chart's migrate Job) with no lock, and that is a property to preserve rather
+// than a happy accident: every statement in every .sql is `IF NOT EXISTS`-
+// guarded (enforced by TestEveryStatementIsIdempotent), the ledger is read into
+// a set so duplicate rows are inert, and each caller walks Expected top-down so
+// none can reach a derived view before its base table exists.
 func (s *Store) Migrate(ctx context.Context, active modules.Set) error {
-	if active == nil {
-		active = modules.AllSet()
-	}
-	if err := s.conn.Exec(ctx, "CREATE DATABASE IF NOT EXISTS "+s.db); err != nil {
-		return fmt.Errorf("creating database %s: %w", s.db, err)
-	}
-	if err := s.conn.Exec(ctx, fmt.Sprintf(
-		"CREATE TABLE IF NOT EXISTS %s.schema_migrations (version String, applied_at DateTime DEFAULT now()) ENGINE = MergeTree ORDER BY version",
-		s.db,
-	)); err != nil {
-		return fmt.Errorf("creating schema_migrations: %w", err)
+	if err := s.ensureLedger(ctx); err != nil {
+		return err
 	}
 
 	applied, err := s.appliedVersions(ctx)
@@ -34,27 +36,21 @@ func (s *Store) Migrate(ctx context.Context, active modules.Set) error {
 		return err
 	}
 
-	for _, version := range migrations.Ordered {
+	for _, version := range migrations.Expected(active) {
 		if applied[version] {
-			continue
-		}
-		// Apply only when ALL the migration's modules are active. Untagged
-		// migrations apply everywhere (belt and braces — the migrations
-		// package test enforces full tagging).
-		if mods, ok := migrations.ByModule[version]; ok && !allEnabled(active, mods) {
 			continue
 		}
 		body, err := migrations.FS.ReadFile(version)
 		if err != nil {
 			return fmt.Errorf("reading migration %s: %w", version, err)
 		}
-		for _, stmt := range splitStatements(string(body)) {
+		for _, stmt := range migrations.Statements(string(body), s.db) {
 			if err := s.conn.Exec(ctx, stmt); err != nil {
 				return fmt.Errorf("applying migration %s: %w", version, err)
 			}
 		}
 		if err := s.conn.Exec(ctx,
-			fmt.Sprintf("INSERT INTO %s.schema_migrations (version) VALUES (?)", s.db), version,
+			fmt.Sprintf("INSERT INTO %s.%s (version) VALUES (?)", s.db, schemaMigrationsTable), version,
 		); err != nil {
 			return fmt.Errorf("recording migration %s: %w", version, err)
 		}
@@ -62,14 +58,50 @@ func (s *Store) Migrate(ctx context.Context, active modules.Set) error {
 	return nil
 }
 
-// allEnabled reports whether every module in mods is active.
-func allEnabled(active modules.Set, mods []modules.Name) bool {
-	for _, m := range mods {
-		if !active.Enabled(m) {
-			return false
+// SchemaStatus compares the ledger against what this module set expects.
+//
+// An ABSENT ledger is reported as "nothing applied", not as an error: that is
+// exactly the state a skipped migrate Job leaves behind (every hub query then
+// fails with ClickHouse code 60), and the caller must be able to act on it
+// rather than mistake it for a backend fault.
+func (s *Store) SchemaStatus(ctx context.Context, active modules.Set) (storage.SchemaStatus, error) {
+	out := storage.SchemaStatus{Database: s.db, Expected: migrations.Expected(active)}
+
+	tables, err := s.existingTables(ctx)
+	if err != nil {
+		return out, fmt.Errorf("reading schema state: %w", err)
+	}
+	applied := map[string]bool{}
+	if tables[schemaMigrationsTable] {
+		if applied, err = s.appliedVersions(ctx); err != nil {
+			return out, err
 		}
 	}
-	return true
+
+	for _, version := range out.Expected {
+		if applied[version] {
+			out.Applied = append(out.Applied, version)
+		} else {
+			out.Missing = append(out.Missing, version)
+		}
+	}
+	out.Ready = len(out.Missing) == 0
+	return out, nil
+}
+
+// ensureLedger creates the database and the migration ledger. Split out of
+// Migrate so both it and any future repair path share one definition.
+func (s *Store) ensureLedger(ctx context.Context) error {
+	if err := s.conn.Exec(ctx, "CREATE DATABASE IF NOT EXISTS "+s.db); err != nil {
+		return fmt.Errorf("creating database %s: %w", s.db, err)
+	}
+	if err := s.conn.Exec(ctx, fmt.Sprintf(
+		"CREATE TABLE IF NOT EXISTS %s.%s (version String, applied_at DateTime DEFAULT now()) ENGINE = MergeTree ORDER BY version",
+		s.db, schemaMigrationsTable,
+	)); err != nil {
+		return fmt.Errorf("creating schema_migrations: %w", err)
+	}
+	return nil
 }
 
 // metricsTables are the five exporter metric-type tables (0003_metrics.sql).
@@ -149,7 +181,7 @@ func (s *Store) ApplyRetention(ctx context.Context, r Retention) error {
 }
 
 func (s *Store) appliedVersions(ctx context.Context) (map[string]bool, error) {
-	rows, err := s.conn.Query(ctx, fmt.Sprintf("SELECT version FROM %s.schema_migrations", s.db))
+	rows, err := s.conn.Query(ctx, fmt.Sprintf("SELECT version FROM %s.%s", s.db, schemaMigrationsTable))
 	if err != nil {
 		return nil, fmt.Errorf("reading schema_migrations: %w", err)
 	}
@@ -163,27 +195,4 @@ func (s *Store) appliedVersions(ctx context.Context) (map[string]bool, error) {
 		applied[v] = true
 	}
 	return applied, rows.Err()
-}
-
-// splitStatements breaks a .sql file into individual statements on ';'.
-// Line (`--`) comments are stripped FIRST so a ';' inside a comment can't
-// split a statement (our DDL has no '--' or ';' inside string literals).
-func splitStatements(sql string) []string {
-	var stripped strings.Builder
-	for _, line := range strings.Split(sql, "\n") {
-		if i := strings.Index(line, "--"); i >= 0 {
-			line = line[:i]
-		}
-		stripped.WriteString(line)
-		stripped.WriteByte('\n')
-	}
-
-	var out []string
-	for _, chunk := range strings.Split(stripped.String(), ";") {
-		if strings.TrimSpace(chunk) == "" {
-			continue
-		}
-		out = append(out, strings.TrimSpace(chunk))
-	}
-	return out
 }

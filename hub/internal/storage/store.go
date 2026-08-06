@@ -382,6 +382,19 @@ type SystemStats struct {
 	Disks   []DiskStats
 }
 
+// SchemaStatus compares the migration ledger against what this install's
+// module set expects. Deliberately NOT a Store interface method: it is
+// backend-specific bookkeeping rather than a query, and the API receives it as
+// an accessor func (like the hot-reloaded config accessors), which keeps every
+// existing Store fake untouched.
+type SchemaStatus struct {
+	Ready    bool
+	Database string
+	Expected []string
+	Applied  []string
+	Missing  []string
+}
+
 // ErrorIssueQuery filters SearchErrorIssues. Zero values mean "no filter".
 type ErrorIssueQuery struct {
 	Tenant  string

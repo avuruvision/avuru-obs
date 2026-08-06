@@ -588,4 +588,35 @@ for s in leaky-ch-password leaky-admin-password leaky-internal-token; do
 done
 ok "single valid JSON document; no clickhouse/admin/ingest secret material"
 
+# Helm skips post-install/post-upgrade hooks when `--wait` times out, so the
+# migrate Job is not a guarantee — the hub must be told it may repair the schema
+# itself, and the Job must leave evidence that it ran.
+echo "== schema migration delivery"
+out="$(render)"
+grep -q 'name: AVURUOBS_SCHEMA_AUTOMIGRATE' <<<"$out" || fail "hub is missing AVURUOBS_SCHEMA_AUTOMIGRATE"
+grep -A1 'name: AVURUOBS_SCHEMA_AUTOMIGRATE' <<<"$out" | grep -q 'value: "true"' \
+  || fail "schema self-heal is not on by default"
+ok "hub self-heal enabled by default"
+
+out="$(render --set hub.autoMigrate=false)"
+grep -A1 'name: AVURUOBS_SCHEMA_AUTOMIGRATE' <<<"$out" | grep -q 'value: "false"' \
+  || fail "hub.autoMigrate=false did not reach the hub"
+ok "hub.autoMigrate=false opts out"
+
+render --set hub.autoMigrate=yes >/dev/null 2>&1 && fail "non-boolean hub.autoMigrate accepted by the values schema"
+ok "values schema rejects a non-boolean hub.autoMigrate"
+
+out="$(render)"
+migrate_job="$(awk '/^# Source: avuruobs\/templates\/migrate-job.yaml$/{f=1} /^---$/{f=0} f' <<<"$out")"
+grep -q 'helm.sh/hook": post-install,post-upgrade' <<<"$migrate_job" \
+  || grep -q 'hook: post-install,post-upgrade' <<<"$migrate_job" \
+  || fail "migrate Job lost its post-install/post-upgrade hook"
+# The annotation VALUE, not any mention of the word — the template carries an
+# explanatory comment naming hook-succeeded, and it renders into the manifest.
+grep -E '^\s*"helm.sh/hook-delete-policy":' <<<"$migrate_job" | grep -q 'hook-succeeded' \
+  && fail "migrate Job still deletes itself on success (no evidence it ran)"
+grep -q 'ttlSecondsAfterFinished:' <<<"$migrate_job" || fail "migrate Job has no ttlSecondsAfterFinished"
+grep -q 'name: AVURUOBS_MIGRATE_WAIT_SECONDS' <<<"$migrate_job" || fail "migrate Job is missing AVURUOBS_MIGRATE_WAIT_SECONDS"
+ok "migrate Job: hook kept, survives success, ClickHouse wait configurable"
+
 echo "ALL TEMPLATE ASSERTIONS PASSED"

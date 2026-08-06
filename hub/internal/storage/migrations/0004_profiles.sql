@@ -6,9 +6,7 @@
 -- hub/internal/storage/profilesadapter (see agent_docs/tech_stack.md).
 -- Retention (TTL) on samples is applied by `hub migrate` ApplyRetention;
 -- stacks are small and self-deduplicating (ReplacingMergeTree), no TTL.
-CREATE DATABASE IF NOT EXISTS otel;
-
-CREATE TABLE IF NOT EXISTS otel.profiling_stacks
+CREATE TABLE IF NOT EXISTS {db}.profiling_stacks
 (
     `Tenant` LowCardinality(String),
     `StackHash` UInt64,
@@ -19,7 +17,7 @@ CREATE TABLE IF NOT EXISTS otel.profiling_stacks
 ENGINE = ReplacingMergeTree(LastSeen)
 ORDER BY (Tenant, StackHash);
 
-CREATE TABLE IF NOT EXISTS otel.profiling_samples
+CREATE TABLE IF NOT EXISTS {db}.profiling_samples
 (
     `Timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
     `Tenant` LowCardinality(String),
