@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -421,6 +422,141 @@ func TestCompleteSSOKeepsManualGrantsIndependent(t *testing.T) {
 	}
 	if len(stored) != 1 || stored[0].Scope != "demo" {
 		t.Fatalf("mapped grant leaked into storage: %+v", stored)
+	}
+}
+
+// ChangePassword: the current password gates the rotation; success revokes
+// every prior session and mints a fresh one. Deliberately end-to-end through
+// Bootstrap + Login (real cost-12 hashes, unlike seedUser) — this is the one
+// place that must prove the OLD password stops working and the NEW one starts.
+func TestChangePasswordRotatesSessions(t *testing.T) {
+	f := &storagetest.Fake{}
+	svc := testService(f)
+	ctx := context.Background()
+	if _, err := svc.Bootstrap(ctx, "old-pw"); err != nil {
+		t.Fatal(err)
+	}
+	oldToken, id, err := svc.Login(ctx, "admin", "old-pw", "ip1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newToken, err := svc.ChangePassword(ctx, id.UserID, "old-pw", "new-pw", "ip1")
+	if err != nil {
+		t.Fatalf("ChangePassword: %v", err)
+	}
+	if _, err := svc.IdentityFromToken(ctx, oldToken); err == nil {
+		t.Fatal("the pre-rotation session survived")
+	}
+	if _, err := svc.IdentityFromToken(ctx, newToken); err != nil {
+		t.Fatalf("the fresh session does not work: %v", err)
+	}
+	if _, _, err := svc.Login(ctx, "admin", "new-pw", "ip1"); err != nil {
+		t.Fatalf("login with the new password: %v", err)
+	}
+	if _, _, err := svc.Login(ctx, "admin", "old-pw", "ip2"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("login with the old password: %v, want ErrInvalidCredentials", err)
+	}
+}
+
+func TestChangePasswordGuards(t *testing.T) {
+	f := &storagetest.Fake{}
+	seedUser(t, f, "a@x.io", "old-pw", nil)
+	svc := testService(f)
+	ctx := context.Background()
+	const uid = "u-a@x.io"
+
+	// Wrong current password fails and counts toward the SAME limiter login
+	// uses — a stolen session must not become a password-guessing oracle.
+	if _, err := svc.ChangePassword(ctx, uid, "WRONG", "x", "ip1"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("wrong current: %v, want ErrInvalidCredentials", err)
+	}
+	for i := 1; i < maxLoginAttempts; i++ {
+		_, _ = svc.ChangePassword(ctx, uid, "WRONG", "x", "ip1")
+	}
+	if _, err := svc.ChangePassword(ctx, uid, "old-pw", "x-good", "ip1"); !errors.Is(err, ErrTooManyAttempts) {
+		t.Fatalf("after %d failures: %v, want ErrTooManyAttempts", maxLoginAttempts, err)
+	}
+	// The lockout rejected that call BEFORE any write: the password is
+	// untouched (checked from a clean ip, so the lockout itself can't answer).
+	if _, _, err := svc.Login(ctx, "a@x.io", "old-pw", "ip-clean"); err != nil {
+		t.Fatalf("a rate-limited change must not have applied: %v", err)
+	}
+
+	// SSO users have no local password. Their credential lives at the IdP, and
+	// Login resolves by email without filtering Origin — writing a local hash
+	// here would mint a working IdP-bypassing credential.
+	if err := f.SaveAuthUser(ctx, storage.AuthUser{ID: "oidc|s", Email: "s@x.io", Origin: "oidc"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ChangePassword(ctx, "oidc|s", "a", "b", "ip9"); !errors.Is(err, ErrExternalPassword) {
+		t.Fatalf("sso user: %v, want ErrExternalPassword", err)
+	}
+
+	// The shared demo account must not be re-keyed by a visitor — refused even
+	// with the CORRECT current password, so this is a guard, not a bad login.
+	if err := svc.EnsureDemoUser(ctx, "demo@x.io", "demo-pw"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ChangePassword(ctx, demoViewerID, "demo-pw", "b", "ip9"); !errors.Is(err, ErrDemoUser) {
+		t.Fatalf("demo user: %v, want ErrDemoUser", err)
+	}
+}
+
+// A NEW password the hasher refuses (bcrypt caps at 72 bytes) is the CALLER's
+// error, not a failed current-password check: the two must not share a
+// sentinel, or the handler would tell a user with a 73-byte new password that
+// their current one is wrong. Nothing may be written on that path either.
+func TestChangePasswordRejectsUnusableNewPassword(t *testing.T) {
+	f := &storagetest.Fake{}
+	seedUser(t, f, "a@x.io", "old-pw", nil)
+	svc := testService(f)
+	ctx := context.Background()
+
+	token, id, err := svc.Login(ctx, "a@x.io", "old-pw", "ip1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.ChangePassword(ctx, id.UserID, "old-pw", strings.Repeat("x", 73), "ip1")
+	if !errors.Is(err, ErrPasswordUnusable) {
+		t.Fatalf("73-byte new password: %v, want ErrPasswordUnusable", err)
+	}
+	if errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("an unusable NEW password must not report the CURRENT one as wrong: %v", err)
+	}
+	// The rejection happened before any write: the old password still logs in
+	// and the existing session was not revoked.
+	if _, _, err := svc.Login(ctx, "a@x.io", "old-pw", "ip2"); err != nil {
+		t.Fatalf("old password after a rejected change: %v, want it to still work", err)
+	}
+	if _, err := svc.IdentityFromToken(ctx, token); err != nil {
+		t.Fatalf("session revoked by a rejected change: %v", err)
+	}
+}
+
+// Origin rides the identity so /auth/me can tell the SPA whether a password
+// form even applies.
+func TestIdentityCarriesOrigin(t *testing.T) {
+	f := &storagetest.Fake{}
+	seedUser(t, f, "a@x.io", "pw", nil)
+	svc := testService(f)
+	ctx := context.Background()
+
+	_, id, err := svc.Login(ctx, "a@x.io", "pw", "ip1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id.Origin != "local" {
+		t.Fatalf("Origin = %q, want local", id.Origin)
+	}
+
+	_, ssoID, err := svc.CompleteSSO(ctx, ExternalIdentity{Subject: "kc|7", Email: "sso@x.io"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ssoID.Origin != "oidc" {
+		t.Fatalf("sso Origin = %q, want oidc", ssoID.Origin)
 	}
 }
 

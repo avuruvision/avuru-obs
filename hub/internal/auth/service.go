@@ -21,6 +21,14 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrTooManyAttempts    = errors.New("too many login attempts")
 	ErrStoreUnavailable   = errors.New("auth store unavailable")
+	// ErrExternalPassword: the account's credential lives at the IdP.
+	ErrExternalPassword = errors.New("password is managed by the identity provider")
+	// ErrDemoUser: the shared demo account must not be re-keyed by a visitor.
+	ErrDemoUser = errors.New("the demo account cannot change its password")
+	// ErrPasswordUnusable: the NEW password was rejected by the hasher
+	// (bcrypt refuses >72 bytes). A caller error, distinct from a wrong
+	// current password — they must not share a message.
+	ErrPasswordUnusable = errors.New("the new password cannot be used")
 )
 
 // bootstrapAdminID is the FIXED id used to create the bootstrap admin user.
@@ -97,6 +105,77 @@ func (s *Service) Login(ctx context.Context, email, password, ip string) (string
 		return "", Identity{}, err
 	}
 	return token, id, nil
+}
+
+// ChangePassword rotates userID's own password after verifying the current
+// one. Success revokes EVERY existing session (an attacker holding a stolen
+// cookie is evicted) and mints a fresh one so the legitimate caller stays
+// signed in. Failed current-password checks feed the same limiter as login —
+// a stolen session must not become a password-guessing oracle.
+//
+// The limiter key is the userID, where Login uses the email: the caller here
+// is already authenticated, so the stable id is what identifies them, and
+// guesses made through this method neither exhaust nor are exhausted by the
+// victim's login budget. Both paths still share the per-IP axis, so one IP's
+// total bcrypt cost stays capped regardless.
+//
+// Every rejection returns BEFORE the first write, so an error from this
+// method always means nothing changed — except at one seam: a revoke that
+// fails after the hash is saved leaves the password rotated with stale
+// sessions alive. That order is still the right one (revoking first would log
+// the caller out for a change that never landed), but the seam is logged
+// because "rotated, attacker not evicted" is the one state an operator must
+// not miss.
+func (s *Service) ChangePassword(ctx context.Context, userID, current, newPw, ip string) (string, error) {
+	key := userID + "|" + ip
+	if s.limiter.blocked(key, ip) {
+		return "", ErrTooManyAttempts
+	}
+	st, err := s.st()
+	if err != nil {
+		return "", err
+	}
+	u, err := st.GetAuthUser(ctx, userID)
+	if err != nil {
+		return "", fmt.Errorf("looking up user: %w", err)
+	}
+	// Allow-listed on "local" (not "!= oidc") so a future origin defaults to
+	// refused: Login resolves by email without filtering Origin and
+	// CheckPassword ignores it too, so writing a hash for an IdP-governed
+	// account would mint a real local credential that bypasses the IdP.
+	if u.Origin != "local" {
+		return "", ErrExternalPassword
+	}
+	// By id, not by origin — EnsureDemoUser creates the demo viewer as a
+	// perfectly ordinary local user, so it clears the check above and only the
+	// fixed id can single it out here. It also re-keys the account from the
+	// configured credentials on every boot, so a "successful" change would
+	// silently revert. The id is server-reserved, so this stays refused even
+	// with demo mode since switched off — the conservative direction.
+	if u.ID == demoViewerID {
+		return "", ErrDemoUser
+	}
+	if !CheckPassword(u.PasswordHash, current) {
+		s.limiter.fail(key, ip)
+		return "", ErrInvalidCredentials
+	}
+	// Hash before saving anything: bcrypt refuses >72 bytes, and that is the
+	// caller's error about the NEW password — it must never surface as
+	// ErrInvalidCredentials, which reads as "your current password is wrong".
+	hash, err := HashPassword(newPw)
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrPasswordUnusable, err)
+	}
+	u.PasswordHash = hash
+	if err := st.SaveAuthUser(ctx, u); err != nil {
+		return "", fmt.Errorf("saving user: %w", err)
+	}
+	if err := st.RevokeAuthSessionsForUser(ctx, u.ID); err != nil {
+		slog.Error("password rotated but sessions could not be revoked — existing cookies remain valid",
+			"user", u.ID, "error", err)
+		return "", fmt.Errorf("revoking sessions: %w", err)
+	}
+	return s.mintSession(ctx, st, u.ID)
 }
 
 // mintSession creates a session row for userID and returns the raw cookie token.
@@ -282,7 +361,7 @@ func (s *Service) identityFor(ctx context.Context, st storage.Store, u storage.A
 	if err != nil {
 		return Identity{}, fmt.Errorf("listing grants: %w", err)
 	}
-	id := Identity{UserID: u.ID, Email: u.Email, Name: u.Name}
+	id := Identity{UserID: u.ID, Email: u.Email, Name: u.Name, Origin: u.Origin}
 	for _, g := range grants {
 		if r, ok := ParseRole(g.Role); ok {
 			id.Grants = append(id.Grants, Grant{Scope: g.Scope, Role: r})
