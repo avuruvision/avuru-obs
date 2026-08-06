@@ -167,10 +167,13 @@ func (a *API) handleUpdateUser(w http.ResponseWriter, r *http.Request) error {
 	if err := checkSelfLockout(r, u, req); err != nil {
 		return err
 	}
-	// An SSO user's credential lives at the IdP; login never consults
-	// PasswordHash for them, so storing one would silently succeed at
-	// nothing. Allow-listed on "local" (not "!= oidc") so a future origin
-	// defaults to refused, not accepted.
+	// An SSO user's credential is supposed to live at the IdP only — but
+	// Login resolves by email (GetAuthUserByEmail does not filter on Origin)
+	// and CheckPassword ignores Origin too, special-casing only an empty
+	// hash. So without this guard, setting a password here would create a
+	// genuine, working local credential for an SSO-only account, silently
+	// bypassing the IdP and its MFA/conditional-access policy. Allow-listed
+	// on "local" (not "!= oidc") so a future origin defaults to refused.
 	if req.Password != nil && *req.Password != "" && u.Origin != "local" {
 		return badRequest("cannot set a password for an SSO user — it is managed by the identity provider")
 	}

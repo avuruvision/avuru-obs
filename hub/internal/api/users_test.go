@@ -370,6 +370,13 @@ func TestUpdateUserRejectsPasswordForSSOUser(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("password on SSO user: %d, want 400; body %s", w.Code, w.Body.String())
 	}
+	// The property that actually matters: the rejected password must not
+	// have become a working local credential — Login resolves by email with
+	// no Origin filter, so this is the only thing standing between an SSO
+	// account and a plain-password bypass of the IdP.
+	if w := doBody(mux, "POST", "/api/v1/auth/login", nil, `{"email":"sso@x.io","password":"newpw"}`); w.Code != http.StatusUnauthorized {
+		t.Fatalf("login with the rejected password: %d, want 401 (must not have been stored); body %s", w.Code, w.Body.String())
+	}
 	// Name edits on the same user still work.
 	if w := doBody(mux, "PUT", "/api/v1/users/oidc|sub1", c, `{"name":"Renamed"}`); w.Code != http.StatusOK {
 		t.Fatalf("name edit on SSO user: %d", w.Code)
