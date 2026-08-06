@@ -507,7 +507,11 @@ export interface AuthGrant {
 }
 
 export interface Me {
-  user: { id: string; email: string; name: string; anonymous: boolean };
+  // origin: "local" | "oidc" | "" (empty for the anonymous identity). Left as
+  // a plain string, not narrowed to a union — "" is a real value and a
+  // future origin must not break the build. Always present (no omitempty on
+  // the Go side).
+  user: { id: string; email: string; name: string; origin: string; anonymous: boolean };
   grants: AuthGrant[];
 }
 
@@ -530,6 +534,21 @@ export interface CreateUserRequest {
   name: string;
   password: string;
   grants: AuthGrant[];
+}
+
+// PUT /api/v1/users/{id} — absent field = leave unchanged; grants replace
+// the whole set. Mirrors updateUserRequest in hub/internal/api/users.go.
+export interface UpdateUserRequest {
+  name?: string;
+  password?: string;
+  disabled?: boolean;
+  grants?: AuthGrant[];
+}
+
+// POST /api/v1/auth/password (self-service; answers the refreshed Me).
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
 }
 
 // Green — per-service energy & carbon (module green). Mirrors the Go DTOs in

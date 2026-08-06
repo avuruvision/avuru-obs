@@ -77,6 +77,17 @@ spec:
                   key: admin-password
             - name: AVURUOBS_AUTH_SESSION_TTL_HOURS
               value: {{ .Values.auth.sessionTTLHours | quote }}
+            {{- /* Both emitted only when they carry a non-default value, so an
+                   install that never touches the CSRF knobs renders exactly the
+                   manifest it rendered before they existed. */}}
+            {{- with .Values.auth.trustedOrigins }}
+            - name: AVURUOBS_AUTH_TRUSTED_ORIGINS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- if and .Values.auth.originCheck (ne .Values.auth.originCheck "enforce") }}
+            - name: AVURUOBS_AUTH_ORIGIN_CHECK
+              value: {{ .Values.auth.originCheck | quote }}
+            {{- end }}
             {{- if .Values.auth.anonymous.role }}
             - name: AVURUOBS_AUTH_ANONYMOUS_ROLE
               value: {{ .Values.auth.anonymous.role | quote }}

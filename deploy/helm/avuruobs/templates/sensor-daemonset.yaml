@@ -179,6 +179,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            # kubeletstats dials the kubelet by IP (see sensor-config.yaml) —
+            # the node NAME stays for the k8s.node.name attribute upserts.
+            - name: K8S_NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
             {{- if and (include "avuruobs.ingestAuthEnabled" .) .Values.auth.ingest.provisionSensorKey }}
             {{- /* Consumed as ${env:AVURUOBS_INGEST_KEY} by the otlphttp
                    exporter's Authorization header in sensor-config.yaml. */}}
@@ -335,6 +341,10 @@ spec:
           args:
             - --listen=:{{ .Values.sensor.green.estimation.port }}
             - --node-name=$(NODE_NAME)
+            # Kubelet by IP, node-name for labels only — same split as the
+            # otel-agent's kubeletstats endpoint (bare node hostnames don't
+            # resolve in pod DNS; pod-level attribution silently degrades).
+            - --kubelet-host=$(NODE_IP)
             - --idle-watts={{ .Values.sensor.green.estimation.idleWatts }}
             - --max-watts={{ .Values.sensor.green.estimation.maxWatts }}
           env:
@@ -342,6 +352,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
           securityContext:
             # Same rationale as Kepler's securityContext just above: the RAPL
             # probe reads the root-owned powercap sysfs, and running

@@ -149,6 +149,11 @@ data:
         {{- end }}
         start_at: beginning
         storage: file_storage
+        # The container operator's add_metadata_from_filepath (default: true)
+        # reads log.file.path off each record — without this flag the receiver
+        # never attaches it and every entry is dropped with "Failed to process
+        # entry", i.e. zero pod logs ingested.
+        include_file_path: true
         operators:
           # Parses containerd/cri-o/docker formats and promotes k8s.pod.name,
           # k8s.namespace.name, k8s.container.name, k8s.pod.uid from the file
@@ -160,7 +165,11 @@ data:
       # signal tier). Read-only stats API via the pod ServiceAccount.
       kubeletstats:
         auth_type: serviceAccount
-        endpoint: https://${env:K8S_NODE_NAME}:10250
+        # Node IP, not node name: the pod resolves via cluster DNS
+        # (ClusterFirstWithHostNet), which has no records for bare node
+        # hostnames on most bare-metal clusters — the name variant fails
+        # with "no such host" and kills the whole infra-metrics tier.
+        endpoint: https://${env:K8S_NODE_IP}:10250
         # kubelet serving certs are typically self-signed per node
         insecure_skip_verify: true
         collection_interval: {{ .Values.sensor.agent.kubeletstats.interval }}

@@ -30,6 +30,33 @@ kubectl -n "$NS" rollout status deploy/avuruobs-hub --timeout=300s
 The shop's built-in load generator drives traffic continuously; the service
 map fills in over OTLP with no further action.
 
+## Behind a reverse proxy that rewrites `Host`
+
+If something sits in front of the ingress (an edge proxy, a tunnel, a home
+router forwarding to the LAN), check what it puts in `Host`. When it forwards
+the *ingress address* instead of `demo.avuruobs.io`, the browser still sends
+`Origin: https://demo.avuruobs.io` while the hub sees the ingress address — the
+CSRF check reads that as cross-origin and **every write 403s, starting with the
+login**. Two ways out, in order of preference:
+
+1. **Preserve the Host at the proxy** — nothing to change in the chart:
+   ```nginx
+   proxy_pass http://<ingress-address>;
+   proxy_set_header Host $host;          # demo.avuruobs.io, not the upstream
+   proxy_set_header X-Forwarded-Proto $scheme;
+   ```
+2. **Declare the origin to the hub** when the proxy is not yours to configure:
+   ```yaml
+   auth:
+     trustedOrigins: ["https://demo.avuruobs.io"]
+   ```
+   The check stays on; only that origin is added to what it accepts.
+
+`auth.originCheck: log` renders the observed `Origin`/`Host` pair in the hub
+logs (`kubectl -n demo-obs logs deploy/avuruobs-hub | grep origin`) when you
+need to see what actually arrives. Put it back to `enforce` once the origin is
+declared.
+
 ## Hardening checklist (run before publishing DNS)
 
 Every item must pass; the first three are the security boundary.
@@ -61,6 +88,12 @@ Every item must pass; the first three are the security boundary.
    `robots.txt`/`noindex` from the ingress if you prefer link-only traffic.
 8. **Uptime check.** Point your monitor at `https://demo.avuruobs.io/healthz`
    (unauthenticated by design).
+9. **The CSRF check is still armed.** `auth.originCheck` must read `enforce` —
+   `log` and `off` both let a cross-origin write through, and `off` leaves no
+   trace that they did. A proxy that rewrites `Host` is fixed with
+   `auth.trustedOrigins` (see above), not by lowering the mode:
+   `kubectl -n demo-obs get deploy avuruobs-hub -o yaml | grep -c AVURUOBS_AUTH_ORIGIN_CHECK`
+   returns `0` on a correctly configured demo.
 
 ## Green Obs on the demo
 

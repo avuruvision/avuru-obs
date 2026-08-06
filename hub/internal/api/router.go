@@ -56,6 +56,21 @@ type Config struct {
 	// AnonymousIdentity, when non-nil, is served to requests without a valid
 	// session (demo mode: a Viewer scoped to listed projects).
 	AnonymousIdentity *auth.Identity
+	// TrustedOrigins widens the CSRF same-origin check (checkOrigin) with
+	// origins that are legitimate even though they don't match the request's
+	// Host — the reverse-proxy case, where the proxy hands the hub the ingress
+	// address instead of the public domain. Full origins
+	// ("https://obs.example.com"); scheme+host is compared, case- and
+	// trailing-slash-insensitive. Chart-generated (auth.trustedOrigins), plus
+	// AVURUOBS_PUBLIC_URL when set.
+	TrustedOrigins []string
+	// OriginCheck is how a cross-origin write is treated: "" / "enforce"
+	// (default) rejects it, "log" lets it through and logs the Origin/Host pair
+	// that would have been rejected (how you find out what a proxy actually
+	// sends), "off" skips the check entirely. Lowering it disarms a CSRF
+	// defense — TrustedOrigins is the narrow fix. Injected as
+	// AVURUOBS_AUTH_ORIGIN_CHECK.
+	OriginCheck string
 	// Demo mode: when DemoEnabled, POST /api/v1/auth/demo signs in as the
 	// read-only demo viewer using DemoEmail/DemoPassword server-side (the shared
 	// password never reaches the browser), and /auth/config advertises it.
@@ -164,6 +179,10 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("POST /api/v1/auth/login", handle(a.handleLogin))
 		mux.Handle("POST /api/v1/auth/logout", a.authenticated(a.handleLogout))
 		mux.Handle("GET /api/v1/auth/me", a.authenticated(a.handleMe))
+		// Self-service password change — authenticated(), not securedAdmin:
+		// it rotates the CALLER's own credential, so a zero-grant user must
+		// reach it too.
+		mux.Handle("POST /api/v1/auth/password", a.authenticated(a.handleChangePassword))
 
 		// Demo one-click login — registered only when demo mode is on. Signs in
 		// as the read-only demo viewer server-side (shared password stays server
@@ -184,6 +203,7 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("GET /api/v1/users", a.securedAdmin(a.handleListUsers))
 		mux.Handle("POST /api/v1/users", a.securedAdmin(a.handleCreateUser))
 		mux.Handle("PUT /api/v1/users/{id}", a.securedAdmin(a.handleUpdateUser))
+		mux.Handle("DELETE /api/v1/users/{id}", a.securedAdmin(a.handleDeleteUser))
 	}
 
 	if active.Enabled(modules.Logs) {
