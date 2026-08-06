@@ -199,6 +199,7 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("GET /api/v1/users", a.securedAdmin(a.handleListUsers))
 		mux.Handle("POST /api/v1/users", a.securedAdmin(a.handleCreateUser))
 		mux.Handle("PUT /api/v1/users/{id}", a.securedAdmin(a.handleUpdateUser))
+		mux.Handle("DELETE /api/v1/users/{id}", a.securedAdmin(a.handleDeleteUser))
 	}
 
 	if active.Enabled(modules.Logs) {

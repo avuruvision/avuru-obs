@@ -237,3 +237,59 @@ func TestCreateUserPasswordTooLongIs400(t *testing.T) {
 		t.Fatalf("73-byte password: %d, want 400", w.Code)
 	}
 }
+
+// Delete is a two-step: 409 while the user is live, 204 once disabled. The
+// tombstone must clear grants and sessions, and self-delete is structurally
+// impossible (you cannot be disabled while signed in).
+func TestDeleteUserRequiresDisabledFirst(t *testing.T) {
+	mux, c, f := adminMux(t)
+
+	w := doBody(mux, "POST", "/api/v1/users", c, `{
+		"email":"gone@x.io","name":"Gone","password":"gonepw",
+		"grants":[{"scope":"payments","role":"editor"}]}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create: %d body %s", w.Code, w.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &created)
+
+	// Live user: refused with 409, nothing changes.
+	if w := doBody(mux, "DELETE", "/api/v1/users/"+created.ID, c, ""); w.Code != http.StatusConflict {
+		t.Fatalf("delete live user: %d, want 409; body %s", w.Code, w.Body.String())
+	}
+
+	// The user signs in — their session must die with the delete below.
+	svcLogin := doBody(mux, "POST", "/api/v1/auth/login", nil, `{"email":"gone@x.io","password":"gonepw"}`)
+	if svcLogin.Code != http.StatusOK {
+		t.Fatalf("victim login: %d", svcLogin.Code)
+	}
+
+	// Disable, then delete.
+	if w := doBody(mux, "PUT", "/api/v1/users/"+created.ID, c, `{"disabled":true}`); w.Code != http.StatusOK {
+		t.Fatalf("disable: %d", w.Code)
+	}
+	if w := doBody(mux, "DELETE", "/api/v1/users/"+created.ID, c, ""); w.Code != http.StatusNoContent {
+		t.Fatalf("delete disabled user: %d, want 204; body %s", w.Code, w.Body.String())
+	}
+
+	// Gone from the list, grants cleared, sessions revoked.
+	list := doBody(mux, "GET", "/api/v1/users", c, "")
+	if strings.Contains(list.Body.String(), "gone@x.io") {
+		t.Fatalf("deleted user still listed: %s", list.Body.String())
+	}
+	if got := f.Grants[created.ID]; len(got) != 0 {
+		t.Fatalf("grants survived the delete: %+v", got)
+	}
+	for _, s := range f.Sessions {
+		if s.UserID == created.ID {
+			t.Fatal("a session survived the delete")
+		}
+	}
+
+	// Unknown id -> 404 (repeat delete included: the row is gone).
+	if w := doBody(mux, "DELETE", "/api/v1/users/"+created.ID, c, ""); w.Code != http.StatusNotFound {
+		t.Fatalf("delete deleted user: %d, want 404", w.Code)
+	}
+}

@@ -211,6 +211,39 @@ func (a *API) handleUpdateUser(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+// handleDeleteUser hard-deletes a DISABLED user; a live user answers 409 —
+// disable is the reversible first step, delete the explicit cleanup
+// (design/2026-08-06-users-crud-password.md, amending disable-not-delete).
+// Self-delete is structurally impossible: the caller holds a live session and
+// disabled users cannot (IdentityFromToken rejects them). Order matters:
+// sessions → grants → user, so a crash mid-sequence leaves a disabled,
+// grantless user — recoverable — never a half-deleted one that can sign in.
+func (a *API) handleDeleteUser(w http.ResponseWriter, r *http.Request) error {
+	w.Header().Set("Cache-Control", "no-store")
+	st, err := a.store()
+	if err != nil {
+		return err
+	}
+	u, err := st.GetAuthUser(r.Context(), r.PathValue("id"))
+	if err != nil {
+		return err // storage.ErrNotFound -> 404 via handle()
+	}
+	if !u.Disabled {
+		return &apiError{status: http.StatusConflict, message: "disable the user before deleting"}
+	}
+	if err := st.RevokeAuthSessionsForUser(r.Context(), u.ID); err != nil {
+		return err
+	}
+	if err := st.ReplaceAuthGrants(r.Context(), u.ID, nil); err != nil {
+		return err
+	}
+	if err := st.DeleteAuthUser(r.Context(), u.ID); err != nil {
+		return err
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
 // checkSelfLockout rejects an admin's PUT against their OWN account when it
 // would disable them or drop their global-admin grant: both are effectively
 // unrecoverable without direct DB surgery (no other admin left to undo it).
