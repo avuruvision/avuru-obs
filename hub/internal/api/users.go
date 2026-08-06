@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/avuru/avuru-obs/hub/internal/auth"
@@ -137,8 +138,9 @@ func (a *API) handleCreateUser(w http.ResponseWriter, r *http.Request) error {
 }
 
 // handleUpdateUser edits name/password/disabled and, when Grants is present,
-// replaces the grant set wholesale. Disable-not-delete: there is no DELETE
-// route (Plan A) — disabling preserves the audit trail.
+// replaces the grant set wholesale. Disabling is the reversible first step —
+// see handleDeleteUser for the explicit hard-delete that follows it
+// (design/2026-08-06-users-crud-password.md, amending disable-not-delete).
 func (a *API) handleUpdateUser(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Cache-Control", "no-store")
 	st, err := a.store()
@@ -214,10 +216,18 @@ func (a *API) handleUpdateUser(w http.ResponseWriter, r *http.Request) error {
 // handleDeleteUser hard-deletes a DISABLED user; a live user answers 409 —
 // disable is the reversible first step, delete the explicit cleanup
 // (design/2026-08-06-users-crud-password.md, amending disable-not-delete).
-// Self-delete is structurally impossible: the caller holds a live session and
-// disabled users cannot (IdentityFromToken rejects them). Order matters:
-// sessions → grants → user, so a crash mid-sequence leaves a disabled,
-// grantless user — recoverable — never a half-deleted one that can sign in.
+//
+// For origin=oidc this deletes only the LOCAL record. Disabled is the flag
+// CompleteSSO checks, so deleting a disabled SSO user REMOVES their lockout:
+// they return on their next IdP login with group-mapped grants only. Disable,
+// not delete, is how you lock an SSO user out.
+//
+// Order matters: sessions → grants → user. A failure mid-sequence never
+// leaves a half-deleted user who can still sign in, and every step is
+// idempotent, so retrying the DELETE completes it. It is NOT an undo: once
+// the grants are tombstoned the old set is unrecoverable from any read the
+// UI can reach. Deleting the user first would be worse — orphaned grants
+// resurrect on ids that recur (bootstrap-admin, demo-viewer, oidc|<sub>).
 func (a *API) handleDeleteUser(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Cache-Control", "no-store")
 	st, err := a.store()
@@ -231,6 +241,12 @@ func (a *API) handleDeleteUser(w http.ResponseWriter, r *http.Request) error {
 	if !u.Disabled {
 		return &apiError{status: http.StatusConflict, message: "disable the user before deleting"}
 	}
+	// The demo account is server-managed: EnsureDemoUser recreates it (with
+	// its chart-configured password) on every boot, so a "successful" delete
+	// would silently undo itself on the next restart.
+	if a.cfg.DemoEnabled && u.Email == a.cfg.DemoEmail {
+		return &apiError{status: http.StatusConflict, message: "the demo account is managed by the server and is recreated on restart"}
+	}
 	if err := st.RevokeAuthSessionsForUser(r.Context(), u.ID); err != nil {
 		return err
 	}
@@ -240,6 +256,10 @@ func (a *API) handleDeleteUser(w http.ResponseWriter, r *http.Request) error {
 	if err := st.DeleteAuthUser(r.Context(), u.ID); err != nil {
 		return err
 	}
+	// This endpoint destroys an identity and the AEP rules out an audit
+	// pipeline for it — this log line is the only forensic record that will
+	// ever exist of who deleted whom.
+	slog.Info("deleted user", "id", u.ID, "email", u.Email, "origin", u.Origin, "actor", requestedBy(r))
 	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
