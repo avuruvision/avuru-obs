@@ -303,6 +303,16 @@ func TestChangeOwnPassword(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("change: %d body %s", w.Code, w.Body.String())
 	}
+	// The body is the contract, not just the status: the SPA re-renders its
+	// account state from this response instead of following up with
+	// /auth/me, so an empty 200 would silently break the Account tab.
+	var body meResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("change response body: %v (%s)", err, w.Body.String())
+	}
+	if body.User.ID == "" || body.User.Origin != "local" || body.User.Anonymous {
+		t.Fatalf("change response must carry the caller's identity: %s", w.Body.String())
+	}
 	var fresh *http.Cookie
 	for _, ck := range w.Result().Cookies() {
 		if ck.Name == sessionCookieName && ck.Value != "" {
@@ -368,10 +378,45 @@ func TestChangeOwnPasswordRejectsUnusableNewPassword(t *testing.T) {
 	if strings.Contains(w.Body.String(), "current password is incorrect") {
 		t.Fatalf("unusable new password reported as a wrong current password: %s", w.Body.String())
 	}
-	// The current password still works — the rejection landed before any write.
-	if got := doBody(mux, "POST", "/api/v1/auth/password", c,
-		`{"currentPassword":"root-pw","newPassword":"next-pw"}`); got.Code != http.StatusOK {
-		t.Fatalf("change after a rejected new password: %d body %s", got.Code, got.Body.String())
+	// That nothing was written on this path is TestChangePasswordRejects-
+	// UnusableNewPassword's job, at the layer that owns the write.
+}
+
+// TestChangeOwnPasswordRateLimit429 mirrors TestLoginRateLimit429 for the
+// rotation path: a stolen session must not become a password-guessing oracle,
+// so wrong-current attempts lock out at the same ceiling — with Retry-After,
+// since the browser has no other way to know how long the wait is.
+func TestChangeOwnPasswordRateLimit429(t *testing.T) {
+	mux, c, _ := adminMux(t)
+	var w *httptest.ResponseRecorder
+	// httptest's fixed RemoteAddr keys every attempt to the same limiter
+	// bucket; the 6th trips maxLoginAttempts.
+	for i := 0; i < 6; i++ {
+		w = doBody(mux, "POST", "/api/v1/auth/password", c,
+			`{"currentPassword":"WRONG","newPassword":"next-pw"}`)
+	}
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("6th wrong current password: %d, want 429; body %s", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Retry-After"); got != "60" {
+		t.Fatalf("Retry-After: %q, want \"60\"", got)
+	}
+}
+
+// The route is registered through authenticated(), which runs checkOrigin —
+// so the handler deliberately does not repeat it. This pins that the
+// protection is actually there: a cross-origin POST carrying a valid session
+// cookie is exactly the CSRF this endpoint must not honour.
+func TestChangeOwnPasswordCrossOriginIs403(t *testing.T) {
+	mux, c, _ := adminMux(t)
+	req := httptest.NewRequest("POST", "/api/v1/auth/password",
+		strings.NewReader(`{"currentPassword":"root-pw","newPassword":"next-pw"}`))
+	req.Header.Set("Origin", "https://evil.example")
+	req.AddCookie(c)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("cross-origin password change: %d, want 403; body %s", w.Code, w.Body.String())
 	}
 }
 

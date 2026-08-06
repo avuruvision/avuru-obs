@@ -56,8 +56,9 @@ type Identity struct {
 	Email  string `json:"email"`
 	Name   string `json:"name"`
 	// Origin mirrors AuthUser.Origin ("local" | "oidc"); empty for the
-	// anonymous identity. Carried so /auth/me can tell the SPA whether a
-	// password form applies at all — that handler does not emit it yet.
+	// anonymous identity. Emitted by /auth/me so the SPA can tell whether a
+	// password form applies at all — an SSO user's credential lives at the
+	// IdP, so the Account tab shows a note instead of the form.
 	Origin    string  `json:"origin"`
 	Anonymous bool    `json:"anonymous"`
 	Grants    []Grant `json:"grants"`

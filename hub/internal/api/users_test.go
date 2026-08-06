@@ -384,6 +384,46 @@ func TestDeleteDemoUserRefused(t *testing.T) {
 	}
 }
 
+// TestUpdateDemoUserPasswordRefused pins the narrow admin-side guard: the demo
+// account's password belongs to the server. Re-keying the row leaves
+// handleDemoLogin signing in with the CONFIGURED credentials, which then fail
+// Login with ErrInvalidCredentials — a sentinel that handler does not map, so
+// the public demo button answers an opaque 500 until a restart re-runs
+// EnsureDemoUser. The demo-login assertion below is what actually proves the
+// break was avoided; the 409 alone would not.
+func TestUpdateDemoUserPasswordRefused(t *testing.T) {
+	f := &storagetest.Fake{}
+	svc := auth.NewService(func() storage.Store { return f }, time.Hour)
+	if _, err := svc.Bootstrap(context.Background(), "root-pw"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.EnsureDemoUser(context.Background(), "demo@avuru.obs", "demo-pw"); err != nil {
+		t.Fatal(err)
+	}
+	adminToken, _, err := svc.Login(context.Background(), "admin", "root-pw", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return f }, Config{
+		Auth: svc, DemoEnabled: true, DemoEmail: "demo@avuru.obs", DemoPassword: "demo-pw",
+	})
+	c := &http.Cookie{Name: sessionCookieName, Value: adminToken}
+
+	if w := doBody(mux, "PUT", "/api/v1/users/demo-viewer", c, `{"password":"hijacked"}`); w.Code != http.StatusConflict {
+		t.Fatalf("admin re-keying the demo account: %d, want 409; body %s", w.Code, w.Body.String())
+	}
+	if w := doBody(mux, "POST", "/api/v1/auth/demo", nil, ""); w.Code != http.StatusOK {
+		t.Fatalf("demo button after the refused reset: %d, want 200; body %s", w.Code, w.Body.String())
+	}
+	// Deliberately narrow: disabling the demo account is reversible and the
+	// legitimate way to kill a public demo without a redeploy, so it stays
+	// allowed — as does editing its name.
+	if w := doBody(mux, "PUT", "/api/v1/users/demo-viewer", c, `{"disabled":true}`); w.Code != http.StatusOK {
+		t.Fatalf("disabling the demo account: %d, want 200; body %s", w.Code, w.Body.String())
+	}
+}
+
 // The 400 alone doesn't prove the password was never stored — Login
 // resolves by email regardless of Origin, so the login attempt below is
 // what actually proves an SSO account can't get a working local password.

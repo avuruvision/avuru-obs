@@ -466,8 +466,10 @@ func TestChangePasswordGuards(t *testing.T) {
 	ctx := context.Background()
 	const uid = "u-a@x.io"
 
-	// Wrong current password fails and counts toward the SAME limiter login
-	// uses — a stolen session must not become a password-guessing oracle.
+	// Wrong current password fails and counts toward the rate limiter — a
+	// stolen session must not become a password-guessing oracle. The key space
+	// is namespaced ("pw|"), deliberately separate from Login's, so the two
+	// paths cannot starve each other; the 5-per-window ceiling is shared.
 	if _, err := svc.ChangePassword(ctx, uid, "WRONG", "x", "ip1"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("wrong current: %v, want ErrInvalidCredentials", err)
 	}

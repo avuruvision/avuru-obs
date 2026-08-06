@@ -181,12 +181,13 @@ type changePasswordRequest struct {
 // comes from the session identity and this request type carries no user
 // field, which is what its doc comment requires (a caller free to name any
 // user could enumerate accounts by status and by response time alike).
+//
+// CSRF is the authenticated() wrapper's job — it runs checkOrigin for every
+// route registered through it, so this handler does not repeat it (only
+// handleLogin does, being registered with bare handle()).
 func (a *API) handleChangePassword(w http.ResponseWriter, r *http.Request) error {
 	// Credentialed responses must never be cached (OWASP).
 	w.Header().Set("Cache-Control", "no-store")
-	if err := checkOrigin(r); err != nil {
-		return err
-	}
 	id := identityFrom(r.Context())
 	if id == nil || id.Anonymous {
 		return unauthorized()

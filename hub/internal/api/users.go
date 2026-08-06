@@ -167,15 +167,29 @@ func (a *API) handleUpdateUser(w http.ResponseWriter, r *http.Request) error {
 	if err := checkSelfLockout(r, u, req); err != nil {
 		return err
 	}
-	// An SSO user's credential is supposed to live at the IdP only — but
-	// Login resolves by email (GetAuthUserByEmail does not filter on Origin)
-	// and CheckPassword ignores Origin too, special-casing only an empty
-	// hash. So without this guard, setting a password here would create a
-	// genuine, working local credential for an SSO-only account, silently
-	// bypassing the IdP and its MFA/conditional-access policy. Allow-listed
-	// on "local" (not "!= oidc") so a future origin defaults to refused.
-	if req.Password != nil && *req.Password != "" && u.Origin != "local" {
-		return badRequest("cannot set a password for an SSO user — it is managed by the identity provider")
+	if req.Password != nil && *req.Password != "" {
+		// An SSO user's credential is supposed to live at the IdP only — but
+		// Login resolves by email (GetAuthUserByEmail does not filter on
+		// Origin) and CheckPassword ignores Origin too, special-casing only an
+		// empty hash. So without this guard, setting a password here would
+		// create a genuine, working local credential for an SSO-only account,
+		// silently bypassing the IdP and its MFA/conditional-access policy.
+		// Allow-listed on "local" (not "!= oidc") so a future origin defaults
+		// to refused.
+		if u.Origin != "local" {
+			return badRequest("cannot set a password for an SSO user — it is managed by the identity provider")
+		}
+		// The demo account's password belongs to the server: handleDemoLogin
+		// signs visitors in with the CONFIGURED credentials, so re-keying the
+		// row here breaks that Login with ErrInvalidCredentials — a sentinel
+		// handleDemoLogin deliberately does not map, making the public demo
+		// button answer an opaque 500 until a restart re-runs EnsureDemoUser.
+		// Narrow on purpose: only the password. Disabling demo-viewer stays
+		// allowed, being reversible and the way to kill a demo without a
+		// redeploy.
+		if u.ID == auth.DemoViewerID {
+			return &apiError{status: http.StatusConflict, message: "the demo account's password is managed by the server"}
+		}
 	}
 
 	if req.Name != nil {
