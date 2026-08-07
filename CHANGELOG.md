@@ -11,6 +11,20 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **Find a pod on the Nodes screen.** Both tables now sort by any column, and
+  both filter — nodes by name, pods by name, namespace or workload, with a
+  namespace picker that appears once there is more than one namespace to choose
+  between. On a real cluster the pods table is a hundred-plus unordered rows,
+  and until now the only way through it was the browser's find-in-page.
+  Filters live in the URL, so a narrowed view is a link you can send someone,
+  and they apply as you type — the rows are already in the browser, so nothing
+  waits on a query. When a filter is active the counts read "N of M", so a
+  narrowed table can't be misread as a shrinking cluster, and a filter that
+  matches nothing says so instead of showing the "install the sensor" empty
+  state, which would send you off to debug a perfectly healthy install.
+
 ### Fixed
 
 - **The shared demo account was offered a password form it could never

@@ -1,16 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Sparkline } from "@/components/infra/sparkline";
+import { SortableTh, useColumnSort, type SortColumn } from "@/components/ui/sortable";
 import { formatGco2e, formatMgPerReq, formatWh } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import type { GreenServiceEnergy } from "@/lib/api-types";
 
 type SortKey = "service" | "wh" | "gco2e" | "requests" | "mgCO2ePerRequest";
 
-const COLUMNS: { key: SortKey; label: string; numeric?: boolean }[] = [
+const COLUMNS: SortColumn<SortKey>[] = [
   { key: "service", label: "Service" },
   { key: "wh", label: "Energy", numeric: true },
   { key: "gco2e", label: "Carbon", numeric: true },
@@ -27,32 +27,15 @@ const SYNTHETIC = new Set(["(other)", "(unattributed)"]);
 // rows, never paginated) — mirrors ServicesTable. The trend column reuses the
 // infra Sparkline over each row's Wh series.
 export function ServiceEnergyTable({ services }: { services: GreenServiceEnergy[] }) {
-  const [sortKey, setSortKey] = useState<SortKey>("wh");
-  const [sortAsc, setSortAsc] = useState(false);
+  const sort = useColumnSort<SortKey>("wh");
 
+  // Only the real services are ranked; the synthetic roll-ups are re-appended
+  // after, so they stay pinned below whatever the reader sorts by.
   const sorted = useMemo(() => {
     const real = services.filter((s) => !SYNTHETIC.has(s.service));
     const synthetic = services.filter((s) => SYNTHETIC.has(s.service));
-    real.sort((a, b) => {
-      const av = a[sortKey];
-      const bv = b[sortKey];
-      const cmp =
-        typeof av === "string" && typeof bv === "string"
-          ? av.localeCompare(bv)
-          : Number(av ?? 0) - Number(bv ?? 0);
-      return sortAsc ? cmp : -cmp;
-    });
-    return [...real, ...synthetic];
-  }, [services, sortKey, sortAsc]);
-
-  const toggleSort = (key: SortKey) => {
-    if (key === sortKey) {
-      setSortAsc((v) => !v);
-    } else {
-      setSortKey(key);
-      setSortAsc(key === "service");
-    }
-  };
+    return [...sort.sortRows(real), ...synthetic];
+  }, [services, sort]);
 
   return (
     <Card className="overflow-hidden">
@@ -61,30 +44,7 @@ export function ServiceEnergyTable({ services }: { services: GreenServiceEnergy[
           <thead>
             <tr className="border-b border-neutral text-left">
               {COLUMNS.map((c) => (
-                <th
-                  key={c.key}
-                  className={cn(c.numeric && "text-right")}
-                  aria-sort={
-                    sortKey === c.key ? (sortAsc ? "ascending" : "descending") : undefined
-                  }
-                >
-                  <button
-                    type="button"
-                    onClick={() => toggleSort(c.key)}
-                    className={cn(
-                      "inline-flex items-center gap-1 hover:text-base-content",
-                      c.numeric && "flex-row-reverse",
-                    )}
-                  >
-                    {c.label}
-                    {sortKey === c.key &&
-                      (sortAsc ? (
-                        <ArrowUp className="h-3 w-3" aria-hidden />
-                      ) : (
-                        <ArrowDown className="h-3 w-3" aria-hidden />
-                      ))}
-                  </button>
-                </th>
+                <SortableTh key={c.key} col={c} sort={sort} iconFirst />
               ))}
               <th className="text-right">Trend</th>
             </tr>
