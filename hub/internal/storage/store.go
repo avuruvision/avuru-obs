@@ -367,6 +367,13 @@ type SignalStats struct {
 	CompressedBytes uint64
 	Oldest          *time.Time // nil when the signal has no data
 	Newest          *time.Time
+	// TTLDays is the retention ClickHouse is actually enforcing, read off the
+	// tables' TTL expression; 0 when no table for the signal declares one.
+	// Reported next to the configured retention because the two can disagree —
+	// a chart value changed after the tables were created only takes effect
+	// once the migration re-applies the TTL, and until then the number in
+	// values.yaml is a wish rather than a fact.
+	TTLDays int
 }
 
 // DiskStats is one ClickHouse storage disk's capacity.

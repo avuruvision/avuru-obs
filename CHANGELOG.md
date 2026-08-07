@@ -13,6 +13,35 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **Two new Settings tabs: Storage, and Access.**
+
+  **Storage** answers "where is my telemetry and how much of it is there".
+  The ClickHouse address, database and user, read-only — not as a missing
+  feature but because ClickHouse *is* the store, so it cannot hold its own
+  connection string; the card says so and gives the `--set` line instead of a
+  form that would be a lie. It is reported even while ClickHouse is
+  unreachable, which is when "what address did we fail to reach?" is the first
+  question. Then per-signal size, compression, row count, age and retention,
+  moved here from Status so each tab answers one question: Status is "is it
+  healthy right now", Storage is "what is in it".
+
+  Retention now shows two numbers when they disagree. The days in your values
+  are what the install is *configured* to keep; the TTL on the tables is what
+  ClickHouse is *enforcing*, and changing a retention value does nothing to
+  tables that already exist until the migration re-applies it. Until then the
+  configured number is a wish, and the column says `30d → 7d` rather than
+  repeating the wish. A freshly migrated database with retention not yet
+  applied reads `→ none`.
+
+  **Access** shows which role may do what, per area of the product. Every cell
+  is derived by the hub from the authorization its routes registered with, not
+  written out a second time in the browser: routes register through an index
+  that records their guard, so adding an admin-only endpoint puts it in the
+  matrix and changing a guard changes the matrix with it. A table that can
+  disagree with the middleware is worse than no table, because it gets
+  believed. An install running without authentication says so at the top,
+  instead of presenting a model nothing is enforcing.
+
 - **Turn signals on and off from the UI, without a redeploy.** Settings →
   Collection becomes writable: an admin switches OBI traces, logs,
   infra-metrics, profiling or energy collection on or off, and edits the
@@ -67,6 +96,24 @@ When a release is cut, that block is renamed to the version with its date.
   build doesn't recognise renders the explanation too: offering a form the
   server will reject is the failure being fixed, so the fallback is never the
   form.
+
+### Security
+
+- **The green endpoints served any project's energy and carbon figures to an
+  unauthenticated caller.** `GET /api/v1/green/summary`, `/green/budgets` and
+  `/green/report` were registered with the bare handler wrapper instead of the
+  session middleware every other signal route uses. Nothing then put an identity
+  on the request — and the per-project scope check treats "no identity" as
+  "authentication is switched off", the branch that exists so an
+  `auth.enabled=false` install keeps working. So on an install with
+  authentication *on*, those three routes answered 200 with no session at all,
+  for any tenant named in the request header: per-service energy in watt-hours,
+  carbon in gCO2e, monthly budget usage, and the CSRD-ready report export. They are
+  read-only, so nothing could be changed through them, but the data itself is a
+  fair map of what an estate runs and how hard. All three now require the viewer
+  role and honour project grants, like every other signal. A test enumerates the
+  project-data routes and asserts each answers 401 without a session — the gap
+  survived precisely because nothing asserted over the whole set.
 
 ## [0.4.0] — 2026-08-07
 
