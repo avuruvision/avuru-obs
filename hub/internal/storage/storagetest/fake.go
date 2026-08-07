@@ -82,6 +82,12 @@ type Fake struct {
 	SavedProjects   []storage.Project
 	DeletedProjects []string
 
+	// Service-group fakes, keyed by Name on the same live-rows-only rule.
+	ServiceGroups        map[string]storage.ServiceGroup
+	ServiceGroupsErr     error
+	SavedServiceGroups   []storage.ServiceGroup
+	DeletedServiceGroups []string
+
 	// Ingest-key fakes (auth Plan C). IngestKeys keyed by hash; only live keys
 	// are ever stored (RevokeIngestKey removes the entry, mirroring the
 	// tombstone-then-FINAL read).
@@ -519,6 +525,41 @@ func (f *Fake) DeleteProject(_ context.Context, id string) error {
 		return storage.ErrNotFound
 	}
 	delete(f.Projects, id)
+	return nil
+}
+
+// ListServiceGroups returns live groups ordered by Name, matching the real
+// ClickHouse implementation's ORDER BY (map iteration order is random).
+func (f *Fake) ListServiceGroups(context.Context) ([]storage.ServiceGroup, error) {
+	if f.ServiceGroupsErr != nil {
+		return nil, f.ServiceGroupsErr
+	}
+	out := make([]storage.ServiceGroup, 0, len(f.ServiceGroups))
+	for _, g := range f.ServiceGroups {
+		out = append(out, g)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// SaveServiceGroup mirrors the ReplacingMergeTree upsert-by-Name.
+func (f *Fake) SaveServiceGroup(_ context.Context, g storage.ServiceGroup) error {
+	if f.ServiceGroups == nil {
+		f.ServiceGroups = make(map[string]storage.ServiceGroup)
+	}
+	f.ServiceGroups[g.Name] = g
+	f.SavedServiceGroups = append(f.SavedServiceGroups, g)
+	return nil
+}
+
+// DeleteServiceGroup mirrors the tombstone from the caller's point of view:
+// only live groups are ever observable, so a deleted name simply disappears.
+func (f *Fake) DeleteServiceGroup(_ context.Context, name string) error {
+	f.DeletedServiceGroups = append(f.DeletedServiceGroups, name)
+	if _, ok := f.ServiceGroups[name]; !ok {
+		return storage.ErrNotFound
+	}
+	delete(f.ServiceGroups, name)
 	return nil
 }
 

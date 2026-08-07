@@ -3,13 +3,15 @@
 import { Tabs, type TabItem } from "@/components/ui/tabs";
 import { useURLState } from "@/hooks/use-url-state";
 import { useAuth } from "@/hooks/use-auth";
+import { useModuleEnabled } from "@/hooks/use-capabilities";
 import { SystemStatus } from "./system-status";
 import { GeneralTab } from "./general-tab";
 import { CollectionSettings } from "./collection-settings";
 import { AccountTab } from "./account-tab";
 import { UsersPanel } from "./users-panel";
+import { ServiceGroupsPanel } from "./service-groups-panel";
 
-const TABS = ["general", "collection", "status", "account", "users"] as const;
+const TABS = ["general", "collection", "groups", "status", "account", "users"] as const;
 type Tab = (typeof TABS)[number];
 
 // Coroot-inspired settings: General (project), Collection (agents), Status
@@ -21,23 +23,30 @@ type Tab = (typeof TABS)[number];
 export function SettingsScreen() {
   const { get, setMany } = useURLState();
   const { me, isAdmin } = useAuth();
+  // Groups belong to the service-health module; the tab follows it, like the
+  // sidebar entries do.
+  const healthEnabled = useModuleEnabled("service-health");
   // "account" needs a real session — it's self-service credential management,
   // so the anonymous fallback (and auth-off, where /auth/me 404s and me stays
   // null) has nothing to manage.
   const signedIn = me !== null && !me.user.anonymous;
   // "users" is admin-only; anyone else requesting either tab falls back to
   // general (matches the hub, which answers 403 on /api/v1/users to non-admins).
+  // "groups" is readable by anyone — the panel itself hides the write controls
+  // from non-admins, matching the hub's viewer-read/admin-write split.
   const requested = get("tab");
   const tab = (TABS.find(
     (t) =>
       t === requested &&
       (t !== "users" || isAdmin) &&
-      (t !== "account" || signedIn),
+      (t !== "account" || signedIn) &&
+      (t !== "groups" || healthEnabled),
   ) ?? "general") as Tab;
 
   const items: TabItem<Tab>[] = [
     { value: "general", label: "General" },
     { value: "collection", label: "Collection" },
+    ...(healthEnabled ? [{ value: "groups" as const, label: "Groups" }] : []),
     { value: "status", label: "Status" },
     ...(signedIn ? [{ value: "account" as const, label: "Account" }] : []),
     ...(isAdmin ? [{ value: "users" as const, label: "Users" }] : []),
@@ -52,6 +61,7 @@ export function SettingsScreen() {
       />
       {tab === "general" && <GeneralTab />}
       {tab === "collection" && <CollectionSettings />}
+      {tab === "groups" && <ServiceGroupsPanel />}
       {tab === "status" && (
         <div className="flex flex-col gap-2">
           <p className="text-xs text-base-content/45">

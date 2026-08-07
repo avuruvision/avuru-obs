@@ -13,6 +13,30 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **Say which services matter, from the app.** Service health groups — a name,
+  a criticality tier and the namespaces or services it covers — are now created,
+  edited and deleted in Settings → Groups, and apply to the next health read.
+  Until now the only way to define one was `serviceGroups` in `values.yaml`
+  followed by a `helm upgrade`, which meant that in practice nobody did: the
+  Service Health board showed one auto-discovered group per namespace and the
+  tier lanes stayed empty. Auto-grouping still works exactly as before, so
+  nothing disappears while you organize, and the board now links straight to the
+  editor instead of naming a config key.
+
+  Groups declared in the chart keep working and render read-only, because the
+  config wins a name collision — an install that manages its groups in Git must
+  not have them quietly overridden from a browser, so the conflict is refused at
+  write time rather than discovered at the next upgrade. Writes are admin-only
+  and go through the same validation the ConfigMap loader applies at boot, so
+  the API cannot store a group that would fail the next restart.
+
+  The merge of the two sources happens in exactly one place, shared by the API
+  and the alerting evaluator. The evaluator does not go through the API, so
+  merging in a handler would have meant a group you created showing as critical
+  on the health board while alerting never paged on it — a divergence pinned by
+  a test that drives both paths and then fires a real rule
+  (design/2026-08-07-service-groups-crud.md).
+
 - **Turn signals on and off from the UI, without a redeploy.** Settings →
   Collection becomes writable: an admin switches OBI traces, logs,
   infra-metrics, profiling or energy collection on or off, and edits the

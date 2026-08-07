@@ -3,6 +3,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -39,10 +40,13 @@ type Config struct {
 	// modules — the backward-compatible default. Routes owned by an inactive
 	// module are not registered (404).
 	Modules modules.Set
-	// GroupsConfig returns the current service-health configuration. It is a
-	// function so the value can be hot-reloaded (the loader swaps an
-	// atomic.Pointer) without a hub restart. nil → health.Default().
-	GroupsConfig func() health.Config
+	// Groups resolves the current service-health configuration: chart-declared
+	// groups (hot-reloaded from the mounted ConfigMap) merged with the ones
+	// authored here. It is the SAME resolver main hands to the alerting
+	// evaluator — a second merge point would let a UI-created group show on
+	// /health and never page (design/2026-08-07-service-groups-crud.md).
+	// nil → health.Default().
+	Groups *health.Resolver
 	// AlertsConfig returns the current alerting configuration (hot-reloaded).
 	// Read-only endpoint use only; the evaluator lives in cmd/hub. nil →
 	// alerting.Default().
@@ -250,6 +254,13 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 	if active.Enabled(modules.ServiceHealth) {
 		mux.Handle("GET /api/v1/health/groups", a.secured(auth.RoleViewer, a.handleHealthGroups))
 		mux.Handle("GET /api/v1/health/groups/{name}", a.secured(auth.RoleViewer, a.handleHealthGroup))
+		// Group definitions (what the groups ARE), as opposed to /health/groups
+		// (how they are DOING). Reads follow the health authorization; writes
+		// are admin-only, like every other configuration surface.
+		mux.Handle("GET /api/v1/service-groups", a.secured(auth.RoleViewer, a.handleServiceGroups))
+		mux.Handle("POST /api/v1/service-groups", a.securedAdmin(a.handleCreateServiceGroup))
+		mux.Handle("PUT /api/v1/service-groups/{name}", a.securedAdmin(a.handleUpdateServiceGroup))
+		mux.Handle("DELETE /api/v1/service-groups/{name}", a.securedAdmin(a.handleDeleteServiceGroup))
 	}
 	if active.Enabled(modules.Alerting) {
 		mux.Handle("GET /api/v1/alerts", a.secured(auth.RoleViewer, a.handleAlerts))
@@ -267,13 +278,12 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 	}
 }
 
-// groupsConfig resolves the active service-health config, defaulting to
-// Default() (auto-only grouping) when none is wired.
-func (a *API) groupsConfig() health.Config {
-	if a.cfg.GroupsConfig != nil {
-		return a.cfg.GroupsConfig()
-	}
-	return health.Default()
+// groupsConfig resolves the active service-health config — chart-declared and
+// UI-authored groups merged — defaulting to Default() (auto-only grouping)
+// when no resolver is wired. Every health computation goes through here; the
+// nil case is handled by the resolver itself.
+func (a *API) groupsConfig(ctx context.Context) health.Config {
+	return a.cfg.Groups.Config(ctx)
 }
 
 // alertsConfig resolves the active alerting config (for the read-only /rules

@@ -128,7 +128,7 @@ func (a *API) buildHealthReport(r *http.Request) (health.Report, storage.TimeRan
 	if err != nil {
 		return health.Report{}, tr, err
 	}
-	report := health.Rollup(a.groupsConfig(), tr.End.Sub(tr.Start), stats, labels, edges)
+	report := health.Rollup(a.groupsConfig(r.Context()), tr.End.Sub(tr.Start), stats, labels, edges)
 	return report, tr, nil
 }
 

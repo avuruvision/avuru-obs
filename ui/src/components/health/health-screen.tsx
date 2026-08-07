@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { Activity } from "lucide-react";
+import Link from "next/link";
+import { Activity, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useTimeRange } from "@/hooks/use-time-range";
 import { useURLState } from "@/hooks/use-url-state";
@@ -45,9 +46,11 @@ export function HealthScreen() {
     return (
       <EmptyState icon={Activity} title="No service health yet">
         Health is derived from your traces (RED) — services appear here as soon
-        as telemetry flows. Assign services to tiers in the chart&apos;s{" "}
-        <code className="rounded bg-base-300 px-1">serviceGroups</code> config to
-        group and prioritize them (e.g. <code className="rounded bg-base-300 px-1">auth-service → T0</code>).
+        as telemetry flows. Then say which ones matter in{" "}
+        <Link href="/settings?tab=groups" className="text-primary hover:underline">
+          Settings → Groups
+        </Link>{" "}
+        (e.g. <code className="rounded bg-base-300 px-1">auth-service → T0</code>).
       </EmptyState>
     );
   }
@@ -75,6 +78,17 @@ export function HealthScreen() {
             />
             Show auxiliary requests
           </label>
+          {/* The lanes below are only as useful as the grouping behind them,
+              and that is now editable — so the way to change it is one click
+              from the board it changes. */}
+          <Link
+            href="/settings?tab=groups"
+            className="flex items-center gap-1 text-xs text-base-content/70 hover:text-base-content"
+            data-testid="manage-groups-link"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            Manage groups
+          </Link>
         </div>
 
         {TIER_LANES.map((lane) => {
