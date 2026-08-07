@@ -22,11 +22,23 @@ func identityFrom(ctx context.Context) *auth.Identity {
 	return id
 }
 
+// guarded is an http.Handler that remembers which authorization it enforces.
+// The permissions matrix (GET /api/v1/auth/roles) is built from these as the
+// routes register, so it reports the guards the server actually applies
+// instead of a hand-written copy that goes stale the first time one changes.
+// A plain handler — anything wrapped with bare handle() — carries no guard and
+// is reported as public.
+type guarded struct {
+	http.Handler
+	minRole   auth.Role // the role floor; empty when there is none
+	adminOnly bool      // global admin ("*" admin grant)
+}
+
 // secured wraps a handler with authentication + CSRF. min is the role the
 // identity must hold on AT LEAST ONE scope to enter at all; per-project
 // enforcement happens in project(). adminOnly routes use securedAdmin.
 func (a *API) secured(min auth.Role, fn func(http.ResponseWriter, *http.Request) error) http.Handler {
-	return handle(func(w http.ResponseWriter, r *http.Request) error {
+	return guarded{minRole: min, Handler: handle(func(w http.ResponseWriter, r *http.Request) error {
 		if a.cfg.Auth == nil { // auth disabled — pre-auth behavior
 			return fn(w, r)
 		}
@@ -42,14 +54,14 @@ func (a *API) secured(min auth.Role, fn func(http.ResponseWriter, *http.Request)
 		}
 		ctx := context.WithValue(r.Context(), identityKey{}, id)
 		return fn(w, r.WithContext(ctx))
-	})
+	})}
 }
 
 // authenticated requires a valid identity but NO role floor — for routes a
 // zero-grant user must still reach (their own logout and /auth/me; a user
 // whose grants were all revoked can otherwise neither sign out nor see why).
 func (a *API) authenticated(fn func(http.ResponseWriter, *http.Request) error) http.Handler {
-	return handle(func(w http.ResponseWriter, r *http.Request) error {
+	return guarded{Handler: handle(func(w http.ResponseWriter, r *http.Request) error {
 		if a.cfg.Auth == nil { // auth disabled — pre-auth behavior
 			return fn(w, r)
 		}
@@ -62,12 +74,12 @@ func (a *API) authenticated(fn func(http.ResponseWriter, *http.Request) error) h
 		}
 		ctx := context.WithValue(r.Context(), identityKey{}, id)
 		return fn(w, r.WithContext(ctx))
-	})
+	})}
 }
 
 // securedAdmin requires a global admin ("*" admin grant).
 func (a *API) securedAdmin(fn func(http.ResponseWriter, *http.Request) error) http.Handler {
-	return handle(func(w http.ResponseWriter, r *http.Request) error {
+	return guarded{adminOnly: true, minRole: auth.RoleAdmin, Handler: handle(func(w http.ResponseWriter, r *http.Request) error {
 		if a.cfg.Auth == nil {
 			return fn(w, r)
 		}
@@ -83,7 +95,7 @@ func (a *API) securedAdmin(fn func(http.ResponseWriter, *http.Request) error) ht
 		}
 		ctx := context.WithValue(r.Context(), identityKey{}, id)
 		return fn(w, r.WithContext(ctx))
-	})
+	})}
 }
 
 // requestIdentity resolves the session cookie, falling back to the anonymous

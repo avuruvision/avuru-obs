@@ -105,6 +105,21 @@ type Config struct {
 	// CollectionApplier pushes an accepted overlay to the cluster. nil
 	// defaults to collection.NoopApplier{} in Register.
 	CollectionApplier collection.Applier
+	// StorageConnection describes where telemetry is stored, for the
+	// admin-only Settings → Storage view. It carries NO password: the whole
+	// point of showing it is "which server and database am I looking at",
+	// which the credential does not answer. Zero value → the view omits the
+	// connection card.
+	StorageConnection StorageConnection
+}
+
+// StorageConnection is the non-secret half of the ClickHouse connection.
+// Deliberately not editable from the UI: ClickHouse is the store, so it cannot
+// hold its own connection string — changing it is a chart value and a restart.
+type StorageConnection struct {
+	Address  string
+	Database string
+	Username string
 }
 
 // API holds handler dependencies.
@@ -114,6 +129,9 @@ type API struct {
 	modules           modules.Set
 	tenants           tenantCache
 	collectionApplier collection.Applier
+	// routes is every registered route with the guard it enforces, captured
+	// by routeIndex during Register and read only by the permissions matrix.
+	routes []routeGuard
 	// collectionMu guards the save→apply pair on the overlay routes so the
 	// last write to reach storage is also the last one applied to the
 	// cluster. Without it two concurrent admin writes can interleave between
@@ -133,8 +151,8 @@ func (a *API) store() (storage.Store, error) {
 	return nil, errStoreUnavailable
 }
 
-// Register mounts the API routes for the active modules on mux.
-func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
+// Register mounts the API routes for the active modules on serveMux.
+func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 	active := cfg.Modules
 	if active == nil {
 		active = modules.AllSet()
@@ -145,6 +163,14 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 	} else {
 		a.collectionApplier = collection.NoopApplier{}
 	}
+	// Everything below registers through the index, which records each route's
+	// guard on the way to the real mux. That is what makes the permissions
+	// matrix (GET /api/v1/auth/permissions) a reading of the routing table
+	// rather than a second copy of it — there is no way to add a route here
+	// that the matrix does not see. a.routes is filled at the end, before any
+	// request can arrive.
+	mux := newRouteIndex(serveMux)
+	defer func() { a.routes = mux.routes }()
 
 	// core — never disableable (the wedge: service map + traces + RED).
 	mux.HandleFunc("GET /healthz", handleHealthz)
@@ -190,6 +216,11 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 	// /auth/config is always registered, auth on or off — the SPA's login
 	// page needs a straight answer, not a 404 it has to special-case.
 	mux.Handle("GET /api/v1/auth/config", handle(a.handleAuthConfig))
+	// The permissions matrix. Readable by any signed-in user (and by anyone on
+	// an auth-off install, where it reports exactly that): knowing which role
+	// may do what is how you understand a refusal, not a privilege. Registered
+	// unconditionally so the Settings screen behaves the same either way.
+	mux.Handle("GET /api/v1/auth/permissions", a.authenticated(a.handlePermissions))
 	if cfg.Auth != nil {
 		mux.Handle("POST /api/v1/auth/login", handle(a.handleLogin))
 		mux.Handle("POST /api/v1/auth/logout", a.authenticated(a.handleLogout))

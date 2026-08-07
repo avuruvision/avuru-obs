@@ -13,6 +13,35 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **Two new Settings tabs: Storage, and Access.**
+
+  **Storage** answers "where is my telemetry and how much of it is there".
+  The ClickHouse address, database and user, read-only — not as a missing
+  feature but because ClickHouse *is* the store, so it cannot hold its own
+  connection string; the card says so and gives the `--set` line instead of a
+  form that would be a lie. It is reported even while ClickHouse is
+  unreachable, which is when "what address did we fail to reach?" is the first
+  question. Then per-signal size, compression, row count, age and retention,
+  moved here from Status so each tab answers one question: Status is "is it
+  healthy right now", Storage is "what is in it".
+
+  Retention now shows two numbers when they disagree. The days in your values
+  are what the install is *configured* to keep; the TTL on the tables is what
+  ClickHouse is *enforcing*, and changing a retention value does nothing to
+  tables that already exist until the migration re-applies it. Until then the
+  configured number is a wish, and the column says `30d → 7d` rather than
+  repeating the wish. A freshly migrated database with retention not yet
+  applied reads `→ none`.
+
+  **Access** shows which role may do what, per area of the product. Every cell
+  is derived by the hub from the authorization its routes registered with, not
+  written out a second time in the browser: routes register through an index
+  that records their guard, so adding an admin-only endpoint puts it in the
+  matrix and changing a guard changes the matrix with it. A table that can
+  disagree with the middleware is worse than no table, because it gets
+  believed. An install running without authentication says so at the top,
+  instead of presenting a model nothing is enforcing.
+
 - **Turn signals on and off from the UI, without a redeploy.** Settings →
   Collection becomes writable: an admin switches OBI traces, logs,
   infra-metrics, profiling or energy collection on or off, and edits the

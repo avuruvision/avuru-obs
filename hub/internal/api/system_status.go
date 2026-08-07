@@ -24,7 +24,24 @@ type signalStatsDTO struct {
 	Compression     float64 `json:"compression"`
 	Oldest          *string `json:"oldest,omitempty"`
 	Newest          *string `json:"newest,omitempty"`
-	RetentionDays   int     `json:"retentionDays"`
+	// RetentionDays is what this install is configured to keep; TTLDays is
+	// what ClickHouse is enforcing. They differ when a retention value was
+	// changed after the tables were created and the migration has not
+	// re-applied the TTL — the configured number is then a wish, and the
+	// Storage view says so instead of repeating it. 0 = no day-based TTL found.
+	RetentionDays int `json:"retentionDays"`
+	TTLDays       int `json:"ttlDays"`
+}
+
+// storageConnectionDTO is where the telemetry actually lives. Read-only by
+// nature, not by policy: ClickHouse IS the store, so it cannot hold its own
+// connection string — changing it is a redeploy. The password is never part of
+// this, and the whole endpoint is admin-only.
+type storageConnectionDTO struct {
+	Address  string `json:"address"`
+	Database string `json:"database"`
+	Username string `json:"username,omitempty"`
+	Protocol string `json:"protocol"`
 }
 
 type diskDTO struct {
@@ -34,12 +51,13 @@ type diskDTO struct {
 }
 
 type systemStatusResponse struct {
-	Version    string            `json:"version"`
-	Overall    string            `json:"overall"` // healthy | degraded | down
-	CheckedAt  string            `json:"checkedAt"`
-	Components []componentHealth `json:"components"`
-	Signals    []signalStatsDTO  `json:"signals"`
-	Disks      []diskDTO         `json:"disks"`
+	Version    string                `json:"version"`
+	Overall    string                `json:"overall"` // healthy | degraded | down
+	CheckedAt  string                `json:"checkedAt"`
+	Components []componentHealth     `json:"components"`
+	Signals    []signalStatsDTO      `json:"signals"`
+	Disks      []diskDTO             `json:"disks"`
+	Connection *storageConnectionDTO `json:"connection,omitempty"`
 }
 
 // handleSystemStatus reports overall backend health for the Settings → Status
@@ -52,6 +70,14 @@ func (a *API) handleSystemStatus(w http.ResponseWriter, r *http.Request) error {
 		Components: []componentHealth{
 			{Name: "Hub", Status: "healthy", Detail: Version},
 		},
+	}
+	// Reported even when ClickHouse is unreachable below — "which address did
+	// we fail to reach?" is the first question an outage raises.
+	if a.cfg.StorageConnection.Address != "" {
+		c := a.cfg.StorageConnection
+		resp.Connection = &storageConnectionDTO{
+			Address: c.Address, Database: c.Database, Username: c.Username, Protocol: "native",
+		}
 	}
 
 	store := a.provider()
@@ -100,6 +126,7 @@ func (a *API) handleSystemStatus(w http.ResponseWriter, r *http.Request) error {
 			Bytes:           sig.Bytes,
 			CompressedBytes: sig.CompressedBytes,
 			RetentionDays:   retention[sig.Signal],
+			TTLDays:         sig.TTLDays,
 		}
 		if sig.CompressedBytes > 0 {
 			d.Compression = float64(sig.Bytes) / float64(sig.CompressedBytes)

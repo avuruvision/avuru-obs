@@ -3,6 +3,8 @@ package clickhouse
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/storage"
@@ -37,6 +39,10 @@ func (s *Store) SystemStats(ctx context.Context) (storage.SystemStats, error) {
 	if err != nil {
 		return out, err
 	}
+	ttls, err := s.tableTTLDays(ctx)
+	if err != nil {
+		return out, err
+	}
 	for _, sig := range signalTables {
 		var st storage.SignalStats
 		st.Signal = sig.signal
@@ -58,6 +64,12 @@ func (s *Store) SystemStats(ctx context.Context) (storage.SystemStats, error) {
 			st.Rows += sz.Rows
 			st.Bytes += sz.Bytes
 			st.CompressedBytes += sz.CompressedBytes
+			// A signal spanning several tables reports the shortest TTL: that
+			// is the one that decides how far back the signal is actually
+			// queryable.
+			if d := ttls[table]; d > 0 && (st.TTLDays == 0 || d < st.TTLDays) {
+				st.TTLDays = d
+			}
 			oldest, newest, err := s.signalRange(ctx, table, sig.timeCol)
 			if err != nil {
 				return out, err
@@ -146,6 +158,38 @@ func (s *Store) signalRange(ctx context.Context, table, timeCol string) (oldest,
 		return nil, nil, nil
 	}
 	return &mn, &mx, nil
+}
+
+// ttlDayRe pulls the day count out of a TTL expression. The migrations write
+// `TTL <col> + toIntervalDay(N)`; anything else (an hour-based TTL, a moveTo
+// rule) is reported as "no day TTL" rather than guessed at, because a wrong
+// number here would be read as retention drift that isn't there.
+var ttlDayRe = regexp.MustCompile(`toIntervalDay\((\d+)\)`)
+
+// tableTTLDays reads the retention ClickHouse is enforcing per table. The
+// engine's full definition carries the TTL clause; system.tables has no
+// dedicated column for it.
+func (s *Store) tableTTLDays(ctx context.Context) (map[string]int, error) {
+	rows, err := s.conn.Query(ctx,
+		`SELECT name, engine_full FROM system.tables WHERE database = ?`, s.db)
+	if err != nil {
+		return nil, fmt.Errorf("table ttls: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[string]int{}
+	for rows.Next() {
+		var name, engine string
+		if err := rows.Scan(&name, &engine); err != nil {
+			return nil, fmt.Errorf("scanning table ttl: %w", err)
+		}
+		if m := ttlDayRe.FindStringSubmatch(engine); m != nil {
+			if d, err := strconv.Atoi(m[1]); err == nil {
+				out[name] = d
+			}
+		}
+	}
+	return out, rows.Err()
 }
 
 // disks reports capacity per ClickHouse storage disk.
