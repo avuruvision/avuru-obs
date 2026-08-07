@@ -36,6 +36,38 @@ When a release is cut, that block is renamed to the version with its date.
   overlay through the API, asserts it reaches the sensor ConfigMaps and rolls
   the DaemonSet, then resets and asserts the cluster reconciles back.
 
+- **Find a pod on the Nodes screen.** Both tables now sort by any column, and
+  both filter — nodes by name, pods by name, namespace or workload, with a
+  namespace picker that appears once there is more than one namespace to choose
+  between. On a real cluster the pods table is a hundred-plus unordered rows,
+  and until now the only way through it was the browser's find-in-page.
+  Filters live in the URL, so a narrowed view is a link you can send someone,
+  and they apply as you type — the rows are already in the browser, so nothing
+  waits on a query. When a filter is active the counts read "N of M", so a
+  narrowed table can't be misread as a shrinking cluster, and a filter that
+  matches nothing says so instead of showing the "install the sensor" empty
+  state, which would send you off to debug a perfectly healthy install.
+
+### Fixed
+
+- **The shared demo account was offered a password form it could never
+  submit.** Settings → Account decided whether to render the change-password
+  form from the sign-in origin alone — and the demo viewer is a perfectly
+  ordinary *local* account, because `EnsureDemoUser` creates it as one. So a
+  visitor to a demo install could open the tab, type a current and a new
+  password, submit, and only then be told the attempt was never possible. The
+  hub was right to refuse it (that row is re-created and re-keyed from the
+  install's configuration on every boot, so a "successful" change would
+  silently revert, and the credential is shared with every other visitor); the
+  UI simply wasn't told. `/api/v1/auth/me` now carries a `passwordChange` field
+  stating whether self-service rotation applies and, when it doesn't, why —
+  `self`, `idp` (the identity provider owns the credential) or `shared` (the
+  demo account). It reproduces the hub's own refusals in the same order, and
+  the Account tab renders the explanation instead of the form. A value this
+  build doesn't recognise renders the explanation too: offering a form the
+  server will reject is the failure being fixed, so the fallback is never the
+  form.
+
 ## [0.4.0] — 2026-08-07
 
 ### Added

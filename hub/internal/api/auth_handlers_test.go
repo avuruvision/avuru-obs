@@ -42,6 +42,44 @@ func TestDemoLogin(t *testing.T) {
 	if len(me.Grants) != 1 || me.Grants[0].Scope != "demo" {
 		t.Fatalf("grants = %+v, want viewer@demo", me.Grants)
 	}
+	// The demo viewer is an ordinary LOCAL account, so origin alone would tell
+	// the SPA to render the change-password form — which ChangePassword then
+	// refuses by reserved id. passwordChange is what stops the SPA offering a
+	// form the hub will 403.
+	if me.User.Origin != "local" {
+		t.Fatalf("origin = %q, want local (the premise of the next assertion)", me.User.Origin)
+	}
+	if me.User.PasswordChange != passwordChangeShared {
+		t.Fatalf("passwordChange = %q, want %q", me.User.PasswordChange, passwordChangeShared)
+	}
+}
+
+// passwordChangeFor must agree with Service.ChangePassword about who may
+// rotate a password here — the two drifting is precisely how the demo account
+// came to be shown a form it could never submit.
+func TestPasswordChangeForMatchesTheRefusals(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		id   auth.Identity
+		want string
+	}{
+		{"local user rotates here", auth.Identity{UserID: "u1", Origin: "local"}, passwordChangeSelf},
+		// Allow-listed on "local", so an origin this build has never heard of
+		// defaults to "not here" rather than to a form the hub would reject.
+		{"sso user is owned by the IdP", auth.Identity{UserID: "u2", Origin: "oidc"}, passwordChangeIdP},
+		{"unknown origin fails closed", auth.Identity{UserID: "u3", Origin: "ldap"}, passwordChangeIdP},
+		{"shared demo account", auth.Identity{UserID: auth.DemoViewerID, Origin: "local"}, passwordChangeShared},
+		{"anonymous has no account", auth.Identity{Anonymous: true}, ""},
+		// Origin is checked BEFORE the demo id, mirroring ChangePassword, so a
+		// non-local demo row would report the IdP reason the hub would give.
+		{"origin wins over the demo id", auth.Identity{UserID: auth.DemoViewerID, Origin: "oidc"}, passwordChangeIdP},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := passwordChangeFor(tc.id); got != tc.want {
+				t.Fatalf("passwordChangeFor(%+v) = %q, want %q", tc.id, got, tc.want)
+			}
+		})
+	}
 }
 
 func TestAuthConfigAdvertisesDemo(t *testing.T) {
@@ -479,6 +517,15 @@ func TestChangeOwnPasswordRefusedForDemoAccount(t *testing.T) {
 		Auth: svc, DemoEnabled: true, DemoEmail: "demo@avuru.obs", DemoPassword: "demo-pw",
 	})
 	c := &http.Cookie{Name: sessionCookieName, Value: token}
+
+	// Refused AND advertised as refused, together in one test: the SPA reads
+	// passwordChange to decide whether to render the form at all, so a 403 that
+	// /auth/me doesn't warn about is the bug — a visitor fills the form in and
+	// collects the refusal only on submit.
+	if me := doBody(mux, "GET", "/api/v1/auth/me", c, ""); !strings.Contains(
+		me.Body.String(), `"passwordChange":"shared"`) {
+		t.Fatalf("me for the demo viewer doesn't advertise the refusal: %s", me.Body.String())
+	}
 
 	w := doBody(mux, "POST", "/api/v1/auth/password", c,
 		`{"currentPassword":"demo-pw","newPassword":"visitor-pw"}`)

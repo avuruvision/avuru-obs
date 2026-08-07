@@ -511,11 +511,26 @@ export interface AuthGrant {
 }
 
 export interface Me {
-  // origin: "local" | "oidc" | "" (empty for the anonymous identity). Left as
-  // a plain string, not narrowed to a union — "" is a real value and a
-  // future origin must not break the build. Always present (no omitempty on
-  // the Go side).
-  user: { id: string; email: string; name: string; origin: string; anonymous: boolean };
+  // origin: "local" | "oidc" | "" (empty for the anonymous identity) — how the
+  // user signed in, for display. It is NOT the test for whether a password
+  // form applies; passwordChange is (the demo viewer is a local account that
+  // still cannot rotate its credential).
+  //
+  // passwordChange: "self" | "idp" | "shared" | "" (anonymous) — whether
+  // self-service rotation applies, and if not, why. Mirrors
+  // hub/internal/api/auth_handlers.go's passwordChangeFor.
+  //
+  // Both are plain strings, not narrowed unions — "" is a real value and a
+  // future origin or refusal reason must not break the build. Always present
+  // (no omitempty on the Go side).
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    origin: string;
+    anonymous: boolean;
+    passwordChange: string;
+  };
   grants: AuthGrant[];
 }
 
