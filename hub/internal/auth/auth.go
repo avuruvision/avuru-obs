@@ -52,9 +52,14 @@ type Grant struct {
 // Identity is the authenticated caller: a user, or the synthetic anonymous
 // identity when anonymous mode is enabled.
 type Identity struct {
-	UserID    string  `json:"userId"`
-	Email     string  `json:"email"`
-	Name      string  `json:"name"`
+	UserID string `json:"userId"`
+	Email  string `json:"email"`
+	Name   string `json:"name"`
+	// Origin mirrors AuthUser.Origin ("local" | "oidc"); empty for the
+	// anonymous identity. Emitted by /auth/me so the SPA can tell whether a
+	// password form applies at all — an SSO user's credential lives at the
+	// IdP, so the Account tab shows a note instead of the form.
+	Origin    string  `json:"origin"`
 	Anonymous bool    `json:"anonymous"`
 	Grants    []Grant `json:"grants"`
 }

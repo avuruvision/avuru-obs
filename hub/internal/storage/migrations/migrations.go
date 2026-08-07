@@ -44,6 +44,7 @@ var Ordered = []string{
 	"0012_projects.sql",
 	"0013_auth_ingest_keys.sql",
 	"0014_collection_overlay.sql",
+	"0015_auth_user_deleted.sql",
 }
 
 // ByModule tags each migration with the module(s) whose schema it owns; the
@@ -66,7 +67,8 @@ var ByModule = map[string][]modules.Name{
 	"0008_alerts.sql": {modules.Alerting},
 	// alert_channel — UI-managed delivery channels.
 	"0009_alert_channels.sql": {modules.Alerting},
-	// Local users, grants, sessions — auth gates everything, so core.
+	// Local users, grants, sessions — auth gates everything, so core. (0010's
+	// header says auth_user has no Deleted column; superseded by 0015.)
 	"0010_auth.sql": {modules.Core},
 	// OidcGroups column on auth_user — captured at SSO login, part of core auth.
 	"0011_auth_oidc_groups.sql": {modules.Core},
@@ -77,6 +79,8 @@ var ByModule = map[string][]modules.Name{
 	// collection_overlay — plain feature flag, not a modules.Name; the table
 	// exists on every install, only the API routes and RBAC are flag-gated.
 	"0014_collection_overlay.sql": {modules.Core},
+	// Tombstone column on auth_user — auth gates everything, so core.
+	"0015_auth_user_deleted.sql": {modules.Core},
 }
 
 // Expected returns, in apply order, the versions that should exist on an

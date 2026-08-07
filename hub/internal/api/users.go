@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/avuru/avuru-obs/hub/internal/auth"
@@ -137,8 +138,9 @@ func (a *API) handleCreateUser(w http.ResponseWriter, r *http.Request) error {
 }
 
 // handleUpdateUser edits name/password/disabled and, when Grants is present,
-// replaces the grant set wholesale. Disable-not-delete: there is no DELETE
-// route (Plan A) — disabling preserves the audit trail.
+// replaces the grant set wholesale. Disabling is the reversible first step —
+// see handleDeleteUser for the explicit hard-delete that follows it
+// (design/2026-08-06-users-crud-password.md, amending disable-not-delete).
 func (a *API) handleUpdateUser(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Cache-Control", "no-store")
 	st, err := a.store()
@@ -164,6 +166,28 @@ func (a *API) handleUpdateUser(w http.ResponseWriter, r *http.Request) error {
 	}
 	if err := checkSelfLockout(r, u, req); err != nil {
 		return err
+	}
+	if req.Password != nil && *req.Password != "" {
+		// An SSO user's credential is supposed to live at the IdP only. Login
+		// now refuses any non-local origin outright, so this is the second of
+		// two independent guards rather than the only one — kept because the
+		// cheapest way to be sure a stray hash never authenticates is to never
+		// write one onto an IdP-governed row in the first place. Allow-listed
+		// on "local" (not "!= oidc") so a future origin defaults to refused.
+		if u.Origin != "local" {
+			return badRequest("cannot set a password for an SSO user — it is managed by the identity provider")
+		}
+		// The demo account's password belongs to the server: handleDemoLogin
+		// signs visitors in with the CONFIGURED credentials, so re-keying the
+		// row here breaks that Login with ErrInvalidCredentials — a sentinel
+		// handleDemoLogin deliberately does not map, making the public demo
+		// button answer an opaque 500 until a restart re-runs EnsureDemoUser.
+		// Narrow on purpose: only the password. Disabling demo-viewer stays
+		// allowed, being reversible and the way to kill a demo without a
+		// redeploy.
+		if u.ID == auth.DemoViewerID {
+			return &apiError{status: http.StatusConflict, message: "the demo account's password is managed by the server"}
+		}
 	}
 
 	if req.Name != nil {
@@ -193,7 +217,15 @@ func (a *API) handleUpdateUser(w http.ResponseWriter, r *http.Request) error {
 		// change shouldn't have to bump every session either, so this only
 		// fires when the password actually changed.
 		if err := st.RevokeAuthSessionsForUser(r.Context(), u.ID); err != nil {
-			return err
+			// The password is already saved, so the admin must not be told
+			// "internal error" and left assuming the reset failed — they would
+			// retry, or worse, stop here believing the account still holds its
+			// old credential. Same seam as auth.ErrRotatedSessionsLive on the
+			// self-service path.
+			slog.Error("password reset saved but sessions could not be revoked — existing cookies remain valid",
+				"id", u.ID, "email", u.Email, "actor", requestedBy(r), "error", err)
+			return &apiError{status: http.StatusInternalServerError,
+				message: "the password was changed, but this user's existing sessions could not be signed out — they remain valid"}
 		}
 	}
 
@@ -208,6 +240,64 @@ func (a *API) handleUpdateUser(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 	writeJSON(w, http.StatusOK, toUserDTO(u, grants))
+	return nil
+}
+
+// handleDeleteUser hard-deletes a DISABLED user; a live user answers 409 —
+// disable is the reversible first step, delete the explicit cleanup
+// (design/2026-08-06-users-crud-password.md, amending disable-not-delete).
+//
+// For origin=oidc this deletes only the LOCAL record. Disabled is the flag
+// CompleteSSO checks, so deleting a disabled SSO user REMOVES their lockout:
+// they return on their next IdP login with group-mapped grants only. Disable,
+// not delete, is how you lock an SSO user out.
+//
+// Order matters: sessions → grants → user. A failure mid-sequence never
+// leaves a half-deleted user who can still sign in, and every step is
+// idempotent, so retrying the DELETE completes it. It is NOT an undo: once
+// the grants are tombstoned the old set is unrecoverable from any read the
+// UI can reach. Deleting the user first would be worse — orphaned grants
+// resurrect on ids that recur (bootstrap-admin, demo-viewer, oidc|<sub>).
+func (a *API) handleDeleteUser(w http.ResponseWriter, r *http.Request) error {
+	w.Header().Set("Cache-Control", "no-store")
+	st, err := a.store()
+	if err != nil {
+		return err
+	}
+	u, err := st.GetAuthUser(r.Context(), r.PathValue("id"))
+	if err != nil {
+		return err // storage.ErrNotFound -> 404 via handle()
+	}
+	if !u.Disabled {
+		return &apiError{status: http.StatusConflict, message: "disable the user before deleting"}
+	}
+	// The demo account is server-managed: EnsureDemoUser recreates it (with
+	// its chart-configured password) on every boot, so a "successful" delete
+	// would silently undo itself on the next restart.
+	//
+	// Matched by the server-reserved id, like auth.ChangePassword — never by
+	// the mutable DemoEmail, which both misses the demo row once the address
+	// changes and wrongly blocks deleting an unrelated user who shares it.
+	// DemoEnabled is deliberately not part of the condition either: a
+	// lingering demo-viewer row stays undeletable with demo mode off, because
+	// switching it back on would just recreate the row anyway.
+	if u.ID == auth.DemoViewerID {
+		return &apiError{status: http.StatusConflict, message: "the demo account is managed by the server and is recreated on restart"}
+	}
+	if err := st.RevokeAuthSessionsForUser(r.Context(), u.ID); err != nil {
+		return err
+	}
+	if err := st.ReplaceAuthGrants(r.Context(), u.ID, nil); err != nil {
+		return err
+	}
+	if err := st.DeleteAuthUser(r.Context(), u.ID); err != nil {
+		return err
+	}
+	// This endpoint destroys an identity and the AEP rules out an audit
+	// pipeline for it — this log line is the only forensic record that will
+	// ever exist of who deleted whom.
+	slog.Info("deleted user", "id", u.ID, "email", u.Email, "origin", u.Origin, "actor", requestedBy(r))
+	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
 
