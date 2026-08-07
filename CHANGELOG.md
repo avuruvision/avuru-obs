@@ -74,6 +74,23 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Fixed
 
+- **`go test -race ./...` ran out of time before it could finish the hub's API
+  suite.** bcrypt cost 12 is a deliberate login-path choice, but the race
+  detector makes a hash-and-compare pair cost ~5.5s, and every handler test
+  that bootstraps an admin, logs in, or creates a user paid it. `internal/api`
+  spent 503s that way and crossed `go test`'s 10-minute per-package timeout on
+  CI — surfacing as a panic in whichever test happened to be running when the
+  clock ran out, which is why it read as a hang rather than as accumulated
+  cost. The cost now drops to `bcrypt.MinCost` inside a `go test` binary and
+  nowhere else: the switch is `testing.Testing()`, which is false in every
+  production build, so no flag, environment variable or chart value can reach
+  the cheap cost. The dummy hash burned on the unknown-user path tracks the
+  same cost — bcrypt reads the cost from the hash, not from the caller, so
+  leaving it pinned at 12 would have kept that path slow and hidden half the
+  problem. `internal/api` now runs in 4.7s and `internal/auth` in 3.3s; the
+  production cost of 12 is pinned by a test, as is the dummy's agreement with
+  it.
+
 - **The shared demo account was offered a password form it could never
   submit.** Settings → Account decided whether to render the change-password
   form from the sign-in origin alone — and the demo viewer is a perfectly
