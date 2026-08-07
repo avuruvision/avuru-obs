@@ -47,13 +47,29 @@ const SSO_DISABLED: User = {
   grants: [{ scope: "*", role: "viewer" }],
 };
 
-// stubMe serves the signed-in identity. origin drives the Account tab's fork
-// (change-password form vs. IdP note), so it is a parameter, not a constant.
+// stubMe serves the signed-in identity. passwordChange drives the Account
+// tab's fork (change-password form vs. a note saying why not), so it is a
+// parameter, not a constant; origin only labels the "Sign-in" cell now.
+//
+// The default mirrors what the hub's passwordChangeFor would return for this
+// identity — an ordinary local admin — so a stub can't accidentally describe a
+// user the server could never produce. Pass them explicitly when the case
+// under test needs them to disagree.
 async function stubMe(
   page: Page,
-  opts: { origin?: string; admin?: boolean; anonymous?: boolean } = {},
+  opts: {
+    origin?: string;
+    admin?: boolean;
+    anonymous?: boolean;
+    passwordChange?: string;
+  } = {},
 ) {
-  const { origin = "local", admin = true, anonymous = false } = opts;
+  const {
+    origin = "local",
+    admin = true,
+    anonymous = false,
+    passwordChange = anonymous ? "" : origin === "local" ? "self" : "idp",
+  } = opts;
   await page.route("**/api/v1/auth/me", (route) =>
     route.fulfill({
       json: {
@@ -63,6 +79,7 @@ async function stubMe(
           name: "Admin",
           origin,
           anonymous,
+          passwordChange,
         },
         grants: admin ? [{ scope: "*", role: "admin" }] : [{ scope: "payments", role: "viewer" }],
       },
@@ -310,6 +327,9 @@ test.describe("settings account tab", () => {
             name: "Admin",
             origin: "local",
             anonymous: false,
+            // The hub answers this route with meFrom too, so the stub carries
+            // the same field /auth/me does.
+            passwordChange: "self",
           },
           grants: [{ scope: "*", role: "admin" }],
         },

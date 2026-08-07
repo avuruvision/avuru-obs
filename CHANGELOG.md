@@ -25,6 +25,26 @@ When a release is cut, that block is renamed to the version with its date.
   matches nothing says so instead of showing the "install the sensor" empty
   state, which would send you off to debug a perfectly healthy install.
 
+### Fixed
+
+- **The shared demo account was offered a password form it could never
+  submit.** Settings → Account decided whether to render the change-password
+  form from the sign-in origin alone — and the demo viewer is a perfectly
+  ordinary *local* account, because `EnsureDemoUser` creates it as one. So a
+  visitor to a demo install could open the tab, type a current and a new
+  password, submit, and only then be told the attempt was never possible. The
+  hub was right to refuse it (that row is re-created and re-keyed from the
+  install's configuration on every boot, so a "successful" change would
+  silently revert, and the credential is shared with every other visitor); the
+  UI simply wasn't told. `/api/v1/auth/me` now carries a `passwordChange` field
+  stating whether self-service rotation applies and, when it doesn't, why —
+  `self`, `idp` (the identity provider owns the credential) or `shared` (the
+  demo account). It reproduces the hub's own refusals in the same order, and
+  the Account tab renders the explanation instead of the form. A value this
+  build doesn't recognise renders the explanation too: offering a form the
+  server will reject is the failure being fixed, so the fallback is never the
+  form.
+
 ## [0.4.0] — 2026-08-07
 
 ### Added

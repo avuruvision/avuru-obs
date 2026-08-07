@@ -25,10 +25,17 @@ function originLabel(origin: string): string {
   }
 }
 
-// Settings → Account: the signed-in user's own identity and, for local
-// accounts, self-service password rotation. Rendered for any non-anonymous
-// session regardless of grants — a viewer with no grants at all still owns
-// their credential. Nothing here is admin-gated (that's the Users tab).
+// Settings → Account: the signed-in user's own identity and, where it applies,
+// self-service password rotation. Rendered for any non-anonymous session
+// regardless of grants — a viewer with no grants at all still owns their
+// credential, and nothing here is admin-gated (that's the Users tab).
+//
+// Being read-only is NOT what removes the form. The one local account that
+// cannot rotate its own password is the shared demo viewer: the hub refuses it
+// by server-reserved id because that row is re-keyed from the install's
+// configuration on every boot and the credential is shared. `origin` can't see
+// that — the demo viewer is an ordinary local user — so the hub decides and
+// says which case applies in me.user.passwordChange.
 export function AccountTab() {
   const { me } = useAuth();
 
@@ -71,24 +78,50 @@ export function AccountTab() {
         </dl>
       </Card>
 
-      {me.user.origin === "local" ? (
+      {me.user.passwordChange === "self" ? (
         <ChangePasswordCard />
       ) : (
-        <Card className="overflow-hidden">
-          <CardHeader>
-            <CardTitle>Password</CardTitle>
-          </CardHeader>
-          <p
-            className="flex items-start gap-2 border-t border-neutral p-4 text-sm text-base-content/70"
-            data-testid="account-idp-note"
-          >
-            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-base-content/50" aria-hidden />
-            Your password is managed by your identity provider. Change it there —
-            this instance never stores it.
-          </p>
-        </Card>
+        <PasswordNote kind={me.user.passwordChange} />
       )}
     </div>
+  );
+}
+
+// Why there is no password form. Every value other than "self" lands here,
+// including one this build doesn't recognise: the fallback copy is true of any
+// refusal, which is what makes defaulting to the note — never to the form —
+// safe. Offering a form the hub will reject is the failure this replaces; the
+// demo viewer used to get one, fill it in, and collect a 403.
+function PasswordNote({ kind }: { kind: string }) {
+  const { testId, text } =
+    kind === "shared"
+      ? {
+          testId: "account-shared-note",
+          text: "This is the shared read-only demo account. Its password is managed by the server and re-applied from the install's configuration on every restart, so it can't be changed here.",
+        }
+      : kind === "idp"
+        ? {
+            testId: "account-idp-note",
+            text: "Your password is managed by your identity provider. Change it there — this instance never stores it.",
+          }
+        : {
+            testId: "account-no-password-note",
+            text: "This account's password isn't managed from this screen.",
+          };
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader>
+        <CardTitle>Password</CardTitle>
+      </CardHeader>
+      <p
+        className="flex items-start gap-2 border-t border-neutral p-4 text-sm text-base-content/70"
+        data-testid={testId}
+      >
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-base-content/50" aria-hidden />
+        {text}
+      </p>
+    </Card>
   );
 }
 
