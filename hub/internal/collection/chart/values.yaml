@@ -18,6 +18,15 @@ hub:
   repository: ghcr.io/avuruvision/avuru-obs-hub
   tag: "" # defaults to .Chart.AppVersion
   replicas: 1
+  # Apply missing ClickHouse migrations from the hub itself when it finds the
+  # schema incomplete. The migrate Job stays the normal path; this is the safety
+  # net for the case that Job never runs — Helm skips post-install/post-upgrade
+  # hooks when `--wait` times out, which leaves a healthy-looking install whose
+  # every query fails on a missing table. The migrations are idempotent and safe
+  # to apply concurrently, so replicas do not need coordinating.
+  # Set false when ClickHouse schema is owned elsewhere (a DBA-managed external
+  # cluster, or a query-only hub user with no DDL rights).
+  autoMigrate: true
   resources:
     requests:
       cpu: 100m
@@ -352,10 +361,24 @@ sensor:
   # modules.green and carries green-specific scrape config. REQUIRES
   # modules.green.enabled + modules.infraMetrics.enabled + sensor.agent.enabled;
   # chart guards enforce all three. The container gets NO liveness/readiness
-  # probes on purpose — a RAPL-less node leaves Kepler idle/unhealthy, and it
-  # must never flap the sensor pod (the "do no harm" probe-canary gate).
+  # probes on purpose — it must never flap the sensor pod (the "do no harm"
+  # probe-canary gate) — but see kepler.enabled below: on a node with no RAPL
+  # Kepler doesn't idle, it exits, and no probe config can save the pod from a
+  # container that terminates itself.
   green:
+    # The umbrella switch for the whole energy surface — Kepler, the estimator,
+    # the scrape receiver, the metrics/green pipeline and the host mounts.
     enabled: false
+    # Kepler itself, the MEASURED source. Turn OFF on nodes without RAPL
+    # (VMs — the hypervisor doesn't expose the powercap MSRs): Kepler v0.11.4
+    # exits with "no RAPL zones found" rather than sitting idle, so the
+    # container crash-loops, the sensor pod never reports Ready, and `helm
+    # --wait` / `kubectl rollout status` fail on an otherwise healthy sensor.
+    # With this false, estimation.enabled below carries the Green screen alone
+    # (a chart guard refuses to leave both sources off). The sensor's init
+    # container prints which case a node is in before anything starts.
+    kepler:
+      enabled: true
     image:
       repository: quay.io/sustainable_computing_io/kepler
       # Pin exact — NEVER float to :latest. v0.11.x is the rebooted (Go) Kepler
@@ -395,7 +418,8 @@ sensor:
     # TDP-based power estimation for RAPL-less nodes (opt-in, requires
     # sensor.green.enabled). See design/2026-07-28-green-tdp-estimation.md.
     # Every series it emits is stamped avuruobs_quality="estimated" by the
-    # otel-agent — never blended with Kepler's measured numbers.
+    # otel-agent — never blended with Kepler's measured numbers. On a RAPL-less
+    # fleet this is the ONLY source: pair it with kepler.enabled=false above.
     estimation:
       enabled: false
       image:
@@ -423,8 +447,8 @@ sensor:
 # from Settings -> Collection instead of only via `helm upgrade`. Default off
 # — an install opts in deliberately (grants the hub a narrow, resourceName-
 # scoped Role on its own sensor ConfigMaps + DaemonSet; see collection-rbac.
-# yaml). v1 has no applier wired yet (a separate follow-up plan) — the API
-# persists overlays but does not yet push them to the cluster.
+# yaml). When on, the hub reconciles saved overlays straight onto the sensor
+# ConfigMaps and rolls the DaemonSet via a hub-owned checksum annotation.
 collection:
   runtimeControl:
     enabled: false
@@ -434,6 +458,10 @@ clickhouse:
   external:
     enabled: false
     address: "" # host:9000 (native protocol) when external.enabled
+    # Any valid identifier — the migrations follow this name. It must ALREADY
+    # EXIST on an external cluster: ClickHouse validates the database during the
+    # connection handshake, so the migrator cannot create the one it is dialing.
+    # (The in-chart StatefulSet creates `otel` on first start.)
     database: otel
     username: avuru
     existingSecret: "" # Secret with key `clickhouse-password`; overrides auth.password
@@ -473,6 +501,23 @@ auth:
   # Or bring your own Secret (key: admin-password); wins over adminPassword.
   existingSecret: ""
   sessionTTLHours: 168
+  # CSRF: the hub rejects a write whose Origin doesn't match the Host it sees.
+  # That comparison breaks behind a reverse proxy that REWRITES Host (handing
+  # the cluster its ingress address instead of the public domain): the browser
+  # sends the right Origin, the hub sees a Host that can never match it, and
+  # every write — login included — 403s.
+  #
+  # trustedOrigins is the narrow fix: name the origin(s) users actually type,
+  # and they pass while everything else is still rejected. Full origins, scheme
+  # included: ["https://obs.example.com"]. When auth.oidc.publicUrl is set it is
+  # trusted automatically — no need to repeat it.
+  trustedOrigins: []
+  # The blunt fix, when the origins cannot be enumerated (a LAN reached by IP,
+  # several hostnames). enforce (default) rejects; log lets the write through
+  # and logs the Origin/Host pair that would have been rejected — how you find
+  # out what your proxy actually sends; off skips the check entirely. Anything
+  # below enforce disarms a CSRF defense, so prefer trustedOrigins.
+  originCheck: enforce
   # Anonymous, project-scoped read access (public demo). Both must be set.
   anonymous:
     role: ""        # "viewer" to enable
@@ -569,6 +614,14 @@ auth:
     # redirect_uri the IdP requires (AVURUOBS_PUBLIC_URL); unset, the hub
     # degrades to a relative URL most IdPs reject (loud warning in its log).
     publicUrl: ""
+
+# The schema migration Job (a post-install/post-upgrade Helm hook).
+migrate:
+  # Seconds the migrator waits for ClickHouse before failing. Raise it when the
+  # database is slow to accept connections on a cold start (large volume
+  # restore, external cluster still electing) — the Job failing here is one of
+  # the ways an install ends up with no schema.
+  clickhouseWaitSeconds: 60
 
 # Per-signal retention in DAYS, applied as ClickHouse TTL by `hub migrate`.
 retention:

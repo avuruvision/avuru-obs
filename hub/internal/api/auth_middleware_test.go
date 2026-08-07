@@ -18,6 +18,13 @@ import (
 // and that user's session cookie.
 func authedMux(t *testing.T) (*http.ServeMux, *http.Cookie) {
 	t.Helper()
+	return authedMuxWith(t, Config{})
+}
+
+// authedMuxWith is authedMux with caller-supplied Config fields (the origin
+// policy, here); the auth service is always installed on top of them.
+func authedMuxWith(t *testing.T, cfg Config) (*http.ServeMux, *http.Cookie) {
+	t.Helper()
 	f := &storagetest.Fake{Tenants: []string{"payments", "prod"}}
 	svc := auth.NewService(func() storage.Store { return f }, time.Hour)
 	h, _ := auth.HashPassword("pw")
@@ -29,8 +36,9 @@ func authedMux(t *testing.T) (*http.ServeMux, *http.Cookie) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cfg.Auth = svc
 	mux := http.NewServeMux()
-	Register(mux, func() storage.Store { return f }, Config{Auth: svc})
+	Register(mux, func() storage.Store { return f }, cfg)
 	return mux, &http.Cookie{Name: sessionCookieName, Value: token}
 }
 
@@ -119,6 +127,57 @@ func TestSameOriginWritePasses(t *testing.T) {
 	mux.ServeHTTP(w, req)
 	if w.Code == http.StatusForbidden {
 		t.Fatalf("same-origin write rejected as cross-origin: %d body %s", w.Code, w.Body.String())
+	}
+}
+
+// The four tests below cover the reverse-proxy case: a proxy that rewrites the
+// Host header (the ingress address instead of the public domain) makes the
+// browser's perfectly correct Origin differ from the Host the hub sees, which
+// the strict check reads as cross-origin — 403 on every write, login included.
+// TestCrossOriginWriteIs403 above is the pair to these: with neither knob set,
+// the strict behavior stands.
+
+func TestTrustedOriginWritePasses(t *testing.T) {
+	mux, c := authedMuxWith(t, Config{TrustedOrigins: []string{"https://demo.avuruobs.io"}})
+	w := authDo(mux, "POST", "/api/v1/errors/issues/123/status", c,
+		map[string]string{"Origin": "https://demo.avuruobs.io", "X-Avuru-Tenant": "payments"})
+	if w.Code == http.StatusForbidden {
+		t.Fatalf("trusted origin rejected: %d body %s", w.Code, w.Body.String())
+	}
+}
+
+// A trailing slash and the host's casing are configuration noise, not a
+// different origin — normalizing both sides is what keeps a values file from
+// failing silently.
+func TestTrustedOriginIsNormalized(t *testing.T) {
+	mux, c := authedMuxWith(t, Config{TrustedOrigins: []string{"https://Demo.AvuruObs.io/"}})
+	w := authDo(mux, "POST", "/api/v1/errors/issues/123/status", c,
+		map[string]string{"Origin": "https://demo.avuruobs.io", "X-Avuru-Tenant": "payments"})
+	if w.Code == http.StatusForbidden {
+		t.Fatalf("trusted origin rejected on casing/slash: %d body %s", w.Code, w.Body.String())
+	}
+}
+
+// Declaring an allowlist widens it to the listed origins and to nothing else.
+func TestUntrustedOriginStillIs403(t *testing.T) {
+	mux, c := authedMuxWith(t, Config{TrustedOrigins: []string{"https://demo.avuruobs.io"}})
+	w := authDo(mux, "POST", "/api/v1/errors/issues/123/status", c,
+		map[string]string{"Origin": "https://evil.example", "X-Avuru-Tenant": "payments"})
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("untrusted origin with an allowlist set: %d, want 403", w.Code)
+	}
+}
+
+func TestOriginCheckOffAndLogAllowCrossOrigin(t *testing.T) {
+	for _, mode := range []string{"off", "log"} {
+		t.Run(mode, func(t *testing.T) {
+			mux, c := authedMuxWith(t, Config{OriginCheck: mode})
+			w := authDo(mux, "POST", "/api/v1/errors/issues/123/status", c,
+				map[string]string{"Origin": "https://demo.avuruobs.io", "X-Avuru-Tenant": "payments"})
+			if w.Code == http.StatusForbidden {
+				t.Fatalf("originCheck=%s still rejected: %d body %s", mode, w.Code, w.Body.String())
+			}
+		})
 	}
 }
 

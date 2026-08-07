@@ -51,27 +51,23 @@ func parseIngestSeedKeys(raw string) ([]ingestSeedKey, error) {
 	return keys, nil
 }
 
-// seedIngestKeys waits for the store, then idempotently ensures each seed key
-// exists. Same degraded-not-crashed philosophy as bootstrapAdmin: the
-// auth_ingest_key table may not be migrated yet on first boot, so this retries
-// rather than giving up.
+// seedIngestKeys waits for the schema, then idempotently ensures each seed key
+// exists. Same degraded-not-crashed philosophy as bootstrapAdmin: seeding can
+// still fail transiently after the tables exist, so this retries rather than
+// giving up.
 //
 // Idempotency is by key hash, so re-running on every hub restart and across
 // upgrades inserts nothing new. A key the operator revoked through the UI stays
 // revoked — GetIngestKeyByHash treats revoked as not-found, so a revoked seed
 // key WOULD be re-created here; the chart therefore only seeds keys it owns
 // (the sensor's), and operator-managed keys are created through the API.
-func seedIngestKeys(ctx context.Context, provider api.StoreProvider, keys []ingestSeedKey) {
+func seedIngestKeys(ctx context.Context, provider api.StoreProvider, gate *schemaGate, keys []ingestSeedKey) {
 	if len(keys) == 0 {
 		return
 	}
 
-	for provider() == nil {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(2 * time.Second):
-		}
+	if !gate.wait(ctx) {
+		return
 	}
 
 	pending := make([]ingestSeedKey, len(keys))

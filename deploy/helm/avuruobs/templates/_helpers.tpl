@@ -248,12 +248,25 @@ otel
 {{- end -}}
 
 {{/* Green energy collection is live only when BOTH the green module and the
-     sensor's green (Kepler) container are on. Same true/"" contract as the
-     sibling collect* helpers — consume via `if include`, never compare to
-     "false". The pod→workload join it feeds also needs infra-metrics, but that
-     is a hard dependency enforced by a {{ fail }} guard, not folded in here. */}}
+     sensor's green surface are on — the umbrella gate for the receiver, the
+     pipeline and the host mounts, whichever energy source fills them. Same
+     true/"" contract as the sibling collect* helpers — consume via `if
+     include`, never compare to "false". The pod→workload join it feeds also
+     needs infra-metrics, but that is a hard dependency enforced by a
+     {{ fail }} guard, not folded in here. */}}
 {{- define "avuruobs.collectGreen" -}}
 {{- if and .Values.modules.green.enabled .Values.sensor.green.enabled -}}true{{- end -}}
+{{- end -}}
+
+{{/* Whether Kepler itself — the MEASURED source — renders: green collection
+     active AND the kepler sub-flag (default true). Split out from collectGreen
+     because Kepler v0.11.4 EXITS when RAPL zone discovery comes up empty
+     ("no RAPL zones found"), so on a node without powercap the container
+     crash-loops and holds the whole sensor pod out of Ready — no probe config
+     can rescue a process that terminates itself. sensor.green.kepler.enabled
+     =false drops it and leaves the estimator collecting. */}}
+{{- define "avuruobs.collectGreenMeasured" -}}
+{{- if and (include "avuruobs.collectGreen" .) .Values.sensor.green.kepler.enabled -}}true{{- end -}}
 {{- end -}}
 
 {{/* Whether the tdp-estimator container/scrape should render: requires green

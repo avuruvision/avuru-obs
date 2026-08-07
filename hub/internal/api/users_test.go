@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -108,6 +109,12 @@ func TestUsersRoutesAdminOnly(t *testing.T) {
 	}
 	if w := doBody(mux, "POST", "/api/v1/users", c, `{"email":"x@x","password":"x"}`); w.Code != http.StatusForbidden {
 		t.Fatalf("editor creating user: %d, want 403", w.Code)
+	}
+	// securedAdmin must gate DELETE too — a weaker check here would let any
+	// editor delete disabled users, and every other assertion in this test
+	// file would stay green while that hole existed.
+	if w := doBody(mux, "DELETE", "/api/v1/users/nope", c, ""); w.Code != http.StatusForbidden {
+		t.Fatalf("editor deleting user: %d, want 403", w.Code)
 	}
 }
 
@@ -235,5 +242,233 @@ func TestCreateUserPasswordTooLongIs400(t *testing.T) {
 		`{"email":"long@x.io","password":"`+longPw+`"}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("73-byte password: %d, want 400", w.Code)
+	}
+}
+
+// Delete is a two-step: 409 while the user is live, 204 once disabled. The
+// refused (409) attempt must not touch grants or sessions — proving the
+// !u.Disabled gate really does precede every write — and the successful
+// delete must clear both.
+func TestDeleteUserRequiresDisabledFirst(t *testing.T) {
+	mux, c, f := adminMux(t)
+
+	w := doBody(mux, "POST", "/api/v1/users", c, `{
+		"email":"gone@x.io","name":"Gone","password":"gonepw",
+		"grants":[{"scope":"payments","role":"editor"}]}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create: %d body %s", w.Code, w.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &created)
+
+	// The user signs in before the live-user delete attempt below, so that
+	// attempt's "nothing changes" claim can be checked against a real
+	// session, not just the response status.
+	svcLogin := doBody(mux, "POST", "/api/v1/auth/login", nil, `{"email":"gone@x.io","password":"gonepw"}`)
+	if svcLogin.Code != http.StatusOK {
+		t.Fatalf("victim login: %d", svcLogin.Code)
+	}
+
+	// Live user: refused with 409, and neither the grant nor the session is
+	// touched.
+	if w := doBody(mux, "DELETE", "/api/v1/users/"+created.ID, c, ""); w.Code != http.StatusConflict {
+		t.Fatalf("delete live user: %d, want 409; body %s", w.Code, w.Body.String())
+	}
+	if got := f.Grants[created.ID]; len(got) != 1 {
+		t.Fatalf("grants changed after a refused delete: %+v", got)
+	}
+	sessionSurvived := false
+	for _, s := range f.Sessions {
+		if s.UserID == created.ID {
+			sessionSurvived = true
+		}
+	}
+	if !sessionSurvived {
+		t.Fatal("session revoked despite the delete being refused")
+	}
+
+	// Disable, then delete.
+	if w := doBody(mux, "PUT", "/api/v1/users/"+created.ID, c, `{"disabled":true}`); w.Code != http.StatusOK {
+		t.Fatalf("disable: %d", w.Code)
+	}
+	if w := doBody(mux, "DELETE", "/api/v1/users/"+created.ID, c, ""); w.Code != http.StatusNoContent {
+		t.Fatalf("delete disabled user: %d, want 204; body %s", w.Code, w.Body.String())
+	}
+
+	// Gone from the list, grants cleared, sessions revoked.
+	list := doBody(mux, "GET", "/api/v1/users", c, "")
+	if strings.Contains(list.Body.String(), "gone@x.io") {
+		t.Fatalf("deleted user still listed: %s", list.Body.String())
+	}
+	if got := f.Grants[created.ID]; len(got) != 0 {
+		t.Fatalf("grants survived the delete: %+v", got)
+	}
+	for _, s := range f.Sessions {
+		if s.UserID == created.ID {
+			t.Fatal("a session survived the delete")
+		}
+	}
+
+	// Unknown id -> 404 (repeat delete included: the row is gone).
+	if w := doBody(mux, "DELETE", "/api/v1/users/"+created.ID, c, ""); w.Code != http.StatusNotFound {
+		t.Fatalf("delete deleted user: %d, want 404", w.Code)
+	}
+}
+
+// TestDeleteDemoUserRefused proves the demo-account guard: EnsureDemoUser
+// recreates demo-viewer (with its chart-configured password) on every boot,
+// so a "successful" delete would silently undo itself on restart — deleting
+// it must be refused even once it is disabled, which is otherwise sufficient
+// for every other user.
+func TestDeleteDemoUserRefused(t *testing.T) {
+	f := &storagetest.Fake{}
+	svc := auth.NewService(func() storage.Store { return f }, time.Hour)
+	if _, err := svc.Bootstrap(context.Background(), "root-pw"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.EnsureDemoUser(context.Background(), "demo@avuru.obs", "demo-pw"); err != nil {
+		t.Fatal(err)
+	}
+	adminToken, _, err := svc.Login(context.Background(), "admin", "root-pw", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return f }, Config{
+		Auth: svc, DemoEnabled: true, DemoEmail: "demo@avuru.obs", DemoPassword: "demo-pw",
+	})
+	c := &http.Cookie{Name: sessionCookieName, Value: adminToken}
+
+	// Disabling the demo account is unrelated to the guard under test (any
+	// user can be disabled) and clears the generic !u.Disabled 409 out of the
+	// way, so the assertion below actually exercises the demo-specific one.
+	if w := doBody(mux, "PUT", "/api/v1/users/demo-viewer", c, `{"disabled":true}`); w.Code != http.StatusOK {
+		t.Fatalf("disable demo user: %d body %s", w.Code, w.Body.String())
+	}
+	w := doBody(mux, "DELETE", "/api/v1/users/demo-viewer", c, "")
+	if w.Code != http.StatusConflict {
+		t.Fatalf("delete demo user: %d, want 409; body %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "managed by the server") {
+		t.Fatalf("409 body doesn't explain the demo guard: %s", w.Body.String())
+	}
+
+	// The guard keys on the server-reserved id, not on mutable config: with
+	// demo mode switched off AND DemoEmail pointing elsewhere, the lingering
+	// demo-viewer row is still refused. EnsureDemoUser will recreate it the
+	// moment demo mode comes back, so deleting it now is never the clean-up it
+	// looks like.
+	reconfigured := http.NewServeMux()
+	Register(reconfigured, func() storage.Store { return f }, Config{
+		Auth: svc, DemoEnabled: false, DemoEmail: "someone-else@x.io",
+	})
+	if w := doBody(reconfigured, "DELETE", "/api/v1/users/demo-viewer", c, ""); w.Code != http.StatusConflict {
+		t.Fatalf("delete demo user with demo mode off: %d, want 409; body %s", w.Code, w.Body.String())
+	}
+
+	// The mirror image: an ordinary user who merely shares the configured demo
+	// address is not the demo account and stays deletable.
+	if err := f.SaveAuthUser(context.Background(), storage.AuthUser{
+		ID: "namesake", Email: "namesake@x.io", Origin: "local", Disabled: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	namesakeMux := http.NewServeMux()
+	Register(namesakeMux, func() storage.Store { return f }, Config{
+		Auth: svc, DemoEnabled: true, DemoEmail: "namesake@x.io", DemoPassword: "x",
+	})
+	if w := doBody(namesakeMux, "DELETE", "/api/v1/users/namesake", c, ""); w.Code != http.StatusNoContent {
+		t.Fatalf("delete a user sharing DemoEmail: %d, want 204; body %s", w.Code, w.Body.String())
+	}
+}
+
+// TestUpdateDemoUserPasswordRefused pins the narrow admin-side guard: the demo
+// account's password belongs to the server. Re-keying the row leaves
+// handleDemoLogin signing in with the CONFIGURED credentials, which then fail
+// Login with ErrInvalidCredentials — a sentinel that handler does not map, so
+// the public demo button answers an opaque 500 until a restart re-runs
+// EnsureDemoUser. The demo-login assertion below is what actually proves the
+// break was avoided; the 409 alone would not.
+func TestUpdateDemoUserPasswordRefused(t *testing.T) {
+	f := &storagetest.Fake{}
+	svc := auth.NewService(func() storage.Store { return f }, time.Hour)
+	if _, err := svc.Bootstrap(context.Background(), "root-pw"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.EnsureDemoUser(context.Background(), "demo@avuru.obs", "demo-pw"); err != nil {
+		t.Fatal(err)
+	}
+	adminToken, _, err := svc.Login(context.Background(), "admin", "root-pw", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return f }, Config{
+		Auth: svc, DemoEnabled: true, DemoEmail: "demo@avuru.obs", DemoPassword: "demo-pw",
+	})
+	c := &http.Cookie{Name: sessionCookieName, Value: adminToken}
+
+	if w := doBody(mux, "PUT", "/api/v1/users/demo-viewer", c, `{"password":"hijacked"}`); w.Code != http.StatusConflict {
+		t.Fatalf("admin re-keying the demo account: %d, want 409; body %s", w.Code, w.Body.String())
+	}
+	if w := doBody(mux, "POST", "/api/v1/auth/demo", nil, ""); w.Code != http.StatusOK {
+		t.Fatalf("demo button after the refused reset: %d, want 200; body %s", w.Code, w.Body.String())
+	}
+	// Deliberately narrow: disabling the demo account is reversible and the
+	// legitimate way to kill a public demo without a redeploy, so it stays
+	// allowed — as does editing its name.
+	if w := doBody(mux, "PUT", "/api/v1/users/demo-viewer", c, `{"disabled":true}`); w.Code != http.StatusOK {
+		t.Fatalf("disabling the demo account: %d, want 200; body %s", w.Code, w.Body.String())
+	}
+}
+
+// The 400 alone doesn't prove the password was never stored — Login
+// resolves by email regardless of Origin, so the login attempt below is
+// what actually proves an SSO account can't get a working local password.
+func TestUpdateUserRejectsPasswordForSSOUser(t *testing.T) {
+	mux, c, f := adminMux(t)
+	if err := f.SaveAuthUser(context.Background(), storage.AuthUser{
+		ID: "oidc|sub1", Email: "sso@x.io", Origin: "oidc",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	w := doBody(mux, "PUT", "/api/v1/users/oidc|sub1", c, `{"password":"newpw"}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("password on SSO user: %d, want 400; body %s", w.Code, w.Body.String())
+	}
+	// The property that actually matters: the rejected password must not
+	// have become a working local credential — Login resolves by email with
+	// no Origin filter, so this is the only thing standing between an SSO
+	// account and a plain-password bypass of the IdP.
+	if w := doBody(mux, "POST", "/api/v1/auth/login", nil, `{"email":"sso@x.io","password":"newpw"}`); w.Code != http.StatusUnauthorized {
+		t.Fatalf("login with the rejected password: %d, want 401 (must not have been stored); body %s", w.Code, w.Body.String())
+	}
+	// Name edits on the same user still work.
+	if w := doBody(mux, "PUT", "/api/v1/users/oidc|sub1", c, `{"name":"Renamed"}`); w.Code != http.StatusOK {
+		t.Fatalf("name edit on SSO user: %d", w.Code)
+	}
+}
+
+// TestDeleteOIDCUserSucceeds pins the documented origin=oidc delete
+// semantics: a disabled SSO user's LOCAL record can still be deleted (204).
+// What that means for CompleteSSO re-provisioning on the next IdP login is
+// the auth package's concern (already covered there), not this handler's.
+func TestDeleteOIDCUserSucceeds(t *testing.T) {
+	mux, c, f := adminMux(t)
+
+	if err := f.SaveAuthUser(context.Background(), storage.AuthUser{
+		ID: "oidc|sub-123", Email: "sso@x.io", Origin: "oidc", Disabled: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if w := doBody(mux, "DELETE", "/api/v1/users/oidc|sub-123", c, ""); w.Code != http.StatusNoContent {
+		t.Fatalf("delete disabled oidc user: %d, want 204; body %s", w.Code, w.Body.String())
+	}
+	if _, err := f.GetAuthUser(context.Background(), "oidc|sub-123"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("oidc user row survived the delete: err=%v", err)
 	}
 }

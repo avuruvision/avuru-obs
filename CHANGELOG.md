@@ -11,7 +11,110 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-07
+
+### Added
+
+- **Full user management from the UI.** Settings → Users now edits a user's
+  name and role grants, resets passwords (with every session of the affected
+  user signed out), and **deletes** users — an explicit second step available
+  only after disabling, amending the original disable-only decision
+  (design/2026-08-06-users-crud-password.md). A new Settings → Account tab
+  lets any signed-in local user change their own password (current password
+  required; other sessions are evicted, the active one stays). Password
+  operations are refused for SSO users — their credential lives at the
+  identity provider.
+
+### Security
+
+- **An admin could mint a working local password for an SSO-only account.**
+  `PUT /api/v1/users/{id}` accepted a `password` for any user regardless of
+  origin, and neither the email lookup nor the password check filtered on it —
+  so the new credential was a genuine, working login that bypassed the
+  identity provider along with its MFA and conditional-access policy. Password
+  edits are now allow-listed on `origin=local` (a future origin defaults to
+  refused), on both the admin route and the new self-service one. Deleting an
+  SSO user is also now spelled out in the UI as what it is: it removes only
+  the local record, and because `disabled` is the flag the SSO callback
+  checks, deleting a *disabled* SSO user **undoes** their lockout.
+- **Rotating IP addresses bypassed the login lockout entirely.** Both rate-limit
+  axes keyed on the client IP (`email|ip` and `ip`), so an attacker spreading
+  guesses across N addresses got N × 5 attempts per minute against a single
+  account and tripped neither — a botnet, or any cloud NAT pool, made the
+  per-account lockout decorative. A third axis now counts failures against the
+  account alone (20 per minute), for password login and self-service password
+  change alike. It is a deliberate trade: sustained failures against one address
+  will keep that account's *login* blocked, bounded to a self-healing one-minute
+  window, never affecting established sessions or successful logins.
+- **An SSO login could take over a local account's email and break its login.**
+  `auth_user` has no unique index and the SSO callback upserts by subject
+  without consulting the address, so an IdP user whose email matched a local
+  account added a second row sharing it — and the password-login lookup, which
+  had no `ORDER BY`, then resolved to an arbitrary one of the two. Anyone able
+  to set their own email claim could aim that at the bootstrap admin. The lookup
+  is now local-first, and password login is allow-listed on `origin=local`
+  rather than relying on SSO rows happening to carry an empty password hash.
+
 ### Fixed
+
+- **An install whose schema migration never ran now repairs itself instead of
+  failing every query forever.** Schema is applied by a `migrate` Job that Helm
+  runs as a `post-install`/`post-upgrade` hook — and Helm runs those hooks only
+  *after* `--wait` succeeds. A release that timed out waiting for any component
+  (a slow image pull across a DaemonSet is enough) never created the Job, while
+  the Deployments Helm had already applied rolled out normally. The result was a
+  cluster that looked healthy and answered `Unknown table expression identifier
+  'auth_user'` to everything, with four subsystems retrying forever at WARN and
+  none of them naming the problem. The hub now checks its schema on connect and
+  applies the missing migrations itself (`hub.autoMigrate`, on by default; the
+  embedded migrations are idempotent and safe to run concurrently with the Job
+  or another replica). When it can't — no DDL rights, or self-heal switched off
+  — it logs **one** ERROR naming the remedy rather than a warning flood, and
+  Settings → Status gains a **Schema** component showing applied/expected. The
+  migrate Job also stops deleting itself on success, so `kubectl` can answer
+  "did the migration ever run?", and `deploy/install.sh` waits 10m rather than
+  6m before giving up.
+
+- **Setting a ClickHouse database other than `otel` no longer silently breaks
+  the install.** `clickhouse.external.database` is a documented, schema-checked
+  value, but every migration file hardcoded an `otel.` prefix: the DDL landed in
+  `otel` while the hub queried the configured database and found it empty —
+  producing exactly the missing-table failure above, permanently. The migrations
+  now name their database through a placeholder the migrator substitutes, and
+  the configured name is validated as an identifier at boot. Installs on the
+  default `otel` are byte-for-byte unaffected.
+
+- **A node without RAPL no longer takes the whole sensor down.** Enabling green
+  collection on a fleet of VMs put the sensor DaemonSet into CrashLoopBackOff:
+  the pinned Kepler exits at startup when it finds no powercap zones (`failed
+  to initialize service rapl: no RAPL zones found`) instead of idling, and a
+  container that terminates itself keeps the pod out of Ready no matter how
+  few probes it carries — so `helm --wait` and `kubectl rollout status` failed,
+  and logs, traces and metrics went down with an optional energy signal. The
+  measured source can now be dropped on its own with
+  `sensor.green.kepler.enabled=false`, leaving `sensor.green.estimation` to
+  feed `/green` (a guard refuses to leave both sources off, which would ship an
+  empty scrape config). Installs on RAPL hardware are unaffected — the flag
+  defaults to `true` and those renders are byte-identical.
+- **Logging in through a reverse proxy that rewrites `Host` no longer 403s.**
+  The hub's CSRF check compared the browser's `Origin` against the `Host` it
+  received, so any proxy handing the cluster its ingress address instead of the
+  public domain turned every write — the login POST first of all — into
+  `cross-origin request rejected`. Two new chart values fix it without touching
+  the default, which stays strict: `auth.trustedOrigins` names the origins that
+  are legitimate despite not matching `Host` (the check stays on for everything
+  else), and `auth.originCheck` (`enforce` | `log` | `off`) lowers it when the
+  origins can't be enumerated — `log` allows the write and records the
+  `Origin`/`Host` pair, which is how you find out what a proxy actually sends.
+  An install that sets neither renders the same manifest and behaves exactly as
+  before. When `auth.oidc.publicUrl` is set it is trusted automatically.
+- **A password change that half-applied reported itself as "internal error".**
+  If the session sweep or the re-mint failed after the new password was already
+  saved, both the self-service and admin routes answered a generic 500 — which
+  reads as *nothing changed*, sending the user back to a password that no longer
+  works. Both seams now name themselves: the response states that the password
+  did change and what to do next (sign in again with the new one, or that other
+  sessions are still live and should be ended from another device).
 
 - **A default `helm install` now pulls the images it is supposed to.** The
   chart's image defaults never matched what the release workflow publishes, in
@@ -438,7 +541,8 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
 
 <!--
 Release links:
-[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/avuruvision/avuru-obs/compare/v0.3.1...v0.4.0
 [0.3.0]: https://github.com/avuruvision/avuru-obs/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/avuruvision/avuru-obs/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/avuruvision/avuru-obs/releases/tag/v0.1.0

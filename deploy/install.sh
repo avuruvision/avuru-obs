@@ -63,8 +63,13 @@ VERSION="${VERSION#v}" # OCI chart tags are bare SemVer
 CTX="$(kubectl config current-context 2>/dev/null || echo '?')"
 
 # Build the command once so --dry-run shows exactly what runs.
+# 10m, not 6m: Helm runs the schema-migration hook only AFTER --wait succeeds,
+# so a timeout here used to leave an install with no ClickHouse tables. Pulling
+# the sensor DaemonSet's images on every node — more so from a private registry
+# with pullPolicy: Always — routinely outlasts six minutes. (The hub also
+# self-heals the schema now; this just stops the release reporting failure.)
 set -- helm upgrade --install "$RELEASE" "$CHART" --version "$VERSION" \
-  --namespace "$NAMESPACE" --create-namespace --wait --timeout 6m
+  --namespace "$NAMESPACE" --create-namespace --wait --timeout 10m
 # shellcheck disable=SC2086 # EXTRA is intentionally word-split into args
 set -- "$@" $EXTRA
 

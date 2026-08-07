@@ -335,6 +335,46 @@ grep -q 'mountPath: /sys' <<<"$estimator_block" || fail "tdp-estimator missing /
 grep -q 'mountPath: /proc' <<<"$estimator_block" || fail "tdp-estimator missing /proc mount (utilization sampling)"
 ok "container + scrape job + quality stamp render on opt-in; no probes; host mounts present"
 
+# Kepler v0.11.4 EXITS when RAPL zone discovery comes up empty ("failed to
+# initialize service rapl: no RAPL zones found") — it does not sit idle, and no
+# probe config can save a process that terminates itself. On a VM fleet the
+# container crash-loops, the sensor pod never reports Ready, and `helm --wait`
+# / `rollout status` fail: the whole sensor is down over an optional signal.
+# So the measured source must be droppable on its own, leaving the estimator.
+echo "== green: kepler.enabled=false leaves the estimator collecting alone"
+out="$(render --set modules.green.enabled=true --set sensor.green.enabled=true \
+  --set sensor.green.kepler.enabled=false \
+  --set sensor.green.estimation.enabled=true)"
+grep -q '\- name: kepler$' <<<"$out" && fail "kepler container rendered with sensor.green.kepler.enabled=false"
+grep -q 'job_name: kepler' <<<"$out" && fail "kepler scrape job survived the container it scrapes"
+grep -q 'name: test-avuruobs-sensor-kepler' <<<"$out" && fail "kepler ConfigMap survived the container it configures"
+grep -qF 'set(attributes["avuruobs_quality"], "measured")' <<<"$out" && fail "measured quality stamp rendered with nothing measuring"
+grep -q '\- name: tdp-estimator$' <<<"$out" || fail "tdp-estimator container missing as the sole source"
+grep -q 'job_name: tdp-estimator' <<<"$out" || fail "tdp-estimator scrape job missing as the sole source"
+grep -q 'prometheus/green:' <<<"$out" || fail "green receiver lost with kepler off"
+grep -q 'metrics/green:' <<<"$out" || fail "green pipeline lost with kepler off"
+grep -qF 'set(attributes["avuruobs_quality"], "estimated") where resource.attributes["service.name"] == "tdp-estimator"' <<<"$out" \
+  || fail "estimated quality stamp lost with kepler off"
+# The host mounts hang off the green gate, not off Kepler — the estimator's own
+# RAPL probe and cgroup walk still need them.
+estimator_block="$(sed -n '/- name: tdp-estimator$/,/resources:/p' <<<"$out")"
+grep -q 'mountPath: /sys' <<<"$estimator_block" || fail "tdp-estimator lost its /sys mount with kepler off"
+grep -q 'mountPath: /proc' <<<"$estimator_block" || fail "tdp-estimator lost its /proc mount with kepler off"
+ok "estimator + scrape job + estimated stamp + host mounts survive; every Kepler surface is gone"
+
+echo "== green: kepler.enabled=false with no estimator -> fails at template time"
+render --set modules.green.enabled=true --set sensor.green.enabled=true \
+  --set sensor.green.kepler.enabled=false >/dev/null 2>&1 \
+  && fail "green collection rendered with no energy source (prometheus/green would have zero scrape jobs)"
+ok "dropping both sources fails loudly instead of shipping an empty scrape config"
+
+echo "== green: kepler.enabled=false no-ops when green collection is off"
+# Same discipline as sensor.green-without-the-module: values that render nothing
+# must never fail an install (a shared values file on a sensor-off cluster).
+render --set sensor.green.kepler.enabled=false >/dev/null 2>&1 \
+  || fail "kepler.enabled=false failed with the green module off instead of no-opping"
+ok "no guard fires while the green surface renders nothing"
+
 echo "== auth oidc: off by default -> no SSO surface"
 out="$(render)"
 grep -q 'AVURUOBS_AUTH_OIDC' <<<"$out" && fail "OIDC env rendered without auth.oidc.enabled"
@@ -387,6 +427,27 @@ render --set auth.oidc.enabled=true >/dev/null 2>&1 \
 render "${oidc_on[@]}" --set auth.enabled=false >/dev/null 2>&1 \
   && fail "oidc rendered with auth disabled (hub would silently ignore SSO)"
 ok "missing issuer/clientId fails; SSO-with-auth-off fails"
+
+echo "== auth origin check: strict by default, and silent about it"
+out="$(render)"
+grep -q 'AVURUOBS_AUTH_TRUSTED_ORIGINS' <<<"$out" && fail "trusted-origins env rendered with an empty list"
+grep -q 'AVURUOBS_AUTH_ORIGIN_CHECK' <<<"$out" && fail "origin-check env rendered while at the enforce default"
+ok "an install that touches neither knob renders neither env"
+
+echo "== auth origin check: trustedOrigins renders the allowlist"
+out="$(render --set-json 'auth.trustedOrigins=["https://obs.example.com","https://obs.internal"]')"
+grep -q 'AVURUOBS_AUTH_TRUSTED_ORIGINS' <<<"$out" || fail "trusted-origins env missing"
+grep -q 'value: "https://obs.example.com,https://obs.internal"' <<<"$out" || fail "trusted origins not joined as CSV"
+grep -q 'AVURUOBS_AUTH_ORIGIN_CHECK' <<<"$out" && fail "declaring origins must not lower the mode"
+ok "list joined into one env, mode untouched"
+
+echo "== auth origin check: lowered modes are explicit, and only the valid ones"
+out="$(render --set auth.originCheck=log)"
+grep -q 'name: AVURUOBS_AUTH_ORIGIN_CHECK' <<<"$out" || fail "origin-check env missing in log mode"
+grep -q 'value: "log"' <<<"$out" || fail "log mode not rendered"
+render --set auth.originCheck=allow >/dev/null 2>&1 \
+  && fail "an unknown origin-check mode rendered (schema enum should reject it)"
+ok "log/off render the env; a typo fails the render"
 
 echo "== ingest keys: default (log) keeps the drop-in pipeline unchanged"
 out="$(render)"
@@ -631,5 +692,35 @@ python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if [s.get("name"
 python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("green",{}).get("metrics",{}).get("podNameAttr")=="custom_pod" else 1)' \
   <<<"$base_values" || fail "base-values ConfigMap missing green.metrics.podNameAttr=custom_pod"
 ok "base-values includes image.pullSecrets and green.metrics"
+# Helm skips post-install/post-upgrade hooks when `--wait` times out, so the
+# migrate Job is not a guarantee — the hub must be told it may repair the schema
+# itself, and the Job must leave evidence that it ran.
+echo "== schema migration delivery"
+out="$(render)"
+grep -q 'name: AVURUOBS_SCHEMA_AUTOMIGRATE' <<<"$out" || fail "hub is missing AVURUOBS_SCHEMA_AUTOMIGRATE"
+grep -A1 'name: AVURUOBS_SCHEMA_AUTOMIGRATE' <<<"$out" | grep -q 'value: "true"' \
+  || fail "schema self-heal is not on by default"
+ok "hub self-heal enabled by default"
+
+out="$(render --set hub.autoMigrate=false)"
+grep -A1 'name: AVURUOBS_SCHEMA_AUTOMIGRATE' <<<"$out" | grep -q 'value: "false"' \
+  || fail "hub.autoMigrate=false did not reach the hub"
+ok "hub.autoMigrate=false opts out"
+
+render --set hub.autoMigrate=yes >/dev/null 2>&1 && fail "non-boolean hub.autoMigrate accepted by the values schema"
+ok "values schema rejects a non-boolean hub.autoMigrate"
+
+out="$(render)"
+migrate_job="$(awk '/^# Source: avuruobs\/templates\/migrate-job.yaml$/{f=1} /^---$/{f=0} f' <<<"$out")"
+grep -q 'helm.sh/hook": post-install,post-upgrade' <<<"$migrate_job" \
+  || grep -q 'hook: post-install,post-upgrade' <<<"$migrate_job" \
+  || fail "migrate Job lost its post-install/post-upgrade hook"
+# The annotation VALUE, not any mention of the word — the template carries an
+# explanatory comment naming hook-succeeded, and it renders into the manifest.
+grep -E '^\s*"helm.sh/hook-delete-policy":' <<<"$migrate_job" | grep -q 'hook-succeeded' \
+  && fail "migrate Job still deletes itself on success (no evidence it ran)"
+grep -q 'ttlSecondsAfterFinished:' <<<"$migrate_job" || fail "migrate Job has no ttlSecondsAfterFinished"
+grep -q 'name: AVURUOBS_MIGRATE_WAIT_SECONDS' <<<"$migrate_job" || fail "migrate Job is missing AVURUOBS_MIGRATE_WAIT_SECONDS"
+ok "migrate Job: hook kept, survives success, ClickHouse wait configurable"
 
 echo "ALL TEMPLATE ASSERTIONS PASSED"

@@ -17,7 +17,15 @@
 {{- fail "sensor.green.enabled requires sensor.agent.enabled — Kepler's energy metrics are scraped by a prometheus receiver in the otel-agent; with the agent off nothing collects them." }}
 {{- end }}
 {{- if and .Values.sensor.green.estimation.enabled (not .Values.sensor.green.enabled) }}
-{{- fail "sensor.green.estimation.enabled requires sensor.green.enabled — the estimator is a fallback for the same Kepler energy signal, not a standalone source." }}
+{{- fail "sensor.green.estimation.enabled requires sensor.green.enabled — sensor.green is the umbrella switch for the energy surface (receiver, pipeline, host mounts) that both sources share. To run the estimator alone on RAPL-less nodes keep sensor.green.enabled and set sensor.green.kepler.enabled=false." }}
+{{- end }}
+{{- /* Both sources off while the green surface renders would leave
+       prometheus/green with an empty scrape_configs — an invalid collector
+       config that crash-loops the otel-agent, i.e. a working sensor traded for
+       an optional signal. Fail at template time instead, scoped like the
+       agent guard above so values that render nothing never fail an install. */}}
+{{- if and .Values.sensor.enabled (include "avuruobs.collectGreen" .) (not .Values.sensor.green.kepler.enabled) (not .Values.sensor.green.estimation.enabled) }}
+{{- fail "sensor.green.enabled with sensor.green.kepler.enabled=false requires sensor.green.estimation.enabled — dropping Kepler leaves the estimator as the only energy source; with both off nothing collects, so turn sensor.green.enabled off instead." }}
 {{- end }}
 {{- /* $mode is read unconditionally (like the guards above) so it stays in
        scope for the data block below, which now sits under its own
@@ -157,6 +165,11 @@ data:
         {{- end }}
         start_at: beginning
         storage: file_storage
+        # The container operator's add_metadata_from_filepath (default: true)
+        # reads log.file.path off each record — without this flag the receiver
+        # never attaches it and every entry is dropped with "Failed to process
+        # entry", i.e. zero pod logs ingested.
+        include_file_path: true
         operators:
           # Parses containerd/cri-o/docker formats and promotes k8s.pod.name,
           # k8s.namespace.name, k8s.container.name, k8s.pod.uid from the file
@@ -168,7 +181,11 @@ data:
       # signal tier). Read-only stats API via the pod ServiceAccount.
       kubeletstats:
         auth_type: serviceAccount
-        endpoint: https://${env:K8S_NODE_NAME}:10250
+        # Node IP, not node name: the pod resolves via cluster DNS
+        # (ClusterFirstWithHostNet), which has no records for bare node
+        # hostnames on most bare-metal clusters — the name variant fails
+        # with "no such host" and kills the whole infra-metrics tier.
+        endpoint: https://${env:K8S_NODE_IP}:10250
         # kubelet serving certs are typically self-signed per node
         insecure_skip_verify: true
         collection_interval: {{ .Values.sensor.agent.kubeletstats.interval }}
@@ -186,6 +203,7 @@ data:
       prometheus/green:
         config:
           scrape_configs:
+              {{- if include "avuruobs.collectGreenMeasured" . }}
             - job_name: kepler
               scrape_interval: {{ .Values.sensor.green.scrapeInterval }}
               static_configs:
@@ -194,6 +212,7 @@ data:
                 - source_labels: [__name__]
                   regex: {{ .Values.sensor.green.metrics.keep | quote }}
                   action: keep
+              {{- end }}
               {{- if include "avuruobs.collectGreenEstimation" . }}
             - job_name: tdp-estimator
               scrape_interval: {{ .Values.sensor.green.estimation.scrapeInterval }}
@@ -312,7 +331,9 @@ data:
         metric_statements:
           - context: datapoint
             statements:
+              {{- if include "avuruobs.collectGreenMeasured" . }}
               - set(attributes["avuruobs_quality"], "measured") where resource.attributes["service.name"] == "kepler"
+              {{- end }}
               {{- if include "avuruobs.collectGreenEstimation" . }}
               - set(attributes["avuruobs_quality"], "estimated") where resource.attributes["service.name"] == "tdp-estimator"
               {{- end }}
@@ -444,7 +465,12 @@ data:
     # the hub rewrites this ConfigMap when the signal is toggled on.
 {{- end }}
 {{- end }}
-{{- $keplerActive := and .Values.sensor.enabled (include "avuruobs.collectGreen" .) }}
+{{- /* collectGreenMeasured, not collectGreen: Kepler is the MEASURED source and
+       exits on a node with no RAPL zones, so sensor.green.kepler.enabled=false
+       must drop its container AND its config. The placeholder arm still renders
+       the (empty) ConfigMap when runtime collection control is on, because the
+       hub can only rewrite a ConfigMap that already exists. */}}
+{{- $keplerActive := and .Values.sensor.enabled (include "avuruobs.collectGreenMeasured" .) }}
 {{- if or $keplerActive (include "avuruobs.collectionPlaceholders" .) }}
 ---
 apiVersion: v1

@@ -34,6 +34,13 @@ spec:
           env:
             {{- include "avuruobs.clickhouseEnv" . | nindent 12 }}
             {{- include "avuruobs.modulesEnv" . | nindent 12 }}
+            {{- /* The migrate Job is a post-install/post-upgrade hook, and Helm
+                   runs those only AFTER --wait succeeds: a release that times
+                   out waiting for any component leaves the schema unapplied
+                   while every Deployment rolls out fine. This lets the hub
+                   notice and repair that itself. */}}
+            - name: AVURUOBS_SCHEMA_AUTOMIGRATE
+              value: {{ .Values.hub.autoMigrate | quote }}
             {{- include "avuruobs.groupsEnv" . | nindent 12 }}
             {{- include "avuruobs.alertsEnv" . | nindent 12 }}
             {{- /* with-guard on the OUTPUT, not a restated module condition:
@@ -92,6 +99,17 @@ spec:
                   key: admin-password
             - name: AVURUOBS_AUTH_SESSION_TTL_HOURS
               value: {{ .Values.auth.sessionTTLHours | quote }}
+            {{- /* Both emitted only when they carry a non-default value, so an
+                   install that never touches the CSRF knobs renders exactly the
+                   manifest it rendered before they existed. */}}
+            {{- with .Values.auth.trustedOrigins }}
+            - name: AVURUOBS_AUTH_TRUSTED_ORIGINS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- if and .Values.auth.originCheck (ne .Values.auth.originCheck "enforce") }}
+            - name: AVURUOBS_AUTH_ORIGIN_CHECK
+              value: {{ .Values.auth.originCheck | quote }}
+            {{- end }}
             {{- if .Values.auth.anonymous.role }}
             - name: AVURUOBS_AUTH_ANONYMOUS_ROLE
               value: {{ .Values.auth.anonymous.role | quote }}

@@ -9,13 +9,13 @@ import (
 // utilization and per-pod cgroup usage, compute power via the model, and
 // integrate into the registry's cumulative joules counters. Runs for the
 // process lifetime (main.go only calls this once RAPL has been ruled out).
-func runSampler(nodeName string, interval time.Duration, coeff Coefficients, reg *registry) {
+func runSampler(nodeName, kubeletHost string, interval time.Duration, coeff Coefficients, reg *registry) {
 	client := newKubeletClient()
 	token, err := readServiceAccountToken()
 	if err != nil {
 		slog.Error("cannot read service account token, pod attribution disabled (node energy still reported)", "error", err)
 	}
-	baseURL := kubeletBaseURL(nodeName)
+	baseURL := kubeletBaseURL(kubeletHost)
 
 	var (
 		prevCPU       cpuTimes

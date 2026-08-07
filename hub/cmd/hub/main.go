@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -31,8 +32,10 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	// `hub migrate` runs the schema migrator and exits (Helm pre-install/
-	// pre-upgrade hook in k8s; same path in compose/dev).
+	// `hub migrate` runs the schema migrator and exits (Helm post-install/
+	// post-upgrade hook in k8s; same path in compose/dev). The serving hub also
+	// applies missing migrations itself — see schema.go for why that is not
+	// redundant.
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
 		if err := runMigrate(); err != nil {
 			slog.Error("migrate failed", "error", err)
@@ -72,6 +75,20 @@ func clickhouseConfig() ch.Config {
 	}
 }
 
+// databaseNamePattern is the ClickHouse identifier shape we accept.
+var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// validateDatabaseName guards the one env value that is interpolated straight
+// into DDL (the migrations name their database through a placeholder, so it
+// cannot be a bound parameter). Rejecting at boot keeps a malformed name from
+// becoming a confusing mid-migration syntax error — or worse.
+func validateDatabaseName(db string) error {
+	if !databaseNamePattern.MatchString(db) {
+		return fmt.Errorf("AVURUOBS_CLICKHOUSE_DATABASE: %q is not a valid identifier (letters, digits and underscore, not starting with a digit)", db)
+	}
+	return nil
+}
+
 // activeModules resolves AVURUOBS_MODULES (empty = all). A typo must fail the
 // deploy loudly — silently skipping a module's schema is worse than a crash
 // loop with a clear message.
@@ -90,8 +107,14 @@ func runMigrate() error {
 	defer stop()
 
 	cfg := clickhouseConfig()
+	if err := validateDatabaseName(cfg.Database); err != nil {
+		return err
+	}
 	var store *ch.Store
-	deadline := time.Now().Add(60 * time.Second)
+	// Configurable because the wait is a race against ClickHouse's own startup:
+	// a cold cluster restoring a large PVC can take longer than a minute, and
+	// the Job failing there is what leaves an install unmigrated.
+	deadline := time.Now().Add(time.Duration(envIntOr("AVURUOBS_MIGRATE_WAIT_SECONDS", 60)) * time.Second)
 	for {
 		s, err := ch.New(ctx, cfg)
 		if err == nil {
@@ -162,7 +185,21 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	provider := connectStore(ctx, clickhouseConfig())
+	active, err := activeModules()
+	if err != nil {
+		return err
+	}
+	slog.Info("active modules", "modules", active.Names())
+
+	chCfg := clickhouseConfig()
+	if err := validateDatabaseName(chCfg.Database); err != nil {
+		return err
+	}
+	// The gate answers "is the schema there?" for everything that needs tables,
+	// and heals it when the chart's migrate hook never ran. Built before the
+	// store so the subsystems below can wait on it immediately.
+	gate := newSchemaGate(active, chCfg.Database, schemaAutoMigrate())
+	provider := connectStore(ctx, chCfg, gate)
 
 	authSvc, anonID := authService(provider)
 	// Demo mode: resolve the settings once so the SAME generated password feeds
@@ -179,10 +216,10 @@ func run() error {
 		if demoPassword == "" {
 			demoPassword = auth.NewID() // held in-process; never disclosed
 		}
-		go ensureDemoUser(ctx, authSvc, provider, demoEmail, demoPassword)
+		go ensureDemoUser(ctx, authSvc, gate, demoEmail, demoPassword)
 	}
 	if authSvc != nil {
-		go bootstrapAdmin(ctx, authSvc, provider)
+		go bootstrapAdmin(ctx, authSvc, gate)
 	}
 
 	// Chart-provisioned ingest keys (the sensor's). Parsed eagerly so a
@@ -192,13 +229,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	go seedIngestKeys(ctx, provider, seedKeys)
-
-	active, err := activeModules()
-	if err != nil {
-		return err
-	}
-	slog.Info("active modules", "modules", active.Names())
+	go seedIngestKeys(ctx, provider, gate, seedKeys)
 
 	groupsConfig, err := loadGroupsConfig(ctx)
 	if err != nil {
@@ -227,6 +258,13 @@ func run() error {
 		notifier = alerting.NewWebhookNotifier(5*time.Second, 3, webhookAllowCIDRs())
 	}
 
+	// CSRF origin policy, resolved before the router so a bad mode fails the
+	// boot instead of surfacing later as "every write 403s".
+	originCheck, err := originCheckMode()
+	if err != nil {
+		return err
+	}
+
 	// Hub is API-only: the UI is a separate deployable (its own nginx pod),
 	// reached single-origin via the gateway/ingress. See agent_docs/architecture.md.
 	mux := http.NewServeMux()
@@ -239,9 +277,12 @@ func run() error {
 		Modules:                         active,
 		GroupsConfig:                    groupsConfig,
 		AlertsConfig:                    alertsConfig,
+		SchemaStatus:                    gate.Status,
 		Notifier:                        notifier,
 		Auth:                            authSvc,
 		AnonymousIdentity:               anonID,
+		TrustedOrigins:                  trustedOrigins(),
+		OriginCheck:                     originCheck,
 		DemoEnabled:                     demoEnabled,
 		DemoEmail:                       demoEmail,
 		DemoPassword:                    demoPassword,
@@ -256,7 +297,7 @@ func run() error {
 	// The alerting evaluator is a single background loop (see runAlertingEvaluator);
 	// started only when the module is active.
 	if active.Enabled(modules.Alerting) {
-		go runAlertingEvaluator(ctx, provider, groupsConfig, alertsConfig, greenConfig, notifier, splitCSV(envOr("AVURUOBS_PROJECTS", "")), active)
+		go runAlertingEvaluator(ctx, provider, gate, groupsConfig, alertsConfig, greenConfig, notifier, splitCSV(envOr("AVURUOBS_PROJECTS", "")), active)
 	}
 
 	srv := &http.Server{
@@ -291,7 +332,11 @@ func run() error {
 // on signal endpoints until the store is up (and again if it never comes up).
 // The hub itself must start regardless — a ClickHouse outage is degraded
 // service, not a crash loop.
-func connectStore(ctx context.Context, cfg ch.Config) api.StoreProvider {
+//
+// Once connected it hands the store to the schema gate. Order matters: the
+// store is published to `current` FIRST, so serving behavior is unchanged and
+// the API never waits on a migration.
+func connectStore(ctx context.Context, cfg ch.Config, gate *schemaGate) api.StoreProvider {
 	var current atomic.Pointer[ch.Store]
 	go func() {
 		for {
@@ -299,6 +344,7 @@ func connectStore(ctx context.Context, cfg ch.Config) api.StoreProvider {
 			if err == nil {
 				current.Store(store)
 				slog.Info("clickhouse connected", "addr", cfg.Addr)
+				go gate.run(ctx, store)
 				return
 			}
 			slog.Warn("clickhouse unavailable, retrying in 5s", "addr", cfg.Addr, "error", err)
@@ -377,32 +423,28 @@ func authService(provider api.StoreProvider) (*auth.Service, *auth.Identity) {
 	return svc, anon
 }
 
-// bootstrapAdmin waits for the store, then ensures the admin user exists.
+// bootstrapAdmin waits for the schema, then ensures the admin user exists.
 // AVURUOBS_AUTH_ADMIN_PASSWORD empty → generate one and log it ONCE, only on
 // the attempt whose Bootstrap call actually created the admin (created==true
 // tells us that directly, so there's no separate pre-check to race against).
 // Helm always sets the password; the generated path is the bare-compose
 // convenience.
 //
-// svc.Bootstrap can fail transiently — e.g. ClickHouse is reachable but the
-// auth tables haven't been migrated yet (migrate runs as a separate
-// job/hook) — so this retries forever rather than giving up (connectStore's
-// degraded-not-crashed philosophy): every 5s for the first 2 minutes, then
-// every 60s. A one-time Error when crossing the 2-minute mark flags a likely
-// deploy bug; retries continue quietly (Warn per failure only) after that.
-func bootstrapAdmin(ctx context.Context, svc *auth.Service, provider api.StoreProvider) {
+// Waiting on the gate rather than merely on the store is what removes the
+// "Unknown table expression identifier 'auth_user'" flood: an unmigrated
+// database is the gate's problem to report and heal, not something to
+// rediscover here every 5s. Bootstrap can still fail transiently afterwards, so
+// the retry loop stays: every 5s for the first 2 minutes, then every 60s, with
+// a one-time Error at the crossover.
+func bootstrapAdmin(ctx context.Context, svc *auth.Service, gate *schemaGate) {
 	password := os.Getenv("AVURUOBS_AUTH_ADMIN_PASSWORD")
 	generated := password == ""
 	if generated {
 		password = auth.NewID()
 	}
 
-	for provider() == nil {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(2 * time.Second):
-		}
+	if !gate.wait(ctx) {
+		return
 	}
 
 	start := time.Now()
@@ -435,22 +477,25 @@ func bootstrapAdmin(ctx context.Context, svc *auth.Service, provider api.StorePr
 	}
 }
 
-// ensureDemoUser waits for the store, then idempotently ensures the demo viewer
-// exists. Retries every 5s until it succeeds (same degraded-not-crashed
-// philosophy as bootstrapAdmin); the table may not be migrated yet on first boot.
-func ensureDemoUser(ctx context.Context, svc *auth.Service, provider api.StoreProvider, email, password string) {
-	for provider() == nil {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(2 * time.Second):
-		}
+// ensureDemoUser waits for the schema, then idempotently ensures the demo
+// viewer exists. Retries every 5s until it succeeds (same degraded-not-crashed
+// philosophy as bootstrapAdmin), escalating to a one-time Error at 2 minutes so
+// a stuck demo bootstrap is as visible as a stuck admin one.
+func ensureDemoUser(ctx context.Context, svc *auth.Service, gate *schemaGate, email, password string) {
+	if !gate.wait(ctx) {
+		return
 	}
+	start := time.Now()
+	erroredOnce := false
 	for {
-		if err := svc.EnsureDemoUser(ctx, email, password); err == nil {
+		err := svc.EnsureDemoUser(ctx, email, password)
+		if err == nil {
 			return
-		} else {
-			slog.Warn("demo user bootstrap failed, retrying", "error", err)
+		}
+		slog.Warn("demo user bootstrap failed, retrying", "error", err)
+		if !erroredOnce && time.Since(start) >= 2*time.Minute {
+			slog.Error("demo user bootstrap still failing after 2 minutes — check ClickHouse/migration state", "error", err)
+			erroredOnce = true
 		}
 		select {
 		case <-ctx.Done():
@@ -458,6 +503,24 @@ func ensureDemoUser(ctx context.Context, svc *auth.Service, provider api.StorePr
 		case <-time.After(5 * time.Second):
 		}
 	}
+}
+
+// schemaAutoMigrate reads AVURUOBS_SCHEMA_AUTOMIGRATE. Fail-safe like
+// AVURUOBS_AUTH_ENABLED: only the exact string "false" opts out, so a typo
+// leaves self-healing ON rather than silently disarming the thing that keeps an
+// install serving. Operators turn it off when ClickHouse schema is owned
+// elsewhere (a DBA-managed external cluster, a query-only hub user).
+func schemaAutoMigrate() bool {
+	v := envOr("AVURUOBS_SCHEMA_AUTOMIGRATE", "true")
+	switch v {
+	case "false":
+		slog.Info("schema self-heal disabled — migrations must be applied by `hub migrate`")
+		return false
+	case "true":
+	default:
+		slog.Error("unrecognized AVURUOBS_SCHEMA_AUTOMIGRATE value, self-heal remains enabled", "value", v)
+	}
+	return true
 }
 
 func envOr(key, def string) string {
@@ -506,6 +569,36 @@ func collectionApplier(enabled bool) collection.Applier {
 	slog.Info("collection runtime control: cluster applier active",
 		"namespace", ns, "release", release, "fullname", fullname)
 	return &collection.K8sApplier{Client: client, Namespace: ns, ReleaseName: release, Fullname: fullname}
+}
+
+// originCheckMode reads AVURUOBS_AUTH_ORIGIN_CHECK (enforce | log | off).
+// Anything below enforce is announced at boot — a CSRF check that has been
+// disarmed must never be a silent one. A typo fails the boot rather than
+// quietly reverting to enforce: the install would then 403 every write while
+// believing it had lowered the check.
+func originCheckMode() (string, error) {
+	mode := envOr("AVURUOBS_AUTH_ORIGIN_CHECK", api.OriginCheckEnforce)
+	switch mode {
+	case api.OriginCheckEnforce:
+	case api.OriginCheckLog, api.OriginCheckOff:
+		slog.Warn("CSRF origin check lowered from enforce — auth.trustedOrigins is the narrow fix and keeps the check on",
+			"mode", mode)
+	default:
+		return "", fmt.Errorf("AVURUOBS_AUTH_ORIGIN_CHECK must be %q, %q or %q, got %q",
+			api.OriginCheckEnforce, api.OriginCheckLog, api.OriginCheckOff, mode)
+	}
+	return mode, nil
+}
+
+// trustedOrigins is the CSRF allowlist: AVURUOBS_AUTH_TRUSTED_ORIGINS, plus
+// AVURUOBS_PUBLIC_URL when set — an install that already declares its external
+// base URL (for the OIDC redirect) should not have to repeat it here.
+func trustedOrigins() []string {
+	list := splitCSV(envOr("AVURUOBS_AUTH_TRUSTED_ORIGINS", ""))
+	if pub := strings.TrimSpace(os.Getenv("AVURUOBS_PUBLIC_URL")); pub != "" {
+		list = append(list, pub)
+	}
+	return list
 }
 
 // splitCSV parses a comma-separated env value, trimming blanks (used for

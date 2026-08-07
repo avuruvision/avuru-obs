@@ -6,30 +6,40 @@ import { useAuth } from "@/hooks/use-auth";
 import { SystemStatus } from "./system-status";
 import { GeneralTab } from "./general-tab";
 import { CollectionSettings } from "./collection-settings";
+import { AccountTab } from "./account-tab";
 import { UsersPanel } from "./users-panel";
 
-const TABS = ["general", "collection", "status", "users"] as const;
+const TABS = ["general", "collection", "status", "account", "users"] as const;
 type Tab = (typeof TABS)[number];
 
 // Coroot-inspired settings: General (project), Collection (agents), Status
-// (instance), and Users (admin-only). Every tab swaps in place so the tab bar
-// stays put — "users" used to route to its own page, which made the whole bar
-// vanish. Tab state lives in the URL (?tab=) — shareable like everything else.
-// Requires a Suspense boundary in the page (useSearchParams).
+// (instance), Account (your own identity) and Users (admin-only). Every tab
+// swaps in place so the tab bar stays put — "users" used to route to its own
+// page, which made the whole bar vanish. Tab state lives in the URL (?tab=) —
+// shareable like everything else. Requires a Suspense boundary in the page
+// (useSearchParams).
 export function SettingsScreen() {
   const { get, setMany } = useURLState();
-  const { isAdmin } = useAuth();
-  // "users" is admin-only; anyone else requesting it falls back to general
-  // (matches the hub, which answers 403 on /api/v1/users to non-admins).
+  const { me, isAdmin } = useAuth();
+  // "account" needs a real session — it's self-service credential management,
+  // so the anonymous fallback (and auth-off, where /auth/me 404s and me stays
+  // null) has nothing to manage.
+  const signedIn = me !== null && !me.user.anonymous;
+  // "users" is admin-only; anyone else requesting either tab falls back to
+  // general (matches the hub, which answers 403 on /api/v1/users to non-admins).
   const requested = get("tab");
   const tab = (TABS.find(
-    (t) => t === requested && (t !== "users" || isAdmin),
+    (t) =>
+      t === requested &&
+      (t !== "users" || isAdmin) &&
+      (t !== "account" || signedIn),
   ) ?? "general") as Tab;
 
   const items: TabItem<Tab>[] = [
     { value: "general", label: "General" },
     { value: "collection", label: "Collection" },
     { value: "status", label: "Status" },
+    ...(signedIn ? [{ value: "account" as const, label: "Account" }] : []),
     ...(isAdmin ? [{ value: "users" as const, label: "Users" }] : []),
   ];
 
@@ -50,6 +60,7 @@ export function SettingsScreen() {
           <SystemStatus />
         </div>
       )}
+      {tab === "account" && <AccountTab />}
       {tab === "users" && <UsersPanel />}
     </div>
   );

@@ -40,7 +40,7 @@ func (a *API) handleAuthConfig(w http.ResponseWriter, _ *http.Request) error {
 // demo email + client IP).
 func (a *API) handleDemoLogin(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Cache-Control", "no-store")
-	if err := checkOrigin(r); err != nil {
+	if err := a.checkOrigin(r); err != nil {
 		return err
 	}
 	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
@@ -80,9 +80,13 @@ type loginRequest struct {
 
 type meResponse struct {
 	User struct {
-		ID        string `json:"id"`
-		Email     string `json:"email"`
-		Name      string `json:"name"`
+		ID    string `json:"id"`
+		Email string `json:"email"`
+		Name  string `json:"name"`
+		// Origin ("local" | "oidc"; empty for the anonymous identity) tells
+		// the SPA whether a password form applies at all — an SSO user's
+		// credential lives at the IdP, so the Account tab shows a note instead.
+		Origin    string `json:"origin"`
 		Anonymous bool   `json:"anonymous"`
 	} `json:"user"`
 	Grants []auth.Grant `json:"grants"`
@@ -92,7 +96,7 @@ func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) error {
 	// Credentialed/identity responses must never be cached (OWASP: a shared
 	// or misconfigured cache serving one user's session state to another).
 	w.Header().Set("Cache-Control", "no-store")
-	if err := checkOrigin(r); err != nil {
+	if err := a.checkOrigin(r); err != nil {
 		return err
 	}
 	// The one unauthenticated POST route — cap the body like the other
@@ -161,11 +165,100 @@ func (a *API) handleMe(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+type changePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword"`
+	NewPassword     string `json:"newPassword"`
+}
+
+// handleChangePassword is the self-service half of password management
+// (design/2026-08-06-users-crud-password.md): any signed-in local user
+// rotates their OWN password after proving they hold the current one. The
+// admin half lives in handleUpdateUser. Wrong-current answers 400, not 401 —
+// the SPA treats 401 as session-expired and would bounce the user to login
+// mid-form. Success rotates the session cookie in place.
+//
+// The rotated user is always the authenticated one: ChangePassword's userID
+// comes from the session identity and this request type carries no user
+// field, which is what its doc comment requires (a caller free to name any
+// user could enumerate accounts by status and by response time alike).
+//
+// CSRF is the authenticated() wrapper's job — it runs checkOrigin for every
+// route registered through it, so this handler does not repeat it (only
+// handleLogin does, being registered with bare handle()).
+func (a *API) handleChangePassword(w http.ResponseWriter, r *http.Request) error {
+	// Credentialed responses must never be cached (OWASP).
+	w.Header().Set("Cache-Control", "no-store")
+	id := identityFrom(r.Context())
+	if id == nil || id.Anonymous {
+		return unauthorized()
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<16)
+	var req changePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return decodeJSONError(err)
+	}
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		return badRequest("current and new password required")
+	}
+	// RemoteAddr for the limiter, same reasoning as handleLogin.
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	token, err := a.cfg.Auth.ChangePassword(r.Context(), id.UserID, req.CurrentPassword, req.NewPassword, ip)
+	switch {
+	case errors.Is(err, auth.ErrStoreUnavailable):
+		return errStoreUnavailable
+	case errors.Is(err, auth.ErrTooManyAttempts):
+		w.Header().Set("Retry-After", "60")
+		return &apiError{status: http.StatusTooManyRequests, message: "too many attempts, retry in a minute"}
+	case errors.Is(err, auth.ErrExternalPassword):
+		return badRequest("your password is managed by the identity provider")
+	case errors.Is(err, auth.ErrDemoUser):
+		return &apiError{status: http.StatusForbidden, message: "the shared demo account cannot change its password"}
+	// A caller error about the NEW password (bcrypt refuses >72 bytes; the
+	// auth layer also returns it for an empty one), so a 400 — never the 500
+	// an unmapped sentinel would fall through to. It must not share the
+	// wrong-current message either: that is the whole reason the sentinel
+	// exists, and the two send the user to different fields.
+	case errors.Is(err, auth.ErrPasswordUnusable):
+		return badRequest("that new password cannot be used (passwords are limited to 72 bytes)")
+	// Not strictly proof of a bad password — ChangePassword's pre-save re-read
+	// collapses a disabled/deleted/concurrently-reset row into this sentinel
+	// too — but by far the likeliest cause, so the copy states it without
+	// claiming certainty about anything else.
+	case errors.Is(err, auth.ErrInvalidCredentials):
+		return badRequest("current password is incorrect")
+	// Both of these mean the rotation LANDED. A generic 500 here would render
+	// as "internal error", which the user reads as "nothing changed" — they
+	// retry with the old password, fail, and believe they are locked out. The
+	// status stays 5xx (the server did fail at something) but the body has to
+	// tell the truth about the credential.
+	case errors.Is(err, auth.ErrRotatedSessionsLive):
+		return &apiError{status: http.StatusInternalServerError,
+			message: "your password was changed, but other sessions could not be signed out — sign out everywhere from another device if this was a security incident"}
+	case errors.Is(err, auth.ErrRotatedButSignedOut):
+		// The caller's own session was revoked before the mint failed, so the
+		// cookie they still hold is dead. Clear it rather than let the SPA send
+		// it once more and bounce off a 401 with no explanation.
+		clearSessionCookie(w, r)
+		return &apiError{status: http.StatusInternalServerError,
+			message: "your password was changed, but this session could not be renewed — sign in again with your new password"}
+	case err != nil:
+		return err
+	}
+	setSessionCookie(w, r, token, int(a.cfg.Auth.SessionTTL()/time.Second))
+	// The identity is the one the middleware resolved before the rotation —
+	// still accurate, since a password change moves nothing this response
+	// carries (id/email/name/origin/grants). The SPA re-renders its account
+	// state from it without a follow-up /auth/me.
+	writeJSON(w, http.StatusOK, meFrom(*id))
+	return nil
+}
+
 func meFrom(id auth.Identity) meResponse {
 	var resp meResponse
 	resp.User.ID = id.UserID
 	resp.User.Email = id.Email
 	resp.User.Name = id.Name
+	resp.User.Origin = id.Origin
 	resp.User.Anonymous = id.Anonymous
 	resp.Grants = id.Grants
 	if resp.Grants == nil {

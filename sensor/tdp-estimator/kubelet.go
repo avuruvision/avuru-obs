@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -95,6 +96,18 @@ func readServiceAccountToken() (string, error) {
 
 // kubeletBaseURL is the kubelet's HTTPS endpoint on this node — the same
 // host:port the otel-agent's kubeletstats receiver targets.
-func kubeletBaseURL(nodeName string) string {
-	return "https://" + nodeName + ":10250"
+func kubeletBaseURL(host string) string {
+	return "https://" + net.JoinHostPort(host, "10250")
+}
+
+// resolveKubeletHost picks the address fetchPods dials: the explicit
+// --kubelet-host (the node IP in the chart) when given, else the node name.
+// The name-based fallback only works where node hostnames resolve in the
+// pod's DNS — cluster DNS knows nothing of them on most bare-metal setups,
+// which is exactly why the chart passes the IP.
+func resolveKubeletHost(kubeletHost, nodeName string) string {
+	if kubeletHost != "" {
+		return kubeletHost
+	}
+	return nodeName
 }
