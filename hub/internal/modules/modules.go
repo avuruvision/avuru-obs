@@ -20,9 +20,12 @@ const (
 	InfraMetrics  Name = "infra-metrics"
 	Profiling     Name = "profiling"
 	ErrorTracking Name = "error-tracking"
-	// ServiceHealth is a derived module: it owns no schema/migration, rolling
-	// per-service RED health (core trace data) up into group health. Gating it
-	// off only removes the API routes + UI surface, never any ingestion weight.
+	// ServiceHealth rolls per-service RED health (core trace data) up into group
+	// health. It derives everything it displays, so gating it off removes the
+	// API routes + UI surface and never any ingestion weight. It owns exactly
+	// one table — service_group (0016), the UI-authored groups; chart-declared
+	// groups stay in the ConfigMap. Nothing else reads that table, so an install
+	// with the module off simply never creates it.
 	ServiceHealth Name = "service-health"
 	// Alerting watches service-health status and fires webhooks on transitions.
 	// It owns the alert_state/alert_history tables (0008) and is the hub's only

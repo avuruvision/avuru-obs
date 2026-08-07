@@ -45,6 +45,7 @@ var Ordered = []string{
 	"0013_auth_ingest_keys.sql",
 	"0014_collection_overlay.sql",
 	"0015_auth_user_deleted.sql",
+	"0016_service_groups.sql",
 }
 
 // ByModule tags each migration with the module(s) whose schema it owns; the
@@ -81,6 +82,10 @@ var ByModule = map[string][]modules.Name{
 	"0014_collection_overlay.sql": {modules.Core},
 	// Tombstone column on auth_user — auth gates everything, so core.
 	"0015_auth_user_deleted.sql": {modules.Core},
+	// service_group — UI-authored health groups. The only table the
+	// service-health module owns; with the module off nothing reads it, so it
+	// is never created.
+	"0016_service_groups.sql": {modules.ServiceHealth},
 }
 
 // Expected returns, in apply order, the versions that should exist on an
