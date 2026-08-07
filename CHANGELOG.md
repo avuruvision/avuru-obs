@@ -68,6 +68,24 @@ When a release is cut, that block is renamed to the version with its date.
   server will reject is the failure being fixed, so the fallback is never the
   form.
 
+### Security
+
+- **The green endpoints served any project's energy and carbon figures to an
+  unauthenticated caller.** `GET /api/v1/green/summary`, `/green/budgets` and
+  `/green/report` were registered with the bare handler wrapper instead of the
+  session middleware every other signal route uses. Nothing then put an identity
+  on the request — and the per-project scope check treats "no identity" as
+  "authentication is switched off", the branch that exists so an
+  `auth.enabled=false` install keeps working. So on an install with
+  authentication *on*, those three routes answered 200 with no session at all,
+  for any tenant named in the request header: per-service energy in watt-hours,
+  carbon in gCO2e, monthly budget usage, and the CSRD-ready report export. They are
+  read-only, so nothing could be changed through them, but the data itself is a
+  fair map of what an estate runs and how hard. All three now require the viewer
+  role and honour project grants, like every other signal. A test enumerates the
+  project-data routes and asserts each answers 401 without a session — the gap
+  survived precisely because nothing asserted over the whole set.
+
 ## [0.4.0] — 2026-08-07
 
 ### Added

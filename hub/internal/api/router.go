@@ -261,9 +261,9 @@ func Register(mux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("POST /api/v1/alerts/channels/{name}/test", a.securedAdmin(a.handleTestAlertChannel))
 	}
 	if active.Enabled(modules.Green) {
-		mux.Handle("GET /api/v1/green/summary", handle(a.handleGreenSummary))
-		mux.Handle("GET /api/v1/green/budgets", handle(a.handleGreenBudgets))
-		mux.Handle("GET /api/v1/green/report", handle(a.handleGreenReport))
+		mux.Handle("GET /api/v1/green/summary", a.secured(auth.RoleViewer, a.handleGreenSummary))
+		mux.Handle("GET /api/v1/green/budgets", a.secured(auth.RoleViewer, a.handleGreenBudgets))
+		mux.Handle("GET /api/v1/green/report", a.secured(auth.RoleViewer, a.handleGreenReport))
 	}
 }
 
