@@ -7,8 +7,8 @@
 -- separate path and also appear in the Logs explorer.
 -- The migrator strips `--` comments then splits on `;`; no `;` inside a
 -- statement, no `--` inside a string literal.
-CREATE MATERIALIZED VIEW IF NOT EXISTS otel.error_events_from_logs_mv
-TO otel.error_events
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.error_events_from_logs_mv
+TO {db}.error_events
 AS
 SELECT
     Timestamp,
@@ -31,5 +31,5 @@ SELECT
     LogAttributes['sentry.sdk.name'] AS SdkName,
     LogAttributes['sentry.sdk.version'] AS SdkVersion,
     LogAttributes AS Attributes
-FROM otel.otel_logs
+FROM {db}.otel_logs
 WHERE SeverityNumber >= 17;

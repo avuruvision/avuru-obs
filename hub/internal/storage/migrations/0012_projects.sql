@@ -3,7 +3,7 @@
 -- telemetry); Label is the editable display name; Members is the multi-cluster
 -- aggregate set (empty until Phase 3). Delete is a tombstone. Same
 -- ReplacingMergeTree + FINAL + tombstone pattern as auth_grant / alert_channel.
-CREATE TABLE IF NOT EXISTS otel.project
+CREATE TABLE IF NOT EXISTS {db}.project
 (
     `Id`        String,
     `Label`     String,

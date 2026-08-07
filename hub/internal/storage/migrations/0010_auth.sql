@@ -4,7 +4,7 @@
 -- key; deletes are tombstones so FINAL supersedes live rows without mutations.
 -- Email uniqueness is enforced at the application layer (tables are tiny).
 -- Note: auth_user has no Deleted column — users are disabled (Disabled=1), never hard-deleted, per the AEP.
-CREATE TABLE IF NOT EXISTS otel.auth_user
+CREATE TABLE IF NOT EXISTS {db}.auth_user
 (
     `Id` String,
     `Email` String,
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS otel.auth_user
 ENGINE = ReplacingMergeTree(UpdatedAt)
 ORDER BY (Id);
 
-CREATE TABLE IF NOT EXISTS otel.auth_grant
+CREATE TABLE IF NOT EXISTS {db}.auth_grant
 (
     `UserId` String,
     `Scope` String,
@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS otel.auth_grant
 ENGINE = ReplacingMergeTree(UpdatedAt)
 ORDER BY (UserId, Scope);
 
-CREATE TABLE IF NOT EXISTS otel.auth_session
+CREATE TABLE IF NOT EXISTS {db}.auth_session
 (
     `TokenHash` String,
     `UserId` String,

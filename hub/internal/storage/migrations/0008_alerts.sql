@@ -7,7 +7,7 @@
 -- Current state per rule×target. ReplacingMergeTree keeps the newest row
 -- (largest UpdatedAt) — the same mutable-state pattern as error_issue_status.
 -- The evaluator loads this each tick, computes transitions, and writes back.
-CREATE TABLE IF NOT EXISTS otel.alert_state
+CREATE TABLE IF NOT EXISTS {db}.alert_state
 (
     `Tenant` LowCardinality(String),
     `RuleName` String,
@@ -21,7 +21,7 @@ ENGINE = ReplacingMergeTree(UpdatedAt)
 ORDER BY (Tenant, RuleName, Target);
 
 -- Append-only fire/resolve log for the Alerts UI timeline.
-CREATE TABLE IF NOT EXISTS otel.alert_history
+CREATE TABLE IF NOT EXISTS {db}.alert_history
 (
     `Tenant` LowCardinality(String),
     `RuleName` String,

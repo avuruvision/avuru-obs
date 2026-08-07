@@ -147,6 +147,25 @@ sleep 2
 echo "==> asserting the <5-min zero-code wedge via the hub API"
 ( cd e2e && "$E2E_BIN" -test.v -test.timeout 15m -test.run 'TestWedge' )
 
+echo "==> asserting the hub sees a complete schema"
+# The migrate Job is a post-* hook, so a timed-out `helm --wait` skips it and
+# leaves every table missing while the pods look healthy. The hub repairs that
+# itself; either way it must end up reporting the schema ready.
+SCHEMA_DEADLINE=$(( $(date +%s) + 120 ))
+while :; do
+  if kubectl -n "$NS" logs deploy/avuruobs-hub --tail=-1 2>/dev/null | grep -q 'clickhouse schema ready'; then
+    echo "    hub reports the schema ready"
+    break
+  fi
+  if [ "$(date +%s)" -ge "$SCHEMA_DEADLINE" ]; then
+    echo "hub never reported 'clickhouse schema ready' within 120s"
+    kubectl -n "$NS" logs deploy/avuruobs-hub --tail=40 || true
+    kubectl -n "$NS" logs job/avuruobs-migrate --tail=40 || true
+    exit 1
+  fi
+  sleep 5
+done
+
 echo "==> waiting for the remaining deployables + migrate hook"
 kubectl -n "$NS" rollout status deploy/avuruobs-ui --timeout=180s
 kubectl -n "$NS" rollout status deploy/avuruobs-gateway --timeout=180s

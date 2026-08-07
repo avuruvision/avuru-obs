@@ -3,7 +3,7 @@
 -- only its SHA-256 hex is stored. Prefix is the key's first 12 chars, kept in
 -- clear for UI identification ("avuruk_ab12…"). Revocation is a tombstone. Same
 -- ReplacingMergeTree + FINAL + tombstone pattern as auth_grant / project.
-CREATE TABLE IF NOT EXISTS otel.auth_ingest_key
+CREATE TABLE IF NOT EXISTS {db}.auth_ingest_key
 (
     `KeyHash`   String,
     `Project`   String,

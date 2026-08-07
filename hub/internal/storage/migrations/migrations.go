@@ -3,13 +3,24 @@
 // (see agent_docs/architecture.md and the M2 design spec). Retention/TTL for
 // signal data is NOT in these files — it is applied env-driven by the migrator;
 // fixed housekeeping TTLs (e.g. session GC in 0010) are the deliberate exception.
+//
+// The .sql files never name a database: they write {db}, which Statements
+// substitutes with the configured one. They used to hardcode `otel.`, which
+// silently broke every install that set a different database name — the DDL
+// landed in `otel` while the hub queried the configured database and saw an
+// empty schema.
 package migrations
 
 import (
 	"embed"
+	"strings"
 
 	"github.com/avuru/avuru-obs/hub/internal/modules"
 )
+
+// DatabasePlaceholder is the token the .sql files use wherever the telemetry
+// database is named. Enforced by TestNoHardcodedDatabase.
+const DatabasePlaceholder = "{db}"
 
 // FS holds the versioned .sql migrations.
 //
@@ -70,4 +81,63 @@ var ByModule = map[string][]modules.Name{
 	"0014_collection_overlay.sql": {modules.Core},
 	// Tombstone column on auth_user — auth gates everything, so core.
 	"0015_auth_user_deleted.sql": {modules.Core},
+}
+
+// Expected returns, in apply order, the versions that should exist on an
+// install running exactly this module set. It is the single definition of
+// "what belongs here": the migrator applies it, and the readiness check
+// compares the ledger against it. A nil set means every module.
+func Expected(active modules.Set) []string {
+	if active == nil {
+		active = modules.AllSet()
+	}
+	out := make([]string, 0, len(Ordered))
+	for _, version := range Ordered {
+		// Apply only when ALL the migration's modules are active. Untagged
+		// migrations belong everywhere (belt and braces — TestByModuleCoversOrdered
+		// enforces full tagging).
+		if mods, ok := ByModule[version]; ok && !allEnabled(active, mods) {
+			continue
+		}
+		out = append(out, version)
+	}
+	return out
+}
+
+// allEnabled reports whether every module in mods is active.
+func allEnabled(active modules.Set, mods []modules.Name) bool {
+	for _, m := range mods {
+		if !active.Enabled(m) {
+			return false
+		}
+	}
+	return true
+}
+
+// Statements breaks a migration body into individual statements on ';' and
+// resolves DatabasePlaceholder to db. Line (`--`) comments are stripped FIRST
+// so a ';' inside a comment can't split a statement (our DDL has no '--' or
+// ';' inside string literals).
+//
+// db is interpolated straight into DDL — callers must have validated it as an
+// identifier (cmd/hub does, at config load).
+func Statements(body, db string) []string {
+	var stripped strings.Builder
+	for _, line := range strings.Split(body, "\n") {
+		if i := strings.Index(line, "--"); i >= 0 {
+			line = line[:i]
+		}
+		stripped.WriteString(line)
+		stripped.WriteByte('\n')
+	}
+
+	var out []string
+	for _, chunk := range strings.Split(stripped.String(), ";") {
+		chunk = strings.TrimSpace(chunk)
+		if chunk == "" {
+			continue
+		}
+		out = append(out, strings.ReplaceAll(chunk, DatabasePlaceholder, db))
+	}
+	return out
 }

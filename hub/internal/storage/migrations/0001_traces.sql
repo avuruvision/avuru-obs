@@ -6,9 +6,7 @@
 -- the exporter insert and rely on DEFAULT.
 -- Retention (TTL) is applied separately by `hub migrate` ApplyRetention
 -- (env-driven), so it is NOT declared here.
-CREATE DATABASE IF NOT EXISTS otel;
-
-CREATE TABLE IF NOT EXISTS otel.otel_traces
+CREATE TABLE IF NOT EXISTS {db}.otel_traces
 (
     `Timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
     `TraceId` String CODEC(ZSTD(1)),
@@ -51,7 +49,7 @@ ORDER BY (Tenant, ServiceName, SpanName, toDateTime(Timestamp))
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 
 -- TraceId -> time range lookup (exporter companion table, verbatim).
-CREATE TABLE IF NOT EXISTS otel.otel_traces_trace_id_ts
+CREATE TABLE IF NOT EXISTS {db}.otel_traces_trace_id_ts
 (
     `TraceId` String CODEC(ZSTD(1)),
     `Start` DateTime CODEC(Delta(4), ZSTD(1)),
@@ -63,12 +61,12 @@ PARTITION BY toDate(Start)
 ORDER BY (TraceId, Start)
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS otel.otel_traces_trace_id_ts_mv
-TO otel.otel_traces_trace_id_ts
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.otel_traces_trace_id_ts_mv
+TO {db}.otel_traces_trace_id_ts
 AS SELECT
     TraceId,
     min(Timestamp) AS Start,
     max(Timestamp) AS End
-FROM otel.otel_traces
+FROM {db}.otel_traces
 WHERE TraceId != ''
 GROUP BY TraceId;

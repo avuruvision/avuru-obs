@@ -15,7 +15,10 @@ Open the UI (separate static deployable; single-origin /api -> hub via ingress):
 {{- end }}
 
 Schema migrations run automatically via the `{{ include "avuruobs.fullname" . }}-migrate`
-hook (post-install / post-upgrade). Retention: traces {{ .Values.retention.traces }}d, logs {{ .Values.retention.logs }}d.
+hook (post-install / post-upgrade){{ if .Values.hub.autoMigrate }}, and the hub repairs the schema itself if
+that hook is ever skipped (a timed-out `--wait` does exactly that){{ end }}. Confirm with:
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "avuruobs.fullname" . }}-hub | grep 'clickhouse schema ready'
+Retention: traces {{ .Values.retention.traces }}d, logs {{ .Values.retention.logs }}d.
 {{- if include "avuruobs.sentryEnabled" . }}
 
 Sentry SDK ingest: ENABLED. Point an existing SDK here by changing only its DSN
