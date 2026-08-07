@@ -11,6 +11,8 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-07
+
 ### Added
 
 - **Full user management from the UI.** Settings → Users now edits a user's
@@ -539,7 +541,8 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
 
 <!--
 Release links:
-[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/avuruvision/avuru-obs/compare/v0.3.1...v0.4.0
 [0.3.0]: https://github.com/avuruvision/avuru-obs/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/avuruvision/avuru-obs/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/avuruvision/avuru-obs/releases/tag/v0.1.0
