@@ -25,3 +25,14 @@ export function useModuleEnabled(module: ModuleName): boolean {
   const { data } = useCapabilities();
   return data ? data.modules.includes(module) : true;
 }
+
+// Whether the runtime collection control plane is live (chart flag
+// collection.runtimeControl.enabled). The default while UNKNOWN is the
+// opposite of useModuleEnabled's: writable switches must not appear unless
+// the hub says the overlay routes exist — guessing "show" would render
+// controls whose every save 404s, while guessing "hide" just leaves the
+// read-only page every install had before the flag.
+export function useCollectionRuntimeControl(): boolean {
+  const { data } = useCapabilities();
+  return data?.collectionRuntimeControl ?? false;
+}

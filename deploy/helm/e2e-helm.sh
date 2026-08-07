@@ -136,7 +136,8 @@ helm install avuruobs deploy/helm/avuruobs -n "$NS" --create-namespace \
   --set sensor.green.fakeCpuMeter=true \
   --set sensor.green.estimation.enabled=true \
   --set sensor.green.estimation.image.repository=avuru-obs-tdp-estimator \
-  --set sensor.green.estimation.image.tag=local
+  --set sensor.green.estimation.image.tag=local \
+  --set collection.runtimeControl.enabled=true
 
 echo "==> waiting for the hub to answer (inside the wedge clock)"
 kubectl -n "$NS" wait --for=condition=Available deploy/avuruobs-hub --timeout=240s
@@ -295,5 +296,82 @@ if [ "$CANARY_READY" != "True" ] || [ "$CANARY_RESTARTS" != "0" ]; then
   exit 1
 fi
 echo "    probe-canary survived: same pod, Ready, 0 restarts through the soak with the sensor attached"
+
+# COLLECTION RUNTIME CONTROL (design/2026-07-27-collection-control-plane.md).
+# The applier is the one half of this feature that cannot be tested without a
+# cluster: it Updates the sensor ConfigMaps through client-go under a Role
+# scoped by resourceNames, and patches a HUB-OWNED annotation onto the
+# DaemonSet pod template to force the rollout. Unit tests use a fake clientset,
+# so until here nothing had proven the RBAC is sufficient or that the patch
+# shape Kubernetes accepts is the one we send.
+#
+# Runs LAST on purpose: a successful apply deliberately rolls the sensor
+# DaemonSet, which would invalidate the soak and canary gates above. Everything
+# before this point ran with the flag ON and the overlay EMPTY, which is itself
+# the assertion that enabling runtime control changes nothing until used.
+echo "==> COLLECTION RUNTIME CONTROL: applying an overlay through the hub API"
+COOKIES="$(mktemp -t avuru-e2e-cookies.XXXXXX)"
+login_code=$(curl -s -o /dev/null -w "%{http_code}" -c "$COOKIES" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin","password":"e2e-admin-pw"}' \
+  "${AVURUOBS_E2E_HUB_URL}/api/v1/auth/login")
+[ "$login_code" = "200" ] || { echo "admin login for the overlay write failed (HTTP $login_code)"; exit 1; }
+
+# excludeNamespaces rather than a signal toggle: it changes OBI's ConfigMap
+# content observably without switching a signal off, so a failure here is
+# unambiguously the applier and not a knock-on from losing collection.
+PROBE_NS=e2e-overlay-probe
+CHECKSUM_BEFORE=$(kubectl -n "$NS" get ds avuruobs-sensor \
+  -o jsonpath='{.spec.template.metadata.annotations.avuru\.obs/overlay-checksum}' 2>/dev/null || true)
+put_code=$(curl -s -o /dev/null -w "%{http_code}" -b "$COOKIES" -X PUT \
+  -H 'Content-Type: application/json' \
+  -d "{\"excludeNamespaces\":[\"kube-system\",\"kube-node-lease\",\"kube-public\",\"${NS}\",\"${PROBE_NS}\"]}" \
+  "${AVURUOBS_E2E_HUB_URL}/api/v1/collection/overlay")
+[ "$put_code" = "200" ] || { echo "overlay PUT failed (HTTP $put_code)"; kubectl -n "$NS" logs deploy/avuruobs-hub --tail=40; exit 1; }
+
+# The write is synchronous with the apply (collectionMu serializes save+apply),
+# so the ConfigMap is expected to be current the moment the PUT returns. Poll
+# briefly anyway rather than racing the API server's read-after-write.
+APPLY_DEADLINE=$(( $(date +%s) + 60 ))
+while :; do
+  obi_cm=$(kubectl -n "$NS" get cm avuruobs-sensor-obi -o jsonpath='{.data}' 2>/dev/null || true)
+  checksum_after=$(kubectl -n "$NS" get ds avuruobs-sensor \
+    -o jsonpath='{.spec.template.metadata.annotations.avuru\.obs/overlay-checksum}' 2>/dev/null || true)
+  if grep -q "$PROBE_NS" <<<"$obi_cm" && [ -n "$checksum_after" ] && [ "$checksum_after" != "$CHECKSUM_BEFORE" ]; then
+    echo "    overlay reached the cluster: OBI ConfigMap excludes $PROBE_NS; DaemonSet checksum ${checksum_after:0:12}…"
+    break
+  fi
+  if [ "$(date +%s)" -ge "$APPLY_DEADLINE" ]; then
+    echo "COLLECTION RUNTIME CONTROL: overlay saved but never reached the cluster within 60s"
+    echo "  (a 200 from the API with no ConfigMap change is the NoopApplier fallback —"
+    echo "   missing release-identity env, or RBAC the Role does not actually grant)"
+    kubectl -n "$NS" logs deploy/avuruobs-hub --tail=40 || true
+    kubectl -n "$NS" get cm avuruobs-sensor-obi -o yaml | head -40 || true
+    exit 1
+  fi
+  sleep 3
+done
+
+# Reset must reconcile back, not merely forget: the ConfigMap has to lose the
+# probe namespace again. A DELETE that only clears the stored row would leave
+# the cluster diverged from what the UI then reports.
+del_code=$(curl -s -o /dev/null -w "%{http_code}" -b "$COOKIES" -X DELETE \
+  "${AVURUOBS_E2E_HUB_URL}/api/v1/collection/overlay")
+[ "$del_code" = "200" ] || [ "$del_code" = "204" ] || { echo "overlay DELETE failed (HTTP $del_code)"; exit 1; }
+RESET_DEADLINE=$(( $(date +%s) + 60 ))
+while :; do
+  obi_cm=$(kubectl -n "$NS" get cm avuruobs-sensor-obi -o jsonpath='{.data}' 2>/dev/null || true)
+  if ! grep -q "$PROBE_NS" <<<"$obi_cm"; then
+    echo "    reset reconciled: OBI ConfigMap back to chart defaults"
+    break
+  fi
+  if [ "$(date +%s)" -ge "$RESET_DEADLINE" ]; then
+    echo "COLLECTION RUNTIME CONTROL: reset did not reconcile the cluster within 60s"
+    kubectl -n "$NS" logs deploy/avuruobs-hub --tail=40 || true
+    exit 1
+  fi
+  sleep 3
+done
+rm -f "$COOKIES"
 
 rm -f "$E2E_BIN" "$SEED_BIN"

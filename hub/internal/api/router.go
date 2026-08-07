@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"github.com/avuru/avuru-obs/hub/internal/alerting"
 	"github.com/avuru/avuru-obs/hub/internal/auth"
@@ -113,6 +114,15 @@ type API struct {
 	modules           modules.Set
 	tenants           tenantCache
 	collectionApplier collection.Applier
+	// collectionMu guards the save→apply pair on the overlay routes so the
+	// last write to reach storage is also the last one applied to the
+	// cluster. Without it two concurrent admin writes can interleave between
+	// the two steps and leave storage saying B while the sensors run A (and
+	// the losing apply 502s on a ConfigMap conflict for good measure).
+	// Process-local, and enough for the same reason the alerting evaluator's
+	// single-loop assumption is: hub replicas default to 1 (HA needs leader
+	// election, which is v2).
+	collectionMu sync.Mutex
 }
 
 // store resolves the current backend or fails with 503.

@@ -76,6 +76,21 @@ spec:
                    below — the collection routes are gated on this flag alone. */}}
             - name: AVURUOBS_COLLECTION_RUNTIME_CONTROL_ENABLED
               value: {{ .Values.collection.runtimeControl.enabled | quote }}
+            {{- /* Identity the applier needs to address its own objects: the
+                   namespace it runs in (downward API — never guessed), the
+                   release name, and the fullname prefix every sensor object
+                   carries. Gated on the flag: without runtime control nothing
+                   reads them. */}}
+            {{- if .Values.collection.runtimeControl.enabled }}
+            - name: AVURUOBS_RELEASE_NAME
+              value: {{ .Release.Name | quote }}
+            - name: AVURUOBS_RELEASE_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: AVURUOBS_COLLECTION_FULLNAME
+              value: {{ include "avuruobs.fullname" . | quote }}
+            {{- end }}
             {{- if .Values.auth.enabled }}
             - name: AVURUOBS_AUTH_ADMIN_PASSWORD
               valueFrom:

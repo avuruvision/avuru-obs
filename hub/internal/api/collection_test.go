@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/collection"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
@@ -17,8 +21,17 @@ import (
 // nil (auth disabled), which is how every other admin-route test in this
 // package reaches a securedAdmin handler.
 func collectionMux(fake *storagetest.Fake) *http.ServeMux {
+	return collectionMuxWith(fake, nil)
+}
+
+// collectionMuxWith is collectionMux with a caller-supplied applier (nil →
+// Register's NoopApplier default).
+func collectionMuxWith(fake *storagetest.Fake, applier collection.Applier) *http.ServeMux {
 	mux := http.NewServeMux()
-	Register(mux, func() storage.Store { return fake }, Config{CollectionRuntimeControlEnabled: true})
+	Register(mux, func() storage.Store { return fake }, Config{
+		CollectionRuntimeControlEnabled: true,
+		CollectionApplier:               applier,
+	})
 	return mux
 }
 
@@ -139,11 +152,7 @@ func (failingApplier) Apply(context.Context, collection.Overlay) error {
 // apply, which is why the status is a gateway error and not a 500.
 func TestCollectionOverlayPutApplierFailure(t *testing.T) {
 	fake := &storagetest.Fake{}
-	mux := http.NewServeMux()
-	Register(mux, func() storage.Store { return fake }, Config{
-		CollectionRuntimeControlEnabled: true,
-		CollectionApplier:               failingApplier{},
-	})
+	mux := collectionMuxWith(fake, failingApplier{})
 
 	rec := do(t, mux, http.MethodPut, "/api/v1/collection/overlay", `{"obiEnabled":false}`)
 	if rec.Code != http.StatusBadGateway {
@@ -151,5 +160,160 @@ func TestCollectionOverlayPutApplierFailure(t *testing.T) {
 	}
 	if len(fake.SavedOverlays) != 1 {
 		t.Errorf("SavedOverlays = %d, want the overlay persisted despite the apply failure", len(fake.SavedOverlays))
+	}
+}
+
+// recordingApplier is a cluster stand-in that remembers the order overlays
+// reached it. The sleep widens the window between the store write and this
+// record — the exact window two concurrent PUTs would interleave in.
+type recordingApplier struct {
+	mu      sync.Mutex
+	applied []collection.Overlay
+}
+
+func (r *recordingApplier) Apply(_ context.Context, ov collection.Overlay) error {
+	time.Sleep(time.Millisecond)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.applied = append(r.applied, ov)
+	return nil
+}
+
+func (r *recordingApplier) last() (collection.Overlay, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.applied) == 0 {
+		return collection.Overlay{}, false
+	}
+	return r.applied[len(r.applied)-1], true
+}
+
+// TestCollectionOverlayConcurrentPutsConverge: whichever PUT wins the race,
+// storage and the cluster must agree afterwards. Without the save→apply lock
+// two writes interleave (save A, save B, apply B, apply A) and the sensors end
+// up running an overlay the API no longer reports — the worst failure this
+// endpoint has, since "collection is off" would be a lie. Run under -race.
+func TestCollectionOverlayConcurrentPutsConverge(t *testing.T) {
+	const n = 8
+	fake := &storagetest.Fake{}
+	applier := &recordingApplier{}
+	mux := collectionMuxWith(fake, applier)
+
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			body := fmt.Sprintf(`{"excludeNamespaces":["ns-%d"]}`, i)
+			req := httptest.NewRequest(http.MethodPut, "/api/v1/collection/overlay", strings.NewReader(body))
+			mux.ServeHTTP(httptest.NewRecorder(), req)
+		}(i)
+	}
+	wg.Wait()
+
+	if len(fake.SavedOverlays) != n {
+		t.Fatalf("saved %d overlays, want %d", len(fake.SavedOverlays), n)
+	}
+	appliedLast, ok := applier.last()
+	if !ok {
+		t.Fatal("no overlay reached the applier")
+	}
+	encoded, err := appliedLast.Encode()
+	if err != nil {
+		t.Fatalf("encode last applied overlay: %v", err)
+	}
+	if stored := fake.SavedOverlays[len(fake.SavedOverlays)-1].Overlay; stored != encoded {
+		t.Fatalf("storage and cluster diverged: stored %s, last applied %s", stored, encoded)
+	}
+}
+
+// effectiveApplier is an applier that can also report an effective config —
+// the shape the real K8sApplier has.
+type effectiveApplier struct {
+	collection.NoopApplier
+}
+
+func (effectiveApplier) Effective(_ context.Context, ov collection.Overlay) (collection.Effective, error) {
+	eff := collection.Effective{Obi: true, ExcludeNamespaces: []string{"kube-system"}}
+	if ov.LogsEnabled == nil || *ov.LogsEnabled {
+		eff.Logs = true
+	}
+	return eff, nil
+}
+
+// TestCollectionOverlayGetIncludesEffective: the overlay alone does not tell an
+// admin what is being collected (a signal can be off because its module is off
+// at install time). The GET carries the resolved state when the applier can
+// report one.
+func TestCollectionOverlayGetIncludesEffective(t *testing.T) {
+	fake := &storagetest.Fake{
+		Overlay:    storage.CollectionOverlay{Overlay: `{"logsEnabled":false}`, UpdatedBy: "admin@example.com"},
+		OverlaySet: true,
+	}
+	rec := get(t, collectionMuxWith(fake, effectiveApplier{}), "/api/v1/collection/overlay")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	resp := decodeOverlay(t, rec.Body.String())
+	if resp.Effective == nil {
+		t.Fatalf("no effective config in the response: %s", rec.Body.String())
+	}
+	if resp.Effective.Logs {
+		t.Errorf("effective config ignored the stored overlay: %s", rec.Body.String())
+	}
+	if !resp.Effective.Obi {
+		t.Errorf("effective config lost the applier's answer: %s", rec.Body.String())
+	}
+}
+
+// The unset case still resolves: chart defaults are exactly what an install
+// with no overlay collects.
+func TestCollectionOverlayGetUnsetIncludesEffective(t *testing.T) {
+	rec := get(t, collectionMuxWith(&storagetest.Fake{}, effectiveApplier{}), "/api/v1/collection/overlay")
+	resp := decodeOverlay(t, rec.Body.String())
+	if resp.Effective == nil || !resp.Effective.Logs {
+		t.Fatalf("no effective config for an install with no overlay: %s", rec.Body.String())
+	}
+}
+
+// TestCollectionOverlayGetOmitsEffectiveWithoutReporter: with no cluster to
+// read base values from, the key is ABSENT — a false-filled Effective would
+// read as "nothing is being collected", which is a very different claim.
+func TestCollectionOverlayGetOmitsEffectiveWithoutReporter(t *testing.T) {
+	rec := get(t, collectionMuxWith(&storagetest.Fake{}, collection.NoopApplier{}), "/api/v1/collection/overlay")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), `"effective"`) {
+		t.Errorf("effective reported without an applier that can resolve it: %s", rec.Body.String())
+	}
+}
+
+// failingEffective is a reachable-but-broken cluster: the overlay read must
+// still succeed, because the stored overlay is what an admin cannot get
+// anywhere else.
+type failingEffective struct {
+	collection.NoopApplier
+}
+
+func (failingEffective) Effective(context.Context, collection.Overlay) (collection.Effective, error) {
+	return collection.Effective{}, errors.New("cluster unreachable")
+}
+
+func TestCollectionOverlayGetSurvivesEffectiveFailure(t *testing.T) {
+	fake := &storagetest.Fake{
+		Overlay:    storage.CollectionOverlay{Overlay: `{"obiEnabled":false}`},
+		OverlaySet: true,
+	}
+	rec := get(t, collectionMuxWith(fake, failingEffective{}), "/api/v1/collection/overlay")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, want the overlay served anyway: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), `"effective"`) {
+		t.Errorf("a failed resolve was reported as a config: %s", rec.Body.String())
+	}
+	resp := decodeOverlay(t, rec.Body.String())
+	if resp.Overlay.ObiEnabled == nil || *resp.Overlay.ObiEnabled {
+		t.Errorf("stored overlay lost: %s", rec.Body.String())
 	}
 }

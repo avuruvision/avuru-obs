@@ -1,0 +1,45 @@
+apiVersion: v2
+name: avuruobs
+description: Avuru Obs — all-in-one observability on ClickHouse. Zero-code eBPF traces, RED metrics, logs, continuous profiling and error tracking behind one OTLP endpoint.
+type: application
+# Chart version (SemVer); appVersion tracks the hub/gateway image generation.
+# Both are stamped by `make version-set V=x.y.z` (RELEASING.md) — do not hand-edit.
+version: 0.5.0-SNAPSHOT
+appVersion: "0.5.0-SNAPSHOT"
+home: https://github.com/avuruvision/avuru-obs
+sources:
+  - https://github.com/avuruvision/avuru-obs
+keywords:
+  - observability
+  - opentelemetry
+  - tracing
+  - logs
+  - clickhouse
+  - ebpf
+  - profiling
+  - error-tracking
+maintainers:
+  - name: Berny
+    email: egilberny@lab.luxavuru.com
+    url: https://github.com/egilberny
+annotations:
+  artifacthub.io/license: AGPL-3.0-only
+  artifacthub.io/links: |
+    - name: source
+      url: https://github.com/avuruvision/avuru-obs
+    - name: documentation
+      url: https://github.com/avuruvision/avuru-obs/blob/main/deploy/helm/README.md
+    - name: support
+      url: https://github.com/avuruvision/avuru-obs/issues
+  # Listed so the registry can render a security report for what we actually
+  # build. Upstream runtime images (collector, ClickHouse, OBI, profiler) are
+  # pinned in values.yaml and are not ours to sign.
+  artifacthub.io/images: |
+    - name: hub
+      image: ghcr.io/avuruvision/avuru-obs-hub:0.5.0-SNAPSHOT
+    - name: ui
+      image: ghcr.io/avuruvision/avuru-obs-ui:0.5.0-SNAPSHOT
+    - name: gateway
+      image: ghcr.io/avuruvision/avuru-obs-gateway:0.5.0-SNAPSHOT
+    - name: tdp-estimator
+      image: ghcr.io/avuruvision/avuru-obs-tdp-estimator:0.5.0-SNAPSHOT

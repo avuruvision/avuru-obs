@@ -13,6 +13,29 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **Turn signals on and off from the UI, without a redeploy.** Settings →
+  Collection becomes writable: an admin switches OBI traces, logs,
+  infra-metrics, profiling or energy collection on or off, and edits the
+  excluded-namespace list, and the sensor picks the change up in seconds. Until
+  now every one of those decisions meant editing `values.yaml`, running `helm
+  upgrade`, and holding the cluster permissions to do it — so in practice
+  collection was whatever it was at install time. The screen also reports the
+  *effective* configuration (chart values with your overlay applied), so what
+  it shows is what the sensor is actually doing, and "reset to defaults" puts
+  the cluster back to exactly what the chart declares.
+
+  Off by default (`collection.runtimeControl.enabled`): opting in grants the
+  hub a deliberately narrow Role — `get/update/patch` on its own four named
+  sensor ConfigMaps and `get/patch` on the named sensor DaemonSet, in its own
+  namespace, and nothing else. The hub patches its own annotation to roll the
+  DaemonSet, leaving Helm's ownership untouched, so a later `helm upgrade`
+  behaves normally. With the flag off, nothing changes and no extra permissions
+  are granted.
+
+  Proven end to end against a real cluster: the Helm smoke gate now writes an
+  overlay through the API, asserts it reaches the sensor ConfigMaps and rolls
+  the DaemonSet, then resets and asserts the cluster reconciles back.
+
 - **Find a pod on the Nodes screen.** Both tables now sort by any column, and
   both filter — nodes by name, pods by name, namespace or workload, with a
   namespace picker that appears once there is more than one namespace to choose

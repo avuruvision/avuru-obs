@@ -17,6 +17,10 @@ export type ModuleName =
 export interface CapabilitiesResponse {
   version: string;
   modules: ModuleName[];
+  // Whether /api/v1/collection/overlay is live (chart flag
+  // collection.runtimeControl.enabled). Absent on hubs predating the flag —
+  // treat as false.
+  collectionRuntimeControl?: boolean;
 }
 
 export interface ServiceStats {
@@ -650,4 +654,36 @@ export interface GreenBudget {
 export interface GreenBudgetsResponse {
   window: { start: string; end: string };
   budgets: GreenBudget[];
+}
+
+// Runtime collection overlay (design/2026-07-27-collection-control-plane.md).
+// Mirrors hub/internal/collection.Overlay: an absent field means "not
+// overridden — the chart's base value applies", never "off".
+export interface CollectionOverlay {
+  obiEnabled?: boolean;
+  logsEnabled?: boolean;
+  kubeletstatsEnabled?: boolean;
+  profilerEnabled?: boolean;
+  greenEnabled?: boolean;
+  excludeNamespaces?: string[];
+}
+
+// The resolved base ⊕ overlay state — what the sensor actually collects.
+export interface CollectionEffective {
+  obi: boolean;
+  logs: boolean;
+  kubeletstats: boolean;
+  profiler: boolean;
+  green: boolean;
+  excludeNamespaces: string[];
+}
+
+export interface CollectionOverlayResponse {
+  overlay: CollectionOverlay;
+  // Absent when the hub has no in-cluster applier to resolve it (or the
+  // cluster read failed). Absent means "unknown here" — the UI must not
+  // render that as "nothing is being collected".
+  effective?: CollectionEffective;
+  updatedAt?: string;
+  updatedBy?: string;
 }

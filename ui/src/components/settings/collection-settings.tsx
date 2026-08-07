@@ -7,8 +7,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { CenteredSpinner } from "@/components/ui/spinner";
 import { formatAgo } from "@/lib/format";
 import { useAgents } from "@/hooks/use-agents";
-import { useModuleEnabled } from "@/hooks/use-capabilities";
+import { useAuth } from "@/hooks/use-auth";
+import { useCollectionRuntimeControl, useModuleEnabled } from "@/hooks/use-capabilities";
 import type { AgentSignals } from "@/lib/api-types";
+import { CollectionControlCard } from "./collection-control-card";
 
 const SIGNALS: { key: keyof AgentSignals; label: string }[] = [
   { key: "traces", label: "Traces" },
@@ -26,15 +28,21 @@ function SignalBadge({ label, seen }: { label: string; seen: string | null }) {
   );
 }
 
-// Coroot-style agent status ("sensor: N nodes reporting"), derived from
-// telemetry freshness — read-only. Runtime toggles arrive with the OpAMP
-// control plane (v0.2); until then collection is controlled through Helm
-// values (see the toggle matrix in deploy/helm/README.md).
+// Coroot-style agent status ("sensor: N nodes reporting") derived from
+// telemetry freshness, plus — when the install opts into runtime collection
+// control (chart flag collection.runtimeControl.enabled) and the viewer is an
+// admin — the writable overlay card. Everything else stays Helm-controlled
+// (see the toggle matrix in deploy/helm/README.md).
 export function CollectionSettings() {
   // The inventory is derived from sensor freshness in the metrics tables, so
   // it needs the infra-metrics module; without it the query would just 404.
   const infraMetrics = useModuleEnabled("infra-metrics");
   const { data, isLoading, isError } = useAgents(600, { enabled: infraMetrics });
+  // isAdmin mirrors the hub's securedAdmin gate on the overlay routes —
+  // defense in depth, same as the ingest-keys card.
+  const runtimeControl = useCollectionRuntimeControl();
+  const { isAdmin } = useAuth();
+  const writable = runtimeControl && isAdmin;
 
   return (
     <div className="flex flex-col gap-4">
@@ -90,23 +98,33 @@ export function CollectionSettings() {
         )}
       </Card>
 
+      {writable && <CollectionControlCard />}
+
       <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle>Deactivating collection</CardTitle>
-          <span className="text-xs text-base-content/50">applied via Helm — runtime switches land with OpAMP (v0.2)</span>
+          <span className="text-xs text-base-content/50">
+            {runtimeControl
+              ? "label opt-outs stay operator-run — the hub has no cluster-wide label RBAC"
+              : "applied via Helm — enable runtime switches with collection.runtimeControl.enabled=true"}
+          </span>
         </CardHeader>
         <div className="flex flex-col gap-2 border-t border-neutral p-4 text-xs text-base-content/70">
-          <p>
-            <span className="font-semibold">Per signal:</span>{" "}
-            <code className="font-mono">sensor.obi.enabled</code> (traces),{" "}
-            <code className="font-mono">sensor.agent.logs.enabled</code>,{" "}
-            <code className="font-mono">sensor.agent.kubeletstats.enabled</code>,{" "}
-            <code className="font-mono">sensor.profiler.enabled</code>
-          </p>
-          <p>
-            <span className="font-semibold">Per namespace:</span>{" "}
-            <code className="font-mono">sensor.collection.excludeNamespaces</code>
-          </p>
+          {!writable && (
+            <>
+              <p>
+                <span className="font-semibold">Per signal:</span>{" "}
+                <code className="font-mono">sensor.obi.enabled</code> (traces),{" "}
+                <code className="font-mono">sensor.agent.logs.enabled</code>,{" "}
+                <code className="font-mono">sensor.agent.kubeletstats.enabled</code>,{" "}
+                <code className="font-mono">sensor.profiler.enabled</code>
+              </p>
+              <p>
+                <span className="font-semibold">Per namespace:</span>{" "}
+                <code className="font-mono">sensor.collection.excludeNamespaces</code>
+              </p>
+            </>
+          )}
           <p>
             <span className="font-semibold">Per pod:</span> label{" "}
             <code className="font-mono">avuru.obs/instrument: &quot;false&quot;</code>

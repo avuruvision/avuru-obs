@@ -1,6 +1,6 @@
 # Thin root dispatcher ONLY — build logic lives in each component
 # (agent_docs/development.md). Keep it that way.
-.PHONY: hub ui ui-image gateway-image check helm-check e2e e2e-helm e2e-ui dev dev-clean version version-set notices
+.PHONY: hub ui ui-image gateway-image check helm-check e2e e2e-helm e2e-ui dev dev-clean version version-set notices sync-hub-chart
 
 COMPOSE := docker compose -f deploy/compose/docker-compose.yaml
 
@@ -19,6 +19,19 @@ version-set:
 	@perl -i -pe 's/^appVersion: .*/appVersion: "$(V)"/ && ($$done=1) if !$$done' deploy/helm/avuruobs/Chart.yaml
 	@perl -i -pe 's{(avuru-obs-(?:hub|ui|gateway|tdp-estimator)):\S+}{$$1:$(V)}g' deploy/helm/avuruobs/Chart.yaml
 	@echo "version set to $(V) (VERSION, ui/package.json, Chart.yaml)"
+
+# Sync the sensor-relevant chart files into the hub so the collection applier
+# can render them via go:embed — which cannot reach outside the hub module,
+# hence the committed copy (design/2026-07-27-collection-control-plane.md).
+# A unit test (hub/internal/collection/chartsync_test.go) fails when these
+# drift from deploy/helm/avuruobs — rerun this target after editing them.
+sync-hub-chart:
+	mkdir -p hub/internal/collection/chart/templates
+	cp deploy/helm/avuruobs/Chart.yaml hub/internal/collection/chart/Chart.yaml
+	cp deploy/helm/avuruobs/values.yaml hub/internal/collection/chart/values.yaml
+	cp deploy/helm/avuruobs/templates/_helpers.tpl hub/internal/collection/chart/templates/_helpers.tpl
+	cp deploy/helm/avuruobs/templates/sensor-config.yaml hub/internal/collection/chart/templates/sensor-config.yaml
+	cp deploy/helm/avuruobs/templates/sensor-daemonset.yaml hub/internal/collection/chart/templates/sensor-daemonset.yaml
 
 # Regenerates THIRD-PARTY-NOTICES.md (Apache §4 attribution for bundled
 # dependencies) — required fresh before every release (RELEASE-CHECKLIST.md).
