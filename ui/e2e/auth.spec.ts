@@ -127,4 +127,22 @@ test.describe("auth: demo", () => {
     await page.goto("/settings");
     await expect(page.getByRole("tab", { name: "Users" })).toHaveCount(0);
   });
+
+  // The demo account is an ordinary LOCAL user, so the Account tab used to
+  // offer it the change-password form on the strength of origin alone — and
+  // the hub answered 403 on submit, after the visitor had typed a password.
+  // The tab now reads the hub's passwordChange instead.
+  test("the demo account is told why it cannot change its password", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByRole("button", { name: /Try the demo/ }).click();
+    await expect(page).not.toHaveURL(/\/login/);
+
+    await page.goto("/settings?tab=account");
+    // Signed in, so the Account tab is offered and the identity renders.
+    await expect(page.getByTestId("account-origin")).toContainText("Password");
+    // …but the form is replaced by the reason, not shown and then refused.
+    await expect(page.getByTestId("account-shared-note")).toContainText("shared read-only demo");
+    await expect(page.getByRole("button", { name: "Change password" })).toHaveCount(0);
+    await expect(page.getByLabel("Current password")).toHaveCount(0);
+  });
 });
