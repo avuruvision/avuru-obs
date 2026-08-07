@@ -1,17 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { SortableTh, useColumnSort, type SortColumn } from "@/components/ui/sortable";
 import { formatMs, formatPercent, formatRate } from "@/lib/format";
-import { cn } from "@/lib/cn";
 import type { ServiceStats } from "@/lib/api-types";
 
 type SortKey = "name" | "ratePerSec" | "errorRate" | "p50Ms" | "p95Ms" | "p99Ms";
 
-const COLUMNS: { key: SortKey; label: string; numeric?: boolean }[] = [
+const COLUMNS: SortColumn<SortKey>[] = [
   { key: "name", label: "Service" },
   { key: "ratePerSec", label: "Rate", numeric: true },
   { key: "errorRate", label: "Errors", numeric: true },
@@ -24,31 +23,8 @@ const COLUMNS: { key: SortKey; label: string; numeric?: boolean }[] = [
 // client-side: the list is one page (services in the window), never paginated.
 export function ServicesTable({ services }: { services: ServiceStats[] }) {
   const router = useRouter();
-  const [sortKey, setSortKey] = useState<SortKey>("ratePerSec");
-  const [sortAsc, setSortAsc] = useState(false);
-
-  const sorted = useMemo(() => {
-    const copy = [...services];
-    copy.sort((a, b) => {
-      const av = a[sortKey];
-      const bv = b[sortKey];
-      const cmp =
-        typeof av === "string" && typeof bv === "string"
-          ? av.localeCompare(bv)
-          : Number(av) - Number(bv);
-      return sortAsc ? cmp : -cmp;
-    });
-    return copy;
-  }, [services, sortKey, sortAsc]);
-
-  const toggleSort = (key: SortKey) => {
-    if (key === sortKey) {
-      setSortAsc((v) => !v);
-    } else {
-      setSortKey(key);
-      setSortAsc(key === "name");
-    }
-  };
+  const sort = useColumnSort<SortKey>("ratePerSec");
+  const sorted = useMemo(() => sort.sortRows(services), [services, sort]);
 
   return (
     <Card className="overflow-hidden">
@@ -56,27 +32,7 @@ export function ServicesTable({ services }: { services: ServiceStats[] }) {
         <thead>
           <tr className="border-b border-neutral text-left">
             {COLUMNS.map((c) => (
-              <th
-                key={c.key}
-                className={cn(c.numeric && "text-right")}
-                aria-sort={
-                  sortKey === c.key ? (sortAsc ? "ascending" : "descending") : undefined
-                }
-              >
-                <button
-                  type="button"
-                  onClick={() => toggleSort(c.key)}
-                  className="inline-flex items-center gap-1 hover:text-base-content"
-                >
-                  {c.label}
-                  {sortKey === c.key &&
-                    (sortAsc ? (
-                      <ArrowUp className="h-3 w-3" aria-hidden />
-                    ) : (
-                      <ArrowDown className="h-3 w-3" aria-hidden />
-                    ))}
-                </button>
-              </th>
+              <SortableTh key={c.key} col={c} sort={sort} />
             ))}
           </tr>
         </thead>
