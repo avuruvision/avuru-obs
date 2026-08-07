@@ -83,14 +83,29 @@ type meResponse struct {
 		ID    string `json:"id"`
 		Email string `json:"email"`
 		Name  string `json:"name"`
-		// Origin ("local" | "oidc"; empty for the anonymous identity) tells
-		// the SPA whether a password form applies at all — an SSO user's
-		// credential lives at the IdP, so the Account tab shows a note instead.
+		// Origin ("local" | "oidc"; empty for the anonymous identity) describes
+		// how the identity signed in. It used to double as the SPA's test for
+		// "does a password form apply", which was wrong — see PasswordChange.
 		Origin    string `json:"origin"`
 		Anonymous bool   `json:"anonymous"`
+		// PasswordChange tells the SPA whether self-service rotation applies
+		// AND, when it doesn't, why — so the Account tab can render the right
+		// explanation instead of offering a form the hub will refuse.
+		// "self" (rotate here) | "idp" (credential lives at the identity
+		// provider) | "shared" (the server-managed demo account); empty for the
+		// anonymous identity, which has no account at all. See passwordChangeFor.
+		PasswordChange string `json:"passwordChange"`
 	} `json:"user"`
 	Grants []auth.Grant `json:"grants"`
 }
+
+// Values of meResponse.User.PasswordChange. Mirrored in the SPA as a plain
+// string (ui/src/lib/api-types.ts), so adding one here cannot break its build.
+const (
+	passwordChangeSelf   = "self"
+	passwordChangeIdP    = "idp"
+	passwordChangeShared = "shared"
+)
 
 func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) error {
 	// Credentialed/identity responses must never be cached (OWASP: a shared
@@ -260,9 +275,46 @@ func meFrom(id auth.Identity) meResponse {
 	resp.User.Name = id.Name
 	resp.User.Origin = id.Origin
 	resp.User.Anonymous = id.Anonymous
+	resp.User.PasswordChange = passwordChangeFor(id)
 	resp.Grants = id.Grants
 	if resp.Grants == nil {
 		resp.Grants = []auth.Grant{} // wire shape: [] not null
 	}
 	return resp
+}
+
+// passwordChangeFor answers "may this identity rotate its own password here,
+// and if not, why" — which is exactly what Settings → Account renders.
+//
+// It reproduces Service.ChangePassword's refusals IN THE SAME ORDER (origin,
+// then the reserved demo id) so the reason the UI states is the reason the hub
+// would actually answer with. Keep the two in step: a refusal added there
+// without a case here puts the form back in front of a user who cannot use it,
+// which is the bug this function exists to close.
+//
+// It derives from the identity alone — no store read — so every meFrom caller
+// can use it, including the login responses that answer before the SPA makes
+// any further round-trip.
+func passwordChangeFor(id auth.Identity) string {
+	switch {
+	// No account to manage. The Account tab isn't even offered to the
+	// anonymous fallback, so this is the wire half of the same gate.
+	case id.Anonymous:
+		return ""
+	// Allow-listed on "local", not "!= oidc", exactly like ChangePassword: a
+	// future origin defaults to "not here" rather than to a form the hub would
+	// refuse with ErrExternalPassword.
+	case id.Origin != "local":
+		return passwordChangeIdP
+	// EnsureDemoUser creates the demo viewer as a perfectly ordinary LOCAL
+	// user, so it clears the check above and only the server-reserved id can
+	// single it out. That row is re-created and re-keyed from the chart's
+	// credentials on every boot, so a "successful" change would silently
+	// revert — and the credential is shared, so it was never this session's to
+	// rotate in the first place.
+	case id.UserID == auth.DemoViewerID:
+		return passwordChangeShared
+	default:
+		return passwordChangeSelf
+	}
 }

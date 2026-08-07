@@ -56,9 +56,11 @@ type Identity struct {
 	Email  string `json:"email"`
 	Name   string `json:"name"`
 	// Origin mirrors AuthUser.Origin ("local" | "oidc"); empty for the
-	// anonymous identity. Emitted by /auth/me so the SPA can tell whether a
-	// password form applies at all — an SSO user's credential lives at the
-	// IdP, so the Account tab shows a note instead of the form.
+	// anonymous identity. Emitted by /auth/me so the SPA can SHOW how the user
+	// signed in. It is not the test for "does a password form apply" — the demo
+	// viewer is a local account that still cannot rotate its own credential, so
+	// /auth/me carries a separate passwordChange field for that (api's
+	// passwordChangeFor).
 	Origin    string  `json:"origin"`
 	Anonymous bool    `json:"anonymous"`
 	Grants    []Grant `json:"grants"`
