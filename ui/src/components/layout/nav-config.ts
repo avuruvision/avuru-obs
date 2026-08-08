@@ -5,6 +5,7 @@ import {
   Bug,
   Flame,
   Gauge,
+  LayoutDashboard,
   Leaf,
   ListTree,
   Map as MapIcon,
@@ -32,6 +33,12 @@ export interface NavSection {
 }
 
 export const NAV_SECTIONS: NavSection[] = [
+  {
+    title: "Overview",
+    // Core, and the landing route — the Dashboard's own bands gate per module,
+    // so this entry is never hidden.
+    items: [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard }],
+  },
   {
     title: "Observe",
     items: [

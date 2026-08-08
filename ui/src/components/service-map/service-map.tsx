@@ -4,6 +4,7 @@ import { useEffect, useImperativeHandle, useRef } from "react";
 import { useRouter } from "next/navigation";
 import cytoscape, { type Core, type LayoutOptions } from "cytoscape";
 import fcose from "cytoscape-fcose";
+import { cn } from "@/lib/cn";
 import type { ServiceEdge, ServiceStats } from "@/lib/api-types";
 
 let layoutRegistered = false;
@@ -32,11 +33,23 @@ function themeColors() {
   };
 }
 
+// Compact mode (the Dashboard's band 2) is the SAME graph at overview scale:
+// smaller nodes, smaller labels, a tighter simulation and a shorter canvas.
+// Deliberately a mode rather than a second component — the v0.5 plan's W7
+// restyle then lands on the full map and the Dashboard at once.
+const scale = (compact: boolean) => ({
+  node: compact ? "mapData(rate, 0, 10, 14, 40)" : "mapData(rate, 0, 10, 22, 64)",
+  fontSize: compact ? 9 : 11,
+  labelMargin: compact ? 3 : 5,
+  edge: compact ? "mapData(calls, 0, 50, 0.8, 3.2)" : "mapData(calls, 0, 50, 1.2, 5)",
+});
+
 // carbon (module green) layers a border-color intensity scale onto the nodes.
 // When it is off the chain is byte-identical to the pre-green map — the overlay
 // must be invisible and inert on a non-green install.
-function applyStyle(cy: Core, carbon = false) {
+function applyStyle(cy: Core, carbon = false, compact = false) {
   const c = themeColors();
+  const s = scale(compact);
   const withNodes = cy
     .style()
     .resetToDefault()
@@ -45,16 +58,16 @@ function applyStyle(cy: Core, carbon = false) {
       "background-color": c.primary,
       label: "data(label)",
       color: c.text,
-      "font-size": 11,
+      "font-size": s.fontSize,
       "text-valign": "bottom",
-      "text-margin-y": 5,
+      "text-margin-y": s.labelMargin,
       // Keep labels legible where they sit over edges/nodes.
       "text-background-color": c.base100,
       "text-background-opacity": 0.7,
       "text-background-padding": "2px",
       "text-background-shape": "roundrectangle",
-      width: "mapData(rate, 0, 10, 22, 64)",
-      height: "mapData(rate, 0, 10, 22, 64)",
+      width: s.node,
+      height: s.node,
       "border-width": 2,
       "border-color": c.surface,
     })
@@ -76,7 +89,7 @@ function applyStyle(cy: Core, carbon = false) {
   withCarbon
     .selector("edge")
     .style({
-      width: "mapData(calls, 0, 50, 1.2, 5)",
+      width: s.edge,
       "line-color": c.edge,
       "target-arrow-color": c.edge,
       "target-arrow-shape": "triangle",
@@ -135,17 +148,17 @@ function formatBytes(n: number): string {
 // The initial layout is deterministic (no animation, seeded positions); a
 // re-layout randomizes the seed to escape a tangled local minimum, animated
 // so the untangle reads as movement, not a flash.
-const layoutOptions = (animate: boolean) =>
+const layoutOptions = (animate: boolean, compact = false) =>
   ({
     name: "fcose",
     quality: "proof",
     animate,
     randomize: animate,
-    padding: 60,
+    padding: compact ? 26 : 60,
     nodeDimensionsIncludeLabels: true,
-    nodeSeparation: 170,
-    idealEdgeLength: 170,
-    nodeRepulsion: 9000,
+    nodeSeparation: compact ? 95 : 170,
+    idealEdgeLength: compact ? 95 : 170,
+    nodeRepulsion: compact ? 5200 : 9000,
   }) as unknown as LayoutOptions;
 
 export interface ServiceMapHandle {
@@ -160,6 +173,7 @@ export function ServiceMap({
   edges,
   handleRef,
   carbon = false,
+  compact = false,
 }: {
   services: ServiceStats[];
   edges: ServiceEdge[];
@@ -167,6 +181,9 @@ export function ServiceMap({
   // carbon (module green) turns on the gCO2e border scale + node energy
   // tooltip. Default off: on a non-green install the map is byte-unchanged.
   carbon?: boolean;
+  // compact renders the overview-scale variant for the Dashboard's band 2.
+  // Default off: the full Service Map screen is unchanged by this prop.
+  compact?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -174,7 +191,7 @@ export function ServiceMap({
   const router = useRouter();
 
   useImperativeHandle(handleRef, () => ({
-    relayout: () => cyRef.current?.layout(layoutOptions(true)).run(),
+    relayout: () => cyRef.current?.layout(layoutOptions(true, compact)).run(),
   }));
 
   useEffect(() => {
@@ -214,11 +231,11 @@ export function ServiceMap({
             },
           })),
       ],
-      layout: layoutOptions(false),
+      layout: layoutOptions(false, compact),
       minZoom: 0.3,
       maxZoom: 2.5,
     });
-    applyStyle(cy, carbon);
+    applyStyle(cy, carbon, compact);
     cy.on("tap", "node", (e) => {
       router.push(`/traces?service=${encodeURIComponent(e.target.id())}&tab=traces`);
     });
@@ -261,26 +278,32 @@ export function ServiceMap({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [services, edges, router, carbon]);
+  }, [services, edges, router, carbon, compact]);
 
   // Re-theme the graph when the user toggles light/dark. Re-subscribes on a
   // carbon change so the re-style always reflects the live overlay state.
   useEffect(() => {
     const obs = new MutationObserver(() => {
-      if (cyRef.current) applyStyle(cyRef.current, carbon);
+      if (cyRef.current) applyStyle(cyRef.current, carbon, compact);
     });
     obs.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["data-theme"],
     });
     return () => obs.disconnect();
-  }, [carbon]);
+  }, [carbon, compact]);
 
   return (
     <div className="relative">
       <div
         ref={ref}
-        className="h-[70vh] w-full rounded-xl border border-neutral bg-base-200"
+        data-testid={compact ? "service-map-compact" : "service-map"}
+        className={cn(
+          // Compact sits inside the Dashboard's Card, which already draws the
+          // surface — a second border there would read as a box in a box.
+          "w-full rounded-xl",
+          compact ? "h-75" : "h-[70vh] border border-neutral bg-base-200",
+        )}
       />
       {/* Edge hover tooltip (calls + OBI network health). Positioned by the
           cytoscape mouseover handler; pointer-events-none so it never eats hover. */}
