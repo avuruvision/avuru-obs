@@ -23,6 +23,7 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/api"
 	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/collection"
+	"github.com/avuru/avuru-obs/hub/internal/health"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 	ch "github.com/avuru/avuru-obs/hub/internal/storage/clickhouse"
@@ -248,6 +249,18 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// ONE resolver, handed to both the API and the alerting evaluator below.
+	// The evaluator does not go through the API, so a second merge point would
+	// mean a group authored in the UI shows as critical on /health and never
+	// pages. Keep both call sites reading this variable
+	// (design/2026-08-07-service-groups-crud.md).
+	groupsResolver := health.NewResolver(groupsConfig, func() health.GroupStore {
+		st := provider()
+		if st == nil {
+			return nil // resolver degrades to config-only
+		}
+		return st
+	})
 	alertsConfig, err := loadAlertingConfig(ctx)
 	if err != nil {
 		return err
@@ -288,7 +301,7 @@ func run() error {
 		RetentionProfilesDays:           envIntOr("AVURUOBS_RETENTION_PROFILES_DAYS", 3),
 		Projects:                        splitCSV(envOr("AVURUOBS_PROJECTS", "")),
 		Modules:                         active,
-		GroupsConfig:                    groupsConfig,
+		Groups:                          groupsResolver,
 		AlertsConfig:                    alertsConfig,
 		SchemaStatus:                    gate.Status,
 		Notifier:                        notifier,
@@ -311,7 +324,7 @@ func run() error {
 	// The alerting evaluator is a single background loop (see runAlertingEvaluator);
 	// started only when the module is active.
 	if active.Enabled(modules.Alerting) {
-		go runAlertingEvaluator(ctx, provider, gate, groupsConfig, alertsConfig, greenConfig, notifier, splitCSV(envOr("AVURUOBS_PROJECTS", "")), active)
+		go runAlertingEvaluator(ctx, provider, gate, groupsResolver, alertsConfig, greenConfig, notifier, splitCSV(envOr("AVURUOBS_PROJECTS", "")), active)
 	}
 
 	srv := &http.Server{

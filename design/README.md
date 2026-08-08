@@ -54,7 +54,7 @@ only if the design needs to be pinned down before coding.
 | [2026-07-27](2026-07-27-clients-grafana-cli.md) | Additional clients — Grafana data source + CLI + API tokens | Draft |
 | [2026-07-28](2026-07-28-green-tdp-estimation.md) | Green TDP estimation — modeled energy for RAPL-less nodes | Accepted |
 | [2026-08-06](2026-08-06-users-crud-password.md) | Users CRUD completion — delete, password management, role editing | Accepted |
-| [2026-08-07](2026-08-07-service-groups-crud.md) | Service groups authored in the UI | Draft |
+| [2026-08-07](2026-08-07-service-groups-crud.md) | Service groups authored in the UI | Accepted |
 
 ## Conventions
 

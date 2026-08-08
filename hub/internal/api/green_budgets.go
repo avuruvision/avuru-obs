@@ -80,7 +80,7 @@ func (a *API) handleGreenBudgets(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	budgets := buildGreenBudgets(cfg, a.groupsConfig(), resolveFactors(cfg), rows, stats, labels, now)
+	budgets := buildGreenBudgets(cfg, a.groupsConfig(r.Context()), resolveFactors(cfg), rows, stats, labels, now)
 	writeJSON(w, http.StatusOK, greenBudgetsResponse{
 		Window:  healthWindowDTO{Start: tr.Start.Format(time.RFC3339), End: tr.End.Format(time.RFC3339)},
 		Budgets: budgets,

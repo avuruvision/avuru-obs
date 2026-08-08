@@ -58,6 +58,10 @@ export const queryKeys = {
     [p, "errors", "histogram", fingerprint, t] as const,
   healthGroups: (p: string, t: TimeParams, includeAux?: boolean) =>
     [p, "health", "groups", { ...t, includeAux }] as const,
+  // Group DEFINITIONS, as opposed to healthGroups (their current health).
+  // Instance-global (no project element): a group is an install-level way of
+  // slicing services, the same for every project.
+  serviceGroups: ["service-groups"] as const,
   alerts: (p: string) => [p, "alerts", "list"] as const,
   alertRules: (p: string) => [p, "alerts", "rules"] as const,
   // Green (module green). Summary is windowed; budgets are always the current

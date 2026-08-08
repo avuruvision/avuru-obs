@@ -2,7 +2,7 @@
 
 - **Date:** 2026-08-07
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted
 
 ## Summary
 
@@ -86,15 +86,15 @@ ORDER BY (Name);
 upsert and a delete is a tombstone — no surrogate id, and `FINAL` + the
 `Deleted` filter reads the live set, as with the sibling tables.
 
-**Resolution — the part that must not be got wrong.** `api.Config.GroupsConfig`
-is `func() health.Config`, called per request, which is what makes the ConfigMap
+**Resolution — the part that must not be got wrong.** The config accessor is a
+`func() health.Config` called per request, which is what makes the ConfigMap
 hot-reload visible without a restart. The alerting evaluator receives the *same*
 provider directly from `main.go` — it does not go through the API. So merging
 stored groups inside `api.groupsConfig()` would give the UI one grouping and
 alerting another: a T0 group created in the UI would show as critical on
-`/health` and never page. Instead the merge lands in **one resolver** that wraps
-the config provider and the store, and `main.go` passes that single resolver to
-both the API and the evaluator.
+`/health` and never page. Instead the merge lands in **one resolver**
+(`health.Resolver`) that wraps the config provider and the store; `main.go`
+builds it once and passes it to both `api.Config.Groups` and the evaluator.
 
 Precedence mirrors `handleProjects`: **config wins per name**, DB fills the
 rest. A group carries a `source` (`"config"` | `"db"`) and an `editable` flag on
@@ -106,17 +106,28 @@ config, so the resolver memoizes for a few seconds — the `tenantCache` pattern
 already used for `ListTenants` (30s). Writes invalidate it, so an admin's own
 edit is never stale to them.
 
-**API** (`hub/internal/api/groups.go`, behind the existing `securedAdmin`
-middleware for writes; reads follow the existing `/health` authorization):
+**API** (`hub/internal/api/service_groups.go`, behind the existing
+`securedAdmin` middleware for writes; reads follow the existing `/health`
+authorization):
 
 - `GET /api/v1/service-groups` — merged list, each row tagged with its source.
 - `POST /api/v1/service-groups` — create; 409 on a name that a config group
   already owns (fail loudly rather than write a row that will never take effect).
-- `PUT /api/v1/service-groups/{name}` — update; 403 on a config-declared name.
-- `DELETE /api/v1/service-groups/{name}` — tombstone; 403 on config-declared.
+- `PUT /api/v1/service-groups/{name}` — update; 409 on a config-declared name.
+- `DELETE /api/v1/service-groups/{name}` — tombstone; 409 on config-declared.
 
-Every write validates through `health.Config.Validate` on the *merged* result,
-so an API caller cannot store a group the ConfigMap loader would reject at boot.
+A config-declared name answers **409, not 403**: the caller *is* an admin, and
+nothing about their authorization would change the answer — the group is simply
+managed somewhere else. That is the same situation `editableProject` already
+answers 409 for ("deployment-managed project and cannot be modified"), and two
+endpoints disagreeing about the same condition is worse than either choice.
+
+Every write validates through `health.Config.Validate` — the group is placed
+into the live declared config and the whole thing validated, so the check sees
+the same `defaultTier` and closed tier set the ConfigMap loader applies at boot
+and an API caller cannot store a group that loader would reject. Uniqueness
+against the other *stored* groups is the create path's own 409, since the
+update path is addressed by name and cannot collide.
 
 **UI.** A group editor (name, tier, namespace/service selectors) following the
 alert-channel precedent — `channels-panel.tsx` + `channel-form.tsx` — including
@@ -166,10 +177,11 @@ Settings UI ──▶ service_group (ClickHouse) ──────────�
 
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] Migration `0016_service_groups.sql` + storage CRUD (list/save/delete)
-- [ ] Merge resolver shared by the API and the alerting evaluator
-- [ ] Admin-gated CRUD endpoints + source/editable on the wire
-- [ ] Settings group editor (alert-channel precedent), read-only config rows
-- [ ] Unit + integration + the evaluator-agreement test + Playwright
+- [x] AEP accepted
+- [x] Migration `0016_service_groups.sql` + storage CRUD (list/save/delete)
+- [x] Merge resolver shared by the API and the alerting evaluator
+      (`health.Resolver`, built once in `main.go`)
+- [x] Admin-gated CRUD endpoints + source/editable on the wire
+- [x] Settings group editor (alert-channel precedent), read-only config rows
+- [x] Unit + integration + the evaluator-agreement test + Playwright
 - [ ] `docs-align` (EN/FR)

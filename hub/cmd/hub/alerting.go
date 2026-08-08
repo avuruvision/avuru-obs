@@ -101,7 +101,9 @@ func webhookAllowCIDRs() []*net.IPNet {
 // persisted state, delivers notifications, and writes state + history back.
 // v1 assumes ONE active evaluator (hub replicas default to 1); >1 would
 // duplicate notifications (documented, HA leader election is v2).
-func runAlertingEvaluator(ctx context.Context, provider api.StoreProvider, gate *schemaGate, groupsCfg func() health.Config, alertsCfg func() alerting.Config, greenCfg func() green.Config, notifier alerting.Notifier, projects []string, active modules.Set) {
+// groups is the same *health.Resolver the API is given (see main): the group
+// set alerts fire on must be the group set the screen shows.
+func runAlertingEvaluator(ctx context.Context, provider api.StoreProvider, gate *schemaGate, groups *health.Resolver, alertsCfg func() alerting.Config, greenCfg func() green.Config, notifier alerting.Notifier, projects []string, active modules.Set) {
 	// Every tick reads otel_traces and alert_channel; without the schema each
 	// one used to warn twice per interval, forever. Wait instead — the gate
 	// reports the missing schema once, and heals it when it can.
@@ -122,7 +124,7 @@ func runAlertingEvaluator(ctx context.Context, provider api.StoreProvider, gate 
 			return
 		case <-time.After(alertsCfg().Interval()):
 		}
-		if err := evaluateOnce(ctx, provider, groupsCfg(), alertsCfg(), notifier, projects, gb, time.Now().UTC()); err != nil {
+		if err := evaluateOnce(ctx, provider, groups.Config(ctx), alertsCfg(), notifier, projects, gb, time.Now().UTC()); err != nil {
 			slog.Warn("alerting evaluation tick failed", "error", err)
 		}
 	}

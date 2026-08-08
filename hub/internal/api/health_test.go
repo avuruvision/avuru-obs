@@ -14,11 +14,16 @@ import (
 
 func dur(n float64) time.Duration { return time.Duration(n * float64(time.Millisecond)) }
 
-// healthMux wires a fake store and a static groups config into the router.
+// healthMux wires a fake store and a static groups config into the router. The
+// resolver reads the fake's stored groups too, so a test can exercise either
+// source (or both) through the same seam production uses.
 func healthMux(fake *storagetest.Fake, cfg health.Config) *http.ServeMux {
 	mux := http.NewServeMux()
 	Register(mux, func() storage.Store { return fake }, Config{
-		GroupsConfig: func() health.Config { return cfg },
+		Groups: health.NewResolver(
+			func() health.Config { return cfg },
+			func() health.GroupStore { return fake },
+		),
 	})
 	return mux
 }

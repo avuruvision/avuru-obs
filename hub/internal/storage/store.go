@@ -713,6 +713,15 @@ type Store interface {
 	GetProject(ctx context.Context, id string) (Project, error)
 	SaveProject(ctx context.Context, p Project) error
 	DeleteProject(ctx context.Context, id string) error
+	// UI-authored service health groups (module service-health). Chart-declared
+	// groups stay in the ConfigMap and are NOT stored here — health.Resolver
+	// merges the two and lets the config win a name collision (design/
+	// 2026-08-07-service-groups-crud.md). Name is the identity, so
+	// SaveServiceGroup upserts by it; DeleteServiceGroup tombstones and
+	// returns ErrNotFound when no live group has the name.
+	ListServiceGroups(ctx context.Context) ([]ServiceGroup, error)
+	SaveServiceGroup(ctx context.Context, g ServiceGroup) error
+	DeleteServiceGroup(ctx context.Context, name string) error
 	// Ingest keys (auth Plan C). GetIngestKeyByHash returns ErrNotFound for an
 	// unknown OR revoked key (the gateway caches this as a negative verdict).
 	// CreateIngestKey inserts a live key. ListIngestKeys returns the live keys
@@ -731,6 +740,20 @@ type CollectionOverlay struct {
 	Overlay   string
 	UpdatedAt time.Time
 	UpdatedBy string
+}
+
+// ServiceGroup is a UI-authored service health group. It carries the wire
+// shape of health.Group flattened (Tier as a plain string, the selector as two
+// slices) so storage stays free of the health package's vocabulary — the
+// conversion lives in health.Resolver, which owns the merge.
+type ServiceGroup struct {
+	Name       string
+	Tier       string
+	Namespaces []string
+	Services   []string
+	CreatedBy  string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 // AlertChannel is a UI-managed delivery channel (global, not per-tenant).

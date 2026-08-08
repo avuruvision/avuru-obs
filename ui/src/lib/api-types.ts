@@ -473,6 +473,31 @@ export interface HealthGroupsResponse {
   groups: HealthGroup[];
 }
 
+// Group DEFINITIONS (what the groups are), as opposed to HealthGroup above
+// (how they are doing). Mirrors hub/internal/api/service_groups.go.
+export interface ServiceGroupDef {
+  name: string;
+  tier: string;
+  namespaces: string[];
+  services: string[];
+  /** Where the group is managed: "config" (chart values, read-only) or "db" (authored here). */
+  source: "config" | "db";
+  editable: boolean;
+  /** An authored group whose name the chart config has since taken: still stored, no longer grouping. */
+  shadowed?: boolean;
+}
+
+export interface ServiceGroupsResponse {
+  groups: ServiceGroupDef[];
+}
+
+export interface ServiceGroupInput {
+  name: string;
+  tier: string;
+  namespaces: string[];
+  services: string[];
+}
+
 // Alerting (module alerting). Mirrors hub/internal/api/alerts.go (read-only).
 export interface FiringAlert {
   rule: string;
