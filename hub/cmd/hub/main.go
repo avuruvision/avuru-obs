@@ -76,6 +76,19 @@ func clickhouseConfig() ch.Config {
 	}
 }
 
+// storageConnection is the non-secret half of clickhouseConfig, for the
+// admin-only Storage view. Built by naming the three fields rather than
+// copying the struct, so a credential added to ch.Config later cannot ride
+// along into an HTTP response by accident.
+func storageConnection() api.StorageConnection {
+	cfg := clickhouseConfig()
+	return api.StorageConnection{
+		Address:  cfg.Addr,
+		Database: cfg.Database,
+		Username: cfg.Username,
+	}
+}
+
 // databaseNamePattern is the ClickHouse identifier shape we accept.
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
@@ -303,6 +316,7 @@ func run() error {
 		OIDC:                            oidcProvider,
 		OIDCSettings:                    oidcSettings,
 		IngestInternalToken:             envOr("AVURUOBS_INGEST_INTERNAL_TOKEN", ""),
+		StorageConnection:               storageConnection(),
 		CollectionRuntimeControlEnabled: collectionRuntimeControlEnabled,
 		CollectionApplier:               collectionApplier(collectionRuntimeControlEnabled),
 	})

@@ -10,8 +10,19 @@ import { CollectionSettings } from "./collection-settings";
 import { AccountTab } from "./account-tab";
 import { UsersPanel } from "./users-panel";
 import { ServiceGroupsPanel } from "./service-groups-panel";
+import { StorageTab } from "./storage-tab";
+import { AccessTab } from "./access-tab";
 
-const TABS = ["general", "collection", "groups", "status", "account", "users"] as const;
+const TABS = [
+  "general",
+  "collection",
+  "groups",
+  "storage",
+  "access",
+  "status",
+  "account",
+  "users",
+] as const;
 type Tab = (typeof TABS)[number];
 
 // Coroot-inspired settings: General (project), Collection (agents), Status
@@ -33,7 +44,14 @@ export function SettingsScreen() {
   // "users" is admin-only; anyone else requesting either tab falls back to
   // general (matches the hub, which answers 403 on /api/v1/users to non-admins).
   // "groups" is readable by anyone — the panel itself hides the write controls
-  // from non-admins, matching the hub's viewer-read/admin-write split.
+  // from non-admins, matching the hub's viewer-read/admin-write split. It is
+  // gated on the service-health MODULE, not on a role.
+  // "storage" and "status" read the same admin-only endpoint and are gated the
+  // same way: not at all. isAdmin is false on an auth-DISABLED install (there
+  // is no /auth/me to read a grant from), so gating on it would hide them from
+  // exactly the installs where anyone may use them. "access" is open on
+  // purpose — understanding a refusal is not a privilege, and the hub serves
+  // the matrix to any caller.
   const requested = get("tab");
   const tab = (TABS.find(
     (t) =>
@@ -47,6 +65,8 @@ export function SettingsScreen() {
     { value: "general", label: "General" },
     { value: "collection", label: "Collection" },
     ...(healthEnabled ? [{ value: "groups" as const, label: "Groups" }] : []),
+    { value: "storage", label: "Storage" },
+    { value: "access", label: "Access" },
     { value: "status", label: "Status" },
     ...(signedIn ? [{ value: "account" as const, label: "Account" }] : []),
     ...(isAdmin ? [{ value: "users" as const, label: "Users" }] : []),
@@ -62,6 +82,15 @@ export function SettingsScreen() {
       {tab === "general" && <GeneralTab />}
       {tab === "collection" && <CollectionSettings />}
       {tab === "groups" && <ServiceGroupsPanel />}
+      {tab === "storage" && (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-base-content/45">
+            Instance-wide (all projects) — storage is shared.
+          </p>
+          <StorageTab />
+        </div>
+      )}
+      {tab === "access" && <AccessTab />}
       {tab === "status" && (
         <div className="flex flex-col gap-2">
           <p className="text-xs text-base-content/45">

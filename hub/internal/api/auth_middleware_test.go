@@ -65,6 +65,36 @@ func TestNoSessionIs401(t *testing.T) {
 	}
 }
 
+// Every route that reads a project's telemetry has to sit behind the session
+// middleware. The green routes shipped registered with the bare `handle`
+// wrapper, which runs no authentication at all — and because project() treats
+// "no identity in context" as "auth is disabled", they served any tenant's
+// energy and carbon figures to an unauthenticated caller. Enumerating them
+// here, rather than testing one, is the point: the gap was invisible precisely
+// because nothing asserted over the set.
+func TestEveryProjectDataRouteRequiresASession(t *testing.T) {
+	mux, _ := authedMux(t)
+	paths := []string{
+		"/api/v1/services",
+		"/api/v1/service-map",
+		"/api/v1/traces",
+		"/api/v1/logs",
+		"/api/v1/metrics/red",
+		"/api/v1/health/groups",
+		"/api/v1/alerts",
+		"/api/v1/errors/issues",
+		"/api/v1/infra/nodes",
+		"/api/v1/green/summary",
+		"/api/v1/green/budgets",
+		"/api/v1/green/report",
+	}
+	for _, p := range paths {
+		if w := authDo(mux, "GET", p, nil, nil); w.Code != http.StatusUnauthorized {
+			t.Errorf("GET %s without a session = %d, want 401", p, w.Code)
+		}
+	}
+}
+
 func TestHealthzStaysOpen(t *testing.T) {
 	mux, _ := authedMux(t)
 	if w := authDo(mux, "GET", "/healthz", nil, nil); w.Code != http.StatusOK {

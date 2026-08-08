@@ -168,7 +168,19 @@ export interface SignalStats {
   compression: number;
   oldest?: string;
   newest?: string;
+  /** What this install is configured to keep. */
   retentionDays: number;
+  /** What ClickHouse is actually enforcing (0 = no day-based TTL found). */
+  ttlDays: number;
+}
+
+/** Where telemetry is stored. Read-only by nature: ClickHouse is the store, so
+ *  it cannot hold its own connection string. Never carries a credential. */
+export interface StorageConnection {
+  address: string;
+  database: string;
+  username?: string;
+  protocol: string;
 }
 
 export interface DiskStats {
@@ -184,6 +196,31 @@ export interface SystemStatusResponse {
   components: ComponentHealth[];
   signals: SignalStats[];
   disks: DiskStats[];
+  connection?: StorageConnection;
+}
+
+// Permissions matrix (GET /api/v1/auth/permissions). Derived by the hub from
+// the guards its routes registered with, so the SPA never holds a second copy
+// of the authorization rules.
+export interface PermissionRole {
+  role: string;
+  label: string;
+  description: string;
+}
+
+export interface PermissionArea {
+  area: string;
+  label: string;
+  /** Lowest role that can read it; absent when there is no such route. */
+  read?: string;
+  /** Lowest role that can change it; absent when the area is read-only. */
+  write?: string;
+}
+
+export interface PermissionsResponse {
+  roles: PermissionRole[];
+  areas: PermissionArea[];
+  authEnabled: boolean;
 }
 
 export interface LogRecord {
