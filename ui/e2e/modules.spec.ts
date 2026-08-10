@@ -24,7 +24,9 @@ test.describe("module gating", () => {
     await page.goto("/traces");
     const nav = page.getByRole("navigation", { name: "Primary" });
 
-    // Core entries stay — the wedge is never gated.
+    // Core entries stay — the wedge is never gated. The Dashboard is core AND
+    // the landing route, so it must survive a core-only install.
+    await expect(nav.getByRole("link", { name: "Dashboard" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Service Map" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Traces" })).toBeVisible();
     // RED is trace-derived, so Metrics is core too.
