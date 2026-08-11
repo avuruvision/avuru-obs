@@ -107,6 +107,7 @@ export function ServiceMapScreen() {
           health={byService}
           handleRef={mapRef}
           carbon={carbon}
+          healthEnabled={healthEnabled}
         />
       )}
     </div>

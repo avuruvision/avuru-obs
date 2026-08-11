@@ -45,6 +45,7 @@ export function TopologyCard({
           windowMs={windowMs}
           health={byService}
           compact
+          healthEnabled={healthEnabled}
         />
       </div>
     </Card>

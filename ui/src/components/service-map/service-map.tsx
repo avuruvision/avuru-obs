@@ -61,6 +61,7 @@ export function ServiceMap({
   handleRef,
   carbon = false,
   compact = false,
+  healthEnabled = false,
 }: {
   services: ServiceStats[];
   edges: ServiceEdge[];
@@ -75,6 +76,11 @@ export function ServiceMap({
   carbon?: boolean;
   // compact renders the overview-scale variant for the Dashboard's band 2.
   compact?: boolean;
+  // Whether the service-health module is on. Must be explicit rather than
+  // inferred from `health` being non-empty: the module can be on and simply
+  // have returned no members yet, which would misread as "off". Drives the
+  // module-off error-ring fallback in graph-elements.ts.
+  healthEnabled?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -103,7 +109,7 @@ export function ServiceMap({
     ensureLayout();
     const cy = cytoscape({
       container: ref.current,
-      elements: buildElements({ services, edges, health, windowMs, carbon }),
+      elements: buildElements({ services, edges, health, windowMs, carbon, healthEnabled }),
       layout: layoutOptions(false, compact),
       minZoom: 0.3,
       maxZoom: 2.5,
@@ -161,7 +167,7 @@ export function ServiceMap({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [services, edges, health, windowMs, router, carbon, compact]);
+  }, [services, edges, health, windowMs, router, carbon, compact, healthEnabled]);
 
   // Re-theme the graph when the user toggles light/dark.
   useEffect(() => {

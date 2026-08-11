@@ -80,6 +80,10 @@ export function applyStyle(cy: Core, carbon = false, compact = false) {
     .selector('node[status = "degraded"]')
     .style({ "border-color": c.warning })
     .selector('node[status = "down"]')
+    .style({ "border-color": c.error })
+    // Module-off fallback ring (see graph-elements.ts). Only nodes on a
+    // health-less install carry `errorRing`, so this is inert everywhere else.
+    .selector("node[errorRing > 0]")
     .style({ "border-color": c.error });
 
   // Carbon halo (low→high gCO2e). Applied after the ring selectors so a node
@@ -145,5 +149,13 @@ export function applyStyle(cy: Core, carbon = false, compact = false) {
       "mid-target-arrow-color": c.neutral,
       "arrow-scale": 1.1,
     })
+    // The .related selector above sets a neutral mid-arrow unconditionally;
+    // these run after it in the cascade to correct a focused edge that is
+    // itself network-unhealthy (amber) or errored (red), so the mid-arrow
+    // doesn't contradict the line color it sits on.
+    .selector("edge.related[health > 0]")
+    .style({ "mid-target-arrow-color": c.warning })
+    .selector("edge.related[error > 0]")
+    .style({ "mid-target-arrow-color": c.error })
     .update();
 }

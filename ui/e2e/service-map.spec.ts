@@ -71,4 +71,35 @@ test.describe("service map (seeded data)", () => {
     await page.getByRole("button", { name: "Re-run layout" }).click();
     await expect(page.getByTestId("service-map")).toBeVisible();
   });
+
+  // Module-off regression (see graph-elements.ts / map-legend.tsx): with
+  // service-health off there is no rollup to ring, so the map falls back to a
+  // binary "saw any error" ring and the legend switches to a single line
+  // explaining it, instead of the healthy/degraded/down/idle swatches. The
+  // status filter and group select are gated on the same module, so they must
+  // disappear too. Stubbing /api/v1/capabilities to omit "service-health"
+  // simulates that install, following modules.spec.ts's exact technique
+  // rather than standing up a second stack.
+  //
+  // Honest limitation, same as above: this pins the legend copy and the
+  // control gating - the CONTRACT - not the ring's actual color. Cytoscape
+  // draws to a canvas, so whether a node is really rendered red here is not
+  // something the DOM can answer.
+  test("falls back to an error-only legend when service-health is off", async ({ page }) => {
+    await page.route("**/api/v1/capabilities", (route) =>
+      route.fulfill({ json: { version: "test", modules: ["core"] } }),
+    );
+
+    await page.goto("/service-map");
+
+    const legend = page.getByTestId("map-legend");
+    await expect(legend).toBeVisible();
+    await expect(legend.getByText("ring: red = errors in window")).toBeVisible();
+    await expect(legend.getByText("Healthy")).toHaveCount(0);
+    await expect(legend.getByText("Degraded")).toHaveCount(0);
+    await expect(legend.getByText("Down")).toHaveCount(0);
+
+    await expect(page.getByRole("checkbox", { name: "Problems only" })).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: "Filter by group" })).toHaveCount(0);
+  });
 });

@@ -56,6 +56,7 @@ export interface BuildOptions {
   health: Map<string, ServiceHealth>;
   windowMs: number;
   carbon: boolean;
+  healthEnabled: boolean;
 }
 
 // Builds the cytoscape element list. Every derived string lives here so the
@@ -66,6 +67,7 @@ export function buildElements({
   health,
   windowMs,
   carbon,
+  healthEnabled,
 }: BuildOptions): ElementDefinition[] {
   const windowMinutes = Math.max(windowMs / 60_000, 1 / 60);
   const names = new Set(services.map((s) => s.name));
@@ -81,6 +83,12 @@ export function buildElements({
         // The ring's channel. Absent from the rollup → "unknown", which is the
         // neutral ring: an unmeasured service is never drawn as healthy.
         status: health.get(s.name)?.status ?? "unknown",
+        // Module-off fallback: with no health rollup there is no status to
+        // ring, so the map keeps the pre-restyle signal — a node that saw ANY
+        // error in the window rings red. Deliberately its own field rather
+        // than faking a "down" status: "this service erred" is a weaker claim
+        // than the hub's verdict.
+        ...(!healthEnabled && s.errorRate > 0 ? { errorRing: 1 } : {}),
         focusLabel: `${s.name}\n${formatRpm(rpm)} · p95 ${formatMs(s.p95Ms)}`,
         rate: s.ratePerSec,
         // Carbon fields are added ONLY under the overlay, so a non-green node
