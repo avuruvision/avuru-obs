@@ -51,6 +51,14 @@ type ServiceEdge struct {
 	ErrorCount uint64 // trace errored-call volume
 	Bytes      uint64 // network flow bytes (flow-derived edges)
 	Provenance string // "trace", "flow", or "both"
+	// P50/P95 are CLIENT-side latency for this call path — the caller's Client
+	// span duration, so the edge reports what the CALLER experienced (network +
+	// queueing + the callee's work). Deliberately not the server span duration,
+	// which would just repeat the callee node's own p95 and could not reveal a
+	// single slow path into an otherwise healthy service. Zero on flow-derived
+	// edges, which have no span to measure.
+	P50 time.Duration
+	P95 time.Duration
 }
 
 // NetworkEdgeHealth is per-edge connection health from OBI's TCP-stats metrics

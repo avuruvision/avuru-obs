@@ -254,6 +254,7 @@ func TestMergeEdges(t *testing.T) {
 		provenance string
 		count      uint64
 		bytesPos   bool
+		p95        time.Duration
 	}
 	tests := []struct {
 		name   string
@@ -285,6 +286,16 @@ func TestMergeEdges(t *testing.T) {
 			flow:   []storage.ServiceEdge{{Source: "C", Target: "D", Bytes: 7}},
 			expect: map[string]want{"C->D": {provenance: "flow", count: 0, bytesPos: true}},
 		},
+		{
+			name: "merging a flow edge keeps the trace edge's latency",
+			trace: []storage.ServiceEdge{
+				{Source: "A", Target: "B", Count: 3, P50: 10 * time.Millisecond, P95: 40 * time.Millisecond},
+			},
+			flow: []storage.ServiceEdge{{Source: "A", Target: "B", Bytes: 1024}},
+			expect: map[string]want{
+				"A->B": {provenance: "both", count: 3, bytesPos: true, p95: 40 * time.Millisecond},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -307,8 +318,58 @@ func TestMergeEdges(t *testing.T) {
 				if (e.Bytes > 0) != w.bytesPos {
 					t.Errorf("%s bytes = %d, want positive=%v", k, e.Bytes, w.bytesPos)
 				}
+				if e.P95 != w.p95 {
+					t.Errorf("%s p95 = %v, want %v", k, e.P95, w.p95)
+				}
 			}
 		})
+	}
+}
+
+// TestServiceMapEdgeLatency proves per-edge client-side latency survives the
+// store → DTO → JSON path, and that a flow-derived edge (no client span to
+// measure) OMITS the fields rather than reporting a misleading 0ms.
+func TestServiceMapEdgeLatency(t *testing.T) {
+	fake := &storagetest.Fake{
+		Services: []storage.ServiceStats{{Name: "A", SpanCount: 5}},
+		Edges: []storage.ServiceEdge{
+			{Source: "A", Target: "B", Count: 3, P50: 10 * time.Millisecond, P95: 40 * time.Millisecond},
+		},
+		NetEdges: []storage.ServiceEdge{{Source: "C", Target: "D", Bytes: 2048}},
+	}
+	mux := newMux(fake)
+
+	rec := get(t, mux, "/api/v1/service-map")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	// Decode loosely so an ABSENT key is distinguishable from a zero value.
+	var raw struct {
+		Edges []map[string]any `json:"edges"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&raw); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	byPair := map[string]map[string]any{}
+	for _, e := range raw.Edges {
+		byPair[e["source"].(string)+"->"+e["target"].(string)] = e
+	}
+	ab, ok := byPair["A->B"]
+	if !ok {
+		t.Fatalf("A->B missing: %+v", raw.Edges)
+	}
+	if ab["p95Ms"] != float64(40) || ab["p50Ms"] != float64(10) {
+		t.Errorf("A->B latency = p50 %v / p95 %v, want 10/40", ab["p50Ms"], ab["p95Ms"])
+	}
+	cd, ok := byPair["C->D"]
+	if !ok {
+		t.Fatalf("C->D missing: %+v", raw.Edges)
+	}
+	if _, present := cd["p95Ms"]; present {
+		t.Errorf("flow-only edge should omit p95Ms, got %+v", cd)
+	}
+	if _, present := cd["p50Ms"]; present {
+		t.Errorf("flow-only edge should omit p50Ms, got %+v", cd)
 	}
 }
 

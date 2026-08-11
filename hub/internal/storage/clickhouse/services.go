@@ -60,7 +60,8 @@ SELECT
     client.ServiceName                   AS src,
     server.ServiceName                   AS dst,
     count()                              AS calls,
-    countIf(` + errorSpanExpr("server.") + `) AS errors
+    countIf(` + errorSpanExpr("server.") + `) AS errors,
+    quantiles(0.5, 0.95)(toFloat64(client.Duration)) AS qs
 FROM otel_traces AS server
 INNER JOIN otel_traces AS client
     ON server.TraceId = client.TraceId AND server.ParentSpanId = client.SpanId
@@ -86,10 +87,16 @@ ORDER BY calls DESC`
 
 	var out []storage.ServiceEdge
 	for rows.Next() {
-		var e storage.ServiceEdge
-		if err := rows.Scan(&e.Source, &e.Target, &e.Count, &e.ErrorCount); err != nil {
+		var (
+			e     storage.ServiceEdge
+			quant []float64
+		)
+		if err := rows.Scan(&e.Source, &e.Target, &e.Count, &e.ErrorCount, &quant); err != nil {
 			return nil, fmt.Errorf("scanning edge row: %w", err)
 		}
+		// nsQuantiles returns three; this query asks for two, and the third
+		// comes back zero — the edge has no p99.
+		e.P50, e.P95, _ = nsQuantiles(quant)
 		out = append(out, e)
 	}
 	return out, rows.Err()

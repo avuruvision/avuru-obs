@@ -37,6 +37,11 @@ type serviceEdgeDTO struct {
 	Provenance        string  `json:"provenance"`                  // "trace", "flow", or "both"
 	RTTMs             float64 `json:"rttMs,omitempty"`             // OBI TCP RTT p95 (network-health edges)
 	FailedConnections uint64  `json:"failedConnections,omitempty"` // OBI failed/reset TCP connections
+	// Client-side latency for this call path. omitempty on purpose: a
+	// flow-derived edge has no span to measure, and 0ms would read as "instant"
+	// rather than "not measured".
+	P50Ms float64 `json:"p50Ms,omitempty"`
+	P95Ms float64 `json:"p95Ms,omitempty"`
 }
 
 type serviceMapResponse struct {
@@ -159,6 +164,8 @@ func toServiceEdgeDTO(e storage.ServiceEdge) serviceEdgeDTO {
 		ErrorRate:  ratio(e.ErrorCount, e.Count),
 		Bytes:      e.Bytes,
 		Provenance: e.Provenance,
+		P50Ms:      ms(e.P50),
+		P95Ms:      ms(e.P95),
 	}
 }
 

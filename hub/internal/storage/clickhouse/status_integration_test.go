@@ -24,34 +24,37 @@ func TestEffectiveStatusIntegration(t *testing.T) {
 	fixtures := []struct {
 		traceID, spanID, parentID, name, kind, service, status string
 		attrs                                                  map[string]string
+		dur                                                     time.Duration // 0 means "default" (1ms)
 	}{
 		// Rule 1: explicit Error always wins.
-		{"aaaa1111", "s1", "", "GET /x", "Server", "web", "Error", nil},
+		{"aaaa1111", "s1", "", "GET /x", "Server", "web", "Error", nil, 0},
 		// Rule 2: explicit Ok is final, even alongside a 500 attribute.
 		{"bbbb2222", "s2", "", "GET /x", "Server", "web", "Ok",
-			map[string]string{"http.response.status_code": "500"}},
+			map[string]string{"http.response.status_code": "500"}, 0},
 		// Rule 3: Unset + 5xx (current semconv key) is an error.
 		{"cccc3333", "s3", "", "GET /x", "Server", "web", "Unset",
-			map[string]string{"http.response.status_code": "500"}},
+			map[string]string{"http.response.status_code": "500"}, 0},
 		// Rule 4: Unset + 4xx on a CLIENT child is an error (pre-1.21 key);
 		// the root itself stays ok, so this trace has ErrorCount=1 but does
 		// not match the root-span error filter.
-		{"dddd4444", "s4", "", "GET /x", "Server", "web", "Unset", nil},
+		{"dddd4444", "s4", "", "GET /x", "Server", "web", "Unset", nil, 0},
 		{"dddd4444", "c4", "s4", "call dep", "Client", "web", "Unset",
-			map[string]string{"http.status_code": "404"}},
+			map[string]string{"http.status_code": "404"}, 0},
 		// Rule 5: Unset + 4xx on a SERVER span is NOT an error.
 		{"eeee5555", "s5", "", "GET /x", "Server", "web", "Unset",
-			map[string]string{"http.status_code": "404"}},
+			map[string]string{"http.status_code": "404"}, 0},
 		// Rule 6: 3xx is never an error.
 		{"ffff6666", "s6", "", "GET /x", "Server", "web", "Unset",
-			map[string]string{"http.response.status_code": "307"}},
+			map[string]string{"http.response.status_code": "307"}, 0},
 		// Cross-service pair for the "server."-prefixed ServiceEdges variant:
 		// a client 4xx root (error, rule 4) calling a server that 500s
-		// (error, rule 3).
+		// (error, rule 3). The client span is seeded at a distinct duration
+		// (5ms vs. the default 1ms) so the ServiceEdges latency assertion
+		// below can tell client.Duration and server.Duration apart.
 		{"abcd7777", "cs", "", "CALL api", "Client", "web", "Unset",
-			map[string]string{"http.status_code": "404"}},
+			map[string]string{"http.status_code": "404"}, 5 * time.Millisecond},
 		{"abcd7777", "ss", "cs", "GET /y", "Server", "api", "Unset",
-			map[string]string{"http.response.status_code": "500"}},
+			map[string]string{"http.response.status_code": "500"}, 0},
 	}
 
 	batch, err := store.conn.PrepareBatch(ctx, `INSERT INTO otel_traces
@@ -64,9 +67,13 @@ func TestEffectiveStatusIntegration(t *testing.T) {
 		if attrs == nil {
 			attrs = map[string]string{}
 		}
+		d := sp.dur
+		if d == 0 {
+			d = time.Millisecond
+		}
 		if err := batch.Append(base.Add(time.Minute+time.Duration(i)*time.Second),
 			sp.traceID, sp.spanID, sp.parentID, sp.name, sp.kind, sp.service,
-			attrs, uint64(time.Millisecond), sp.status); err != nil {
+			attrs, uint64(d), sp.status); err != nil {
 			t.Fatalf("appending span %s: %v", sp.spanID, err)
 		}
 	}
@@ -207,6 +214,13 @@ func TestEffectiveStatusIntegration(t *testing.T) {
 		e := edges[0]
 		if e.Source != "web" || e.Target != "api" || e.Count != 1 || e.ErrorCount != 1 {
 			t.Errorf("edge wrong: %+v", e)
+		}
+		// Client-side latency for the call path. The client span ("CALL api")
+		// is seeded at 5ms while the server span it calls ("GET /y") is 1ms, so
+		// this assertion FAILS if the query is ever pointed at server.Duration
+		// — which is the whole design decision this edge encodes.
+		if e.P50 != 5*time.Millisecond || e.P95 != 5*time.Millisecond {
+			t.Errorf("edge latency = p50 %v / p95 %v, want 5ms/5ms", e.P50, e.P95)
 		}
 	})
 }

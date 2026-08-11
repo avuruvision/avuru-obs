@@ -13,6 +13,63 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **The service map now says what is wrong, not just that something is.**
+
+  A node used to turn red the moment *any* error appeared in the window — a
+  binary that never distinguished one failed health check from an outage. Its
+  ring is now the service's actual status (healthy, degraded, down, idle), read
+  from the same dependency-aware rollup the Service Health board uses. The map
+  deliberately does not re-derive those thresholds: they are configurable per
+  group and live in the hub, so a second copy in the browser would drift and the
+  two screens would quietly disagree. A service the rollup does not cover reads
+  as *unknown* — never as healthy.
+
+  Edges carry real latency for the first time: p50 and p95 measured from the
+  **caller's** span, which is what that call path actually cost including
+  network and queueing. That is deliberately not the callee's own server-side
+  p95, which the node already shows, and the gap between the two is usually the
+  point — in the seeded demo a node reads `p95 200ms` while the edge into it
+  reads `p95 220ms`, so 20ms is being paid somewhere the callee cannot see. It
+  costs one extra aggregate on a join the query already ran. Edges derived from
+  network flows have no span to measure, so they omit the field rather than
+  report a false `0ms`.
+
+  Hovering a node fades everything outside its neighbourhood and labels its
+  edges with rpm, p95, error rate and TCP RTT where measured. Search, a
+  problems-only toggle and a group filter all live in the URL, so a narrowed map
+  is a link rather than a screen you describe over a call; zoom, fit and a
+  legend round it out. The status and group filters appear only when service
+  health is running, since both read its rollup — and on an install without it
+  the ring falls back to the previous error-presence signal rather than going
+  quietly blank.
+
+  The carbon lens moved from the node border to a halo around it. The border was
+  the only one a node had, and the status ring now needs it; as a halo, a node
+  shows its health and its gCO2e at once instead of one overwriting the other.
+  The Dashboard's compact topology is the same component, so it gained all of
+  this without a second implementation to keep in step.
+
+- **One screen for how the estate is doing.** Everything the product knew lived
+  behind a hypothesis you had to already have: traces if you knew the service,
+  nodes if you knew it was capacity, alerts if you knew something had fired.
+  Opening the app told you nothing until you had a guess. The Dashboard is now
+  the landing route and gives you one — service-group health, live topology
+  beside the firing alerts, and Kubernetes capacity, in three bands.
+
+  It is fixed on purpose: no widget model, no layout editor, no persistence.
+  Every band reads an API that already existed, so the screen added no hub
+  surface at all, and each band follows its own module — bands whose module is
+  off simply do not mount, so the screen never shows a panel that would 404.
+  With service health off, the summary band falls back to the busiest services
+  and those fallback cards carry **no** status: thresholds and dependency
+  propagation belong to that module, and inventing a second set here would put
+  two answers to one question on the same screen.
+
+  One honest gap: there is no CPU utilization percentage anywhere on it. Nothing
+  in the collection path reports allocatable CPU, so a percentage would need a
+  denominator the install does not have — capacity reports cores in use, and
+  only memory shows both halves of a real bar.
+
 - **Say which services matter, from the app.** Service health groups — a name,
   a criticality tier and the namespaces or services it covers — are now created,
   edited and deleted in Settings → Groups, and apply to the next health read.
