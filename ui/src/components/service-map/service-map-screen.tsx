@@ -1,15 +1,18 @@
 "use client";
 
-import { useRef } from "react";
-import { Map as MapIcon, Shuffle } from "lucide-react";
+import { useMemo, useRef } from "react";
+import { Map as MapIcon } from "lucide-react";
 import { useTimeRange } from "@/hooks/use-time-range";
 import { useURLState } from "@/hooks/use-url-state";
 import { useServiceMapData } from "@/hooks/use-service-map-data";
+import { useServiceHealthStatus } from "@/hooks/use-service-health-status";
 import { useModuleEnabled } from "@/hooks/use-capabilities";
-import { Button } from "@/components/ui/button";
 import { CenteredSpinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
+import { filterMap, hasActiveFilter, type MapFilters } from "@/lib/map-filter";
 import { ServiceMap, type ServiceMapHandle } from "./service-map";
+import { MapToolbar } from "./map-toolbar";
+import { MapLegend } from "./map-legend";
 
 export function ServiceMapScreen() {
   const { time, windowMs } = useTimeRange();
@@ -17,15 +20,41 @@ export function ServiceMapScreen() {
   const includeAux = get("includeAux") === "true";
   const { data, isLoading } = useServiceMapData(time, includeAux);
   const greenEnabled = useModuleEnabled("green");
+  const healthEnabled = useModuleEnabled("service-health");
+  // Aux stays excluded from the health read, matching the Health screen's
+  // default — the two screens must not disagree about a group's status.
+  const { byService, groups } = useServiceHealthStatus(time, false, healthEnabled);
   const mapRef = useRef<ServiceMapHandle>(null);
 
-  if (isLoading) return <CenteredSpinner />;
-  const services = data?.services ?? [];
-  const edges = data?.edges ?? [];
+  const filters: MapFilters = useMemo(
+    () => ({
+      q: get("q"),
+      problemsOnly: get("problems") === "true",
+      group: get("group"),
+    }),
+    [get],
+  );
 
-  // The carbon lens is offered ONLY when green runs AND the map actually carries
-  // energy (the hub stamps wh/gco2e only then). When it isn't offered, carbon
-  // stays off regardless of a stale ?carbon= — the map renders byte-unchanged.
+  const services = useMemo(() => data?.services ?? [], [data]);
+  const edges = useMemo(() => data?.edges ?? [], [data]);
+  const shown = useMemo(
+    () => filterMap(services, edges, filters, byService),
+    [services, edges, filters, byService],
+  );
+
+  const setFilters = (next: MapFilters) =>
+    setMany({
+      q: next.q || undefined,
+      problems: next.problemsOnly ? "true" : undefined,
+      group: next.group || undefined,
+    });
+
+  if (isLoading) return <CenteredSpinner />;
+
+  // The carbon lens is offered ONLY when green runs AND the map actually
+  // carries energy (the hub stamps wh/gco2e only then). When it isn't offered,
+  // carbon stays off regardless of a stale ?carbon= — the map renders
+  // byte-unchanged.
   const canCarbon = greenEnabled && services.some((s) => s.wh !== undefined);
   const carbon = canCarbon && get("carbon") === "true";
 
@@ -41,55 +70,45 @@ export function ServiceMapScreen() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-base-content/55">
-          {services.length} services · {edges.length} call edges · nodes sized by
-          request rate, red = errors · click a node for its traces.
-        </p>
-        <div className="flex items-center gap-3">
-          {canCarbon && (
-            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-base-content/70">
-              <input
-                type="checkbox"
-                checked={carbon}
-                onChange={(e) => setMany({ carbon: e.target.checked ? "true" : undefined })}
-                className="accent-success"
-              />
-              Carbon
-            </label>
-          )}
-          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-base-content/70">
-            <input
-              type="checkbox"
-              checked={includeAux}
-              onChange={(e) => setMany({ includeAux: e.target.checked ? "true" : undefined })}
-              className="accent-primary"
-            />
-            Show auxiliary requests
-          </label>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label="Re-run layout"
-            onClick={() => mapRef.current?.relayout()}
-          >
-            <Shuffle className="h-3.5 w-3.5" /> Re-layout
-          </Button>
-        </div>
-      </div>
-      {carbon && (
-        <p className="text-xs text-base-content/45">
-          Carbon lens on · node border = gCO2e (green → amber → red); hover a node
-          for its Wh and gCO2e.
-        </p>
-      )}
-      <ServiceMap
-        services={services}
-        edges={edges}
-        windowMs={windowMs}
-        handleRef={mapRef}
+      <MapToolbar
+        filters={filters}
+        groups={groups}
+        healthEnabled={healthEnabled}
+        canCarbon={canCarbon}
         carbon={carbon}
+        includeAux={includeAux}
+        onFilters={setFilters}
+        onCarbon={(on) => setMany({ carbon: on ? "true" : undefined })}
+        onIncludeAux={(on) => setMany({ includeAux: on ? "true" : undefined })}
+        onZoomIn={() => mapRef.current?.zoomBy(1.25)}
+        onZoomOut={() => mapRef.current?.zoomBy(0.8)}
+        onFit={() => mapRef.current?.fit()}
+        onRelayout={() => mapRef.current?.relayout()}
       />
+
+      <p data-testid="map-count" className="text-xs text-base-content/55">
+        {shown.services.length} services · {shown.edges.length} call edges
+        {hasActiveFilter(filters) && ` · filtered from ${services.length}`} · click
+        a node for its traces.
+      </p>
+
+      <MapLegend health={healthEnabled} carbon={carbon} />
+
+      {shown.services.length === 0 ? (
+        <EmptyState icon={MapIcon} title="No services match">
+          No service in this window matches the current filter. Clear it, or
+          widen the time range.
+        </EmptyState>
+      ) : (
+        <ServiceMap
+          services={shown.services}
+          edges={shown.edges}
+          windowMs={windowMs}
+          health={byService}
+          handleRef={mapRef}
+          carbon={carbon}
+        />
+      )}
     </div>
   );
 }
