@@ -383,19 +383,21 @@ test.describe("service map carbon overlay", () => {
     // — wh is omitempty, and without it the toggle must not exist.
     await page.goto("/service-map?range=24h");
 
-    // Honest limitation: the border colors are drawn on a canvas and cannot be
+    // Honest limitation: the halo colors are drawn on a canvas and cannot be
     // asserted from the DOM. The user-facing contract held here is the toggle,
     // its URL round-trip, and the legend; the tooltip test below proves the
     // per-node energy actually reaches the graph.
     const carbon = page.getByRole("checkbox", { name: "Carbon" });
+    const legend = page.getByTestId("map-legend");
     await expect(page.getByRole("checkbox", { name: "Show auxiliary requests" })).toBeVisible();
+    await expect(legend.getByText(/halo = gCO2e/)).toHaveCount(0);
     await carbon.check();
     await expect(page).toHaveURL(/carbon=true/);
-    await expect(page.getByText(/Carbon lens on · node border = gCO2e/)).toBeVisible();
+    await expect(legend.getByText(/halo = gCO2e/)).toBeVisible();
 
     await carbon.uncheck();
     await expect(page).not.toHaveURL(/[?&]carbon=/);
-    await expect(page.getByText(/Carbon lens on/)).toHaveCount(0);
+    await expect(legend.getByText(/halo = gCO2e/)).toHaveCount(0);
   });
 
   test("node tooltip reports Wh and gCO2e under the carbon lens", async ({ page }) => {
