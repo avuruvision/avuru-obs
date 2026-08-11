@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ServiceMap } from "@/components/service-map/service-map";
+import { useTimeRange } from "@/hooks/use-time-range";
 import type { ServiceEdge, ServiceStats } from "@/lib/api-types";
 
 // Band 2, left column: the Service Map at overview scale. This is the SAME
@@ -16,6 +17,8 @@ export function TopologyCard({
   services: ServiceStats[];
   edges: ServiceEdge[];
 }) {
+  const { windowMs } = useTimeRange();
+
   return (
     <Card className="overflow-hidden">
       <CardHeader>
@@ -30,7 +33,7 @@ export function TopologyCard({
         </div>
       </CardHeader>
       <div className="px-3 pb-3">
-        <ServiceMap services={services} edges={edges} compact />
+        <ServiceMap services={services} edges={edges} windowMs={windowMs} compact />
       </div>
     </Card>
   );

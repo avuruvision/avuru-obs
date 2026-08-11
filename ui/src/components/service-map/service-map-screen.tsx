@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ServiceMap, type ServiceMapHandle } from "./service-map";
 
 export function ServiceMapScreen() {
-  const { time } = useTimeRange();
+  const { time, windowMs } = useTimeRange();
   const { get, setMany } = useURLState();
   const includeAux = get("includeAux") === "true";
   const { data, isLoading } = useServiceMapData(time, includeAux);
@@ -83,7 +83,13 @@ export function ServiceMapScreen() {
           for its Wh and gCO2e.
         </p>
       )}
-      <ServiceMap services={services} edges={edges} handleRef={mapRef} carbon={carbon} />
+      <ServiceMap
+        services={services}
+        edges={edges}
+        windowMs={windowMs}
+        handleRef={mapRef}
+        carbon={carbon}
+      />
     </div>
   );
 }
