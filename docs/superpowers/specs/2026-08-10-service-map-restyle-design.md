@@ -92,10 +92,12 @@ no group, or aged out of the health window — is `unknown` and takes the neutra
 ring, exactly like `idle`. Absent status is never rendered as healthy.
 
 **Module gating.** `/api/v1/health/groups` 404s when the `service-health` module
-is off, and hooks cannot be called conditionally. The query therefore lives in a
-child component that only mounts when the module is enabled — the pattern
-established by
-[`summary-band.tsx`](../../../ui/src/components/dashboard/summary-band.tsx).
+is off. `useHealthGroups` therefore gains an `enabled` flag passed through to
+TanStack Query, so the request simply never fires on an install without the
+module. (Amended 2026-08-11: the original design used the child-component
+pattern from
+[`summary-band.tsx`](../../../ui/src/components/dashboard/summary-band.tsx) to
+dodge a conditional hook; `enabled` is the same guard with less structure.)
 With the module off, the ring falls back to today's binary error presence and
 the legend says "errors" rather than naming statuses.
 
@@ -130,8 +132,11 @@ At rest the map is quiet: node name, ring, size. On node hover:
 
 - the hovered node and its 1-hop neighbours stay lit; everything else fades to
   ~18% opacity;
-- its edges thicken and animate their dash offset along the direction of the
-  call, so direction reads as motion rather than only as an arrowhead;
+- its edges thicken and gain a mid-line arrowhead, so direction reads at a
+  glance rather than only from the endpoint. (Amended 2026-08-11: the original
+  design animated `line-dash-offset`, which needs `line-style: dashed` — already
+  the encoding for network-unhealthy edges. A mid-line arrow keeps dashed
+  meaning exactly one thing.)
 - its edges gain a label — `120 rpm · p95 310ms`, plus `2.1% err` when the error
   rate is non-zero and `RTT 12ms` when OBI measured one;
 - the hovered node's own label expands to `name · 42 rpm · p95 88ms`.
