@@ -730,6 +730,18 @@ type Store interface {
 	ListServiceGroups(ctx context.Context) ([]ServiceGroup, error)
 	SaveServiceGroup(ctx context.Context, g ServiceGroup) error
 	DeleteServiceGroup(ctx context.Context, name string) error
+	// UI-authored OIDC group->role mapping rules. Chart-declared rules stay in
+	// the OIDC ConfigMap and are NOT stored here — auth.MergeMapping merges the
+	// two and lets the config win a name collision, same shape as
+	// ListServiceGroups. Group is the identity, so SaveOIDCGroupMapping
+	// upserts by it; DeleteOIDCGroupMapping tombstones and returns
+	// ErrNotFound when no live rule has the group.
+	ListOIDCGroupMappings(ctx context.Context) ([]OIDCGroupMapping, error)
+	SaveOIDCGroupMapping(ctx context.Context, m OIDCGroupMapping) error
+	DeleteOIDCGroupMapping(ctx context.Context, group string) error
+	// ResetOIDCGroupMappings tombstones every UI-authored rule, returning the
+	// install to exactly what the chart declares.
+	ResetOIDCGroupMappings(ctx context.Context) error
 	// Ingest keys (auth Plan C). GetIngestKeyByHash returns ErrNotFound for an
 	// unknown OR revoked key (the gateway caches this as a negative verdict).
 	// CreateIngestKey inserts a live key. ListIngestKeys returns the live keys
@@ -762,6 +774,17 @@ type ServiceGroup struct {
 	CreatedBy  string
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+}
+
+// OIDCGroupMapping is one UI-authored IdP-group -> role-on-projects rule. It
+// overlays the chart-declared mapping in the OIDC ConfigMap, which stays the
+// base and stays hot-reloading; the hub never writes that ConfigMap.
+type OIDCGroupMapping struct {
+	Group     string
+	Role      string
+	Projects  []string
+	CreatedBy string
+	UpdatedAt time.Time
 }
 
 // AlertChannel is a UI-managed delivery channel (global, not per-tenant).
