@@ -10,10 +10,15 @@ import (
 	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/auth"
+	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
-// oidcReloadInterval is how often the mounted OIDC config file is re-stat'd for
-// changes — the same cadence as the groups/alerting/green loaders.
+// oidcReloadInterval is how often the mounted OIDC config file is re-stat'd
+// for changes — the same cadence as the groups/alerting/green loaders. It is
+// also the cross-replica staleness bound for the mapping cache below: the
+// same ticker unconditionally refreshes the cache on every tick, whether or
+// not the file itself changed, since a write from another hub replica lands
+// in ClickHouse without ever touching this file.
 const oidcReloadInterval = 15 * time.Second
 
 // oidcCallbackPath is the hub route the IdP redirects back to; the external
@@ -34,9 +39,19 @@ type oidcState struct {
 // path — or auth being disabled — yields nil accessors (OIDC off). A
 // present-but-invalid file (parse or discovery failure) fails loud at startup,
 // mirroring the groups/alerting loaders; a later bad edit is logged and ignored
-// (last good provider stays live). SSO group→grant mapping is installed on
-// authSvc here and re-installed on every good reload.
-func loadOIDCConfig(ctx context.Context, authSvc *auth.Service) (func() *auth.OIDCProvider, func() *auth.OIDCConfig, error) {
+// (last good provider stays live).
+//
+// SSO group→grant mapping is installed on authSvc here as an
+// auth.MappingCache.Mapper() — not cfg.MapGroups directly — because the
+// mapping an admin authors in the UI (the DB overlay, layered in by a later
+// task) must be re-derivable on every authenticated request without a
+// per-request ClickHouse read. See mapping.go / mappingcache.go for why that
+// read has to be cached rather than done inline. store is the hub's
+// ClickHouse provider; it is not necessarily connected yet when this runs at
+// startup — MappingCache.Refresh degrades to the config-only mapping in that
+// case rather than failing, and the periodic poll started below picks up the
+// overlay once the store comes up.
+func loadOIDCConfig(ctx context.Context, authSvc *auth.Service, store func() storage.Store) (func() *auth.OIDCProvider, func() *auth.OIDCConfig, error) {
 	path := os.Getenv("AVURUOBS_AUTH_OIDC_CONFIG")
 	if path == "" {
 		return nil, nil, nil
@@ -55,16 +70,38 @@ func loadOIDCConfig(ctx context.Context, authSvc *auth.Service) (func() *auth.OI
 	if err != nil {
 		return nil, nil, fmt.Errorf("AVURUOBS_AUTH_OIDC_CONFIG: %w", err)
 	}
-	authSvc.SetGroupMapper(cfg.MapGroups)
+
+	mapping := auth.NewMappingCache(store)
+	mapping.SetConfig(mappingConfigOf(cfg))
+	// A failed Refresh here is not a startup failure — see the func comment.
+	// Refresh already logs its own warning; the poll below will retry.
+	_ = mapping.Refresh(ctx)
+	// Installed ONCE: Mapper()'s closure reads the cache's live snapshot on
+	// every call, so a later Refresh (hot-reload or poll) takes effect
+	// without ever calling SetGroupMapper again.
+	authSvc.SetGroupMapper(mapping.Mapper())
+
 	slog.Info("oidc config loaded", "path", path, "issuer", cfg.Issuer, "forceSSO", cfg.ForceSSO, "mappings", len(cfg.Mapping))
 
 	var current atomic.Pointer[oidcState]
 	current.Store(&oidcState{provider: p, settings: cfg})
-	go watchOIDCConfig(ctx, path, secret, redirectURL, modTime, &current, authSvc)
+	go watchOIDCConfig(ctx, path, secret, redirectURL, modTime, &current, mapping)
 
 	return func() *auth.OIDCProvider { return current.Load().provider },
 		func() *auth.OIDCConfig { return current.Load().settings },
 		nil
+}
+
+// mappingConfigOf lifts the config-declared half of the mapping out of the
+// full auth.OIDCConfig (issuer, discovery, forceSSO, ...) into the narrower
+// shape auth.MappingCache holds, so the cache stays ignorant of everything
+// about OIDC config that isn't part of the group→role mapping.
+func mappingConfigOf(cfg *auth.OIDCConfig) auth.MappingConfig {
+	return auth.MappingConfig{
+		Mapping:         cfg.Mapping,
+		DefaultRole:     cfg.DefaultRole,
+		DefaultProjects: cfg.DefaultProjects,
+	}
 }
 
 // readOIDCConfig reads+parses the config file, pairs it with the secret, and
@@ -90,11 +127,22 @@ func readOIDCConfig(ctx context.Context, path, secret, redirectURL string) (*aut
 	return p, cfg, info.ModTime(), nil
 }
 
-// watchOIDCConfig polls the config file's mod time and, on change, re-parses +
-// re-discovers, swapping in the new provider and re-installing the group mapper.
-// Failures after startup (bad edit, transient IdP unreachable) are logged and
-// skipped — the last good provider stays live.
-func watchOIDCConfig(ctx context.Context, path, secret, redirectURL string, last time.Time, current *atomic.Pointer[oidcState], authSvc *auth.Service) {
+// watchOIDCConfig ticks every oidcReloadInterval. Each tick does two jobs on
+// the one ticker, since they share the cadence and the hub's other hot-reload
+// watchers (groups, alerting, green) already establish this ctx.Done()-based
+// lifecycle rather than a bare background goroutine:
+//
+//  1. Re-stat the config file; on a change, re-parse + re-discover, swap in
+//     the new provider/settings, and replace the mapping cache's config half
+//     (mapping.SetConfig). Failures here are logged and skipped — the last
+//     good provider/settings stay live.
+//  2. Unconditionally call mapping.Refresh — regardless of whether the file
+//     changed this tick. This is the cross-replica poll: an admin's write on
+//     ANOTHER hub replica lands in ClickHouse without ever touching this
+//     file, so refresh-on-file-change alone would never see it. Refresh
+//     itself keeps the previous snapshot and logs a warning on a store
+//     error, so there is nothing further to do with its return value here.
+func watchOIDCConfig(ctx context.Context, path, secret, redirectURL string, last time.Time, current *atomic.Pointer[oidcState], mapping *auth.MappingCache) {
 	ticker := time.NewTicker(oidcReloadInterval)
 	defer ticker.Stop()
 	for {
@@ -103,23 +151,22 @@ func watchOIDCConfig(ctx context.Context, path, secret, redirectURL string, last
 			return
 		case <-ticker.C:
 			info, err := os.Stat(path)
-			if err != nil {
+			switch {
+			case err != nil:
 				slog.Warn("oidc config stat failed, keeping current", "path", path, "error", err)
-				continue
+			case info.ModTime().After(last):
+				p, cfg, modTime, err := readOIDCConfig(ctx, path, secret, redirectURL)
+				if err != nil {
+					slog.Warn("oidc config reload rejected, keeping current", "path", path, "error", err)
+					last = info.ModTime() // don't retry the same bad content every tick
+				} else {
+					current.Store(&oidcState{provider: p, settings: cfg})
+					mapping.SetConfig(mappingConfigOf(cfg))
+					last = modTime
+					slog.Info("oidc config reloaded", "path", path, "issuer", cfg.Issuer, "forceSSO", cfg.ForceSSO, "mappings", len(cfg.Mapping))
+				}
 			}
-			if !info.ModTime().After(last) {
-				continue
-			}
-			p, cfg, modTime, err := readOIDCConfig(ctx, path, secret, redirectURL)
-			if err != nil {
-				slog.Warn("oidc config reload rejected, keeping current", "path", path, "error", err)
-				last = info.ModTime() // don't retry the same bad content every tick
-				continue
-			}
-			current.Store(&oidcState{provider: p, settings: cfg})
-			authSvc.SetGroupMapper(cfg.MapGroups)
-			last = modTime
-			slog.Info("oidc config reloaded", "path", path, "issuer", cfg.Issuer, "forceSSO", cfg.ForceSSO, "mappings", len(cfg.Mapping))
+			_ = mapping.Refresh(ctx)
 		}
 	}
 }

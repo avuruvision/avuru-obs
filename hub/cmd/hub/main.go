@@ -271,8 +271,11 @@ func run() error {
 	}
 	// OIDC is hot-reloaded like the other mounted configs; nil accessors when
 	// AVURUOBS_AUTH_OIDC_CONFIG is unset (or auth is disabled). Installs the
-	// SSO group→grant mapper on authSvc as a side effect.
-	oidcProvider, oidcSettings, err := loadOIDCConfig(ctx, authSvc)
+	// SSO group→grant mapper on authSvc as a side effect. provider is threaded
+	// through so the mapping cache can overlay UI-authored rules read from
+	// ClickHouse — it may still be nil here (not yet connected); the cache
+	// degrades to config-only until it is.
+	oidcProvider, oidcSettings, err := loadOIDCConfig(ctx, authSvc, provider)
 	if err != nil {
 		return err
 	}

@@ -17,11 +17,17 @@ func testAuthService() *auth.Service {
 	return auth.NewService(func() storage.Store { return nil }, time.Hour)
 }
 
+// testNoStore stands in for a ClickHouse provider that never connects: these
+// tests exercise config loading/reload, not the DB overlay (that is a later
+// task's concern), and MappingCache.Refresh degrades to the config-only
+// mapping when the store is nil.
+func testNoStore() storage.Store { return nil }
+
 // TestLoadOIDCConfigUnsetIsOff: no AVURUOBS_AUTH_OIDC_CONFIG → nil accessors
 // (OIDC off), no polling, no error.
 func TestLoadOIDCConfigUnsetIsOff(t *testing.T) {
 	t.Setenv("AVURUOBS_AUTH_OIDC_CONFIG", "")
-	p, s, err := loadOIDCConfig(context.Background(), testAuthService())
+	p, s, err := loadOIDCConfig(context.Background(), testAuthService(), testNoStore)
 	if err != nil {
 		t.Fatalf("loadOIDCConfig: %v", err)
 	}
@@ -39,7 +45,7 @@ func TestLoadOIDCConfigAuthDisabledIsOff(t *testing.T) {
 		t.Fatalf("writing config: %v", err)
 	}
 	t.Setenv("AVURUOBS_AUTH_OIDC_CONFIG", path)
-	p, s, err := loadOIDCConfig(context.Background(), nil)
+	p, s, err := loadOIDCConfig(context.Background(), nil, testNoStore)
 	if err != nil {
 		t.Fatalf("loadOIDCConfig: %v", err)
 	}
@@ -74,7 +80,7 @@ func TestLoadOIDCConfigFromFile(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // stops the watcher goroutine
 
-	providerFn, settingsFn, err := loadOIDCConfig(ctx, testAuthService())
+	providerFn, settingsFn, err := loadOIDCConfig(ctx, testAuthService(), testNoStore)
 	if err != nil {
 		t.Fatalf("loadOIDCConfig: %v", err)
 	}
@@ -105,7 +111,7 @@ func TestLoadOIDCConfigInvalidFailsLoud(t *testing.T) {
 		t.Fatalf("writing config: %v", err)
 	}
 	t.Setenv("AVURUOBS_AUTH_OIDC_CONFIG", path)
-	if _, _, err := loadOIDCConfig(context.Background(), testAuthService()); err == nil {
+	if _, _, err := loadOIDCConfig(context.Background(), testAuthService(), testNoStore); err == nil {
 		t.Fatal("expected error for missing issuer, got nil")
 	}
 }
