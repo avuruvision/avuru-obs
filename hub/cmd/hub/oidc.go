@@ -43,24 +43,28 @@ type oidcState struct {
 //
 // SSO group→grant mapping is installed on authSvc here as an
 // auth.MappingCache.Mapper() — not cfg.MapGroups directly — because the
-// mapping an admin authors in the UI (the DB overlay, layered in by a later
-// task) must be re-derivable on every authenticated request without a
-// per-request ClickHouse read. See mapping.go / mappingcache.go for why that
-// read has to be cached rather than done inline. store is the hub's
-// ClickHouse provider; it is not necessarily connected yet when this runs at
-// startup — MappingCache.Refresh degrades to the config-only mapping in that
-// case rather than failing, and the periodic poll started below picks up the
-// overlay once the store comes up.
-func loadOIDCConfig(ctx context.Context, authSvc *auth.Service, store func() storage.Store) (func() *auth.OIDCProvider, func() *auth.OIDCConfig, error) {
+// mapping an admin authors in the UI (the DB overlay) must be re-derivable on
+// every authenticated request without a per-request ClickHouse read. See
+// mapping.go / mappingcache.go for why that read has to be cached rather than
+// done inline. store is the hub's ClickHouse provider; it is not necessarily
+// connected yet when this runs at startup — MappingCache.Refresh degrades to
+// the config-only mapping in that case rather than failing, and the periodic
+// poll started below picks up the overlay once the store comes up.
+//
+// The cache itself is also returned so main.go can hand it to api.Config
+// (OIDCMapping) — it is what the admin CRUD in internal/api/oidc_mapping.go
+// lists from and refreshes after a write. nil exactly when OIDC is off,
+// which is also what gates those routes' registration (router.go).
+func loadOIDCConfig(ctx context.Context, authSvc *auth.Service, store func() storage.Store) (func() *auth.OIDCProvider, func() *auth.OIDCConfig, *auth.MappingCache, error) {
 	path := os.Getenv("AVURUOBS_AUTH_OIDC_CONFIG")
 	if path == "" {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	if authSvc == nil {
 		// A config was mounted but auth is disabled: SSO has no session store to
 		// mint into. Log the mismatch rather than silently ignoring it.
 		slog.Warn("AVURUOBS_AUTH_OIDC_CONFIG is set but authentication is disabled — OIDC ignored")
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 
 	secret := os.Getenv("AVURUOBS_AUTH_OIDC_CLIENT_SECRET")
@@ -68,7 +72,7 @@ func loadOIDCConfig(ctx context.Context, authSvc *auth.Service, store func() sto
 
 	p, cfg, modTime, err := readOIDCConfig(ctx, path, secret, redirectURL)
 	if err != nil {
-		return nil, nil, fmt.Errorf("AVURUOBS_AUTH_OIDC_CONFIG: %w", err)
+		return nil, nil, nil, fmt.Errorf("AVURUOBS_AUTH_OIDC_CONFIG: %w", err)
 	}
 
 	mapping := auth.NewMappingCache(store)
@@ -89,6 +93,7 @@ func loadOIDCConfig(ctx context.Context, authSvc *auth.Service, store func() sto
 
 	return func() *auth.OIDCProvider { return current.Load().provider },
 		func() *auth.OIDCConfig { return current.Load().settings },
+		mapping,
 		nil
 }
 

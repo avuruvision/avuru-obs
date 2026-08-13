@@ -96,6 +96,14 @@ type Config struct {
 	OIDC func() *auth.OIDCProvider
 	// OIDCSettings returns the current parsed OIDC config (nil when unset).
 	OIDCSettings func() *auth.OIDCConfig
+	// OIDCMapping is the merged (chart config + DB overlay) OIDC group→role
+	// mapping cache — non-nil exactly when OIDC is configured (cmd/hub/oidc.go
+	// creates it in the same success path that discovers the provider). The
+	// admin CRUD at /api/v1/auth/oidc/mapping/* (oidc_mapping.go) reads
+	// Snapshot() for its list and calls Refresh after every write, so THIS
+	// replica reflects an admin's own edit immediately; nil disables the
+	// routes entirely (404) rather than answering from an empty mapping.
+	OIDCMapping *auth.MappingCache
 	// IngestInternalToken authenticates the gateway→hub ingest-key validation
 	// call (auth Plan C). When empty, POST /internal/v1/ingest-keys/validate is
 	// not registered and gateway enforcement is simply unused (the drop-in
@@ -247,6 +255,21 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		// route set is stable and the SPA gets a straight answer.
 		mux.Handle("GET /api/v1/auth/oidc/start", handle(a.handleOIDCStart))
 		mux.Handle("GET /api/v1/auth/oidc/callback", handle(a.handleOIDCCallback))
+
+		// OIDC group→role mapping overlay (oidc_mapping.go) — registered only
+		// when OIDC is actually configured (cfg.OIDCMapping != nil), unlike
+		// start/callback above which stay registered and answer 400 so the
+		// route set is stable: there is no mapping to edit at all when SSO
+		// isn't wired, so 404 is the honest answer here, not a redundant "not
+		// configured" body. Admin-gated on every verb, including the read —
+		// this configures WHO gets WHAT role, which is more sensitive than the
+		// service-health groupings a viewer may read.
+		if cfg.OIDCMapping != nil {
+			mux.Handle("GET /api/v1/auth/oidc/mapping", a.securedAdmin(a.handleOIDCMapping))
+			mux.Handle("PUT /api/v1/auth/oidc/mapping/{group}", a.securedAdmin(a.handleUpsertOIDCMapping))
+			mux.Handle("DELETE /api/v1/auth/oidc/mapping/{group}", a.securedAdmin(a.handleDeleteOIDCMapping))
+			mux.Handle("POST /api/v1/auth/oidc/mapping/reset", a.securedAdmin(a.handleResetOIDCMapping))
+		}
 
 		// Users admin API — global admin only (creates/edits credentials and
 		// grants for OTHER users, unlike /auth/me which is self-service).

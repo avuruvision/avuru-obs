@@ -274,8 +274,11 @@ func run() error {
 	// SSO group→grant mapper on authSvc as a side effect. provider is threaded
 	// through so the mapping cache can overlay UI-authored rules read from
 	// ClickHouse — it may still be nil here (not yet connected); the cache
-	// degrades to config-only until it is.
-	oidcProvider, oidcSettings, err := loadOIDCConfig(ctx, authSvc, provider)
+	// degrades to config-only until it is. oidcMapping is the same cache,
+	// handed to api.Config below so the admin CRUD (oidc_mapping.go) reads and
+	// refreshes the one mapping the hub is actually enforcing, not a second
+	// copy of it.
+	oidcProvider, oidcSettings, oidcMapping, err := loadOIDCConfig(ctx, authSvc, provider)
 	if err != nil {
 		return err
 	}
@@ -318,6 +321,7 @@ func run() error {
 		GreenConfig:                     greenConfig,
 		OIDC:                            oidcProvider,
 		OIDCSettings:                    oidcSettings,
+		OIDCMapping:                     oidcMapping,
 		IngestInternalToken:             envOr("AVURUOBS_INGEST_INTERNAL_TOKEN", ""),
 		StorageConnection:               storageConnection(),
 		CollectionRuntimeControlEnabled: collectionRuntimeControlEnabled,
