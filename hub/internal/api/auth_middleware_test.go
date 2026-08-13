@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -319,5 +320,166 @@ func TestAuthDisabledKeepsOldBehavior(t *testing.T) {
 	Register(mux, func() storage.Store { return f }, Config{}) // Auth nil
 	if w := authDo(mux, "GET", "/api/v1/services", nil, nil); w.Code != http.StatusOK {
 		t.Fatalf("auth disabled: %d, want 200", w.Code)
+	}
+}
+
+// bearerMux builds a router with auth on and TWO users: u1 (editor on
+// payments, returned as a session cookie) and u2 (editor on prod, returned as
+// a raw API token). Two distinct scopes is what lets the tests below tell
+// WHICH credential the middleware actually honoured.
+func bearerMux(t *testing.T, cfg Config) (*http.ServeMux, *storagetest.Fake, *http.Cookie, string) {
+	t.Helper()
+	ctx := context.Background()
+	f := &storagetest.Fake{Tenants: []string{"payments", "prod"}}
+	svc := auth.NewService(func() storage.Store { return f }, time.Hour)
+	h, _ := auth.HashPassword("pw")
+
+	_ = f.SaveAuthUser(ctx, storage.AuthUser{
+		ID: "u1", Email: "e@x.io", Name: "E", PasswordHash: h, Origin: "local"})
+	_ = f.ReplaceAuthGrants(ctx, "u1",
+		[]storage.AuthGrant{{UserID: "u1", Scope: "payments", Role: "editor"}})
+	_ = f.SaveAuthUser(ctx, storage.AuthUser{
+		ID: "u2", Email: "bot@x.io", Name: "Bot", PasswordHash: h, Origin: "local"})
+	_ = f.ReplaceAuthGrants(ctx, "u2",
+		[]storage.AuthGrant{{UserID: "u2", Scope: "prod", Role: "editor"}})
+
+	raw, prefix, hash := auth.NewAPIToken()
+	_ = f.CreateAuthToken(ctx, storage.AuthToken{
+		TokenHash: hash, UserID: "u2", Name: "ci", Prefix: prefix, CreatedAt: time.Now()})
+
+	token, _, err := svc.Login(ctx, "e@x.io", "pw", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Auth = svc
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return f }, cfg)
+	return mux, f, &http.Cookie{Name: sessionCookieName, Value: token}, raw
+}
+
+func bearer(tok string) map[string]string {
+	return map[string]string{"Authorization": "Bearer " + tok}
+}
+
+// TestBearerTokenAuthenticatesAsOwner: a token is just another way to arrive at
+// an Identity. It carries its owner's grants and nothing else, so u2's token
+// reaches prod (u2's scope) and is refused on payments (u1's).
+func TestBearerTokenAuthenticatesAsOwner(t *testing.T) {
+	mux, _, _, raw := bearerMux(t, Config{})
+	hdr := bearer(raw)
+	hdr["X-Avuru-Tenant"] = "prod"
+	if w := authDo(mux, "GET", "/api/v1/services", nil, hdr); w.Code != http.StatusOK {
+		t.Fatalf("token on its owner's project: %d, want 200 (%s)", w.Code, w.Body.String())
+	}
+	hdr["X-Avuru-Tenant"] = "payments"
+	if w := authDo(mux, "GET", "/api/v1/services", nil, hdr); w.Code != http.StatusForbidden {
+		t.Fatalf("token outside its owner's grants: %d, want 403", w.Code)
+	}
+}
+
+// TestBadBearerIs401EvenWithAnonymousConfigured is the security assertion of
+// this feature, and the deliberate INVERSE of TestGarbageCookie: a garbage
+// cookie degrades to the anonymous identity, because a browser presenting a
+// dead cookie is indistinguishable from one that never logged in. A garbage
+// BEARER does not, because presenting a bearer is an explicit claim. Falling
+// through would silently turn a CI job with a revoked token into one reading
+// whatever anonymous can see — a broken script that looks like it still works.
+func TestBadBearerIs401EvenWithAnonymousConfigured(t *testing.T) {
+	anon := &auth.Identity{Name: "Anonymous", Anonymous: true,
+		Grants: []auth.Grant{{Scope: "prod", Role: auth.RoleViewer}}}
+	mux, _, _, _ := bearerMux(t, Config{AnonymousIdentity: anon})
+
+	hdr := bearer("avurut_totally-made-up")
+	hdr["X-Avuru-Tenant"] = "prod"
+	if w := authDo(mux, "GET", "/api/v1/services", nil, hdr); w.Code != http.StatusUnauthorized {
+		t.Fatalf("bad bearer with anonymous configured: %d, want 401 (%s)", w.Code, w.Body.String())
+	}
+	// Control: with no Authorization header at all, the same request DOES get
+	// the anonymous identity. So the 401 above is the bearer branch's doing,
+	// not a misconfigured fixture.
+	if w := authDo(mux, "GET", "/api/v1/services", nil,
+		map[string]string{"X-Avuru-Tenant": "prod"}); w.Code != http.StatusOK {
+		t.Fatalf("no credential at all: %d, want 200 anonymous", w.Code)
+	}
+}
+
+// TestBearerStoreFailureIs503 mirrors the session branch: an unreachable store
+// is not a bad credential. Answering 401 would tell every automated caller to
+// go re-authenticate against a hub that is merely ill.
+func TestBearerStoreFailureIs503(t *testing.T) {
+	mux, f, _, raw := bearerMux(t, Config{})
+	f.AuthTokensErr = errors.New("clickhouse down")
+	hdr := bearer(raw)
+	hdr["X-Avuru-Tenant"] = "prod"
+	if w := authDo(mux, "GET", "/api/v1/services", nil, hdr); w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("store failure during token resolution: %d, want 503", w.Code)
+	}
+}
+
+// TestBearerWinsOverCookie: an explicit credential beats an ambient one, and an
+// explicit credential that FAILS is an error even when a perfectly good cookie
+// is sitting right there. Otherwise a caller could never tell whether their
+// token worked.
+func TestBearerWinsOverCookie(t *testing.T) {
+	mux, _, cookie, raw := bearerMux(t, Config{})
+
+	// Cookie is u1 (payments only); bearer is u2 (prod only). Asking for prod
+	// succeeds, so the bearer was honoured and the cookie ignored.
+	hdr := bearer(raw)
+	hdr["X-Avuru-Tenant"] = "prod"
+	if w := authDo(mux, "GET", "/api/v1/services", cookie, hdr); w.Code != http.StatusOK {
+		t.Fatalf("bearer alongside cookie: %d, want 200 on the TOKEN's scope", w.Code)
+	}
+	// ...and the cookie's own scope is now out of reach, confirming it was not
+	// silently used as a second chance.
+	hdr["X-Avuru-Tenant"] = "payments"
+	if w := authDo(mux, "GET", "/api/v1/services", cookie, hdr); w.Code != http.StatusForbidden {
+		t.Fatalf("cookie's scope via a bearer request: %d, want 403", w.Code)
+	}
+	// A bad bearer is still 401, valid cookie or not.
+	bad := bearer("avurut_nope")
+	bad["X-Avuru-Tenant"] = "payments"
+	if w := authDo(mux, "GET", "/api/v1/services", cookie, bad); w.Code != http.StatusUnauthorized {
+		t.Fatalf("bad bearer + valid cookie: %d, want 401", w.Code)
+	}
+}
+
+// TestNonBearerAuthorizationFallsThrough: we only claim to understand a bearer
+// credential. Another scheme, or an empty one, must not 401 a request that has
+// a perfectly good session cookie.
+func TestNonBearerAuthorizationFallsThrough(t *testing.T) {
+	mux, _, cookie, _ := bearerMux(t, Config{})
+	for _, hdr := range []string{"Basic dXNlcjpwdw==", "Bearer ", "Bearer"} {
+		h := map[string]string{"Authorization": hdr, "X-Avuru-Tenant": "payments"}
+		if w := authDo(mux, "GET", "/api/v1/services", cookie, h); w.Code != http.StatusOK {
+			t.Errorf("Authorization %q with a valid cookie: %d, want 200", hdr, w.Code)
+		}
+	}
+}
+
+// TestBearerCaseInsensitiveScheme — RFC 7235 says the scheme is
+// case-insensitive, and real clients send "bearer".
+func TestBearerCaseInsensitiveScheme(t *testing.T) {
+	mux, _, _, raw := bearerMux(t, Config{})
+	h := map[string]string{"Authorization": "bearer " + raw, "X-Avuru-Tenant": "prod"}
+	if w := authDo(mux, "GET", "/api/v1/services", nil, h); w.Code != http.StatusOK {
+		t.Fatalf("lowercase scheme: %d, want 200", w.Code)
+	}
+}
+
+// TestBearerRecordsLastUsedOnce proves the debounce reaches the store: the
+// first request writes LastUsedAt, and an immediate second one does not write
+// again. Without this, a token client would drive one INSERT per API call.
+func TestBearerRecordsLastUsedOnce(t *testing.T) {
+	mux, f, _, raw := bearerMux(t, Config{})
+	hdr := bearer(raw)
+	hdr["X-Avuru-Tenant"] = "prod"
+	for range 3 {
+		if w := authDo(mux, "GET", "/api/v1/services", nil, hdr); w.Code != http.StatusOK {
+			t.Fatalf("token request: %d", w.Code)
+		}
+	}
+	if len(f.TouchedTokens) != 1 {
+		t.Fatalf("three requests wrote LastUsedAt %d times, want 1", len(f.TouchedTokens))
 	}
 }

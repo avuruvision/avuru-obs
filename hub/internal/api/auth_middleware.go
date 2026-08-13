@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
@@ -98,9 +99,33 @@ func (a *API) securedAdmin(fn func(http.ResponseWriter, *http.Request) error) ht
 	})}
 }
 
-// requestIdentity resolves the session cookie, falling back to the anonymous
-// identity when configured. No cookie and no anonymous → 401.
+// requestIdentity resolves a credential to an identity: an Authorization
+// bearer token first, then the session cookie, then the anonymous identity
+// when configured. Nothing left → 401.
+//
+// Bearer is checked FIRST, and does not fall through. An explicit credential
+// beats an ambient one, and an explicit credential that FAILS is an error, not
+// something to shrug off: falling through would hand a caller with a bad token
+// the anonymous identity on any install that configures one, quietly turning a
+// broken CI job into one that reads whatever anonymous can see. A clean 401 is
+// the only honest answer. (See design/2026-08-13-api-tokens.md, "The seam".)
 func (a *API) requestIdentity(w http.ResponseWriter, r *http.Request) (*auth.Identity, error) {
+	if raw, ok := bearerToken(r); ok {
+		id, err := a.cfg.Auth.IdentityFromAPIToken(r.Context(), raw)
+		if err == nil {
+			a.touchAPIToken(r.Context(), raw)
+			return &id, nil
+		}
+		// Same distinction the session branch draws below, for the same
+		// reason: only ErrNotFound (unknown, revoked, expired, or a disabled
+		// owner) means the credential is bad. Anything else means the backend
+		// is unreachable, and answering 401 would tell every automated caller
+		// to go re-authenticate against a hub that is merely ill.
+		if !errors.Is(err, storage.ErrNotFound) {
+			return nil, errStoreUnavailable
+		}
+		return nil, unauthorized()
+	}
 	if c, err := r.Cookie(sessionCookieName); err == nil && c.Value != "" {
 		id, err := a.cfg.Auth.IdentityFromToken(r.Context(), c.Value)
 		if err == nil {
@@ -125,6 +150,44 @@ func (a *API) requestIdentity(w http.ResponseWriter, r *http.Request) (*auth.Ide
 		return &cp, nil
 	}
 	return nil, unauthorized()
+}
+
+// bearerToken extracts an Authorization bearer credential. The scheme is
+// matched case-insensitively (RFC 7235 says it is case-insensitive, and real
+// clients do send "bearer").
+//
+// A header carrying some OTHER scheme, or "Bearer" with nothing after it, is
+// reported as absent rather than as a failure: we only claim to understand a
+// bearer credential, so anything else falls through to the cookie path instead
+// of 401-ing a browser that happens to send an Authorization header.
+func bearerToken(r *http.Request) (string, bool) {
+	const scheme = "bearer "
+	h := r.Header.Get("Authorization")
+	if len(h) < len(scheme) || !strings.EqualFold(h[:len(scheme)], scheme) {
+		return "", false
+	}
+	tok := strings.TrimSpace(h[len(scheme):])
+	return tok, tok != ""
+}
+
+// touchAPIToken records that a token was just used, debounced to at most once
+// per auth.TouchWindow per token.
+//
+// It never fails the request. A token that authenticated successfully has
+// already earned its access; a full ClickHouse disk must not lock every token
+// client out over a bookkeeping column.
+func (a *API) touchAPIToken(ctx context.Context, raw string) {
+	hash := auth.HashAPIToken(raw)
+	if !a.lastUsed.ShouldTouch(hash, time.Now()) {
+		return
+	}
+	st, err := a.store()
+	if err != nil {
+		return
+	}
+	if err := st.TouchAuthToken(ctx, hash, time.Now()); err != nil {
+		slog.Debug("recording API token last-use failed", "error", err)
+	}
 }
 
 // Modes for Config.OriginCheck, sharing the vocabulary of the chart's other

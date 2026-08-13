@@ -153,6 +153,8 @@ type API struct {
 	// single-loop assumption is: hub replicas default to 1 (HA needs leader
 	// election, which is v2).
 	collectionMu sync.Mutex
+	// lastUsed debounces API-token LastUsedAt writes; see auth.TouchWindow.
+	lastUsed auth.LastUsed
 }
 
 // store resolves the current backend or fails with 503.
