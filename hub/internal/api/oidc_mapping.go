@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -190,24 +191,34 @@ func (a *API) handleUpsertOIDCMapping(w http.ResponseWriter, r *http.Request) er
 	return nil
 }
 
-// handleDeleteOIDCMapping tombstones an authored rule. A chart-declared name
-// is refused outright (400) rather than attempted: the chart keeps
-// contributing a "config" row for that name on every future read regardless
-// of what happens here, so a delete that appeared to succeed would just leave
-// the admin watching the group reappear — the honest answer is to say where
-// it actually lives instead of pretending the delete did something.
+// handleDeleteOIDCMapping tombstones an AUTHORED rule. What it refuses is a
+// chart-declared rule with no authored row behind it: the chart keeps
+// contributing a "config" row for that name on every future read regardless of
+// what happens here, so a delete that appeared to succeed would just leave the
+// admin watching the group reappear — the honest answer is to say where it
+// actually lives instead of pretending the delete did something.
+//
+// The order matters. Refusing on the declared name ALONE would strand the one
+// row an admin most wants gone: PUT deliberately accepts a group the chart
+// also declares, storing it Shadowed so the UI can explain why it stopped
+// applying — and if delete then refused that name, the admin's own rule could
+// only be cleared by resetting every rule they ever wrote. So the authored row
+// is deleted whenever one exists, shadowed or not, and the 400 is reserved for
+// the case where there is genuinely nothing here to delete.
 func (a *API) handleDeleteOIDCMapping(w http.ResponseWriter, r *http.Request) error {
 	store, err := a.store()
 	if err != nil {
 		return err
 	}
 	group := r.PathValue("group")
-	if a.declaredOIDCGroup(group) {
-		return badRequest("OIDC group %q is declared in the chart's auth.oidc.mapping and cannot be deleted here", group)
-	}
 	// The store answers ErrNotFound for an absent or already-deleted group,
-	// which the error mapper turns into a 404.
+	// which the error mapper turns into a 404 — except when the chart declares
+	// the name, where "where it really lives" is the more useful answer than
+	// "not found".
 	if err := store.DeleteOIDCGroupMapping(r.Context(), group); err != nil {
+		if errors.Is(err, storage.ErrNotFound) && a.declaredOIDCGroup(group) {
+			return badRequest("OIDC group %q is declared in the chart's auth.oidc.mapping and cannot be deleted here", group)
+		}
 		return err
 	}
 	a.refreshOIDCMapping(r.Context())

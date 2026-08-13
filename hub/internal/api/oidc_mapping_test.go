@@ -205,6 +205,42 @@ func TestOIDCMappingDeleteDeclaredGroupIs400(t *testing.T) {
 	}
 }
 
+// TestOIDCMappingDeleteShadowedRowIsAllowed: the 400 above is about a chart
+// name with nothing authored behind it. Once an admin HAS authored a rule for
+// that name — which PUT deliberately permits, storing it Shadowed — that row
+// is theirs and must be deletable. Refusing on the declared name alone would
+// strand the one row they most want gone, leaving reset-everything as the only
+// way out. Afterwards the config row remains, untouched.
+func TestOIDCMappingDeleteShadowedRowIsAllowed(t *testing.T) {
+	f := &storagetest.Fake{OIDCGroupMappings: map[string]storage.OIDCGroupMapping{
+		"platform": {Group: "platform", Role: "viewer", Projects: []string{"default"}},
+	}}
+	mux, c, cache := oidcMappingMux(t, f,
+		auth.GroupMap{Group: "platform", Role: auth.RoleAdmin, Projects: []string{"*"}})
+
+	rules := listOIDCMapping(t, mux, c)
+	if len(rules) != 2 {
+		t.Fatalf("seed rules = %+v, want a config row and a shadowed db row", rules)
+	}
+
+	w := doBody(mux, http.MethodDelete, "/api/v1/auth/oidc/mapping/platform", c, "")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("delete shadowed row: %d body %s, want 204", w.Code, w.Body.String())
+	}
+	if _, ok := f.OIDCGroupMappings["platform"]; ok {
+		t.Fatal("authored row still stored after delete")
+	}
+	snap := cache.Snapshot()
+	if len(snap) != 1 || snap[0].Source != "config" {
+		t.Fatalf("snapshot after delete = %+v, want the chart's rule alone", snap)
+	}
+	// And with the authored row gone, the name is once more chart-only — so a
+	// second delete gets the 400 that explains where it lives.
+	if w := doBody(mux, http.MethodDelete, "/api/v1/auth/oidc/mapping/platform", c, ""); w.Code != http.StatusBadRequest {
+		t.Fatalf("second delete: %d, want 400", w.Code)
+	}
+}
+
 // An unknown, never-declared group is a plain 404 — distinct from the 400
 // above, which is specifically about a name the chart owns.
 func TestOIDCMappingDeleteUnknownIs404(t *testing.T) {
