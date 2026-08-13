@@ -164,8 +164,18 @@ func TestEffectiveStatusIntegration(t *testing.T) {
 		if op := byOp["web GET /x"]; op.Count != 6 || op.ErrorCount != 2 {
 			t.Errorf("web GET /x = %d/%d, want 6/2", op.Count, op.ErrorCount)
 		}
-		if op := byOp["web CALL api"]; op.Count != 1 || op.ErrorCount != 1 {
-			t.Errorf("web CALL api = %d/%d, want 1/1", op.Count, op.ErrorCount)
+		// The cross-service pair, from the callee's side: the Server span "GET /y"
+		// on `api` 500s, so it is one errored operation.
+		if op := byOp["api GET /y"]; op.Count != 1 || op.ErrorCount != 1 {
+			t.Errorf("api GET /y = %d/%d, want 1/1", op.Count, op.ErrorCount)
+		}
+		// ...and NOT from the caller's side. TraceOverview aggregates entry spans
+		// only (SpanKind IN Server/Consumer): a service's operations are what it
+		// handled, not what it called. "CALL api" is web's Client span, so it must
+		// be absent. This previously asserted the opposite, which the query could
+		// never satisfy.
+		if _, ok := byOp["web CALL api"]; ok {
+			t.Errorf("client span CALL api must not appear in an entry-span overview: %+v", got)
 		}
 	})
 

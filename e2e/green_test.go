@@ -194,7 +194,10 @@ func TestGreenReportCSV(t *testing.T) {
 	q.Set("format", "csv")
 	q.Set("start", start)
 	q.Set("end", end)
-	httpResp, err := http.Get(hubURL + "/api/v1/green/report?" + q.Encode())
+	// apiClient, not http.Get: /api/v1/green/report is viewer-guarded like every
+	// other green route, and the bare default client carries no session, so this
+	// asked the hub for a CSRD export as an anonymous caller and got a 401.
+	httpResp, err := apiClient.Get(hubURL + "/api/v1/green/report?" + q.Encode())
 	if err != nil {
 		t.Fatalf("report: %v", err)
 	}
