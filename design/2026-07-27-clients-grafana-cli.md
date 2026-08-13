@@ -3,6 +3,9 @@
 - **Date:** 2026-07-27
 - **Author(s):** Berny ryders
 - **Status:** Draft
+- **Note:** the **API-token seam** described here is narrowed and superseded by
+  [2026-08-13 API tokens](2026-08-13-api-tokens.md), which ships tokens on their
+  own. The Grafana data source and the CLI remain this AEP's, unbuilt.
 
 ## Summary
 
