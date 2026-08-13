@@ -102,6 +102,16 @@ type Fake struct {
 	SavedIngestKeys []storage.AuthIngestKey
 	RevokedKeys     []string
 
+	// API-token fakes. Same shape as the ingest-key ones: AuthTokens is keyed
+	// by hash and holds only live tokens, so RevokeAuthToken deletes the entry
+	// rather than flagging it. AuthTokensErr forces a store failure, which the
+	// middleware must surface as 503 rather than 401.
+	AuthTokens      map[string]storage.AuthToken
+	AuthTokensErr   error
+	SavedAuthTokens []storage.AuthToken
+	RevokedTokens   []string
+	TouchedTokens   []string
+
 	// Last*Query record the most recent inputs for asserting parameter parsing.
 	LastTraceQuery       storage.TraceQuery
 	LastServiceQuery     storage.ServiceQuery
@@ -662,5 +672,89 @@ func (f *Fake) RevokeIngestKey(_ context.Context, project, keyHash string) error
 		return storage.ErrNotFound
 	}
 	delete(f.IngestKeys, keyHash)
+	return nil
+}
+
+// CreateAuthToken mirrors the ReplacingMergeTree insert (upsert by hash).
+func (f *Fake) CreateAuthToken(_ context.Context, t storage.AuthToken) error {
+	if f.AuthTokensErr != nil {
+		return f.AuthTokensErr
+	}
+	if f.AuthTokens == nil {
+		f.AuthTokens = make(map[string]storage.AuthToken)
+	}
+	f.AuthTokens[t.TokenHash] = t
+	f.SavedAuthTokens = append(f.SavedAuthTokens, t)
+	return nil
+}
+
+// GetAuthTokenByHash returns a live token or ErrNotFound (unknown or revoked —
+// revoked tokens are removed from the map, mirroring the FINAL/Revoked read).
+// An EXPIRED token is returned, exactly as the real store does: expiry is the
+// auth layer's call, not storage's. AuthTokensErr takes precedence so a test
+// can distinguish "bad credential" from "store down" — the difference between
+// a 401 and a 503.
+func (f *Fake) GetAuthTokenByHash(_ context.Context, tokenHash string) (storage.AuthToken, error) {
+	if f.AuthTokensErr != nil {
+		return storage.AuthToken{}, f.AuthTokensErr
+	}
+	t, ok := f.AuthTokens[tokenHash]
+	if !ok {
+		return storage.AuthToken{}, storage.ErrNotFound
+	}
+	return t, nil
+}
+
+// ListAuthTokens returns one user's live tokens, newest first (matching the real
+// ORDER BY CreatedAt DESC — map iteration order is random), expired ones
+// included.
+func (f *Fake) ListAuthTokens(_ context.Context, userID string) ([]storage.AuthToken, error) {
+	if f.AuthTokensErr != nil {
+		return nil, f.AuthTokensErr
+	}
+	out := make([]storage.AuthToken, 0, len(f.AuthTokens))
+	for _, t := range f.AuthTokens {
+		if t.UserID == userID {
+			out = append(out, t)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].CreatedAt.After(out[j].CreatedAt)
+		}
+		return out[i].TokenHash < out[j].TokenHash
+	})
+	return out, nil
+}
+
+// RevokeAuthToken mirrors the tombstone: only live tokens are observable, so a
+// revoked hash simply disappears. ErrNotFound when no live token with that hash
+// belongs to that user.
+func (f *Fake) RevokeAuthToken(_ context.Context, userID, tokenHash string) error {
+	if f.AuthTokensErr != nil {
+		return f.AuthTokensErr
+	}
+	f.RevokedTokens = append(f.RevokedTokens, tokenHash)
+	t, ok := f.AuthTokens[tokenHash]
+	if !ok || t.UserID != userID {
+		return storage.ErrNotFound
+	}
+	delete(f.AuthTokens, tokenHash)
+	return nil
+}
+
+// TouchAuthToken records the use and updates LastUsedAt in place, keeping every
+// other field — the real store re-inserts the whole row for the same reason.
+func (f *Fake) TouchAuthToken(_ context.Context, tokenHash string, at time.Time) error {
+	if f.AuthTokensErr != nil {
+		return f.AuthTokensErr
+	}
+	f.TouchedTokens = append(f.TouchedTokens, tokenHash)
+	t, ok := f.AuthTokens[tokenHash]
+	if !ok {
+		return storage.ErrNotFound
+	}
+	t.LastUsedAt = at
+	f.AuthTokens[tokenHash] = t
 	return nil
 }

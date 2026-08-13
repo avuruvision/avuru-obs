@@ -536,6 +536,24 @@ type AuthIngestKey struct {
 	CreatedAt time.Time
 }
 
+// AuthToken is one personal API token (design/2026-08-13-api-tokens.md).
+// TokenHash is hex(sha256(raw)) — the raw token is shown to its owner once at
+// creation and never stored. Prefix is the raw token's first 12 chars, kept
+// in clear for UI identification ("avurut_ab12…"). It carries no grants of
+// its own: resolution reads the owner's, live, on every request, so a role
+// change reaches every token that user holds without hunting them down.
+// Revocation is a tombstone.
+type AuthToken struct {
+	TokenHash  string
+	UserID     string
+	Name       string
+	Prefix     string
+	ExpiresAt  time.Time // zero = never expires
+	LastUsedAt time.Time // zero = never used
+	Revoked    bool
+	CreatedAt  time.Time
+}
+
 // GreenQuery filters ServiceEnergy / NodeEnergy (module green). Metric names
 // and attribute keys come from the green module's config — the backend must
 // not hardcode Kepler naming (an AEP verify item; operators can rename
@@ -751,6 +769,23 @@ type Store interface {
 	GetIngestKeyByHash(ctx context.Context, keyHash string) (AuthIngestKey, error)
 	ListIngestKeys(ctx context.Context, project string) ([]AuthIngestKey, error)
 	RevokeIngestKey(ctx context.Context, project, keyHash string) error
+	// Personal API tokens (design/2026-08-13-api-tokens.md). Same tombstone
+	// shape as ingest keys, scoped by owner instead of project.
+	// GetAuthTokenByHash returns ErrNotFound for an unknown OR revoked token,
+	// but returns an EXPIRED token normally — expiry is decided one layer up
+	// (in the auth package, not storage), so the owner can still see why it
+	// stopped working. ListAuthTokens returns the live tokens for one user,
+	// newest first, including expired ones, for the same reason.
+	// RevokeAuthToken is scoped by userID as well as hash, so a revoke URL
+	// cannot tombstone another user's token by guessing the hash.
+	// TouchAuthToken re-inserts the row with a new LastUsedAt (a
+	// ReplacingMergeTree upsert, not an ALTER) — callers are responsible for
+	// debouncing this; storage does not.
+	CreateAuthToken(ctx context.Context, t AuthToken) error
+	GetAuthTokenByHash(ctx context.Context, tokenHash string) (AuthToken, error)
+	ListAuthTokens(ctx context.Context, userID string) ([]AuthToken, error)
+	RevokeAuthToken(ctx context.Context, userID, tokenHash string) error
+	TouchAuthToken(ctx context.Context, tokenHash string, at time.Time) error
 }
 
 // CollectionOverlay is the persisted runtime collection overlay (design/

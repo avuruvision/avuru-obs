@@ -47,6 +47,7 @@ var Ordered = []string{
 	"0015_auth_user_deleted.sql",
 	"0016_service_groups.sql",
 	"0017_oidc_group_mapping.sql",
+	"0018_auth_tokens.sql",
 }
 
 // ByModule tags each migration with the module(s) whose schema it owns; the
@@ -91,6 +92,8 @@ var ByModule = map[string][]modules.Name{
 	// everything, so core, not a modules.Name of its own: OIDC is a
 	// configuration of core auth, matching 0011/0013/0015.
 	"0017_oidc_group_mapping.sql": {modules.Core},
+	// Personal API tokens — auth gates everything, so core.
+	"0018_auth_tokens.sql": {modules.Core},
 }
 
 // Expected returns, in apply order, the versions that should exist on an
