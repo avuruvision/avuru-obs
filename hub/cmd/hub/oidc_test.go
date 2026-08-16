@@ -17,16 +17,22 @@ func testAuthService() *auth.Service {
 	return auth.NewService(func() storage.Store { return nil }, time.Hour)
 }
 
+// testNoStore stands in for a ClickHouse provider that never connects: these
+// tests exercise config loading/reload, not the DB overlay (that is a later
+// task's concern), and MappingCache.Refresh degrades to the config-only
+// mapping when the store is nil.
+func testNoStore() storage.Store { return nil }
+
 // TestLoadOIDCConfigUnsetIsOff: no AVURUOBS_AUTH_OIDC_CONFIG → nil accessors
 // (OIDC off), no polling, no error.
 func TestLoadOIDCConfigUnsetIsOff(t *testing.T) {
 	t.Setenv("AVURUOBS_AUTH_OIDC_CONFIG", "")
-	p, s, err := loadOIDCConfig(context.Background(), testAuthService())
+	p, s, mapping, err := loadOIDCConfig(context.Background(), testAuthService(), testNoStore)
 	if err != nil {
 		t.Fatalf("loadOIDCConfig: %v", err)
 	}
-	if p != nil || s != nil {
-		t.Fatalf("expected nil accessors when unset, got p=%v s=%v", p != nil, s != nil)
+	if p != nil || s != nil || mapping != nil {
+		t.Fatalf("expected nil accessors when unset, got p=%v s=%v mapping=%v", p != nil, s != nil, mapping != nil)
 	}
 }
 
@@ -39,12 +45,12 @@ func TestLoadOIDCConfigAuthDisabledIsOff(t *testing.T) {
 		t.Fatalf("writing config: %v", err)
 	}
 	t.Setenv("AVURUOBS_AUTH_OIDC_CONFIG", path)
-	p, s, err := loadOIDCConfig(context.Background(), nil)
+	p, s, mapping, err := loadOIDCConfig(context.Background(), nil, testNoStore)
 	if err != nil {
 		t.Fatalf("loadOIDCConfig: %v", err)
 	}
-	if p != nil || s != nil {
-		t.Fatalf("expected nil accessors when auth disabled, got p=%v s=%v", p != nil, s != nil)
+	if p != nil || s != nil || mapping != nil {
+		t.Fatalf("expected nil accessors when auth disabled, got p=%v s=%v mapping=%v", p != nil, s != nil, mapping != nil)
 	}
 }
 
@@ -74,12 +80,20 @@ func TestLoadOIDCConfigFromFile(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // stops the watcher goroutine
 
-	providerFn, settingsFn, err := loadOIDCConfig(ctx, testAuthService())
+	providerFn, settingsFn, mapping, err := loadOIDCConfig(ctx, testAuthService(), testNoStore)
 	if err != nil {
 		t.Fatalf("loadOIDCConfig: %v", err)
 	}
 	if providerFn == nil || settingsFn == nil {
 		t.Fatal("expected non-nil accessors for a valid config")
+	}
+	// The mapping cache is what api.Config.OIDCMapping gets handed in
+	// main.go — the admin CRUD's routes are gated on it being non-nil.
+	if mapping == nil {
+		t.Fatal("expected a non-nil mapping cache for a valid config")
+	}
+	if grants := mapping.Mapper()([]string{"obs-admins"}); len(grants) != 1 || grants[0].Role != auth.RoleAdmin {
+		t.Fatalf("mapping cache grants = %+v, want one admin grant from the file's mapping", grants)
 	}
 	if providerFn() == nil {
 		t.Fatal("provider accessor returned nil after successful discovery")
@@ -105,7 +119,7 @@ func TestLoadOIDCConfigInvalidFailsLoud(t *testing.T) {
 		t.Fatalf("writing config: %v", err)
 	}
 	t.Setenv("AVURUOBS_AUTH_OIDC_CONFIG", path)
-	if _, _, err := loadOIDCConfig(context.Background(), testAuthService()); err == nil {
+	if _, _, _, err := loadOIDCConfig(context.Background(), testAuthService(), testNoStore); err == nil {
 		t.Fatal("expected error for missing issuer, got nil")
 	}
 }

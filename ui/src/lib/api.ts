@@ -83,6 +83,10 @@ export async function apiPost<T>(
   }
   const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
   if (redirectedOn401(res)) return new Promise<never>(() => {});
+  // A 204 (e.g. the OIDC mapping reset) has no body to parse — handleJSON's
+  // res.json() would throw on it. Mirrors apiDelete; callers of a 204 POST
+  // type it as Promise<void>.
+  if (res.status === 204) return undefined as T;
   return handleJSON<T>(res);
 }
 

@@ -637,6 +637,36 @@ export interface ChangePasswordRequest {
   newPassword: string;
 }
 
+// OIDC group→role mapping overlay (Settings → Access, SSO installs only).
+// Mirrors oidcMappingDTO in hub/internal/api/oidc_mapping.go. Source "config"
+// is the chart's auth.oidc.mapping values — read-only, hot-reloaded; "db" is
+// authored from this API. Shadowed: an authored rule whose group the config
+// ALSO declares — still stored and still editable, but the config wins, so
+// it grants nothing (auth.MergeMapping). Invalid: a stored row whose role no
+// longer parses — role is absent (it grants nothing), and only the raw
+// invalidRole it was saved with is carried, so it can be shown and deleted.
+export interface OIDCMappingRule {
+  group: string;
+  role?: string;
+  projects?: string[];
+  source: "config" | "db";
+  editable: boolean;
+  shadowed?: boolean;
+  invalid?: boolean;
+  invalidRole?: string;
+}
+
+export interface OIDCMappingResponse {
+  rules: OIDCMappingRule[];
+}
+
+// PUT /api/v1/auth/oidc/mapping/{group} body — mirrors oidcMappingInput in
+// oidc_mapping.go exactly. The group is the path segment, not a body field.
+export interface OIDCMappingInput {
+  role: string;
+  projects: string[];
+}
+
 // Green — per-service energy & carbon (module green). Mirrors the Go DTOs in
 // hub/internal/api/green.go and green_budgets.go — field names are byte-exact
 // with the json tags there (e.g. gridIntensity/intensitySource, not

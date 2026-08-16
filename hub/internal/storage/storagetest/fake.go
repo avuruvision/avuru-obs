@@ -88,6 +88,13 @@ type Fake struct {
 	SavedServiceGroups   []storage.ServiceGroup
 	DeletedServiceGroups []string
 
+	// OIDC group-mapping fakes, keyed by Group on the same live-rows-only rule.
+	OIDCGroupMappings            map[string]storage.OIDCGroupMapping
+	OIDCGroupMappingsErr         error
+	SavedOIDCGroupMappings       []storage.OIDCGroupMapping
+	DeletedOIDCGroupMappings     []string
+	ResetOIDCGroupMappingsCalled bool
+
 	// Ingest-key fakes (auth Plan C). IngestKeys keyed by hash; only live keys
 	// are ever stored (RevokeIngestKey removes the entry, mirroring the
 	// tombstone-then-FINAL read).
@@ -560,6 +567,50 @@ func (f *Fake) DeleteServiceGroup(_ context.Context, name string) error {
 		return storage.ErrNotFound
 	}
 	delete(f.ServiceGroups, name)
+	return nil
+}
+
+// ListOIDCGroupMappings returns live rules ordered by Group, matching the
+// real ClickHouse implementation's ORDER BY (map iteration order is random).
+func (f *Fake) ListOIDCGroupMappings(context.Context) ([]storage.OIDCGroupMapping, error) {
+	if f.OIDCGroupMappingsErr != nil {
+		return nil, f.OIDCGroupMappingsErr
+	}
+	out := make([]storage.OIDCGroupMapping, 0, len(f.OIDCGroupMappings))
+	for _, m := range f.OIDCGroupMappings {
+		out = append(out, m)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Group < out[j].Group })
+	return out, nil
+}
+
+// SaveOIDCGroupMapping mirrors the ReplacingMergeTree upsert-by-Group.
+func (f *Fake) SaveOIDCGroupMapping(_ context.Context, m storage.OIDCGroupMapping) error {
+	if f.OIDCGroupMappings == nil {
+		f.OIDCGroupMappings = make(map[string]storage.OIDCGroupMapping)
+	}
+	f.OIDCGroupMappings[m.Group] = m
+	f.SavedOIDCGroupMappings = append(f.SavedOIDCGroupMappings, m)
+	return nil
+}
+
+// DeleteOIDCGroupMapping mirrors the tombstone from the caller's point of
+// view: only live rules are ever observable, so a deleted group simply
+// disappears.
+func (f *Fake) DeleteOIDCGroupMapping(_ context.Context, group string) error {
+	f.DeletedOIDCGroupMappings = append(f.DeletedOIDCGroupMappings, group)
+	if _, ok := f.OIDCGroupMappings[group]; !ok {
+		return storage.ErrNotFound
+	}
+	delete(f.OIDCGroupMappings, group)
+	return nil
+}
+
+// ResetOIDCGroupMappings mirrors tombstoning every live rule: for a fake that
+// only ever tracks live rows, that is equivalent to clearing the map.
+func (f *Fake) ResetOIDCGroupMappings(_ context.Context) error {
+	f.ResetOIDCGroupMappingsCalled = true
+	f.OIDCGroupMappings = nil
 	return nil
 }
 

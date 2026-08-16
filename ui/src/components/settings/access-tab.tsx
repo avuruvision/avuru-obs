@@ -1,17 +1,34 @@
 "use client";
 
 import { Check, Minus, ShieldAlert } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CenteredSpinner } from "@/components/ui/spinner";
+import { apiGet } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { usePermissions } from "@/hooks/use-permissions";
-import type { PermissionArea, PermissionRole } from "@/lib/api-types";
+import { OIDCMappingPanel } from "./oidc-mapping-panel";
+import type { AuthConfig, PermissionArea, PermissionRole } from "@/lib/api-types";
 
 // Roles in order of privilege — the matrix reads left to right as "and also".
 const COLUMNS = ["viewer", "editor", "admin"] as const;
 type RoleName = (typeof COLUMNS)[number];
 
 const RANK: Record<string, number> = { viewer: 1, editor: 2, admin: 3 };
+
+// Whether SSO is configured — the same question the login page answers
+// itself from this same endpoint. Gates OIDCMappingPanel below: the hub only
+// registers its routes when OIDC is actually configured (router.go), so
+// mounting the panel unconditionally would show nothing but 404s on an
+// install with no IdP wired up. Instance-global and cheap, so cache it hard.
+function useAuthConfig() {
+  return useQuery({
+    queryKey: queryKeys.authConfig,
+    queryFn: () => apiGet<AuthConfig>("/api/v1/auth/config"),
+    staleTime: 5 * 60_000,
+  });
+}
 
 // Who can do what. Every cell comes from the hub, which derives it from the
 // authorization its routes actually registered with — a hand-written table
@@ -20,6 +37,8 @@ const RANK: Record<string, number> = { viewer: 1, editor: 2, admin: 3 };
 // most.
 export function AccessTab() {
   const { data, isLoading, isError } = usePermissions();
+  const { data: authConfig } = useAuthConfig();
+  const ssoConfigured = !!authConfig?.methods.includes("oidc");
 
   if (isLoading) return <CenteredSpinner />;
   if (isError || !data) {
@@ -88,6 +107,8 @@ export function AccessTab() {
           from your identity provider’s groups.
         </p>
       </Card>
+
+      {ssoConfigured && <OIDCMappingPanel />}
     </div>
   );
 }

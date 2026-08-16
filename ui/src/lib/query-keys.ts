@@ -16,6 +16,9 @@ export const queryKeys = {
   // The role/permission matrix — instance-global, like capabilities, and
   // changes only when the hub's routing does.
   permissions: ["auth", "permissions"] as const,
+  // Sign-in methods this install offers (local/oidc) + forceSSO — the same
+  // answer the login page reads, reused here to gate the OIDC mapping panel.
+  authConfig: ["auth", "config"] as const,
   services: (p: string, t: TimeParams, includeAux?: boolean) =>
     [p, "services", "list", { ...t, includeAux }] as const,
   serviceMap: (p: string, t: TimeParams, includeAux?: boolean) =>
@@ -77,4 +80,7 @@ export const queryKeys = {
   // The collection overlay drives the release-wide sensor DaemonSet, so it is
   // instance-global (no project element, like alertChannels).
   collectionOverlay: ["collection", "overlay"] as const,
+  // The merged OIDC group→role mapping (chart config + DB overlay) — drives
+  // SSO grants for every project, so instance-global like alertChannels.
+  oidcMapping: ["auth", "oidc", "mapping"] as const,
 };

@@ -46,6 +46,7 @@ var Ordered = []string{
 	"0014_collection_overlay.sql",
 	"0015_auth_user_deleted.sql",
 	"0016_service_groups.sql",
+	"0017_oidc_group_mapping.sql",
 }
 
 // ByModule tags each migration with the module(s) whose schema it owns; the
@@ -86,6 +87,10 @@ var ByModule = map[string][]modules.Name{
 	// service-health module owns; with the module off nothing reads it, so it
 	// is never created.
 	"0016_service_groups.sql": {modules.ServiceHealth},
+	// oidc_group_mapping — UI-authored OIDC group->role rules. Auth gates
+	// everything, so core, not a modules.Name of its own: OIDC is a
+	// configuration of core auth, matching 0011/0013/0015.
+	"0017_oidc_group_mapping.sql": {modules.Core},
 }
 
 // Expected returns, in apply order, the versions that should exist on an
