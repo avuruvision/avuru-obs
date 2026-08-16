@@ -83,4 +83,7 @@ export const queryKeys = {
   // The merged OIDC group→role mapping (chart config + DB overlay) — drives
   // SSO grants for every project, so instance-global like alertChannels.
   oidcMapping: ["auth", "oidc", "mapping"] as const,
+  // Personal API tokens — the hub scopes the list to the caller, so the key
+  // carries no user element; a sign-in change clears the whole cache anyway.
+  apiTokens: ["auth", "tokens"] as const,
 };
