@@ -13,6 +13,22 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **Map identity-provider groups to roles from the app.** Which SSO group
+  grants which role on which projects was a chart value — `auth.oidc.mapping`
+  in `values.yaml`, one `helm upgrade` per change — so giving a team access
+  meant a deploy. Settings → Access now shows those rules and lets an admin
+  add, edit and delete rules of their own beside them. The chart stays the
+  declared base: its rules render read-only, and on a name collision the chart
+  wins — an authored rule for a group the chart also declares is kept and
+  marked as overridden, with the reason on its row, instead of being silently
+  ignored or refused outright. A change applies to that group's next sign-in
+  or token refresh and reaches every hub replica within about fifteen seconds;
+  that bound is stated in the panel, so a stale read on another replica right
+  after a save is not mistaken for a failed one. Reset deletes every rule
+  authored in the app and returns the install to exactly what the chart
+  declares. An install with no identity provider configured never sees the
+  panel — there is nothing for it to map.
+
 - **The service map now says what is wrong, not just that something is.**
 
   A node used to turn red the moment *any* error appeared in the window — a
