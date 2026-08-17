@@ -30,8 +30,8 @@ light up — no SDK, no sidecars, no YAML archaeology.
 
 </details>
 
-> **Status: v0.4.0 released** (2026-08-07); `main` is under active development
-> toward v0.5. See [CHANGELOG.md](CHANGELOG.md) for what shipped,
+> **Status: v0.5.0 released** (2026-08-17); `main` is under active development
+> toward v0.6. See [CHANGELOG.md](CHANGELOG.md) for what shipped,
 > [ROADMAP.md](ROADMAP.md) for where it's headed and
 > [`agent_docs/architecture.md`](agent_docs/architecture.md) for the living
 > architecture.
@@ -85,6 +85,18 @@ Beyond the core signals, the day-2 layer:
 - **A demo you can hand to anyone** *(v0.3)* — one click signs a visitor in as
   a read-only viewer scoped to a single project; the shared password never
   reaches the browser.
+- **Accounts you can administer** *(v0.4)* — the full user lifecycle from the
+  UI (edit, reset, disable-first delete) plus self-service password rotation,
+  with the review that built it closing three account-takeover paths.
+- **Operate it from the UI** *(v0.5)* — per-signal collection switches the
+  sensor follows in seconds (opt-in, behind a deliberately narrow Role),
+  service groups, storage and access visibility, and the SSO group→role
+  mapping all authored in Settings instead of `values.yaml`; a Dashboard
+  landing screen answers "how is the estate doing" at a glance.
+- **Personal API tokens** *(v0.5)* — scripts and CI call the API with
+  `Authorization: Bearer avurut_…` instead of a scraped cookie: hashed at
+  rest, shown once, resolving to the owner's live permissions, so disabling a
+  user silences every token they hold.
 
 ## Quickstart
 
