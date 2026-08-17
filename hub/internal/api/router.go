@@ -153,6 +153,8 @@ type API struct {
 	// single-loop assumption is: hub replicas default to 1 (HA needs leader
 	// election, which is v2).
 	collectionMu sync.Mutex
+	// lastUsed debounces API-token LastUsedAt writes; see auth.TouchWindow.
+	lastUsed auth.LastUsed
 }
 
 // store resolves the current backend or fails with 503.
@@ -241,6 +243,17 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		// it rotates the CALLER's own credential, so a zero-grant user must
 		// reach it too.
 		mux.Handle("POST /api/v1/auth/password", a.authenticated(a.handleChangePassword))
+
+		// Personal API tokens (design/2026-08-13-api-tokens.md) —
+		// authenticated(), not secured(): a user whose grants were all
+		// revoked must still be able to clean up the credentials they handed
+		// out, for the same reason they can still log out. GET widens to
+		// another user's tokens only for a global admin, checked INSIDE the
+		// handler via id.IsAdmin() — one URL, one resource, not a second
+		// admin-only route.
+		mux.Handle("GET /api/v1/tokens", a.authenticated(a.handleListAPITokens))
+		mux.Handle("POST /api/v1/tokens", a.authenticated(a.handleCreateAPIToken))
+		mux.Handle("DELETE /api/v1/tokens/{hash}", a.authenticated(a.handleRevokeAPIToken))
 
 		// Demo one-click login — registered only when demo mode is on. Signs in
 		// as the read-only demo viewer server-side (shared password stays server

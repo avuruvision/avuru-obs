@@ -46,6 +46,7 @@ only if the design needs to be pinned down before coding.
 | [2026-07-19](2026-07-19-alerting.md) | Alerting — webhook notifications on service-health transitions | Accepted |
 | [2026-07-19](2026-07-19-network-health.md) | Network health on the service map — per-edge RTT + connection failures | Accepted |
 | [2026-07-20](2026-07-20-endpoint-checks.md) | Endpoint checks — health when there is no traffic | Draft |
+| [2026-07-21](2026-07-21-auth-oidc-rbac.md) | Authentication, RBAC and per-project ingest keys | Draft |
 | [2026-07-22](2026-07-22-green-carbon.md) | Green — per-service energy and carbon attribution (Kepler) | Accepted |
 | [2026-07-27](2026-07-27-projects-completion.md) | Projects completion — CRUD, per-project retention, status, chart toggles | Accepted |
 | [2026-07-27](2026-07-27-collection-control-plane.md) | Runtime collection control plane — switch collection from the UI | Draft |
@@ -55,6 +56,7 @@ only if the design needs to be pinned down before coding.
 | [2026-07-28](2026-07-28-green-tdp-estimation.md) | Green TDP estimation — modeled energy for RAPL-less nodes | Accepted |
 | [2026-08-06](2026-08-06-users-crud-password.md) | Users CRUD completion — delete, password management, role editing | Accepted |
 | [2026-08-07](2026-08-07-service-groups-crud.md) | Service groups authored in the UI | Accepted |
+| [2026-08-13](2026-08-13-api-tokens.md) | API tokens — non-interactive access on the same identity | Draft |
 
 ## Conventions
 

@@ -368,6 +368,42 @@ export interface CreateIngestKeyResponse {
   createdAt: string;
 }
 
+// Personal API tokens (Settings → Access) — non-interactive access that acts
+// as its OWNER, grants read live at request time. Mirrors apiTokenDTO in
+// hub/internal/api/tokens.go. tokenHash is the revoke handle (a
+// preimage-resistant hash, not a secret; the prefix is not unique).
+// lastUsedAt/expiresAt are absent for "never used" / "never expires" rather
+// than zero-epoch dates, so neither can be mistaken for a real one.
+export interface ApiToken {
+  tokenHash: string;
+  prefix: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt?: string;
+  expiresAt?: string;
+}
+
+export interface ApiTokensResponse {
+  tokens: ApiToken[];
+}
+
+// expiresInDays zero or absent means the token never expires.
+export interface CreateApiTokenRequest {
+  name: string;
+  expiresInDays?: number;
+}
+
+// The ONE response carrying the raw `token`. It is never returned again — the
+// UI shows it once in a copy dialog and warns it cannot be recovered.
+export interface CreateApiTokenResponse {
+  token: string;
+  tokenHash: string;
+  prefix: string;
+  name: string;
+  createdAt: string;
+  expiresAt?: string;
+}
+
 export interface AgentSignals {
   traces: string | null;
   logs: string | null;

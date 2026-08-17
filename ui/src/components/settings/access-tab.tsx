@@ -8,6 +8,7 @@ import { CenteredSpinner } from "@/components/ui/spinner";
 import { apiGet } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import { usePermissions } from "@/hooks/use-permissions";
+import { ApiTokensCard } from "./api-tokens-card";
 import { OIDCMappingPanel } from "./oidc-mapping-panel";
 import type { AuthConfig, PermissionArea, PermissionRole } from "@/lib/api-types";
 
@@ -107,6 +108,11 @@ export function AccessTab() {
           from your identity provider’s groups.
         </p>
       </Card>
+
+      {/* Personal API tokens need an identity to own them — with auth off
+          every request is anonymous, so the card would only mint credentials
+          that mean nothing. */}
+      {data.authEnabled && <ApiTokensCard />}
 
       {ssoConfigured && <OIDCMappingPanel />}
     </div>
