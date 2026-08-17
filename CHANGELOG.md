@@ -11,6 +11,8 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-08-17
+
 ### Added
 
 - **Map identity-provider groups to roles from the app.** Which SSO group
@@ -28,6 +30,26 @@ When a release is cut, that block is renamed to the version with its date.
   authored in the app and returns the install to exactly what the chart
   declares. An install with no identity provider configured never sees the
   panel — there is nothing for it to map.
+
+- **Personal API tokens: your scripts get a key of their own.** Until now the
+  only credential the hub accepted was a browser session's cookie, so a script,
+  a CI job or a future client had nothing to authenticate with. Settings →
+  Access now mints named tokens with an optional expiry; sent as
+  `Authorization: Bearer avurut_…`, a token authenticates the request as its
+  owner. The secret is shown exactly once and only its SHA-256 is stored, so
+  no database read — and no admin — can recover it later; the list shows each
+  token's prefix and when it was last used, which is what "is this one still
+  needed?" actually takes to answer. A token deliberately carries no
+  permissions of its own: it resolves to its owner's *live* grants at request
+  time, so demoting a user demotes their tokens in the same moment and
+  disabling the account silences every token it holds. A bad, expired or
+  revoked token is a `401`, never a quiet fall-through to the anonymous role a
+  demo install grants cookieless visitors. Managing tokens requires only being
+  signed in — deliberately no role floor, so a user whose grants were all
+  revoked can still clean up the credentials they handed out, for the same
+  reason they can still log out — and a global admin can widen the list to
+  another user's tokens to audit them. Revoking a token you don't own answers
+  404, not 403, so the endpoint confirms nothing about other people's keys.
 
 - **The service map now says what is wrong, not just that something is.**
 
