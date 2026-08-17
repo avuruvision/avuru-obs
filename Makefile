@@ -18,7 +18,8 @@ version-set:
 	@perl -i -pe 's/^version: .*/version: $(V)/ && ($$done=1) if !$$done' deploy/helm/avuruobs/Chart.yaml
 	@perl -i -pe 's/^appVersion: .*/appVersion: "$(V)"/ && ($$done=1) if !$$done' deploy/helm/avuruobs/Chart.yaml
 	@perl -i -pe 's{(avuru-obs-(?:hub|ui|gateway|tdp-estimator)):\S+}{$$1:$(V)}g' deploy/helm/avuruobs/Chart.yaml
-	@echo "version set to $(V) (VERSION, ui/package.json, Chart.yaml)"
+	@$(MAKE) --no-print-directory sync-hub-chart
+	@echo "version set to $(V) (VERSION, ui/package.json, Chart.yaml, hub chart copy)"
 
 # Sync the sensor-relevant chart files into the hub so the collection applier
 # can render them via go:embed — which cannot reach outside the hub module,

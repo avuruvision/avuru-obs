@@ -11,6 +11,18 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`make version-set` left the hub's embedded chart copy behind.** The hub
+  embeds the sensor-relevant chart files (`hub/internal/collection/chart/`) so
+  the runtime-collection applier can render them via `go:embed`, and a unit
+  test pins that copy to `deploy/helm/avuruobs`. Stamping a release version
+  rewrote the real chart but not the copy, so the very commit that cut a
+  release failed `make check` — caught by CI on the v0.5.0 release commit,
+  invisible before the stamp because RELEASING.md runs the check first.
+  `version-set` now runs `sync-hub-chart` itself; the two can no longer drift
+  on a version stamp.
+
 ## [0.5.0] — 2026-08-17
 
 ### Added
@@ -781,7 +793,8 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
 
 <!--
 Release links:
-[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/avuruvision/avuru-obs/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/avuruvision/avuru-obs/compare/v0.3.1...v0.4.0
 [0.3.0]: https://github.com/avuruvision/avuru-obs/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/avuruvision/avuru-obs/compare/v0.1.0...v0.2.0
