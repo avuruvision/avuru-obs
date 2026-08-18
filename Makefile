@@ -1,6 +1,6 @@
 # Thin root dispatcher ONLY — build logic lives in each component
 # (agent_docs/development.md). Keep it that way.
-.PHONY: hub ui ui-image gateway-image check helm-check e2e e2e-helm e2e-ui dev dev-clean version version-set notices sync-hub-chart
+.PHONY: hub ui ui-image gateway-image check helm-check e2e e2e-compat e2e-helm e2e-ui dev dev-clean version version-set notices sync-hub-chart
 
 COMPOSE := docker compose -f deploy/compose/docker-compose.yaml
 
@@ -84,6 +84,25 @@ e2e:
 	$(COMPOSE) up -d --build gateway demo
 	sleep 3 && cd tools/seed && go run . -endpoint http://localhost:4318 -fixtures ../../deploy/compose/seed/fixtures
 	cd e2e && go test -tags=e2e -count=1 -v ./... ; rc=$$? ; cd .. && $(COMPOSE) down -v && exit $$rc
+
+# OPT-IN protocol conformance e2e (wider-ingest I-4): Jaeger/Zipkin/
+# remote-write-v2/Loki receivers + enforce auth + dual-write forward-sink.
+# Isolated project name and remapped host ports, so it can run next to a live
+# stack on a shared machine (deploy/compose/docker-compose.compat-e2e.yaml).
+COMPAT_COMPOSE := docker compose -p avuru-compat-e2e \
+	-f deploy/compose/docker-compose.yaml \
+	-f deploy/compose/docker-compose.compat-e2e.yaml
+
+e2e-compat: export AVURUOBS_AUTH_ADMIN_PASSWORD := e2e-admin-pw
+e2e-compat:
+	$(COMPAT_COMPOSE) down -v --remove-orphans
+	$(COMPAT_COMPOSE) up -d --build --wait clickhouse hub
+	$(COMPAT_COMPOSE) up -d --build gateway forward-sink
+	cd e2e && AVURUOBS_E2E_COMPAT=1 \
+		AVURUOBS_E2E_HUB_URL=http://localhost:18085 \
+		AVURUOBS_E2E_CH_URL=http://localhost:18124 \
+		go test -tags=e2e -count=1 -v -run Compat ./... ; rc=$$? ; \
+	cd .. && $(COMPAT_COMPOSE) down -v && exit $$rc
 
 # Chart render assertions (lint + template matrix) — fast, no cluster.
 helm-check:

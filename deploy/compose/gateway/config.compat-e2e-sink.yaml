@@ -1,0 +1,20 @@
+# forward-sink config for the protocol-conformance e2e: a stock contrib
+# collector standing in for a "legacy backend" dual-write target. OTLP in,
+# debug out at detailed verbosity — forwarded spans (their trace ids) appear in
+# the container logs, which is exactly what the e2e greps to prove the
+# gateway's otlp/forward exporter really dual-writes.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
