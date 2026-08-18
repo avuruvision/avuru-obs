@@ -91,63 +91,62 @@ that only appear on a real cluster. Full detail in [CHANGELOG.md](CHANGELOG.md).
 | **Installs that could never have worked** | `clickhouse.external.database` was documented and schema-checked but every migration hardcoded `otel.`; the chart's image defaults pointed at Docker Hub while releases publish to GHCR, with a tag the release workflow never pushed; green TDP estimation shipped with no image at all; a node without RAPL took the whole sensor DaemonSet into CrashLoopBackOff, dropping logs, traces and metrics along with an optional energy signal |
 | **Reverse-proxy logins** | A proxy that rewrites `Host` turned every write — the login POST first — into `cross-origin request rejected`. `auth.trustedOrigins` and `auth.originCheck` fix it without loosening the strict default |
 
-## v0.5 — operate it from the UI (directional)
+## v0.5 — operate it from the UI — ALL SHIPPED (v0.5.0)
 
-Everything you administer today means editing Helm values and redeploying:
-service groups live in a ConfigMap, sensors are switched on in `values.yaml`,
-the OIDC group→role mapping is a chart value. And there is no overview screen.
-v0.5 closes that gap — the product observes well and is operated badly.
+Everything below shipped in v0.5.0; the full detail lives in
+[CHANGELOG.md](CHANGELOG.md) and the linked AEPs.
 
-> **As the admin of an install, I configure it from its own UI — groups,
-> sensors, access — instead of editing values and redeploying, and I open a
-> single screen that tells me how the estate is doing.**
+| Theme | Shipped |
+|---|---|
+| **Runtime collection control — completion** | The real applier (sensor ConfigMap patches, rollout via a hub-owned checksum annotation) and the editable Settings → Collection UI, behind the default-off flag — per-signal switches the sensor follows in seconds, no `helm upgrade` — [AEP](design/2026-07-27-collection-control-plane.md) |
+| **Service groups from the UI** | Health groups and criticality tiers authored in the app; chart-declared groups stay read-only, auto-discovery keeps working — [AEP](design/2026-08-07-service-groups-crud.md) |
+| **Storage & Access tabs** | Per-signal usage, compression, TTL and cluster topology made visible (the connection stays chart-owned); RBAC legible — the permissions matrix, the OIDC group→role mapping as an editable overlay |
+| **Personal API tokens** | `Authorization: Bearer avurut_…` for scripts and CI — hashed at rest, shown once, resolving to the owner's live permissions — [AEP](design/2026-08-13-api-tokens.md) |
+| **Dashboard & service-map restyle** | One overview screen (service summaries by group, live topology, capacity, active alerts) and a map that says *what* is wrong — status rings from the health rollup, real edge latency, URL-state filters. Nodes gained sort/filter |
 
-- **Runtime collection control — completion:** the real applier (patch the
-  sensor ConfigMaps, roll out via a hub-owned checksum annotation) and the
-  editable Settings → Collection UI, still behind the default-off flag, so an
-  admin enables and disables sensors without a `helm upgrade`. OpAMP remains
-  the destination — status reporting first, remote-config once OBI grows a
-  client. Query-time filtering was rejected: it saves no collection or storage
-  cost. See the [AEP](design/2026-07-27-collection-control-plane.md).
-- **Service groups from the UI:** author and edit health groups and their
-  criticality tiers in the app. Chart-declared groups stay read-only and
-  auto-discovery keeps working — the config+UI hybrid projects and alert
-  channels already use. Extends the
-  [service-health-groups AEP](design/2026-07-18-service-health-groups.md).
-- **A configuration surface worth the name:** a Storage tab showing per-signal
-  usage, compression, TTL and cluster topology (the connection itself stays
-  chart-owned — ClickHouse cannot hold its own connection string), and an
-  Organization tab making RBAC legible: which role may do what, the OIDC
-  group→role mapping as an editable overlay, and **API tokens** for scripts and
-  CI — the non-interactive auth seam the auth AEP deferred, and the
-  prerequisite for the CLI and Grafana clients. See the
-  [clients AEP](design/2026-07-27-clients-grafana-cli.md).
-- **A dashboard, and a topology worth reading:** one overview screen — service
-  summaries, live topology with active alerts, cluster capacity — plus a
-  service-map restyle (status rings, RPM/latency on the edges, direction,
-  filtering, zoom). Sorting and filtering arrive on the Nodes screen.
+## v0.6 — open at both ends (directional)
 
-## Beyond v0.5
+The product observes one cluster well and speaks one protocol. Estates are
+bigger than that: fleets arrive with Jaeger, Zipkin, Prometheus and Loki
+senders already deployed, keep Grafana dashboards they trust, and run more
+than one cluster.
 
-Each already has an AEP — design done, awaiting a slot.
+> **As a platform team we adopt avuru-obs without abandoning what we run
+> today — existing senders land unchanged, our Grafana keeps reading, one
+> screen spans our clusters — and we leave the same way we came, dual-writing
+> on the way in or out.**
 
-- **Wider ingest compatibility:** Jaeger, Zipkin, Prometheus and Loki push
-  receivers alongside OTLP, plus forwarding exporters (OTLP/Kafka) so
-  avuru-obs can dual-write during a migration. Extends the drop-in promise
-  beyond OTLP and keeps the door open in both directions. See the
+- **Wider ingest compatibility** — the release-defining item: Jaeger, Zipkin,
+  Prometheus remote-write and Loki push receivers alongside OTLP (each one
+  values-flag opt-in, ingest keys enforced uniformly), plus forwarding
+  exporters (OTLP/Kafka) for dual-write during a migration. The README's
+  drop-in claim becomes CI-enforced, like the north star. See the
   [AEP](design/2026-07-27-wider-ingest-compat.md).
-- **More clients:** the Hub API is the client-agnostic contract; the SPA is one
-  thin client. A **Grafana** data source and a **CLI**, both riding v0.5's API
-  tokens. See the [AEP](design/2026-07-27-clients-grafana-cli.md).
 - **Projects completion (Phase 3):** **member projects** (multi-cluster
   aggregation), per-project retention, per-project system status, and chart
   component toggles so secondary clusters install gateway(+sensor)-only
-  against a shared ClickHouse. Phases 1 (CRUD + demo) and 2 (ingest keys)
-  shipped in v0.3.0. See the
+  against a shared ClickHouse. See the
   [AEP](design/2026-07-27-projects-completion.md).
+- **More clients:** a **CLI** (`--fail-on` for CI gates) riding v0.5's API
+  tokens, and Grafana reading the Hub API through its JSON data sources — a
+  documented recipe with example dashboards; a custom plugin only if the
+  recipe's limits bite. See the [AEP](design/2026-07-27-clients-grafana-cli.md).
+- **Declared service metadata:** direct-OTLP services declare their own
+  domain/environment/tier as resource attributes instead of collapsing into
+  `(unlabeled)` — group identity grows up to (domain, environment). Its AEP
+  lands with the feature branch.
 - **Richer auto-tagging:** map Kubernetes labels/annotations to business tags
   and filter by them across every signal. See the
   [AEP](design/2026-07-27-auto-tagging.md).
+- **Green follow-through:** per-node energy in the coverage story, budget
+  deliverability made visible, and the real-RAPL validation runbook that
+  closes the green module's last "verify on hardware" boxes.
+- **Inter-zone traffic accounting** *(gated on a spike)*: cross-zone bytes per
+  service pair from OBI network flows — rides v0.6 only if the pinned OBI
+  emits it; otherwise the AEP lands and the feature moves to v0.7.
+
+## Beyond v0.6
+
 - **Endpoint checks:** health when there is no traffic. See the
   [draft AEP](design/2026-07-20-endpoint-checks.md).
 - **Deeper profiling:** off-CPU and memory profiles as the upstream OTel eBPF
