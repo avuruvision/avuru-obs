@@ -55,6 +55,24 @@ spec:
             - name: sentry-http
               containerPort: 4319
             {{- end }}
+            {{- if include "avuruobs.jaegerEnabled" . }}
+            - name: jaeger-grpc
+              containerPort: 14250
+            - name: jaeger-thrift
+              containerPort: 14268
+            {{- end }}
+            {{- if include "avuruobs.zipkinEnabled" . }}
+            - name: zipkin
+              containerPort: 9411
+            {{- end }}
+            {{- if include "avuruobs.promRWEnabled" . }}
+            - name: prom-rw
+              containerPort: 9291
+            {{- end }}
+            {{- if include "avuruobs.lokiEnabled" . }}
+            - name: loki-push
+              containerPort: 3100
+            {{- end }}
             - name: health
               containerPort: 13133
           livenessProbe:

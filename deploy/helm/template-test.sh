@@ -149,6 +149,64 @@ grep -q 'number: 4319' <<<"$out" || fail "sentry ingress backend port missing"
 grep -q 'name: test-avuruobs-hub' <<<"$out" || fail "hub backend lost from the main host"
 ok "dedicated sentry host routes to the gateway, hub keeps /api"
 
+echo "== wider ingest: all receivers off by default"
+out="$(render)"
+for port in 14250 14268 9411 9291 3100; do
+  grep -q "$port" <<<"$out" && fail "receiver port $port rendered by default"
+done
+grep -q 'receivers: \[otlp\]$' <<<"$out" || fail "default pipelines gained a receiver"
+ok "no wider-ingest receiver, port or pipeline entry by default"
+
+echo "== wider ingest: each flag opens exactly its own surface"
+out="$(render --set gateway.receivers.jaeger.enabled=true)"
+grep -q 'endpoint: 0.0.0.0:14250' <<<"$out" || fail "jaeger grpc endpoint missing"
+grep -q 'endpoint: 0.0.0.0:14268' <<<"$out" || fail "jaeger thrift_http endpoint missing"
+grep -q 'receivers: \[otlp, jaeger\]' <<<"$out" || fail "jaeger not wired into traces"
+grep -q 'containerPort: 14250' <<<"$out" || fail "jaeger-grpc containerPort missing"
+grep -q 'targetPort: jaeger-thrift' <<<"$out" || fail "jaeger-thrift Service port missing"
+grep -qE '68(31|32)' <<<"$out" && fail "jaeger UDP thrift rendered (deliberately unsupported)"
+grep -q '9411' <<<"$out" && fail "zipkin surface rendered by the jaeger flag"
+ok "jaeger: grpc+thrift_http, ports, traces pipeline — and nothing else"
+
+out="$(render --set gateway.receivers.zipkin.enabled=true)"
+grep -q 'endpoint: 0.0.0.0:9411' <<<"$out" || fail "zipkin endpoint missing"
+grep -q 'receivers: \[otlp, zipkin\]' <<<"$out" || fail "zipkin not wired into traces"
+grep -q 'targetPort: zipkin' <<<"$out" || fail "zipkin Service port missing"
+ok "zipkin: endpoint, ports, traces pipeline"
+
+out="$(render --set gateway.receivers.prometheusRemoteWrite.enabled=true)"
+grep -q 'endpoint: 0.0.0.0:9291' <<<"$out" || fail "prometheusremotewrite endpoint missing"
+grep -q 'receivers: \[otlp, prometheusremotewrite\]' <<<"$out" || fail "prom-rw not wired into metrics"
+grep -q 'targetPort: prom-rw' <<<"$out" || fail "prom-rw Service port missing"
+ok "prometheus remote-write: endpoint, ports, metrics pipeline"
+
+out="$(render --set gateway.receivers.loki.enabled=true)"
+grep -q 'endpoint: 0.0.0.0:3100' <<<"$out" || fail "loki endpoint missing"
+grep -q 'use_incoming_timestamp: true' <<<"$out" || fail "loki incoming-timestamp missing"
+grep -q 'receivers: \[otlp, loki\]' <<<"$out" || fail "loki not wired into logs"
+grep -q 'targetPort: loki-push' <<<"$out" || fail "loki Service port missing"
+ok "loki: endpoint, ports, logs pipeline"
+
+echo "== wider ingest: module-gated receivers disappear with their module"
+out="$(render --set gateway.receivers.prometheusRemoteWrite.enabled=true --set modules.infraMetrics.enabled=false)"
+grep -q '9291' <<<"$out" && fail "prom-rw surface survived infraMetrics off"
+out="$(render --set gateway.receivers.loki.enabled=true --set modules.logs.enabled=false)"
+grep -q '3100' <<<"$out" && fail "loki surface survived logs off"
+ok "prom-rw needs infra-metrics, loki needs logs"
+
+echo "== wider ingest: every enabled receiver carries the authenticator"
+out="$(render --set gateway.receivers.jaeger.enabled=true --set gateway.receivers.zipkin.enabled=true \
+  --set gateway.receivers.prometheusRemoteWrite.enabled=true --set gateway.receivers.loki.enabled=true)"
+# default auth.ingest.mode=log wires the authenticator; every listener (otlp
+# grpc+http, jaeger grpc+thrift, zipkin, prom-rw, loki) must carry it.
+n=$(grep -c 'authenticator: avuruingestauth' <<<"$out")
+[ "$n" = "7" ] || fail "expected 7 authenticator refs across all listeners (got $n)"
+out="$(render --set gateway.receivers.jaeger.enabled=true --set gateway.receivers.zipkin.enabled=true \
+  --set gateway.receivers.prometheusRemoteWrite.enabled=true --set gateway.receivers.loki.enabled=true \
+  --set auth.ingest.mode=off)"
+grep -q 'authenticator' <<<"$out" && fail "authenticator rendered with auth.ingest.mode=off"
+ok "ingest auth applies uniformly, and only when the mode asks for it"
+
 echo "== service-health: on by default -> module, ConfigMap, env, mount"
 out="$(render)"
 grep -qE 'value: "core,logs,infra-metrics,profiling,error-tracking,service-health(,|")' <<<"$out" || fail "service-health missing from AVURUOBS_MODULES"

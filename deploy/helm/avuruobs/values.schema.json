@@ -44,6 +44,27 @@
             "allowedOrigins": { "type": "array", "items": { "type": "string" } },
             "projects": { "type": "object" }
           }
+        },
+        "receivers": {
+          "type": "object",
+          "properties": {
+            "jaeger": {
+              "type": "object",
+              "properties": { "enabled": { "type": "boolean" } }
+            },
+            "zipkin": {
+              "type": "object",
+              "properties": { "enabled": { "type": "boolean" } }
+            },
+            "prometheusRemoteWrite": {
+              "type": "object",
+              "properties": { "enabled": { "type": "boolean" } }
+            },
+            "loki": {
+              "type": "object",
+              "properties": { "enabled": { "type": "boolean" } }
+            }
+          }
         }
       }
     },

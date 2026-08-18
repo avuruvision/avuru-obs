@@ -81,6 +81,36 @@ gateway:
     allowedOrigins:
       - "*"
     projects: {}
+  # Wider ingest compatibility (design/2026-07-27-wider-ingest-compat.md):
+  # native receivers for the senders a fleet already runs, each opt-in and OFF
+  # by default. The gateway binary always ships the components; a flag wires
+  # the listener, container/Service ports and pipeline entry together. Every
+  # enabled receiver honors ingest keys exactly like OTLP (auth.ingest.mode) —
+  # senders attach the key as `Authorization: Bearer <key>`. In-cluster ports
+  # only; external exposure is an ingress recipe (deploy/helm/README.md), not
+  # chart surface.
+  receivers:
+    # Jaeger gRPC (:14250) and thrift-HTTP (:14268). The UDP thrift protocols
+    # are deliberately not offered: no authenticator hook, and jaeger-agent is
+    # deprecated upstream.
+    jaeger:
+      enabled: false
+    # Zipkin v2 JSON/protobuf (:9411, POST /api/v2/spans).
+    zipkin:
+      enabled: false
+    # Prometheus Remote-Write (:9291, POST /api/v1/write). v2 ONLY at the
+    # pinned collector line — a v1 sender gets HTTP 415. Senders need
+    # Prometheus >= 3.8.0 with `protobuf_message: io.prometheus.write.v2.Request`
+    # (and its metadata-wal-records feature flag). Requires modules.infraMetrics
+    # (samples land in otel_metrics_*); silently inert without it, like sentry.
+    prometheusRemoteWrite:
+      enabled: false
+    # Loki push (:3100, POST /loki/api/v1/push, JSON + snappy protobuf) — the
+    # port matches Loki's own so promtail/Alloy re-point by hostname alone.
+    # Stream labels land as log-RECORD attributes; entry timestamps are kept.
+    # Requires modules.logs; silently inert without it, like sentry.
+    loki:
+      enabled: false
   resources:
     requests:
       cpu: 100m
