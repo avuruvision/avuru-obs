@@ -757,11 +757,22 @@ export interface GreenServiceEnergy {
   points?: GreenEnergyPoint[];
 }
 
+// One row of the per-node energy table: every KNOWN node, absent ones at 0 Wh.
+// quality is "measured" | "estimated" | "absent", or "" for energy carrying no
+// avuruobs_quality attribute (pre-AEP data — never assumed measured).
+export interface GreenNodeEnergy {
+  node: string;
+  wh: number;
+  estimatedWh?: number;
+  quality: string;
+}
+
 export interface GreenSummaryResponse {
   window: { start: string; end: string };
   factors: GreenFactors;
   totals: GreenTotals;
   services: GreenServiceEnergy[];
+  nodes?: GreenNodeEnergy[];
 }
 
 export interface GreenBurnPoint {

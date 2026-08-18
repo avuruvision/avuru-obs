@@ -5,6 +5,7 @@ package clickhouse
 import (
 	"context"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -398,5 +399,10 @@ func TestNodeCoverage(t *testing.T) {
 	}
 	if cov.KnownNodes != 3 || cov.MeasuredNodes != 1 || cov.EstimatedNodes != 1 || cov.AbsentNodes != 1 {
 		t.Errorf("NodeCoverage = %+v, want {Known:3 Measured:1 Estimated:1 Absent:1}", cov)
+	}
+	// The known-node names ride the same query, sorted — the silent node must
+	// be listed even though it reported no energy.
+	if strings.Join(cov.Nodes, ",") != "node-estimated,node-measured,node-silent" {
+		t.Errorf("NodeCoverage.Nodes = %v, want the sorted known universe", cov.Nodes)
 	}
 }

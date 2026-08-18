@@ -172,6 +172,71 @@ func TestGreenSummaryTopNFold(t *testing.T) {
 	}
 }
 
+func TestGreenSummaryNodes(t *testing.T) {
+	fake := &storagetest.Fake{
+		ServiceEnergies: []storage.ServiceEnergy{{Service: "web", WattHours: 1}},
+		NodeEnergies: []storage.NodeEnergy{
+			// node-a is mixed: RAPL plus estimator on one node — the split must
+			// stay visible, never blended into one unlabeled number.
+			{Node: "node-a", Quality: "measured", WattHours: 10},
+			{Node: "node-a", Quality: "estimated", WattHours: 2},
+			{Node: "node-b", Quality: "estimated", WattHours: 5},
+		},
+		NodeCoverageResult: storage.NodeCoverage{
+			KnownNodes: 3, MeasuredNodes: 1, EstimatedNodes: 2, AbsentNodes: 1,
+			Nodes: []string{"node-a", "node-b", "node-c"},
+		},
+	}
+	mux := greenMux(fake, testGreenConfig())
+
+	rec := get(t, mux, "/api/v1/green/summary")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp greenSummaryResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Nodes) != 3 {
+		t.Fatalf("nodes = %+v, want 3 rows (absent node included at 0)", resp.Nodes)
+	}
+	// Heaviest first: node-a (12 Wh) > node-b (5) > node-c (0, absent).
+	a, b, c := resp.Nodes[0], resp.Nodes[1], resp.Nodes[2]
+	if a.Node != "node-a" || a.Wh != 12 || a.EstimatedWh != 2 || a.Quality != "measured" {
+		t.Errorf("node-a = %+v, want wh=12 estimatedWh=2 quality=measured", a)
+	}
+	if b.Node != "node-b" || b.Wh != 5 || b.EstimatedWh != 5 || b.Quality != "estimated" {
+		t.Errorf("node-b = %+v, want wh=5 estimatedWh=5 quality=estimated", b)
+	}
+	if c.Node != "node-c" || c.Wh != 0 || c.EstimatedWh != 0 || c.Quality != "absent" {
+		t.Errorf("node-c = %+v, want the known-but-silent node at 0", c)
+	}
+	// The counts panel keeps reading the store's coverage, not the table.
+	if nc := resp.Totals.NodeCoverage; nc.Known != 3 || nc.Measured != 1 || nc.Estimated != 2 || nc.Absent != 1 {
+		t.Errorf("node coverage = %+v", nc)
+	}
+}
+
+func TestBuildGreenNodes_UnknownAndUnlabeled(t *testing.T) {
+	rows := []storage.NodeEnergy{
+		// Energy from a node the known list missed: kept, never dropped.
+		{Node: "node-x", Quality: "measured", WattHours: 3},
+		// Rows with no avuruobs_quality attribute: counted in Wh, tier stays
+		// "" — never assumed measured.
+		{Node: "node-y", Quality: "", WattHours: 1},
+	}
+	nodes := buildGreenNodes(rows, []string{"node-y"})
+	if len(nodes) != 2 {
+		t.Fatalf("nodes = %+v, want 2", nodes)
+	}
+	if nodes[0].Node != "node-x" || nodes[0].Quality != "measured" || nodes[0].Wh != 3 {
+		t.Errorf("nodes[0] = %+v, want off-list node-x kept", nodes[0])
+	}
+	if nodes[1].Node != "node-y" || nodes[1].Quality != "" || nodes[1].Wh != 1 {
+		t.Errorf("nodes[1] = %+v, want unlabeled quality kept as empty", nodes[1])
+	}
+}
+
 func TestGreenSummaryBadParams(t *testing.T) {
 	mux := greenMux(&storagetest.Fake{}, testGreenConfig())
 	for _, path := range []string{
