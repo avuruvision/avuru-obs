@@ -118,8 +118,7 @@ LIMIT ?`
 
 // GetErrorIssue returns one issue's all-time aggregate, or ErrNotFound.
 func (s *Store) GetErrorIssue(ctx context.Context, tenants []string, fingerprint uint64) (storage.ErrorIssue, error) {
-	tenant, err := firstTenant(tenants)
-	if err != nil {
+	if err := requireTenants(tenants); err != nil {
 		return storage.ErrorIssue{}, fmt.Errorf("get error issue: %w", err)
 	}
 	const query = `
@@ -135,15 +134,17 @@ SELECT
 FROM error_events e
 LEFT JOIN (SELECT Tenant, Fingerprint, Status, UpdatedAt FROM error_issue_status FINAL) s
   ON s.Tenant = e.Tenant AND s.Fingerprint = e.Fingerprint
-WHERE e.Tenant = ? AND e.Fingerprint = ?
+WHERE e.Tenant IN (?) AND e.Fingerprint = ?
 GROUP BY e.Fingerprint`
 
+	// The status join stays per-tenant; with a multi-tenant set, any() picks an
+	// arbitrary member's triage when tenants disagree on the same fingerprint.
 	var (
 		iss       storage.ErrorIssue
 		rawStatus string
 		statusAt  time.Time
 	)
-	err = s.conn.QueryRow(ctx, query, tenant, fingerprint).Scan(
+	err := s.conn.QueryRow(ctx, query, tenants, fingerprint).Scan(
 		&iss.Fingerprint, &iss.Service, &iss.Type, &iss.Message, &iss.Source,
 		&iss.LastTraceID, &iss.FirstSeen, &iss.LastSeen, &iss.Count, &rawStatus, &statusAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -211,8 +212,7 @@ LIMIT ?`
 
 // ErrorIssueHistogram buckets an issue's occurrences over the window.
 func (s *Store) ErrorIssueHistogram(ctx context.Context, tenants []string, fingerprint uint64, r storage.TimeRange, points int) ([]storage.ErrorHistogramPoint, error) {
-	tenant, err := firstTenant(tenants)
-	if err != nil {
+	if err := requireTenants(tenants); err != nil {
 		return nil, fmt.Errorf("error histogram: %w", err)
 	}
 	if points <= 0 || points > 500 {
@@ -229,10 +229,10 @@ func (s *Store) ErrorIssueHistogram(ctx context.Context, tenants []string, finge
 	const query = `
 SELECT toStartOfInterval(Timestamp, INTERVAL ? second) AS bucket, count()
 FROM error_events
-WHERE Tenant = ? AND Fingerprint = ? AND Timestamp >= ? AND Timestamp < ?
+WHERE Tenant IN (?) AND Fingerprint = ? AND Timestamp >= ? AND Timestamp < ?
 GROUP BY bucket
 ORDER BY bucket`
-	rows, err := s.conn.Query(ctx, query, bucket, tenant, fingerprint, r.Start, r.End)
+	rows, err := s.conn.Query(ctx, query, bucket, tenants, fingerprint, r.Start, r.End)
 	if err != nil {
 		return nil, fmt.Errorf("error histogram: %w", err)
 	}

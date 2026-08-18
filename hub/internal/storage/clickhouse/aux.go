@@ -7,8 +7,10 @@ import (
 
 // tenantsOrDefault owns the resolved-tenant default rule for the query
 // structs: Tenants when the API filled it, else the single legacy Tenant.
-// P-2 converts the per-query SQL to bind the full set (Tenant IN); every
-// conversion must resolve through here so the default lives in one place.
+// Every tenant filter binds the full set (Tenant IN) and must resolve through
+// here so the default lives in one place. The clickhouse-go driver renders a
+// []string bound to IN (?) as an array literal, which ClickHouse accepts on
+// the right side of IN.
 func tenantsOrDefault(tenants []string, tenant string) []string {
 	if len(tenants) > 0 {
 		return tenants
@@ -16,15 +18,14 @@ func tenantsOrDefault(tenants []string, tenant string) []string {
 	return []string{tenant}
 }
 
-// firstTenant is the single tenant the explicit-tenants reads (GetTrace &co)
-// bind while their SQL is still single-tenant — P-2 converts those filters to
-// IN. An empty set is a caller bug, surfaced as an error rather than a query
-// that silently matches no tenant.
-func firstTenant(tenants []string) (string, error) {
+// requireTenants guards the explicit-tenants reads (GetTrace &co), whose
+// callers resolve the set themselves. An empty set is a caller bug, surfaced
+// as an error rather than a query that silently matches no tenant.
+func requireTenants(tenants []string) error {
 	if len(tenants) == 0 {
-		return "", errors.New("empty tenant set")
+		return errors.New("empty tenant set")
 	}
-	return tenants[0], nil
+	return nil
 }
 
 // repTuple selects a trace's effective-root span inside a GROUP BY TraceId:

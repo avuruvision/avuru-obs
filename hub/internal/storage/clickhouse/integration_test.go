@@ -1451,3 +1451,265 @@ func TestMigrateHonorsConfiguredDatabase(t *testing.T) {
 		t.Errorf("ApplyRetention against a non-default database: %v", err)
 	}
 }
+
+// insertSpansTenant seeds spans into an explicit tenant via the avuru.tenant
+// resource attribute — the Tenant column's DEFAULT expression, i.e. the same
+// path production data takes through the gateway. Each service also carries a
+// per-tenant k8s.namespace.name so ServiceLabels has something to resolve.
+func insertSpansTenant(t *testing.T, s *Store, tenant string, spans []testSpan) {
+	t.Helper()
+	ctx := context.Background()
+	batch, err := s.conn.PrepareBatch(ctx, `INSERT INTO otel_traces
+		(Timestamp, TraceId, SpanId, ParentSpanId, SpanName, SpanKind, ServiceName,
+		 ResourceAttributes, SpanAttributes, Duration, StatusCode)`)
+	if err != nil {
+		t.Fatalf("preparing tenant batch: %v", err)
+	}
+	res := map[string]string{"avuru.tenant": tenant, "k8s.namespace.name": tenant + "-ns"}
+	for _, sp := range spans {
+		err := batch.Append(
+			sp.ts, sp.traceID, sp.spanID, sp.parentID, sp.name, sp.kind, sp.service,
+			res, map[string]string{}, uint64(sp.duration.Nanoseconds()), sp.status,
+		)
+		if err != nil {
+			t.Fatalf("appending tenant span: %v", err)
+		}
+	}
+	if err := batch.Send(); err != nil {
+		t.Fatalf("sending tenant batch: %v", err)
+	}
+}
+
+// insertLogsTenant is insertLogs with an explicit tenant (same avuru.tenant
+// resource-attribute path as insertSpansTenant).
+func insertLogsTenant(t *testing.T, s *Store, tenant string, logs []testLog) {
+	t.Helper()
+	ctx := context.Background()
+	batch, err := s.conn.PrepareBatch(ctx, `INSERT INTO otel_logs
+		(Timestamp, TraceId, SpanId, SeverityText, SeverityNumber, ServiceName, Body, ResourceAttributes)`)
+	if err != nil {
+		t.Fatalf("preparing tenant logs batch: %v", err)
+	}
+	res := map[string]string{"avuru.tenant": tenant}
+	for _, l := range logs {
+		if err := batch.Append(l.ts, l.traceID, l.spanID, l.severity, l.sevNum, l.service, l.body, res); err != nil {
+			t.Fatalf("appending tenant log: %v", err)
+		}
+	}
+	if err := batch.Send(); err != nil {
+		t.Fatalf("sending tenant logs batch: %v", err)
+	}
+}
+
+// TestMultiTenantTraceReads proves the Tenant IN (?) fan-out for the trace-
+// signal reads: a single-tenant set returns exactly what the pre-conversion
+// single-tenant query returned, and a two-tenant set returns the union /
+// merged aggregate. It is also the binding proof that clickhouse-go renders a
+// []string bound to IN (?) as an array literal ClickHouse accepts.
+func TestMultiTenantTraceReads(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	base := time.Now().UTC().Truncate(time.Minute).Add(-10 * time.Minute)
+	insertSpansTenant(t, store, "default", []testSpan{
+		// trace A: frontend root (error) -> client -> backend server.
+		{base.Add(1 * time.Minute), "aaaa0001", "s1", "", "GET /x", "Server", "frontend", 500 * time.Millisecond, "Error"},
+		{base.Add(1*time.Minute + time.Millisecond), "aaaa0001", "s2", "s1", "call backend", "Client", "frontend", 100 * time.Millisecond, "Unset"},
+		{base.Add(1*time.Minute + 2*time.Millisecond), "aaaa0001", "s3", "s2", "POST /b", "Server", "backend", 80 * time.Millisecond, "Unset"},
+		// trace B: frontend root ok.
+		{base.Add(2 * time.Minute), "bbbb0002", "s4", "", "GET /x", "Server", "frontend", 50 * time.Millisecond, "Unset"},
+	})
+	insertSpansTenant(t, store, "staging", []testSpan{
+		// trace C: checkout root -> client -> payments server.
+		{base.Add(3 * time.Minute), "cccc0003", "t1", "", "GET /y", "Server", "checkout", 200 * time.Millisecond, "Unset"},
+		{base.Add(3*time.Minute + time.Millisecond), "cccc0003", "t2", "t1", "call payments", "Client", "checkout", 150 * time.Millisecond, "Unset"},
+		{base.Add(3*time.Minute + 2*time.Millisecond), "cccc0003", "t3", "t2", "POST /p", "Server", "payments", 90 * time.Millisecond, "Unset"},
+	})
+	// The same trace id carries logs in both tenants (a trace crossing two
+	// member projects): the union is the merged-project read.
+	insertLogsTenant(t, store, "default", []testLog{
+		{base.Add(1 * time.Minute), "aaaa0001", "s1", "ERROR", 17, "frontend", "boom"},
+	})
+	insertLogsTenant(t, store, "staging", []testLog{
+		{base.Add(1*time.Minute + time.Second), "aaaa0001", "t9", "INFO", 9, "payments", "downstream view"},
+	})
+
+	tr := storage.TimeRange{Start: base.Add(-time.Minute), End: base.Add(9 * time.Minute)}
+	both := []string{"default", "staging"}
+
+	t.Run("ListServices", func(t *testing.T) {
+		one, err := store.ListServices(ctx, storage.ServiceQuery{Tenant: "default", Tenants: []string{"default"}, Range: tr})
+		if err != nil {
+			t.Fatalf("ListServices one: %v", err)
+		}
+		if len(one) != 2 || one[0].Name != "frontend" || one[0].SpanCount != 2 || one[0].ErrorCount != 1 {
+			t.Fatalf("single-tenant services wrong: %+v", one)
+		}
+		merged, err := store.ListServices(ctx, storage.ServiceQuery{Tenant: "default", Tenants: both, Range: tr})
+		if err != nil {
+			t.Fatalf("ListServices merged: %v", err)
+		}
+		if len(merged) != 4 {
+			t.Fatalf("merged services = %+v, want 4 (frontend backend checkout payments)", merged)
+		}
+	})
+
+	t.Run("SearchTraces", func(t *testing.T) {
+		one, err := store.SearchTraces(ctx, storage.TraceQuery{Tenant: "default", Range: tr})
+		if err != nil {
+			t.Fatalf("SearchTraces one: %v", err)
+		}
+		if len(one.Traces) != 2 || one.Traces[0].TraceID != "bbbb0002" || one.Traces[1].SpanCount != 3 {
+			t.Fatalf("single-tenant traces wrong: %+v", one.Traces)
+		}
+		merged, err := store.SearchTraces(ctx, storage.TraceQuery{Tenant: "default", Tenants: both, Range: tr})
+		if err != nil {
+			t.Fatalf("SearchTraces merged: %v", err)
+		}
+		if len(merged.Traces) != 3 || merged.Traces[0].TraceID != "cccc0003" {
+			t.Fatalf("merged traces wrong (want newest-first across tenants): %+v", merged.Traces)
+		}
+	})
+
+	t.Run("TraceOverview", func(t *testing.T) {
+		one, err := store.TraceOverview(ctx, storage.OverviewQuery{Tenant: "default", Range: tr})
+		if err != nil {
+			t.Fatalf("TraceOverview one: %v", err)
+		}
+		if len(one) != 2 || one[0].Service != "backend" || one[1].Count != 2 || one[1].ErrorCount != 1 {
+			t.Fatalf("single-tenant overview wrong: %+v", one)
+		}
+		merged, err := store.TraceOverview(ctx, storage.OverviewQuery{Tenant: "default", Tenants: both, Range: tr})
+		if err != nil {
+			t.Fatalf("TraceOverview merged: %v", err)
+		}
+		if len(merged) != 4 {
+			t.Fatalf("merged overview = %+v, want 4 rows", merged)
+		}
+	})
+
+	t.Run("ServiceEdges", func(t *testing.T) {
+		one, err := store.ServiceEdges(ctx, storage.ServiceQuery{Tenant: "default", Range: tr})
+		if err != nil {
+			t.Fatalf("ServiceEdges one: %v", err)
+		}
+		if len(one) != 1 || one[0].Source != "frontend" || one[0].Target != "backend" {
+			t.Fatalf("single-tenant edges wrong: %+v", one)
+		}
+		merged, err := store.ServiceEdges(ctx, storage.ServiceQuery{Tenant: "default", Tenants: both, Range: tr})
+		if err != nil {
+			t.Fatalf("ServiceEdges merged: %v", err)
+		}
+		if len(merged) != 2 {
+			t.Fatalf("merged edges = %+v, want frontend->backend and checkout->payments", merged)
+		}
+	})
+
+	t.Run("TraceHeatmap", func(t *testing.T) {
+		sum := func(hm storage.Heatmap) (total, errs uint64) {
+			for _, c := range hm.Cells {
+				total += c.Count
+				errs += c.ErrorCount
+			}
+			return
+		}
+		one, err := store.TraceHeatmap(ctx, storage.HeatmapQuery{Tenant: "default", Range: tr, TimeBuckets: 10, DurationBuckets: 12})
+		if err != nil {
+			t.Fatalf("TraceHeatmap one: %v", err)
+		}
+		if total, errs := sum(one); total != 2 || errs != 1 {
+			t.Fatalf("single-tenant heatmap totals: total=%d errs=%d, want 2/1", total, errs)
+		}
+		merged, err := store.TraceHeatmap(ctx, storage.HeatmapQuery{Tenant: "default", Tenants: both, Range: tr, TimeBuckets: 10, DurationBuckets: 12})
+		if err != nil {
+			t.Fatalf("TraceHeatmap merged: %v", err)
+		}
+		if total, errs := sum(merged); total != 3 || errs != 1 {
+			t.Fatalf("merged heatmap totals: total=%d errs=%d, want 3/1", total, errs)
+		}
+	})
+
+	t.Run("REDSeries", func(t *testing.T) {
+		one, err := store.REDSeries(ctx, storage.REDQuery{Tenant: "default", Range: tr, Points: 6, TopN: 6})
+		if err != nil {
+			t.Fatalf("REDSeries one: %v", err)
+		}
+		if len(one) != 2 {
+			t.Fatalf("single-tenant series = %+v, want 2", one)
+		}
+		merged, err := store.REDSeries(ctx, storage.REDQuery{Tenant: "default", Tenants: both, Range: tr, Points: 6, TopN: 6})
+		if err != nil {
+			t.Fatalf("REDSeries merged: %v", err)
+		}
+		if len(merged) != 4 {
+			t.Fatalf("merged series = %+v, want 4", merged)
+		}
+	})
+
+	t.Run("ServiceLabels", func(t *testing.T) {
+		one, err := store.ServiceLabels(ctx, storage.ServiceQuery{Tenant: "default", Range: tr})
+		if err != nil {
+			t.Fatalf("ServiceLabels one: %v", err)
+		}
+		if len(one) != 2 {
+			t.Fatalf("single-tenant labels = %+v, want 2", one)
+		}
+		merged, err := store.ServiceLabels(ctx, storage.ServiceQuery{Tenant: "default", Tenants: both, Range: tr})
+		if err != nil {
+			t.Fatalf("ServiceLabels merged: %v", err)
+		}
+		byService := map[string]storage.ServiceLabel{}
+		for _, l := range merged {
+			byService[l.Service] = l
+		}
+		if len(byService) != 4 {
+			t.Fatalf("merged labels = %+v, want 4 services", merged)
+		}
+		if byService["frontend"].K8sNamespace != "default-ns" || byService["checkout"].K8sNamespace != "staging-ns" {
+			t.Errorf("merged label namespaces wrong: %+v", byService)
+		}
+	})
+
+	t.Run("GetTrace", func(t *testing.T) {
+		if _, err := store.GetTrace(ctx, []string{"default"}, "cccc0003"); err != storage.ErrNotFound {
+			t.Fatalf("staging trace visible to [default]: %v", err)
+		}
+		got, err := store.GetTrace(ctx, both, "cccc0003")
+		if err != nil {
+			t.Fatalf("GetTrace merged: %v", err)
+		}
+		if len(got.Spans) != 3 {
+			t.Fatalf("merged GetTrace spans = %d, want 3", len(got.Spans))
+		}
+		if _, err := store.GetTrace(ctx, nil, "cccc0003"); err == nil {
+			t.Fatal("empty tenant set must error")
+		}
+	})
+
+	t.Run("FindSpanTrace", func(t *testing.T) {
+		if _, err := store.FindSpanTrace(ctx, []string{"default"}, "t1"); err != storage.ErrNotFound {
+			t.Fatalf("staging span visible to [default]: %v", err)
+		}
+		traceID, err := store.FindSpanTrace(ctx, both, "t1")
+		if err != nil || traceID != "cccc0003" {
+			t.Fatalf("merged FindSpanTrace = %q, %v", traceID, err)
+		}
+	})
+
+	t.Run("LogsForTrace", func(t *testing.T) {
+		one, err := store.LogsForTrace(ctx, []string{"default"}, "aaaa0001")
+		if err != nil {
+			t.Fatalf("LogsForTrace one: %v", err)
+		}
+		if len(one) != 1 || one[0].Service != "frontend" {
+			t.Fatalf("single-tenant logs wrong: %+v", one)
+		}
+		merged, err := store.LogsForTrace(ctx, both, "aaaa0001")
+		if err != nil {
+			t.Fatalf("LogsForTrace merged: %v", err)
+		}
+		if len(merged) != 2 || merged[1].Service != "payments" { // oldest first
+			t.Fatalf("merged logs wrong: %+v", merged)
+		}
+	})
+}

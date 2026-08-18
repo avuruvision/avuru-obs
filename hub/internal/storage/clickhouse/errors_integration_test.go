@@ -404,6 +404,49 @@ func TestErrorReadQueries(t *testing.T) {
 			t.Errorf("histogram total = %d, want 3", total)
 		}
 	})
+
+	// Multi-tenant fan-out for the single-entity reads: fingerprint 400 lives
+	// in tenants m1 and m2 (untouched by the subtests above) — a single-tenant
+	// set sees only its share, the merged set the summed aggregate.
+	insertRawErrorEvent(t, store, base.Add(5*time.Minute), "m1", 400, "web", "NPE", "boom", "tM1")
+	insertRawErrorEvent(t, store, base.Add(6*time.Minute), "m2", 400, "web", "NPE", "boom", "tM2")
+
+	t.Run("GetErrorIssueMultiTenant", func(t *testing.T) {
+		if _, err := store.GetErrorIssue(ctx, []string{"default"}, 400); err != storage.ErrNotFound {
+			t.Fatalf("m1/m2 issue visible to [default]: %v", err)
+		}
+		one, err := store.GetErrorIssue(ctx, []string{"m1"}, 400)
+		if err != nil || one.Count != 1 {
+			t.Fatalf("single-tenant issue wrong: %+v, %v", one, err)
+		}
+		merged, err := store.GetErrorIssue(ctx, []string{"m1", "m2"}, 400)
+		if err != nil {
+			t.Fatalf("GetErrorIssue merged: %v", err)
+		}
+		if merged.Count != 2 || merged.LastTraceID != "tM2" {
+			t.Errorf("merged issue aggregate wrong: %+v", merged)
+		}
+	})
+
+	t.Run("HistogramMultiTenant", func(t *testing.T) {
+		sum := func(pts []storage.ErrorHistogramPoint) (total uint64) {
+			for _, p := range pts {
+				total += p.Count
+			}
+			return
+		}
+		one, err := store.ErrorIssueHistogram(ctx, []string{"m1"}, 400, win, 60)
+		if err != nil || sum(one) != 1 {
+			t.Fatalf("single-tenant histogram = %d, %v, want 1", sum(one), err)
+		}
+		merged, err := store.ErrorIssueHistogram(ctx, []string{"m1", "m2"}, 400, win, 60)
+		if err != nil || sum(merged) != 2 {
+			t.Fatalf("merged histogram = %d, %v, want 2", sum(merged), err)
+		}
+		if _, err := store.ErrorIssueHistogram(ctx, nil, 400, win, 60); err == nil {
+			t.Error("empty tenant set must error")
+		}
+	})
 }
 
 // setIssueStatusAt writes a triage row with an explicit UpdatedAt, so the

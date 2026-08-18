@@ -50,10 +50,10 @@ SELECT
   count()                                                  AS SpanCount,
   countIf(` + errorSpanExpr("") + `)                       AS ErrorCount
 FROM otel_traces
-WHERE Tenant = ? AND Timestamp >= ? AND Timestamp < ?
+WHERE Tenant IN (?) AND Timestamp >= ? AND Timestamp < ?
 GROUP BY TraceId
 HAVING 1 = 1`
-	args := []any{q.Tenant, q.Range.Start, q.Range.End}
+	args := []any{tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
 
 	if q.Service != "" {
 		// Participant match: one countIf so operation/duration must hold on
@@ -180,12 +180,11 @@ LIMIT ?`
 // window-independent, and span search behaves the same; the idx_span_id
 // bloom filter (0005) keeps it cheap on indexed parts.
 func (s *Store) FindSpanTrace(ctx context.Context, tenants []string, spanID string) (string, error) {
-	tenant, err := firstTenant(tenants)
-	if err != nil {
+	if err := requireTenants(tenants); err != nil {
 		return "", fmt.Errorf("find span trace: %w", err)
 	}
 	row := s.conn.QueryRow(ctx,
-		`SELECT TraceId FROM otel_traces WHERE Tenant = ? AND SpanId = ? LIMIT 1`, tenant, spanID)
+		`SELECT TraceId FROM otel_traces WHERE Tenant IN (?) AND SpanId = ? LIMIT 1`, tenants, spanID)
 	var traceID string
 	if err := row.Scan(&traceID); err != nil || traceID == "" {
 		return "", storage.ErrNotFound
@@ -195,8 +194,7 @@ func (s *Store) FindSpanTrace(ctx context.Context, tenants []string, spanID stri
 
 // GetTrace fetches a full span tree via the trace-id timestamp lookup table.
 func (s *Store) GetTrace(ctx context.Context, tenants []string, traceID string) (storage.Trace, error) {
-	tenant, err := firstTenant(tenants)
-	if err != nil {
+	if err := requireTenants(tenants); err != nil {
 		return storage.Trace{}, fmt.Errorf("get trace: %w", err)
 	}
 	var start, end time.Time
@@ -213,10 +211,10 @@ SELECT TraceId, SpanId, ParentSpanId, ServiceName, SpanName, SpanKind,
        SpanAttributes, ResourceAttributes,
        Events.Timestamp, Events.Name, Events.Attributes
 FROM otel_traces
-WHERE Tenant = ? AND TraceId = ?
+WHERE Tenant IN (?) AND TraceId = ?
   AND Timestamp >= ? - INTERVAL 1 HOUR AND Timestamp < ? + INTERVAL 1 HOUR
 ORDER BY Timestamp ASC`
-	rows, err := s.conn.Query(ctx, query, tenant, traceID, start, end)
+	rows, err := s.conn.Query(ctx, query, tenants, traceID, start, end)
 	if err != nil {
 		return storage.Trace{}, fmt.Errorf("fetching trace %s: %w", traceID, err)
 	}

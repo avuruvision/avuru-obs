@@ -88,16 +88,15 @@ LIMIT ?`
 // LogsForTrace returns all logs correlated to a trace, oldest-first (matches
 // the waterfall reading order).
 func (s *Store) LogsForTrace(ctx context.Context, tenants []string, traceID string) ([]storage.LogRecord, error) {
-	tenant, err := firstTenant(tenants)
-	if err != nil {
+	if err := requireTenants(tenants); err != nil {
 		return nil, fmt.Errorf("logs for trace: %w", err)
 	}
 	const query = `
 SELECT ` + logColumns + `
 FROM otel_logs
-WHERE Tenant = ? AND TraceId = ?
+WHERE Tenant IN (?) AND TraceId = ?
 ORDER BY Timestamp ASC`
-	rows, err := s.conn.Query(ctx, query, tenant, traceID)
+	rows, err := s.conn.Query(ctx, query, tenants, traceID)
 	if err != nil {
 		return nil, fmt.Errorf("logs for trace %s: %w", traceID, err)
 	}
