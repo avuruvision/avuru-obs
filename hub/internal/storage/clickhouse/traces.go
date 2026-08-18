@@ -179,7 +179,11 @@ LIMIT ?`
 // bound: trace-id open (via the otel_traces_trace_id_ts lookup) is
 // window-independent, and span search behaves the same; the idx_span_id
 // bloom filter (0005) keeps it cheap on indexed parts.
-func (s *Store) FindSpanTrace(ctx context.Context, tenant, spanID string) (string, error) {
+func (s *Store) FindSpanTrace(ctx context.Context, tenants []string, spanID string) (string, error) {
+	tenant, err := firstTenant(tenants)
+	if err != nil {
+		return "", fmt.Errorf("find span trace: %w", err)
+	}
 	row := s.conn.QueryRow(ctx,
 		`SELECT TraceId FROM otel_traces WHERE Tenant = ? AND SpanId = ? LIMIT 1`, tenant, spanID)
 	var traceID string
@@ -190,7 +194,11 @@ func (s *Store) FindSpanTrace(ctx context.Context, tenant, spanID string) (strin
 }
 
 // GetTrace fetches a full span tree via the trace-id timestamp lookup table.
-func (s *Store) GetTrace(ctx context.Context, tenant, traceID string) (storage.Trace, error) {
+func (s *Store) GetTrace(ctx context.Context, tenants []string, traceID string) (storage.Trace, error) {
+	tenant, err := firstTenant(tenants)
+	if err != nil {
+		return storage.Trace{}, fmt.Errorf("get trace: %w", err)
+	}
 	var start, end time.Time
 	lookup := s.conn.QueryRow(ctx,
 		`SELECT min(Start), max(End) FROM otel_traces_trace_id_ts WHERE TraceId = ?`, traceID)

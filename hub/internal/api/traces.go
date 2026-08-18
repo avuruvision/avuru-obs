@@ -17,12 +17,16 @@ func (a *API) handleServices(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	tenant, err := a.project(r, auth.RoleViewer)
+	// projectTenants, not project(): /services is the first handler on the
+	// member-projects seam (a leaf resolves to itself, so nothing changes
+	// until aggregates exist); the rest migrate in P-3.
+	tenant, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return err
 	}
 	services, err := store.ListServices(r.Context(), storage.ServiceQuery{
 		Tenant:     tenant,
+		Tenants:    tenants,
 		Range:      tr,
 		ExcludeAux: !parseBool(r, "includeAux", false),
 	})
@@ -266,7 +270,7 @@ func (a *API) handleGetTrace(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	trace, err := store.GetTrace(r.Context(), tenant, traceID)
+	trace, err := store.GetTrace(r.Context(), []string{tenant}, traceID)
 	if err != nil {
 		return err
 	}
@@ -289,7 +293,7 @@ func (a *API) handleGetSpan(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	traceID, err := store.FindSpanTrace(r.Context(), tenant, spanID)
+	traceID, err := store.FindSpanTrace(r.Context(), []string{tenant}, spanID)
 	if err != nil {
 		return err
 	}

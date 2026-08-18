@@ -117,7 +117,11 @@ LIMIT ?`
 }
 
 // GetErrorIssue returns one issue's all-time aggregate, or ErrNotFound.
-func (s *Store) GetErrorIssue(ctx context.Context, tenant string, fingerprint uint64) (storage.ErrorIssue, error) {
+func (s *Store) GetErrorIssue(ctx context.Context, tenants []string, fingerprint uint64) (storage.ErrorIssue, error) {
+	tenant, err := firstTenant(tenants)
+	if err != nil {
+		return storage.ErrorIssue{}, fmt.Errorf("get error issue: %w", err)
+	}
 	const query = `
 SELECT
   e.Fingerprint,
@@ -139,7 +143,7 @@ GROUP BY e.Fingerprint`
 		rawStatus string
 		statusAt  time.Time
 	)
-	err := s.conn.QueryRow(ctx, query, tenant, fingerprint).Scan(
+	err = s.conn.QueryRow(ctx, query, tenant, fingerprint).Scan(
 		&iss.Fingerprint, &iss.Service, &iss.Type, &iss.Message, &iss.Source,
 		&iss.LastTraceID, &iss.FirstSeen, &iss.LastSeen, &iss.Count, &rawStatus, &statusAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -206,7 +210,11 @@ LIMIT ?`
 }
 
 // ErrorIssueHistogram buckets an issue's occurrences over the window.
-func (s *Store) ErrorIssueHistogram(ctx context.Context, tenant string, fingerprint uint64, r storage.TimeRange, points int) ([]storage.ErrorHistogramPoint, error) {
+func (s *Store) ErrorIssueHistogram(ctx context.Context, tenants []string, fingerprint uint64, r storage.TimeRange, points int) ([]storage.ErrorHistogramPoint, error) {
+	tenant, err := firstTenant(tenants)
+	if err != nil {
+		return nil, fmt.Errorf("error histogram: %w", err)
+	}
 	if points <= 0 || points > 500 {
 		points = 60
 	}

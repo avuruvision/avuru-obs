@@ -93,7 +93,7 @@ func (a *API) handleLogsForTrace(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	logs, err := store.LogsForTrace(r.Context(), tenant, traceID)
+	logs, err := store.LogsForTrace(r.Context(), []string{tenant}, traceID)
 	if err != nil {
 		return err
 	}

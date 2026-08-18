@@ -359,14 +359,14 @@ func TestErrorReadQueries(t *testing.T) {
 	})
 
 	t.Run("GetErrorIssue", func(t *testing.T) {
-		iss, err := store.GetErrorIssue(ctx, "default", 100)
+		iss, err := store.GetErrorIssue(ctx, []string{"default"}, 100)
 		if err != nil {
 			t.Fatalf("GetErrorIssue: %v", err)
 		}
 		if iss.Count != 3 || iss.Service != "web" {
 			t.Errorf("issue wrong: %+v", iss)
 		}
-		if _, err := store.GetErrorIssue(ctx, "default", 999); err != storage.ErrNotFound {
+		if _, err := store.GetErrorIssue(ctx, []string{"default"}, 999); err != storage.ErrNotFound {
 			t.Errorf("missing issue: want ErrNotFound, got %v", err)
 		}
 	})
@@ -392,7 +392,7 @@ func TestErrorReadQueries(t *testing.T) {
 	})
 
 	t.Run("Histogram", func(t *testing.T) {
-		pts, err := store.ErrorIssueHistogram(ctx, "default", 100, win, 60)
+		pts, err := store.ErrorIssueHistogram(ctx, []string{"default"}, 100, win, 60)
 		if err != nil {
 			t.Fatalf("ErrorIssueHistogram: %v", err)
 		}
@@ -458,7 +458,7 @@ func TestTriageAndRegression(t *testing.T) {
 	if unresolvedCount() != 0 {
 		t.Errorf("resolved issue still in unresolved list")
 	}
-	iss, err := store.GetErrorIssue(ctx, "default", 777)
+	iss, err := store.GetErrorIssue(ctx, []string{"default"}, 777)
 	if err != nil {
 		t.Fatalf("get after resolve: %v", err)
 	}
@@ -472,7 +472,7 @@ func TestTriageAndRegression(t *testing.T) {
 	// a past-dated status row).
 	insertRawErrorEvent(t, store, base.Add(time.Minute), "default", 888, "web", "IOError", "disk", "u1")
 	setIssueStatusAt(t, store, "default", 888, "resolved", base.Add(5*time.Minute))
-	iss, err = store.GetErrorIssue(ctx, "default", 888)
+	iss, err = store.GetErrorIssue(ctx, []string{"default"}, 888)
 	if err != nil {
 		t.Fatalf("get 888 after resolve: %v", err)
 	}
@@ -482,7 +482,7 @@ func TestTriageAndRegression(t *testing.T) {
 
 	// A later occurrence → regression.
 	insertRawErrorEvent(t, store, base.Add(10*time.Minute), "default", 888, "web", "IOError", "disk", "u2")
-	iss, err = store.GetErrorIssue(ctx, "default", 888)
+	iss, err = store.GetErrorIssue(ctx, []string{"default"}, 888)
 	if err != nil {
 		t.Fatalf("get 888 after recurrence: %v", err)
 	}
@@ -501,7 +501,7 @@ func TestTriageAndRegression(t *testing.T) {
 
 	// Re-resolving AFTER the recurrence clears the regression (newer row wins).
 	setIssueStatusAt(t, store, "default", 888, "resolved", base.Add(15*time.Minute))
-	iss, err = store.GetErrorIssue(ctx, "default", 888)
+	iss, err = store.GetErrorIssue(ctx, []string{"default"}, 888)
 	if err != nil {
 		t.Fatalf("get 888 after re-resolve: %v", err)
 	}

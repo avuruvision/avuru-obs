@@ -87,7 +87,11 @@ LIMIT ?`
 
 // LogsForTrace returns all logs correlated to a trace, oldest-first (matches
 // the waterfall reading order).
-func (s *Store) LogsForTrace(ctx context.Context, tenant, traceID string) ([]storage.LogRecord, error) {
+func (s *Store) LogsForTrace(ctx context.Context, tenants []string, traceID string) ([]storage.LogRecord, error) {
+	tenant, err := firstTenant(tenants)
+	if err != nil {
+		return nil, fmt.Errorf("logs for trace: %w", err)
+	}
 	const query = `
 SELECT ` + logColumns + `
 FROM otel_logs

@@ -1,6 +1,31 @@
 package clickhouse
 
-import "sort"
+import (
+	"errors"
+	"sort"
+)
+
+// tenantsOrDefault owns the resolved-tenant default rule for the query
+// structs: Tenants when the API filled it, else the single legacy Tenant.
+// P-2 converts the per-query SQL to bind the full set (Tenant IN); every
+// conversion must resolve through here so the default lives in one place.
+func tenantsOrDefault(tenants []string, tenant string) []string {
+	if len(tenants) > 0 {
+		return tenants
+	}
+	return []string{tenant}
+}
+
+// firstTenant is the single tenant the explicit-tenants reads (GetTrace &co)
+// bind while their SQL is still single-tenant — P-2 converts those filters to
+// IN. An empty set is a caller bug, surfaced as an error rather than a query
+// that silently matches no tenant.
+func firstTenant(tenants []string) (string, error) {
+	if len(tenants) == 0 {
+		return "", errors.New("empty tenant set")
+	}
+	return tenants[0], nil
+}
 
 // repTuple selects a trace's effective-root span inside a GROUP BY TraceId:
 // argMin(col, repTuple) prefers the real root (a parentless span — its empty

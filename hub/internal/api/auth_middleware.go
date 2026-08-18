@@ -339,3 +339,19 @@ func (a *API) project(r *http.Request, min auth.Role) (string, error) {
 	}
 	return t, nil
 }
+
+// projectTenants is project() plus member expansion: it authorizes the
+// request's project at min, then resolves the tenant set its queries must
+// read (the project itself for a leaf, its authorized members for an
+// aggregate — see resolveTenants).
+func (a *API) projectTenants(r *http.Request, min auth.Role) (project string, tenants []string, err error) {
+	project, err = a.project(r, min)
+	if err != nil {
+		return "", nil, err
+	}
+	tenants, err = a.resolveTenants(r.Context(), project, identityFrom(r.Context()))
+	if err != nil {
+		return "", nil, err
+	}
+	return project, tenants, nil
+}

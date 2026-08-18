@@ -316,7 +316,7 @@ func TestLogsIntegration(t *testing.T) {
 	})
 
 	t.Run("LogsForTrace", func(t *testing.T) {
-		got, err := store.LogsForTrace(ctx, "default", "trace-aaaa")
+		got, err := store.LogsForTrace(ctx, []string{"default"}, "trace-aaaa")
 		if err != nil {
 			t.Fatalf("LogsForTrace: %v", err)
 		}
@@ -414,7 +414,7 @@ func TestStoreIntegration(t *testing.T) {
 	})
 
 	t.Run("GetTrace", func(t *testing.T) {
-		got, err := store.GetTrace(ctx, "default", "aaaa0001")
+		got, err := store.GetTrace(ctx, []string{"default"}, "aaaa0001")
 		if err != nil {
 			t.Fatalf("GetTrace: %v", err)
 		}
@@ -433,7 +433,7 @@ func TestStoreIntegration(t *testing.T) {
 	})
 
 	t.Run("GetTraceNotFound", func(t *testing.T) {
-		_, err := store.GetTrace(ctx, "default", "doesnotexist")
+		_, err := store.GetTrace(ctx, []string{"default"}, "doesnotexist")
 		if err != storage.ErrNotFound {
 			t.Fatalf("want ErrNotFound, got %v", err)
 		}
@@ -1138,7 +1138,7 @@ func TestFindSpanTrace(t *testing.T) {
 	})
 
 	t.Run("Found", func(t *testing.T) {
-		traceID, err := store.FindSpanTrace(ctx, "default", "abcd1234abcd1234")
+		traceID, err := store.FindSpanTrace(ctx, []string{"default"}, "abcd1234abcd1234")
 		if err != nil {
 			t.Fatalf("FindSpanTrace: %v", err)
 		}
@@ -1148,13 +1148,13 @@ func TestFindSpanTrace(t *testing.T) {
 	})
 
 	t.Run("NotFound", func(t *testing.T) {
-		if _, err := store.FindSpanTrace(ctx, "default", "0000000000000000"); err != storage.ErrNotFound {
+		if _, err := store.FindSpanTrace(ctx, []string{"default"}, "0000000000000000"); err != storage.ErrNotFound {
 			t.Fatalf("want ErrNotFound, got %v", err)
 		}
 	})
 
 	t.Run("TenantIsolation", func(t *testing.T) {
-		if _, err := store.FindSpanTrace(ctx, "other", "abcd1234abcd1234"); err != storage.ErrNotFound {
+		if _, err := store.FindSpanTrace(ctx, []string{"other"}, "abcd1234abcd1234"); err != storage.ErrNotFound {
 			t.Fatalf("want ErrNotFound for other tenant, got %v", err)
 		}
 	})

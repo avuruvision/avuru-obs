@@ -142,7 +142,7 @@ func (a *API) handleGetErrorIssue(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	issue, err := store.GetErrorIssue(r.Context(), tenant, fp)
+	issue, err := store.GetErrorIssue(r.Context(), []string{tenant}, fp)
 	if err != nil {
 		return err
 	}
@@ -225,7 +225,7 @@ func (a *API) handleErrorIssueHistogram(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		return err
 	}
-	buckets, err := store.ErrorIssueHistogram(r.Context(), tenant, fp, tr, points)
+	buckets, err := store.ErrorIssueHistogram(r.Context(), []string{tenant}, fp, tr, points)
 	if err != nil {
 		return err
 	}
@@ -271,7 +271,7 @@ func (a *API) handleSetErrorIssueStatus(w http.ResponseWriter, r *http.Request) 
 	}
 	// Return the issue as it now reads, so the client reflects the effective
 	// status (including a reset of regression).
-	issue, err := store.GetErrorIssue(r.Context(), t, fp)
+	issue, err := store.GetErrorIssue(r.Context(), []string{t}, fp)
 	if err != nil {
 		return err
 	}
