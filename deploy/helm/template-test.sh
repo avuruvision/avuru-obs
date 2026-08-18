@@ -207,6 +207,51 @@ out="$(render --set gateway.receivers.jaeger.enabled=true --set gateway.receiver
 grep -q 'authenticator' <<<"$out" && fail "authenticator rendered with auth.ingest.mode=off"
 ok "ingest auth applies uniformly, and only when the mode asks for it"
 
+echo "== dual-write forwarding: off by default, single-exporter pipelines"
+out="$(render)"
+grep -q 'forward' <<<"$out" && fail "forward exporter rendered by default"
+n=$(grep -c 'exporters: \[clickhouse\]$' <<<"$out")
+[ "$n" = "3" ] || fail "default pipelines are not single-exporter (got $n)"
+ok "no forwarding surface by default"
+
+echo "== dual-write forwarding: otlp joins selected signals only"
+out="$(render --set gateway.forward.otlp.enabled=true --set gateway.forward.otlp.endpoint=legacy:4317 \
+  --set 'gateway.forward.otlp.signals={traces,logs}')"
+grep -q 'otlp/forward:' <<<"$out" || fail "otlp/forward exporter block missing"
+grep -q 'exporters: \[clickhouse, otlp/forward\]' <<<"$out" || fail "otlp/forward not in pipelines"
+grep -q 'sending_queue' <<<"$out" || fail "forward sending_queue missing (backpressure guard)"
+n=$(grep -c 'exporters: \[clickhouse, otlp/forward\]' <<<"$out")
+[ "$n" = "2" ] || fail "otlp/forward should be in exactly traces+logs (got $n)"
+grep -q 'exporters: \[clickhouse\]$' <<<"$out" || fail "metrics pipeline should stay single-exporter"
+ok "otlp/forward in traces+logs only, queue rendered"
+
+echo "== dual-write forwarding: http protocol renders otlphttp/forward"
+out="$(render --set gateway.forward.otlp.enabled=true --set gateway.forward.otlp.endpoint=https://legacy:4318 \
+  --set gateway.forward.otlp.protocol=http)"
+grep -q 'otlphttp/forward:' <<<"$out" || fail "otlphttp/forward exporter block missing"
+grep -q 'exporters: \[clickhouse, otlphttp/forward\]' <<<"$out" || fail "otlphttp/forward not in pipelines"
+ok "protocol=http switches the exporter component"
+
+echo "== dual-write forwarding: kafka renders topics, secret stays out of the ConfigMap"
+out="$(render --set gateway.forward.kafka.enabled=true --set 'gateway.forward.kafka.brokers={kafka:9092}' \
+  --set gateway.forward.kafka.sasl.enabled=true --set gateway.forward.kafka.sasl.existingSecret=kafka-creds)"
+grep -q 'kafka/forward:' <<<"$out" || fail "kafka/forward exporter block missing"
+grep -q 'topic: "otlp_spans"' <<<"$out" || fail "kafka traces topic missing"
+grep -q 'exporters: \[clickhouse, kafka/forward\]' <<<"$out" || fail "kafka/forward not in pipelines"
+grep -q '\${env:AVURUOBS_FORWARD_KAFKA_SASL_PASSWORD}' <<<"$out" || fail "kafka sasl password not env-indirected"
+grep -q 'name: kafka-creds' <<<"$out" || fail "kafka sasl secretKeyRef missing from Deployment"
+# The ConfigMap must never carry credential material beyond the env reference.
+cm=$(awk '/kind: ConfigMap/,/^---/' <<<"$out")
+grep -q 'kafka-creds' <<<"$cm" && fail "secret name leaked into a ConfigMap"
+ok "kafka forwarding rendered, credentials only as env references"
+
+echo "== dual-write forwarding: misconfiguration fails the render"
+render --set gateway.forward.otlp.enabled=true >/dev/null 2>&1 && fail "otlp forward without endpoint rendered"
+render --set gateway.forward.kafka.enabled=true >/dev/null 2>&1 && fail "kafka forward without brokers rendered"
+render --set gateway.forward.kafka.enabled=true --set 'gateway.forward.kafka.brokers={kafka:9092}' \
+  --set gateway.forward.kafka.sasl.enabled=true >/dev/null 2>&1 && fail "kafka sasl without existingSecret rendered"
+ok "empty endpoint/brokers/secret fail at template time"
+
 echo "== service-health: on by default -> module, ConfigMap, env, mount"
 out="$(render)"
 grep -qE 'value: "core,logs,infra-metrics,profiling,error-tracking,service-health(,|")' <<<"$out" || fail "service-health missing from AVURUOBS_MODULES"
