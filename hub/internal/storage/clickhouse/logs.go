@@ -29,9 +29,9 @@ func (s *Store) SearchLogs(ctx context.Context, q storage.LogQuery) (storage.Log
 	query := `
 SELECT ` + logColumns + `
 FROM otel_logs
-WHERE Tenant = ?
+WHERE Tenant IN (?)
   AND Timestamp >= ? AND Timestamp < ?`
-	args := []any{q.Tenant, q.Range.Start, q.Range.End}
+	args := []any{tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
 
 	if q.Service != "" {
 		query += ` AND ServiceName = ?`

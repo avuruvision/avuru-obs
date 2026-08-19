@@ -1713,3 +1713,96 @@ func TestMultiTenantTraceReads(t *testing.T) {
 		}
 	})
 }
+
+// TestMultiTenantLogSearch proves the Tenant IN (?) fan-out for SearchLogs:
+// a single-tenant set returns exactly what the pre-conversion single-tenant
+// query returned; a two-tenant set returns the union newest-first, with
+// filters and keyset pagination applied across the merged stream.
+func TestMultiTenantLogSearch(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	base := time.Now().UTC().Truncate(time.Minute).Add(-10 * time.Minute)
+	insertLogsTenant(t, store, "default", []testLog{
+		{base.Add(1 * time.Minute), "trace-d1", "d1", "ERROR", 17, "checkout", "payment declined"},
+		{base.Add(3 * time.Minute), "trace-d2", "d2", "INFO", 9, "frontend", "request handled ok"},
+	})
+	insertLogsTenant(t, store, "staging", []testLog{
+		{base.Add(2 * time.Minute), "trace-s1", "s1", "WARN", 13, "checkout", "retrying payment"},
+		{base.Add(4 * time.Minute), "trace-s2", "s2", "ERROR", 17, "payments", "gateway timeout"},
+	})
+
+	tr := storage.TimeRange{Start: base.Add(-time.Minute), End: base.Add(9 * time.Minute)}
+	both := []string{"default", "staging"}
+
+	t.Run("SingleTenantParity", func(t *testing.T) {
+		one, err := store.SearchLogs(ctx, storage.LogQuery{Tenant: "default", Tenants: []string{"default"}, Range: tr})
+		if err != nil {
+			t.Fatalf("SearchLogs one: %v", err)
+		}
+		if len(one.Logs) != 2 || one.Logs[0].Service != "frontend" || one.Logs[1].Service != "checkout" {
+			t.Fatalf("single-tenant logs wrong: %+v", one.Logs)
+		}
+	})
+
+	t.Run("UnionNewestFirst", func(t *testing.T) {
+		merged, err := store.SearchLogs(ctx, storage.LogQuery{Tenant: "default", Tenants: both, Range: tr})
+		if err != nil {
+			t.Fatalf("SearchLogs merged: %v", err)
+		}
+		if len(merged.Logs) != 4 {
+			t.Fatalf("merged logs = %d, want 4 (%+v)", len(merged.Logs), merged.Logs)
+		}
+		want := []string{"payments", "frontend", "checkout", "checkout"} // base+4,3,2,1
+		for i, svc := range want {
+			if merged.Logs[i].Service != svc {
+				t.Fatalf("merged order wrong at %d: got %q want %q (%+v)", i, merged.Logs[i].Service, svc, merged.Logs)
+			}
+		}
+	})
+
+	t.Run("FiltersOverUnion", func(t *testing.T) {
+		errs, err := store.SearchLogs(ctx, storage.LogQuery{Tenant: "default", Tenants: both, Range: tr, MinSeverity: "ERROR"})
+		if err != nil {
+			t.Fatalf("SearchLogs severity: %v", err)
+		}
+		if len(errs.Logs) != 2 { // one ERROR per tenant
+			t.Fatalf("merged severity filter wrong: %+v", errs.Logs)
+		}
+		svc, err := store.SearchLogs(ctx, storage.LogQuery{Tenant: "default", Tenants: both, Range: tr, Service: "checkout"})
+		if err != nil {
+			t.Fatalf("SearchLogs service: %v", err)
+		}
+		if len(svc.Logs) != 2 { // checkout logs from both tenants
+			t.Fatalf("merged service filter wrong: %+v", svc.Logs)
+		}
+	})
+
+	t.Run("PaginationOverUnion", func(t *testing.T) {
+		seen := map[string]int{}
+		var cursor *storage.LogCursor
+		pages := 0
+		for range 5 {
+			page, err := store.SearchLogs(ctx, storage.LogQuery{Tenant: "default", Tenants: both, Range: tr, Limit: 3, Cursor: cursor})
+			if err != nil {
+				t.Fatalf("page %d: %v", pages, err)
+			}
+			pages++
+			for _, l := range page.Logs {
+				seen[l.SpanID]++
+			}
+			if page.NextCursor == nil {
+				break
+			}
+			cursor = page.NextCursor
+		}
+		if pages != 2 || len(seen) != 4 {
+			t.Fatalf("pagination pages=%d seen=%v, want 2 pages / 4 distinct logs", pages, seen)
+		}
+		for id, n := range seen {
+			if n != 1 {
+				t.Errorf("log %s seen %d times across pages", id, n)
+			}
+		}
+	})
+}
