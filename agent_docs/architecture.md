@@ -132,10 +132,24 @@ endpoint address** — the gateway exposes standard OTLP on 4317 (gRPC) and
 - Log correlation works two ways: zero-change (stdout collected by the
   sensor, `traceId`/`spanId` parsed from the log pattern) or structured
   (OTel logback appender → same OTLP endpoint).
-- Legacy Jaeger protocol (thrift/gRPC, non-OTLP): add the contrib
-  `jaegerreceiver` to the gateway OCB manifest as a transition aid if needed.
+- Non-OTLP senders (v0.6): the gateway binary carries the contrib
+  `jaeger`, `zipkin`, `prometheusremotewrite` and `loki` receivers, each
+  behind its own `gateway.receivers.<proto>.enabled` values flag (all default
+  off, ports 14250/14268 · 9411 · 9291 · 3100). They join the SAME
+  `transform/tenant → resource/tenant → tenantfromauth → batch` stage as
+  OTLP, so ingest-key enforcement is protocol-agnostic — no protocol gets a
+  side door. Jaeger UDP/thrift is deliberately NOT offered (no authenticator
+  hook, and jaeger-agent is deprecated upstream); the pinned
+  remote-write receiver is v2-only, so a v1 sender gets 415.
+- Leaving is as supported as arriving: `gateway.forward.{otlp,kafka}` dual-write
+  every enabled signal to a second backend, with a bounded sending queue so a
+  dead legacy target can never backpressure the ClickHouse path.
 - An e2e test (M1+) sends OTLP from a stock OTel SDK app with ONLY the
   endpoint env var set and asserts traces+logs land — guarding this promise.
+  The wider claim is guarded the same way: `make e2e-compat` (compose,
+  opt-in) and the kind `e2e-helm` leg each send one real fixture per
+  protocol through the chart-rendered receivers and assert the rows in
+  ClickHouse, plus the dual-write reaching a stand-in legacy backend.
 
 ## Kernel/degradation constraints
 
