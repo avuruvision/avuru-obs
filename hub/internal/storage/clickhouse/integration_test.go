@@ -1806,3 +1806,253 @@ func TestMultiTenantLogSearch(t *testing.T) {
 		}
 	})
 }
+
+// insertNodeSignals seeds one row in each of the four tables ListAgentNodes
+// probes (gauge / logs / traces / profiles), all carrying the same tenant and
+// k8s.node.name, so every probe has something to find for that tenant.
+func insertNodeSignals(t *testing.T, s *Store, tenant, node string, ts time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	res := map[string]string{"avuru.tenant": tenant, "k8s.node.name": node}
+
+	insertGauge(t, s, ts, metricNodeCPU, res, 1.0)
+
+	logBatch, err := s.conn.PrepareBatch(ctx, `INSERT INTO otel_logs
+		(Timestamp, TraceId, SpanId, SeverityText, SeverityNumber, ServiceName, Body, ResourceAttributes)`)
+	if err != nil {
+		t.Fatalf("preparing node log insert: %v", err)
+	}
+	if err := logBatch.Append(ts, "", "", "INFO", int32(9), "agent", "hello", res); err != nil {
+		t.Fatalf("appending node log: %v", err)
+	}
+	if err := logBatch.Send(); err != nil {
+		t.Fatalf("sending node log: %v", err)
+	}
+
+	spanBatch, err := s.conn.PrepareBatch(ctx, `INSERT INTO otel_traces
+		(Timestamp, TraceId, SpanId, ParentSpanId, SpanName, SpanKind, ServiceName,
+		 ResourceAttributes, SpanAttributes, Duration, StatusCode)`)
+	if err != nil {
+		t.Fatalf("preparing node span insert: %v", err)
+	}
+	if err := spanBatch.Append(ts, "node"+tenant, "sp1", "", "GET /x", "Server", "agent",
+		res, map[string]string{}, uint64(time.Millisecond), "Unset"); err != nil {
+		t.Fatalf("appending node span: %v", err)
+	}
+	if err := spanBatch.Send(); err != nil {
+		t.Fatalf("sending node span: %v", err)
+	}
+
+	if err := s.WriteProfileSamples(ctx, []storage.ProfileSample{{
+		Tenant: tenant, Timestamp: ts, Service: "agent", SampleType: "samples:count",
+		Frames: []string{"main"}, Value: 1, Node: node,
+	}}); err != nil {
+		t.Fatalf("writing node profile sample: %v", err)
+	}
+}
+
+// TestMultiTenantInfraReads proves the Tenant IN (?) fan-out for the
+// metrics-backed reads converted in this slice: node/pod stats (InfraQuery),
+// the agent inventory probes (AgentQuery), and network edge health
+// (ServiceQuery). A single-tenant set returns exactly the pre-conversion
+// result; a two-tenant set returns the union, and merges rows that share a
+// grouping key — the merged-project semantics ServiceEdges already established.
+func TestMultiTenantInfraReads(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	base := time.Now().UTC().Truncate(time.Minute).Add(-10 * time.Minute)
+	both := []string{"default", "staging"}
+
+	nodeA := map[string]string{"avuru.tenant": "default", "k8s.node.name": "node-a"}
+	nodeB := map[string]string{"avuru.tenant": "staging", "k8s.node.name": "node-b"}
+	podA := map[string]string{
+		"avuru.tenant": "default", "k8s.node.name": "node-a", "k8s.pod.name": "web-1",
+		"k8s.namespace.name": "shop", "k8s.deployment.name": "web",
+	}
+	podB := map[string]string{
+		"avuru.tenant": "staging", "k8s.node.name": "node-b", "k8s.pod.name": "api-1",
+		"k8s.namespace.name": "shop", "k8s.deployment.name": "api",
+	}
+
+	for _, n := range []struct {
+		res       map[string]string
+		cpu, mem  float64
+		available float64
+		rxFrom    float64
+		rxTo      float64
+	}{
+		{nodeA, 2.0, 2048, 4096, 1000, 7000},
+		{nodeB, 3.0, 1024, 8192, 500, 2500},
+	} {
+		insertGauge(t, store, base.Add(1*time.Minute), metricNodeCPU, n.res, n.cpu/2)
+		insertGauge(t, store, base.Add(5*time.Minute), metricNodeCPU, n.res, n.cpu)
+		insertGauge(t, store, base.Add(5*time.Minute), metricNodeMem, n.res, n.mem)
+		insertGauge(t, store, base.Add(5*time.Minute), metricNodeMemAvail, n.res, n.available)
+		rx := map[string]string{"direction": "receive", "interface": "eth0"}
+		insertSum(t, store, base.Add(1*time.Minute), metricNodeNet, n.res, rx, n.rxFrom)
+		insertSum(t, store, base.Add(5*time.Minute), metricNodeNet, n.res, rx, n.rxTo)
+	}
+	insertGauge(t, store, base.Add(5*time.Minute), metricPodCPU, podA, 0.25)
+	insertGauge(t, store, base.Add(5*time.Minute), metricPodMem, podA, 512)
+	insertGauge(t, store, base.Add(5*time.Minute), metricPodCPU, podB, 0.75)
+	insertGauge(t, store, base.Add(5*time.Minute), metricPodMem, podB, 256)
+
+	tr := storage.TimeRange{Start: base, End: base.Add(6 * time.Minute)}
+
+	t.Run("NodeStats", func(t *testing.T) {
+		one, err := store.ListNodeStats(ctx, storage.InfraQuery{
+			Tenant: "default", Tenants: []string{"default"}, Range: tr, Points: 6,
+		})
+		if err != nil {
+			t.Fatalf("ListNodeStats one: %v", err)
+		}
+		if len(one) != 1 || one[0].Name != "node-a" || one[0].CPUUsage != 2.0 || one[0].PodCount != 1 {
+			t.Fatalf("single-tenant node stats wrong: %+v", one)
+		}
+		if len(one[0].CPUSeries) < 2 {
+			t.Errorf("cpu series too short: %+v", one[0].CPUSeries)
+		}
+		wantRate := 6000.0 / tr.End.Sub(tr.Start).Seconds()
+		if one[0].NetworkRxRate < wantRate*0.99 || one[0].NetworkRxRate > wantRate*1.01 {
+			t.Errorf("rx rate = %v, want ~%v", one[0].NetworkRxRate, wantRate)
+		}
+
+		merged, err := store.ListNodeStats(ctx, storage.InfraQuery{
+			Tenant: "default", Tenants: both, Range: tr, Points: 6,
+		})
+		if err != nil {
+			t.Fatalf("ListNodeStats merged: %v", err)
+		}
+		if len(merged) != 2 || merged[0].Name != "node-a" || merged[1].Name != "node-b" {
+			t.Fatalf("merged node stats wrong: %+v", merged)
+		}
+		if merged[1].CPUUsage != 3.0 || merged[1].MemoryUsage != 1024 || merged[1].PodCount != 1 {
+			t.Errorf("merged node-b wrong: %+v", merged[1])
+		}
+	})
+
+	t.Run("PodStats", func(t *testing.T) {
+		one, err := store.ListPodStats(ctx, storage.InfraQuery{
+			Tenant: "default", Tenants: []string{"default"}, Range: tr,
+		})
+		if err != nil {
+			t.Fatalf("ListPodStats one: %v", err)
+		}
+		if len(one) != 1 || one[0].Name != "web-1" || one[0].Workload != "web" {
+			t.Fatalf("single-tenant pod stats wrong: %+v", one)
+		}
+
+		merged, err := store.ListPodStats(ctx, storage.InfraQuery{
+			Tenant: "default", Tenants: both, Range: tr,
+		})
+		if err != nil {
+			t.Fatalf("ListPodStats merged: %v", err)
+		}
+		if len(merged) != 2 || merged[0].Name != "api-1" { // busiest first
+			t.Fatalf("merged pod stats wrong: %+v", merged)
+		}
+
+		// The node filter still applies over the merged set.
+		onNodeB, err := store.ListPodStats(ctx, storage.InfraQuery{
+			Tenant: "default", Tenants: both, Range: tr, Node: "node-b",
+		})
+		if err != nil {
+			t.Fatalf("ListPodStats node-b: %v", err)
+		}
+		if len(onNodeB) != 1 || onNodeB[0].Name != "api-1" {
+			t.Fatalf("node filter over union wrong: %+v", onNodeB)
+		}
+	})
+
+	t.Run("AgentInventory", func(t *testing.T) {
+		ts := time.Now().UTC().Add(-2 * time.Minute)
+		insertNodeSignals(t, store, "default", "agent-a", ts)
+		insertNodeSignals(t, store, "staging", "agent-b", ts)
+
+		names := func(nodes []storage.AgentNode) []string {
+			out := make([]string, 0, len(nodes))
+			for _, n := range nodes {
+				out = append(out, n.Node)
+			}
+			return out
+		}
+
+		one, err := store.ListAgentNodes(ctx, storage.AgentQuery{
+			Tenant: "default", Tenants: []string{"default"}, Window: time.Hour,
+		})
+		if err != nil {
+			t.Fatalf("ListAgentNodes one: %v", err)
+		}
+		if !slices.Contains(names(one), "agent-a") || slices.Contains(names(one), "agent-b") {
+			t.Fatalf("single-tenant agent inventory wrong: %v", names(one))
+		}
+		var a storage.AgentNode
+		for _, n := range one {
+			if n.Node == "agent-a" {
+				a = n
+			}
+		}
+		if a.Metrics == nil || a.Logs == nil || a.Traces == nil || a.Profiles == nil {
+			t.Errorf("agent-a probes incomplete: %+v", a)
+		}
+
+		merged, err := store.ListAgentNodes(ctx, storage.AgentQuery{
+			Tenant: "default", Tenants: both, Window: time.Hour,
+		})
+		if err != nil {
+			t.Fatalf("ListAgentNodes merged: %v", err)
+		}
+		if !slices.Contains(names(merged), "agent-a") || !slices.Contains(names(merged), "agent-b") {
+			t.Fatalf("merged agent inventory wrong: %v", names(merged))
+		}
+	})
+
+	t.Run("NetworkEdgeHealth", func(t *testing.T) {
+		bounds := []float64{0.01, 0.05, 0.1, 0.5} // 5 buckets, last is +Inf
+		edge := map[string]string{"k8s.src.owner.name": "cart", "k8s.dst.owner.name": "payments"}
+		other := map[string]string{"k8s.src.owner.name": "cart", "k8s.dst.owner.name": "shipping"}
+		def := map[string]string{"avuru.tenant": "default"}
+		stg := map[string]string{"avuru.tenant": "staging"}
+
+		// default: p95 lands in bucket 2 (0.05s). staging: everything in the
+		// +Inf bucket, so p95 caps at the last finite bound (0.5s). Merged, the
+		// staging tail dominates — a different answer from either tenant alone.
+		insertHistogram(t, store, base.Add(1*time.Minute), networkRTTMetric, def, edge, []uint64{90, 10, 0, 0, 0}, bounds)
+		insertHistogram(t, store, base.Add(1*time.Minute), networkRTTMetric, stg, edge, []uint64{0, 0, 0, 0, 100}, bounds)
+		insertSum(t, store, base.Add(1*time.Minute), networkFailedMetric, def, edge, 3)
+		insertSum(t, store, base.Add(1*time.Minute), networkFailedMetric, stg, edge, 4)
+		// An edge only the staging tenant sees.
+		insertSum(t, store, base.Add(1*time.Minute), networkFailedMetric, stg, other, 5)
+
+		one, err := store.NetworkEdgeHealth(ctx, storage.ServiceQuery{
+			Tenant: "default", Tenants: []string{"default"}, Range: tr,
+		})
+		if err != nil {
+			t.Fatalf("NetworkEdgeHealth one: %v", err)
+		}
+		if len(one) != 1 || one[0].Target != "payments" || one[0].RTTMs != 50 || one[0].FailedConnections != 3 {
+			t.Fatalf("single-tenant edge health wrong: %+v", one)
+		}
+
+		merged, err := store.NetworkEdgeHealth(ctx, storage.ServiceQuery{
+			Tenant: "default", Tenants: both, Range: tr,
+		})
+		if err != nil {
+			t.Fatalf("NetworkEdgeHealth merged: %v", err)
+		}
+		if len(merged) != 2 {
+			t.Fatalf("merged edges = %d, want 2 (%+v)", len(merged), merged)
+		}
+		byTarget := map[string]storage.NetworkEdgeHealth{}
+		for _, e := range merged {
+			byTarget[e.Target] = e
+		}
+		if p := byTarget["payments"]; p.RTTMs != 500 || p.FailedConnections != 7 {
+			t.Errorf("merged cart->payments wrong: %+v", p)
+		}
+		if s := byTarget["shipping"]; s.FailedConnections != 5 {
+			t.Errorf("merged cart->shipping wrong: %+v", s)
+		}
+	})
+}

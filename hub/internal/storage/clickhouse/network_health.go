@@ -23,6 +23,7 @@ const (
 // NetworkEdges uses for bytes. Reads the otel_metrics_* tables; gate on
 // infra-metrics.
 func (s *Store) NetworkEdgeHealth(ctx context.Context, q storage.ServiceQuery) ([]storage.NetworkEdgeHealth, error) {
+	tenants := tenantsOrDefault(q.Tenants, q.Tenant)
 	byEdge := map[[2]string]*storage.NetworkEdgeHealth{}
 	get := func(src, dst string) *storage.NetworkEdgeHealth {
 		k := [2]string{src, dst}
@@ -47,7 +48,7 @@ FROM (
         sumForEach(BucketCounts)         AS buckets,
         any(ExplicitBounds)              AS bounds
     FROM otel_metrics_histogram
-    WHERE Tenant = ?
+    WHERE Tenant IN (?)
       AND MetricName = ?
       AND TimeUnix >= ? AND TimeUnix < ?
       AND Attributes['k8s.src.owner.name'] != ''
@@ -57,7 +58,7 @@ FROM (
 )
 WHERE length(bounds) > 0 AND arraySum(buckets) > 0`
 
-	rows, err := s.conn.Query(ctx, rttQuery, q.Tenant, networkRTTMetric, q.Range.Start, q.Range.End)
+	rows, err := s.conn.Query(ctx, rttQuery, tenants, networkRTTMetric, q.Range.Start, q.Range.End)
 	if err != nil {
 		return nil, fmt.Errorf("network edge rtt: %w", err)
 	}
@@ -82,7 +83,7 @@ SELECT
     Attributes['k8s.dst.owner.name'] AS dst,
     toUInt64(sum(Value))             AS failed
 FROM otel_metrics_sum
-WHERE Tenant = ?
+WHERE Tenant IN (?)
   AND MetricName = ?
   AND TimeUnix >= ? AND TimeUnix < ?
   AND Attributes['k8s.src.owner.name'] != ''
@@ -90,7 +91,7 @@ WHERE Tenant = ?
   AND Attributes['k8s.src.owner.name'] != Attributes['k8s.dst.owner.name']
 GROUP BY src, dst`
 
-	frows, err := s.conn.Query(ctx, failedQuery, q.Tenant, networkFailedMetric, q.Range.Start, q.Range.End)
+	frows, err := s.conn.Query(ctx, failedQuery, tenants, networkFailedMetric, q.Range.Start, q.Range.End)
 	if err != nil {
 		return nil, fmt.Errorf("network edge failed conns: %w", err)
 	}
