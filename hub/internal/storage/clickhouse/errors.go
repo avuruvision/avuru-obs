@@ -36,9 +36,10 @@ func (s *Store) SearchErrorIssues(ctx context.Context, q storage.ErrorIssueQuery
 	}
 
 	// Inner: fingerprints active in the window (+ optional filters).
+	tenants := tenantsOrDefault(q.Tenants, q.Tenant)
 	inner := `SELECT DISTINCT Fingerprint FROM error_events
-WHERE Tenant = ? AND Timestamp >= ? AND Timestamp < ?`
-	args := []any{q.Tenant, q.Range.Start, q.Range.End}
+WHERE Tenant IN (?) AND Timestamp >= ? AND Timestamp < ?`
+	args := []any{tenants, q.Range.Start, q.Range.End}
 	if q.Service != "" {
 		inner += ` AND ServiceName = ?`
 		args = append(args, q.Service)
@@ -81,15 +82,17 @@ FROM (
   FROM error_events e
   LEFT JOIN (SELECT Tenant, Fingerprint, Status, UpdatedAt FROM error_issue_status FINAL) s
     ON s.Tenant = e.Tenant AND s.Fingerprint = e.Fingerprint
-  WHERE e.Tenant = ? AND e.Fingerprint IN (` + inner + `)
+  WHERE e.Tenant IN (?) AND e.Fingerprint IN (` + inner + `)
   GROUP BY e.Fingerprint
 )
 ` + statusFilter + `
 ORDER BY ` + order + `
 LIMIT ?`
 
-	// e.Tenant bind, then the inner subquery's binds, then limit.
-	full := append([]any{q.Tenant}, args...)
+	// e.Tenant bind, then the inner subquery's binds, then limit. The outer
+	// filter and the inner subquery bind the SAME resolved set — two separate
+	// binds of one slice, the trap this site has always carried.
+	full := append([]any{tenants}, args...)
 	full = append(full, limit)
 
 	rows, err := s.conn.Query(ctx, query, full...)
@@ -169,8 +172,8 @@ func (s *Store) ListErrorEvents(ctx context.Context, q storage.ErrorEventQuery) 
 SELECT Timestamp, ServiceName, ExceptionType, ExceptionMessage, ExceptionStacktrace,
        TraceId, SpanId, toString(Source), Environment, SdkName, SdkVersion, Attributes
 FROM error_events
-WHERE Tenant = ? AND Fingerprint = ?`
-	args := []any{q.Tenant, q.Fingerprint}
+WHERE Tenant IN (?) AND Fingerprint = ?`
+	args := []any{tenantsOrDefault(q.Tenants, q.Tenant), q.Fingerprint}
 	if !q.Range.Start.IsZero() {
 		query += ` AND Timestamp >= ? AND Timestamp < ?`
 		args = append(args, q.Range.Start, q.Range.End)

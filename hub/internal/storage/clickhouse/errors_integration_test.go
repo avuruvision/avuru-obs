@@ -447,6 +447,79 @@ func TestErrorReadQueries(t *testing.T) {
 			t.Error("empty tenant set must error")
 		}
 	})
+
+	t.Run("SearchErrorIssuesMultiTenant", func(t *testing.T) {
+		one := mustSearch(t, store, storage.ErrorIssueQuery{
+			Tenant: "m1", Tenants: []string{"m1"}, Range: win, Sort: "count",
+		})
+		if len(one) != 1 || one[0].Fingerprint != 400 || one[0].Count != 1 {
+			t.Fatalf("single-tenant search wrong: %+v", one)
+		}
+
+		merged := mustSearch(t, store, storage.ErrorIssueQuery{
+			Tenant: "m1", Tenants: []string{"m1", "m2"}, Range: win, Sort: "count",
+		})
+		if len(merged) != 1 || merged[0].Count != 2 || merged[0].LastTraceID != "tM2" {
+			t.Fatalf("merged search wrong: %+v", merged)
+		}
+
+		// The window subquery and the outer filter bind the SAME set (the
+		// prepend trap): a window holding only m1's event still selects the
+		// fingerprint, and the aggregate stays all-time across both tenants.
+		narrow := mustSearch(t, store, storage.ErrorIssueQuery{
+			Tenant: "m1", Tenants: []string{"m1", "m2"}, Sort: "count",
+			Range: storage.TimeRange{Start: base, End: base.Add(6 * time.Minute)},
+		})
+		if len(narrow) != 1 || narrow[0].Count != 2 {
+			t.Fatalf("narrow-window merged search wrong: %+v", narrow)
+		}
+
+		// Inner-subquery filters apply across the union, not per tenant.
+		if got := mustSearch(t, store, storage.ErrorIssueQuery{
+			Tenant: "m1", Tenants: []string{"m1", "m2"}, Range: win, Service: "api",
+		}); len(got) != 0 {
+			t.Fatalf("service filter leaked over the union: %+v", got)
+		}
+	})
+
+	t.Run("ListErrorEventsMultiTenant", func(t *testing.T) {
+		one, err := store.ListErrorEvents(ctx, storage.ErrorEventQuery{
+			Tenant: "m1", Tenants: []string{"m1"}, Fingerprint: 400,
+		})
+		if err != nil {
+			t.Fatalf("ListErrorEvents one: %v", err)
+		}
+		if len(one.Events) != 1 || one.Events[0].TraceID != "tM1" {
+			t.Fatalf("single-tenant events wrong: %+v", one.Events)
+		}
+
+		merged, err := store.ListErrorEvents(ctx, storage.ErrorEventQuery{
+			Tenant: "m1", Tenants: []string{"m1", "m2"}, Fingerprint: 400,
+		})
+		if err != nil {
+			t.Fatalf("ListErrorEvents merged: %v", err)
+		}
+		if len(merged.Events) != 2 || merged.Events[0].TraceID != "tM2" || merged.Events[1].TraceID != "tM1" {
+			t.Fatalf("merged events wrong (newest-first): %+v", merged.Events)
+		}
+
+		// Keyset pagination walks the merged stream exactly once.
+		first, err := store.ListErrorEvents(ctx, storage.ErrorEventQuery{
+			Tenant: "m1", Tenants: []string{"m1", "m2"}, Fingerprint: 400, Limit: 1,
+		})
+		if err != nil || len(first.Events) != 1 || first.NextCursor == nil {
+			t.Fatalf("first page wrong: %+v, %v", first, err)
+		}
+		second, err := store.ListErrorEvents(ctx, storage.ErrorEventQuery{
+			Tenant: "m1", Tenants: []string{"m1", "m2"}, Fingerprint: 400, Limit: 1, Cursor: first.NextCursor,
+		})
+		if err != nil {
+			t.Fatalf("second page: %v", err)
+		}
+		if len(second.Events) != 1 || second.Events[0].TraceID != "tM1" {
+			t.Fatalf("second page wrong: %+v", second.Events)
+		}
+	})
 }
 
 // setIssueStatusAt writes a triage row with an explicit UpdatedAt, so the
