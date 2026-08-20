@@ -104,7 +104,11 @@ jobs:
   # extend the script with the sensor DaemonSet and the <5-min wedge assertion.
   e2e-helm:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # 30, not 25: the wider-ingest leg adds a forward-sink Deployment, four
+    # protocol sends and two ClickHouse/log polls to the same install. The
+    # budget was already close on a cold runner, and a gate that times out
+    # teaches people to re-run it rather than read it.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
