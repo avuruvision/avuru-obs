@@ -10,6 +10,10 @@ import (
 // LoadAlertStates returns the latest state per (rule, target) for a tenant.
 // FINAL collapses the ReplacingMergeTree to the newest row; the table is bounded
 // by rule×target so FINAL is cheap (same reasoning as error_issue_status).
+//
+// Deliberately single-tenant, unlike the read-side fan-out: this is the
+// alerting evaluator's own per-tenant loop, and evaluation stays leaf-only —
+// an aggregate project never owns rules or state of its own.
 func (s *Store) LoadAlertStates(ctx context.Context, tenant string) ([]storage.AlertState, error) {
 	rows, err := s.conn.Query(ctx, `
 SELECT RuleName, Target, toString(Status), Since, LastNotifiedAt
@@ -133,11 +137,14 @@ func (s *Store) ListAlertHistory(ctx context.Context, q storage.AlertHistoryQuer
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
+	// Tenant is selected, not assumed: over an aggregate's member set the
+	// caller needs to know WHICH member fired, and for a leaf the column is
+	// the same value it always was.
 	query := `
-SELECT RuleName, Target, toString(Kind), Status, Reason, FiredAt
+SELECT Tenant, RuleName, Target, toString(Kind), Status, Reason, FiredAt
 FROM alert_history
-WHERE Tenant = ?`
-	args := []any{q.Tenant}
+WHERE Tenant IN (?)`
+	args := []any{tenantsOrDefault(q.Tenants, q.Tenant)}
 	if !q.Range.Start.IsZero() {
 		query += ` AND FiredAt >= ? AND FiredAt < ?`
 		args = append(args, q.Range.Start, q.Range.End)
@@ -155,8 +162,8 @@ LIMIT ?`
 
 	var out []storage.AlertHistoryEntry
 	for rows.Next() {
-		e := storage.AlertHistoryEntry{Tenant: q.Tenant}
-		if err := rows.Scan(&e.RuleName, &e.Target, &e.Kind, &e.Status, &e.Reason, &e.FiredAt); err != nil {
+		var e storage.AlertHistoryEntry
+		if err := rows.Scan(&e.Tenant, &e.RuleName, &e.Target, &e.Kind, &e.Status, &e.Reason, &e.FiredAt); err != nil {
 			return nil, fmt.Errorf("scan alert history: %w", err)
 		}
 		out = append(out, e)
