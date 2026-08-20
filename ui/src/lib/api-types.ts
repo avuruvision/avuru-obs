@@ -793,11 +793,18 @@ export interface GreenBudget {
   // Fraction of usedKgCO2e that came from modeled (tdp-estimator) rather
   // than measured energy — omitted when 0.
   estimatedShare?: number;
+  // Whether a threshold crossing on THIS budget can actually be delivered.
+  // Each value names a different fix: enable the alerting module, give the
+  // budget a channel, or correct the channel name it points at.
+  notifications: "ok" | "alerting-off" | "no-channel" | "unknown-channel";
 }
 
 export interface GreenBudgetsResponse {
   window: { start: string; end: string };
   budgets: GreenBudget[];
+  // Configuration problems that leave a budget inert without making it look
+  // broken (today: a group nothing rolls up to).
+  warnings?: string[];
 }
 
 // Runtime collection overlay (design/2026-07-27-collection-control-plane.md).

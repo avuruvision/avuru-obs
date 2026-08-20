@@ -286,7 +286,7 @@ func TestGreenBudgetsStatusAndProjection(t *testing.T) {
 			{Name: "batch-team", Group: "(unlabeled)", MonthlyKgCO2e: 1, WarnRatio: 0.8},
 		},
 	}
-	budgets := buildGreenBudgets(cfg, health.Default(), resolveFactors(cfg), rows, stats, labels, now)
+	budgets, _ := buildGreenBudgets(cfg, health.Default(), resolveFactors(cfg), okDelivery(), rows, stats, labels, now)
 	if len(budgets) != 5 {
 		t.Fatalf("budgets = %+v, want 5", budgets)
 	}
@@ -629,7 +629,7 @@ func TestBuildGreenBudgets_EstimatedShare(t *testing.T) {
 		Budgets: []green.Budget{{Name: "prod", Group: "shop", MonthlyKgCO2e: 100, WarnRatio: 0.8}},
 	}
 
-	budgets := buildGreenBudgets(cfg, health.Default(), resolveFactors(cfg), rows, stats, labels, now)
+	budgets, _ := buildGreenBudgets(cfg, health.Default(), resolveFactors(cfg), okDelivery(), rows, stats, labels, now)
 	if len(budgets) != 1 {
 		t.Fatalf("len(budgets) = %d, want 1", len(budgets))
 	}
@@ -672,5 +672,98 @@ func TestBuildMethodology_NoEstimationSubsectionWhenFullyMeasured(t *testing.T) 
 	meth := buildMethodology(cfg, f, tr, totals)
 	if meth.Estimation != nil {
 		t.Errorf("Estimation = %+v, want nil (report stays unchanged for fully-measured installs)", meth.Estimation)
+	}
+}
+
+// okDelivery is the deliverability used by the budget tests that are not
+// about notifications: alerting on, with the named channels resolvable.
+func okDelivery(channels ...string) budgetDelivery {
+	d := budgetDelivery{alertingOn: true, channels: map[string]bool{}}
+	for _, c := range channels {
+		d.channels[c] = true
+	}
+	return d
+}
+
+// TestGreenBudgetNotifications: every way a budget can end up silent is
+// reported as its own state, so the UI can name the actual fix.
+func TestGreenBudgetNotifications(t *testing.T) {
+	now := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	cfg := green.Config{
+		GridIntensity: 500, PUE: 2,
+		Budgets: []green.Budget{
+			{Name: "wired", Group: "shop", MonthlyKgCO2e: 10, WarnRatio: 0.8, Channel: "ops"},
+			{Name: "silent", Group: "shop", MonthlyKgCO2e: 10, WarnRatio: 0.8},
+			{Name: "typo", Group: "shop", MonthlyKgCO2e: 10, WarnRatio: 0.8, Channel: "opz"},
+		},
+	}
+	stats := []storage.ServiceStats{{Name: "checkout", SpanCount: 10}}
+	labels := []storage.ServiceLabel{{Service: "checkout", K8sNamespace: "shop"}}
+
+	byName := func(d budgetDelivery) map[string]string {
+		budgets, _ := buildGreenBudgets(cfg, health.Default(), resolveFactors(cfg), d, nil, stats, labels, now)
+		out := map[string]string{}
+		for _, b := range budgets {
+			out[b.Name] = b.Notifications
+		}
+		return out
+	}
+
+	got := byName(okDelivery("ops"))
+	want := map[string]string{"wired": notifyOK, "silent": notifyNoChannel, "typo": notifyUnknownChannel}
+	for name, w := range want {
+		if got[name] != w {
+			t.Errorf("budget %q notifications = %q, want %q", name, got[name], w)
+		}
+	}
+
+	// Alerting off short-circuits everything: with no evaluator running, the
+	// channel a budget names is beside the point.
+	off := byName(budgetDelivery{alertingOn: false})
+	for _, name := range []string{"wired", "silent", "typo"} {
+		if off[name] != notifyAlertingOff {
+			t.Errorf("alerting off: budget %q = %q, want %q", name, off[name], notifyAlertingOff)
+		}
+	}
+}
+
+// TestGreenBudgetUnknownGroupWarning: a budget pointed at a group nothing
+// rolls up to renders at 0 and can never fire — indistinguishable from a
+// quiet month without this warning. Auto-groups (namespace-derived, no
+// config at all) are legitimate targets and must stay silent.
+func TestGreenBudgetUnknownGroupWarning(t *testing.T) {
+	now := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	cfg := green.Config{
+		GridIntensity: 500, PUE: 2,
+		Budgets: []green.Budget{
+			{Name: "declared", Group: "platform", MonthlyKgCO2e: 10, WarnRatio: 0.8},
+			{Name: "auto", Group: "shop", MonthlyKgCO2e: 10, WarnRatio: 0.8},
+			{Name: "ghost", Group: "team-that-left", MonthlyKgCO2e: 10, WarnRatio: 0.8},
+		},
+	}
+	groups := health.Default()
+	groups.Groups = []health.Group{{Name: "platform", Tier: health.TierT1}}
+
+	// checkout auto-groups into "shop" by namespace; nothing lands in
+	// "team-that-left".
+	stats := []storage.ServiceStats{{Name: "checkout", SpanCount: 10}}
+	labels := []storage.ServiceLabel{{Service: "checkout", K8sNamespace: "shop"}}
+
+	budgets, warnings := buildGreenBudgets(cfg, groups, resolveFactors(cfg), okDelivery(), nil, stats, labels, now)
+	if len(budgets) != 3 {
+		t.Fatalf("budgets = %d, want 3 (a warned budget must still render)", len(budgets))
+	}
+	if len(warnings) != 1 {
+		t.Fatalf("warnings = %v, want exactly one (the ghost budget)", warnings)
+	}
+	if !strings.Contains(warnings[0], `"ghost"`) || !strings.Contains(warnings[0], `"team-that-left"`) {
+		t.Errorf("warning does not name the budget and its group: %q", warnings[0])
+	}
+
+	// With no service-health config and no traffic at all, only the auto-group
+	// evidence disappears — the declared group survives on config alone.
+	_, bare := buildGreenBudgets(cfg, groups, resolveFactors(cfg), okDelivery(), nil, nil, nil, now)
+	if len(bare) != 2 {
+		t.Fatalf("bare warnings = %v, want 2 (auto + ghost, not the declared group)", bare)
 	}
 }

@@ -5,7 +5,6 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { CenteredSpinner } from "@/components/ui/spinner";
 import { useTimeRange } from "@/hooks/use-time-range";
 import { useGreenSummary, useGreenBudgets } from "@/hooks/use-green-data";
-import { useModuleEnabled } from "@/hooks/use-capabilities";
 import { formatGco2e, formatMgPerReq, formatPercent, formatWh } from "@/lib/format";
 import type { GreenFactors, GreenTotals } from "@/lib/api-types";
 import { ServiceEnergyTable } from "./service-energy-table";
@@ -23,7 +22,6 @@ export function GreenScreen() {
   const { time } = useTimeRange();
   const summary = useGreenSummary(time);
   const budgets = useGreenBudgets();
-  const alertingEnabled = useModuleEnabled("alerting");
 
   if (summary.isLoading) return <CenteredSpinner />;
 
@@ -46,6 +44,7 @@ export function GreenScreen() {
   const totalRequests = services.reduce((sum, s) => sum + (s.requests ?? 0), 0);
   const avgMg = totalRequests > 0 ? (totals!.gco2e * 1000) / totalRequests : undefined;
   const budgetList = budgets.data?.budgets ?? [];
+  const budgetWarnings = budgets.data?.warnings ?? [];
   const estimatedShare = totals!.attributedWh > 0 ? totals!.estimatedWh / totals!.attributedWh : 0;
   const coverage = totals!.nodeCoverage;
   const showCoverage = coverage && (coverage.estimated > 0 || coverage.absent > 0);
@@ -95,7 +94,16 @@ export function GreenScreen() {
               Couldn&rsquo;t reach the hub to read carbon budgets.
             </Card>
           ) : (
-            <BudgetCards budgets={budgetList} alertingEnabled={alertingEnabled} />
+            <>
+              {budgetWarnings.length > 0 && (
+                <Card className="flex flex-col gap-1 border border-warning/40 p-3 text-xs text-warning">
+                  {budgetWarnings.map((wmsg) => (
+                    <p key={wmsg}>{wmsg}</p>
+                  ))}
+                </Card>
+              )}
+              <BudgetCards budgets={budgetList} />
+            </>
           )}
         </div>
       )}
