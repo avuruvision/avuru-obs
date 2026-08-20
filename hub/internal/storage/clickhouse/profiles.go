@@ -28,17 +28,22 @@ func (s *Store) WriteProfileSamples(ctx context.Context, samples []storage.Profi
 		return nil
 	}
 
-	type stackRow struct {
+	// The dictionary is keyed by (Tenant, StackHash) — the table's sort key and
+	// what the read-side join uses. Deduping on the hash alone would write one
+	// tenant's row for a stack two tenants share, and the other tenant's
+	// samples would then join to nothing and vanish from its own flame graph.
+	type stackKey struct {
 		tenant string
-		frames []string
+		hash   uint64
 	}
-	stacks := map[uint64]stackRow{}
+	stacks := map[stackKey][]string{}
 	hashes := make([]uint64, len(samples))
 	for i, sm := range samples {
 		h := stackHash(sm.Frames)
 		hashes[i] = h
-		if _, ok := stacks[h]; !ok {
-			stacks[h] = stackRow{tenant: sm.Tenant, frames: sm.Frames}
+		k := stackKey{tenant: sm.Tenant, hash: h}
+		if _, ok := stacks[k]; !ok {
+			stacks[k] = sm.Frames
 		}
 	}
 
@@ -46,8 +51,8 @@ func (s *Store) WriteProfileSamples(ctx context.Context, samples []storage.Profi
 	if err != nil {
 		return fmt.Errorf("preparing stacks batch: %w", err)
 	}
-	for h, row := range stacks {
-		if err := stackBatch.Append(row.tenant, h, row.frames); err != nil {
+	for k, frames := range stacks {
+		if err := stackBatch.Append(k.tenant, k.hash, frames); err != nil {
 			return fmt.Errorf("appending stack: %w", err)
 		}
 	}

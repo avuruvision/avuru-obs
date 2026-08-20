@@ -2056,3 +2056,94 @@ func TestMultiTenantInfraReads(t *testing.T) {
 		}
 	})
 }
+
+// TestMultiTenantProfileReads proves the Tenant IN (?) fan-out for the
+// profiling reads. The stacks dictionary stays joined per tenant, but the
+// flame graph groups by StackHash, so an identical stack sampled in two
+// member tenants merges into one node with the summed value.
+func TestMultiTenantProfileReads(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	both := []string{"m1", "m2"}
+
+	handler := []string{"handler", "main"}
+	if err := store.WriteProfileSamples(ctx, []storage.ProfileSample{
+		{Tenant: "m1", Timestamp: now, Service: "checkout", SampleType: "samples:count", Frames: handler, Value: 5},
+		{Tenant: "m2", Timestamp: now, Service: "checkout", SampleType: "samples:count", Frames: handler, Value: 3},
+		{Tenant: "m2", Timestamp: now, Service: "checkout", SampleType: "samples:count", Frames: []string{"encode", "handler", "main"}, Value: 2},
+		{Tenant: "m2", Timestamp: now, Service: "api", SampleType: "samples:count", Frames: []string{"serve", "main"}, Value: 7},
+	}); err != nil {
+		t.Fatalf("WriteProfileSamples: %v", err)
+	}
+
+	tr := storage.TimeRange{Start: now.Add(-time.Minute), End: now.Add(time.Minute)}
+
+	t.Run("ProfiledServices", func(t *testing.T) {
+		one, err := store.ListProfiledServices(ctx, storage.ProfileQuery{
+			Tenant: "m1", Tenants: []string{"m1"}, Range: tr,
+		})
+		if err != nil {
+			t.Fatalf("ListProfiledServices one: %v", err)
+		}
+		if len(one) != 1 || one[0].Name != "checkout" || one[0].Samples != 5 {
+			t.Fatalf("single-tenant profiled services wrong: %+v", one)
+		}
+
+		merged, err := store.ListProfiledServices(ctx, storage.ProfileQuery{
+			Tenant: "m1", Tenants: both, Range: tr,
+		})
+		if err != nil {
+			t.Fatalf("ListProfiledServices merged: %v", err)
+		}
+		if len(merged) != 2 || merged[0].Name != "checkout" || merged[0].Samples != 10 {
+			t.Fatalf("merged profiled services wrong (busiest first): %+v", merged)
+		}
+		if merged[1].Name != "api" || merged[1].Samples != 7 {
+			t.Errorf("merged second service wrong: %+v", merged[1])
+		}
+	})
+
+	t.Run("Flamegraph", func(t *testing.T) {
+		child := func(n storage.FlameNode, name string) *storage.FlameNode {
+			for _, c := range n.Children {
+				if c.Name == name {
+					return c
+				}
+			}
+			t.Fatalf("no child %q under %q: %+v", name, n.Name, n.Children)
+			return nil
+		}
+
+		one, err := store.ProfileFlamegraph(ctx, storage.ProfileQuery{
+			Tenant: "m1", Tenants: []string{"m1"}, Range: tr, Service: "checkout",
+		})
+		if err != nil {
+			t.Fatalf("ProfileFlamegraph one: %v", err)
+		}
+		if one.Value != 5 || len(one.Children) != 1 {
+			t.Fatalf("single-tenant flamegraph wrong: %+v", one)
+		}
+
+		merged, err := store.ProfileFlamegraph(ctx, storage.ProfileQuery{
+			Tenant: "m1", Tenants: both, Range: tr, Service: "checkout",
+		})
+		if err != nil {
+			t.Fatalf("ProfileFlamegraph merged: %v", err)
+		}
+		if merged.Value != 10 {
+			t.Fatalf("merged flamegraph total = %d, want 10 (%+v)", merged.Value, merged)
+		}
+		main := child(merged, "main")
+		h := child(*main, "handler")
+		if main.Value != 10 || h.Value != 10 {
+			t.Errorf("shared stack did not merge across tenants: main=%d handler=%d", main.Value, h.Value)
+		}
+		if e := child(*h, "encode"); e.Value != 2 {
+			t.Errorf("m2-only leaf wrong: %+v", e)
+		}
+		if h.Self != 8 {
+			t.Errorf("merged handler self = %d, want 8 (5+3)", h.Self)
+		}
+	})
+}
