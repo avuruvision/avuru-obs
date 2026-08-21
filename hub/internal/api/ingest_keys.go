@@ -99,6 +99,17 @@ func (a *API) handleCreateIngestKey(w http.ResponseWriter, r *http.Request) erro
 		return badRequest("name must be %d characters or fewer", maxIngestKeyNameLen)
 	}
 
+	// A key stamps its project onto every payload it authenticates. Stamping an
+	// aggregate would write rows no member can read — the union reads members,
+	// never the aggregate id itself.
+	agg, err := a.isAggregate(r.Context(), project)
+	if err != nil {
+		return err
+	}
+	if agg {
+		return aggregateWriteConflict(project, "create the key on the member project whose telemetry it will authenticate")
+	}
+
 	raw, prefix, hash := auth.NewIngestKey()
 	k := storage.AuthIngestKey{
 		KeyHash:   hash,

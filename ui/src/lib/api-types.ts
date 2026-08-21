@@ -335,8 +335,11 @@ export interface CreateProjectRequest {
   label: string;
 }
 
+// PUT /projects/{id} is a partial update: an omitted field keeps its stored
+// value, so the label editor and the members editor can each send only theirs.
 export interface UpdateProjectRequest {
-  label: string;
+  label?: string;
+  members?: string[];
 }
 
 // Per-project ingest keys (auth Plan C). List/metadata only ever carries the

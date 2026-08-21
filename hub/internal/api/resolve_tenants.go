@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -54,6 +56,42 @@ func (a *API) resolveTenants(ctx context.Context, project string, id *auth.Ident
 		return nil, forbidden("no access to any member of project %q", project)
 	}
 	return out, nil
+}
+
+// invalidateProjects drops the memoized project rows so the next resolution
+// re-reads. Every project write calls it: membership feeds authorization, and
+// without it this replica would keep expanding the OLD member set for up to
+// tenantCacheTTL. Other replicas still have their own copy — that TTL is the
+// propagation bound the UI states, exactly like the OIDC mapping overlay.
+func (a *API) invalidateProjects() {
+	a.projects.mu.Lock()
+	a.projects.fetched = time.Time{}
+	a.projects.mu.Unlock()
+}
+
+// isAggregate reports whether project is an aggregate — a db project with
+// members. Store errors propagate rather than answering false: a write guarded
+// by this must fail, not slip through because the membership read failed.
+func (a *API) isAggregate(ctx context.Context, project string) (bool, error) {
+	ps, err := a.dbProjectsCached(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, p := range ps {
+		if p.ID == project {
+			return len(p.Members) > 0, nil
+		}
+	}
+	return false, nil
+}
+
+// aggregateWriteConflict is the 409 every per-tenant WRITE returns on an
+// aggregate. An aggregate owns no data of its own — it is a read-time union —
+// so a write there has no single tenant to land in. v0.6 refuses and names the
+// member to use instead; per-member fan-out writes are a later decision.
+func aggregateWriteConflict(project, action string) error {
+	return &apiError{status: http.StatusConflict,
+		message: fmt.Sprintf("project %q is an aggregate of other projects; %s", project, action)}
 }
 
 // dbProjectsCached returns the UI-managed projects, cached for

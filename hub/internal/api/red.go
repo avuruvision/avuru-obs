@@ -47,12 +47,13 @@ func (a *API) handleREDSeries(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	tenant, err := a.project(r, auth.RoleViewer)
+	tenant, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return err
 	}
 	q := storage.REDQuery{
 		Tenant:     tenant,
+		Tenants:    tenants,
 		Range:      tr,
 		Service:    r.URL.Query().Get("service"),
 		Points:     points,

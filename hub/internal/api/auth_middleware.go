@@ -325,6 +325,11 @@ func cookieVal(c *http.Cookie) string {
 // project resolves the request's project (X-Avuru-Tenant, default "default")
 // and AUTHORIZES it at min role. With auth disabled it degrades to the old
 // header-trusting behavior.
+//
+// Reads should call projectTenants instead — a read on an aggregate must span
+// its members. What legitimately stays here is anything that writes or is
+// otherwise single-tenant by nature: error triage, a test notification, the
+// profiles ingest path, and projectTenants' own first step.
 func (a *API) project(r *http.Request, min auth.Role) (string, error) {
 	t := r.Header.Get("X-Avuru-Tenant")
 	if t == "" {

@@ -168,3 +168,65 @@ func TestServicesResolvesAggregateTenants(t *testing.T) {
 		t.Errorf("leaf query = Tenant %q Tenants %v, want default / [default]", q.Tenant, q.Tenants)
 	}
 }
+
+// The end-to-end shape of P-3: with members set, a read handler queries the
+// union instead of the aggregate id. Logs stand in for the 26 migrated read
+// sites — they all take the same tenants slice from projectTenants.
+func TestAggregateReadUnionsMembers(t *testing.T) {
+	mux, c, f := adminMux(t)
+	f.Projects = map[string]storage.Project{
+		"estate": {ID: "estate", Label: "Estate", Members: []string{"prod-eu", "prod-us"}},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/logs", nil)
+	req.Header.Set("X-Avuru-Tenant", "estate")
+	req.AddCookie(c)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body)
+	}
+	if !reflect.DeepEqual(f.LastLogQuery.Tenants, []string{"prod-eu", "prod-us"}) {
+		t.Fatalf("query tenants = %v, want both members", f.LastLogQuery.Tenants)
+	}
+	if f.LastLogQuery.Tenant != "estate" {
+		t.Fatalf("query tenant = %q, want the aggregate id kept for provenance", f.LastLogQuery.Tenant)
+	}
+}
+
+// A leaf project — the overwhelmingly common case — must still resolve to
+// exactly itself after the migration.
+func TestLeafReadIsUnchanged(t *testing.T) {
+	mux, c, f := adminMux(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/logs", nil)
+	req.Header.Set("X-Avuru-Tenant", "payments")
+	req.AddCookie(c)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body)
+	}
+	if !reflect.DeepEqual(f.LastLogQuery.Tenants, []string{"payments"}) {
+		t.Fatalf("query tenants = %v, want [payments]", f.LastLogQuery.Tenants)
+	}
+}
+
+// A viewer granted only one member sees only that member — the aggregate is a
+// convenience over grants, never a way around them.
+func TestAggregateReadIntersectsGrants(t *testing.T) {
+	f := &storagetest.Fake{Projects: map[string]storage.Project{
+		"estate": {ID: "estate", Members: []string{"prod-eu", "prod-us"}},
+	}}
+	a := &API{provider: func() storage.Store { return f }}
+
+	got, err := a.resolveTenants(context.Background(), "estate", viewerOn("prod-eu"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, []string{"prod-eu"}) {
+		t.Fatalf("tenants = %v, want [prod-eu]", got)
+	}
+}

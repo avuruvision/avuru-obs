@@ -42,15 +42,22 @@ func (a *API) handleAlerts(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	tenant, err := a.project(r, auth.RoleViewer)
+	tenant, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return err
 	}
-	states, err := store.LoadAlertStates(r.Context(), tenant)
-	if err != nil {
-		return err
+	// Rules are still evaluated per leaf tenant (an aggregate has no evaluator
+	// of its own), so firing state is read member by member and concatenated —
+	// bounded by maxProjectMembers, and a leaf resolves to exactly one read.
+	var states []storage.AlertState
+	for _, t := range tenants {
+		st, err := store.LoadAlertStates(r.Context(), t)
+		if err != nil {
+			return err
+		}
+		states = append(states, st...)
 	}
-	hist, err := store.ListAlertHistory(r.Context(), storage.AlertHistoryQuery{Tenant: tenant})
+	hist, err := store.ListAlertHistory(r.Context(), storage.AlertHistoryQuery{Tenant: tenant, Tenants: tenants})
 	if err != nil {
 		return err
 	}
