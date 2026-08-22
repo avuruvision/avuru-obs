@@ -2,7 +2,8 @@
 
 - **Date:** 2026-07-27
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted — shipped in v0.6 (receivers, dual-write, the compat
+  gate, and the docs on both the repo and the docs site).
 
 ## Summary
 
@@ -121,6 +122,6 @@ to point at, the values flag) — the drop-in promise, made concrete per source.
       Helm install, rows asserted in ClickHouse and the forwarded trace greped
       out of a stand-in legacy backend — what makes the README claim
       CI-enforced rather than asserted
-- [ ] "Migrate from X" docs per source (repo docs done: README, helm README
-      recipes, CHANGELOG, architecture/tech_stack); docs-align (EN/FR) on the
-      docs site still open
+- [x] "Migrate from X" docs per source — repo docs (README, helm README
+      recipes, CHANGELOG, architecture/tech_stack) and docs-align (EN/FR) on
+      the docs site (avuru-obs-doc#36)
