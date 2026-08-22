@@ -12,6 +12,7 @@ type Proj = {
   source: string;
   editable?: boolean;
   members?: string[];
+  retentionDays?: number;
 };
 
 async function stubAdmin(page: Page) {
@@ -44,13 +45,29 @@ async function stubProjects(page: Page, initial: Proj[]) {
     const i = projects.findIndex((p) => p.id === id);
     if (route.request().method() === "PUT") {
       // Mirrors the hub: an omitted field keeps its stored value.
-      const body = route.request().postDataJSON() as { label?: string; members?: string[] };
+      const body = route.request().postDataJSON() as {
+        label?: string;
+        members?: string[];
+        retentionDays?: number;
+      };
       if (i >= 0) {
-        projects[i] = {
+        // Mirrors the hub's 409: an aggregate owns no data, so it cannot carry
+        // a retention window of its own.
+        const next = {
           ...projects[i],
           ...(body.label !== undefined ? { label: body.label } : {}),
           ...(body.members !== undefined ? { members: [...body.members].sort() } : {}),
+          ...(body.retentionDays !== undefined ? { retentionDays: body.retentionDays } : {}),
         };
+        if ((next.members?.length ?? 0) > 0 && (next.retentionDays ?? 0) > 0) {
+          return route.fulfill({
+            status: 409,
+            json: {
+              error: `project "${id}" is an aggregate of other projects; set retention on the member projects, which is where the data lives`,
+            },
+          });
+        }
+        projects[i] = next;
       }
       return route.fulfill({ status: 200, json: projects[i] });
     }
@@ -60,6 +77,25 @@ async function stubProjects(page: Page, initial: Proj[]) {
     }
     return route.fallback();
   });
+}
+
+// stubStatus serves the install-wide retention the Retention card reads; the
+// per-project editor renders inside that card, so it needs both.
+async function stubStatus(page: Page, retentionDays = 30) {
+  await page.route("**/api/v1/system/status", (route) =>
+    route.fulfill({
+      json: {
+        version: "test",
+        overall: "healthy",
+        checkedAt: new Date(0).toISOString(),
+        components: [],
+        signals: [
+          { signal: "traces", rows: 0, bytes: 0, compressedBytes: 0, compression: 1, retentionDays, ttlDays: retentionDays },
+        ],
+        disks: [],
+      },
+    }),
+  );
 }
 
 test.describe("admin project management", () => {
@@ -161,5 +197,34 @@ test.describe("admin project management", () => {
 
     await page.getByRole("button", { name: "Save members" }).click();
     await expect(page.getByText("1 selected")).toBeVisible();
+  });
+
+  test("admin sets a shorter retention window on a project", async ({ page }) => {
+    await stubAdmin(page);
+    await stubStatus(page, 30);
+    await stubProjects(page, [
+      { id: "default", source: "default" },
+      { id: "staging", label: "Staging", source: "db", editable: true, members: [] },
+    ]);
+
+    await page.goto("/settings?tab=general&project=staging");
+    await page.getByLabel("Project retention in days").fill("3");
+    await page.getByRole("button", { name: "Save retention" }).click();
+    await expect(page.getByText(/Older telemetry is removed/)).toBeVisible();
+  });
+
+  // An aggregate reads its members and stores nothing, so there is no window to
+  // set on it — the UI says where to set one instead of offering a dead end.
+  test("an aggregate offers no retention field", async ({ page }) => {
+    await stubAdmin(page);
+    await stubStatus(page, 30);
+    await stubProjects(page, [
+      { id: "default", source: "default" },
+      { id: "estate", label: "Estate", source: "db", editable: true, members: ["prod-eu"] },
+    ]);
+
+    await page.goto("/settings?tab=general&project=estate");
+    await expect(page.getByLabel("Project retention in days")).toHaveCount(0);
+    await expect(page.getByText(/An aggregate stores no telemetry of its own/)).toBeVisible();
   });
 });

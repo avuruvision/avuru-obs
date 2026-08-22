@@ -525,12 +525,18 @@ type AuthSession struct {
 // data and the X-Avuru-Tenant header); Label is display-only; Members is the
 // aggregate set (empty for a leaf project — populated in Phase 3).
 type Project struct {
-	ID        string
-	Label     string
-	Members   []string
-	CreatedBy string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID      string
+	Label   string
+	Members []string
+	// RetentionDays is how long this project keeps telemetry, in days. 0 means
+	// inherit the install's global retention — the common case, and what the
+	// column defaults to. A shorter window is enforced by the hub's retention
+	// trimmer (TrimTenant), not by a table TTL: the telemetry tables are shared
+	// across tenants and a TTL expression cannot be per-value.
+	RetentionDays int
+	CreatedBy     string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // AuthIngestKey is one per-project ingest credential (auth Plan C). KeyHash is
@@ -758,6 +764,14 @@ type Store interface {
 	GetProject(ctx context.Context, id string) (Project, error)
 	SaveProject(ctx context.Context, p Project) error
 	DeleteProject(ctx context.Context, id string) error
+	// TrimTenant enforces a project's own retention window: it deletes that
+	// tenant's telemetry older than cutoff and returns the tables it acted on.
+	// It is the mechanism behind Project.RetentionDays — a per-tenant window
+	// cannot be a table TTL — and is called only by the hub's retention
+	// trimmer, never from a request path: a mutation is a part rewrite, not a
+	// cheap delete. Doing nothing (no such table, a trim still running, no row
+	// old enough) is success with an empty list, not an error.
+	TrimTenant(ctx context.Context, tenant string, cutoff time.Time) ([]string, error)
 	// UI-authored service health groups (module service-health). Chart-declared
 	// groups stay in the ConfigMap and are NOT stored here — health.Resolver
 	// merges the two and lets the config win a name collision (design/

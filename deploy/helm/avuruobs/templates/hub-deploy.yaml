@@ -41,6 +41,10 @@ spec:
                    notice and repair that itself. */}}
             - name: AVURUOBS_SCHEMA_AUTOMIGRATE
               value: {{ .Values.hub.autoMigrate | quote }}
+            {{- /* The hub reports these (Settings → Storage: configured vs
+                   enforced) and bounds a per-project retention window with
+                   them, so it must see the SAME numbers the migrator applied. */}}
+            {{- include "avuruobs.retentionEnv" . | nindent 12 }}
             {{- include "avuruobs.groupsEnv" . | nindent 12 }}
             {{- include "avuruobs.alertsEnv" . | nindent 12 }}
             {{- /* with-guard on the OUTPUT, not a restated module condition:

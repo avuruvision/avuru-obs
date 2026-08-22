@@ -84,6 +84,11 @@ Beyond the core signals, the day-2 layer:
   sender that lies about its tenant lands where its key says. Default `log`
   mode changes nothing about the pipeline, so the drop-in promise survives the
   upgrade.
+- **A project keeps only what it is worth keeping** *(v0.6)* — set a shorter
+  retention window on any UI-managed project: a noisy staging tenant need not
+  hold thirty days of traces because production does. The hub trims that
+  tenant's telemetry hourly, scoped by project, while the install-wide TTL stays
+  the backstop — so the saving is real storage, not a dashboard filter.
 - **Green that works on cloud VMs** *(v0.3)* — public-cloud instances expose no
   RAPL, so an opt-in power model fills the gap; every estimated number is
   labeled as such end to end and never blended with measured joules.

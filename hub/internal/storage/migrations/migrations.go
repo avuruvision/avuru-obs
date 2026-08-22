@@ -48,6 +48,7 @@ var Ordered = []string{
 	"0016_service_groups.sql",
 	"0017_oidc_group_mapping.sql",
 	"0018_auth_tokens.sql",
+	"0019_project_retention.sql",
 }
 
 // ByModule tags each migration with the module(s) whose schema it owns; the
@@ -94,6 +95,9 @@ var ByModule = map[string][]modules.Name{
 	"0017_oidc_group_mapping.sql": {modules.Core},
 	// Personal API tokens — auth gates everything, so core.
 	"0018_auth_tokens.sql": {modules.Core},
+	// RetentionDays on project — the projects table is core (0012), so is its
+	// column. The trimmer that enforces it skips tables whose module is off.
+	"0019_project_retention.sql": {modules.Core},
 }
 
 // Expected returns, in apply order, the versions that should exist on an

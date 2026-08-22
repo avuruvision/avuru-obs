@@ -5,6 +5,7 @@ package storagetest
 import (
 	"context"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/storage"
@@ -83,6 +84,14 @@ type Fake struct {
 	ProjectsErr     error
 	SavedProjects   []storage.Project
 	DeletedProjects []string
+	// Trims records every TrimTenant call in order — the retention trimmer is
+	// asserted on which tenants it trimmed and to what cutoff, not on rows
+	// disappearing. TrimErr forces the call to fail (one bad tenant must not
+	// stop the sweep).
+	Trims   []TrimCall
+	TrimErr error
+	TrimMu  sync.Mutex
+	Trimmed []string // tables TrimTenant reports on success
 
 	// Service-group fakes, keyed by Name on the same live-rows-only rule.
 	ServiceGroups        map[string]storage.ServiceGroup
@@ -548,6 +557,25 @@ func (f *Fake) DeleteProject(_ context.Context, id string) error {
 	}
 	delete(f.Projects, id)
 	return nil
+}
+
+// TrimCall is one recorded TrimTenant invocation.
+type TrimCall struct {
+	Tenant string
+	Cutoff time.Time
+}
+
+// TrimTenant records the call. The fake holds no telemetry, so there is
+// nothing to delete: what tests need is which tenant was trimmed and to what
+// cutoff, which is exactly what the trimmer decides.
+func (f *Fake) TrimTenant(_ context.Context, tenant string, cutoff time.Time) ([]string, error) {
+	f.TrimMu.Lock()
+	defer f.TrimMu.Unlock()
+	f.Trims = append(f.Trims, TrimCall{Tenant: tenant, Cutoff: cutoff})
+	if f.TrimErr != nil {
+		return nil, f.TrimErr
+	}
+	return f.Trimmed, nil
 }
 
 // ListServiceGroups returns live groups ordered by Name, matching the real

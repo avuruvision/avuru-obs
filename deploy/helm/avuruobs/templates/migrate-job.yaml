@@ -54,13 +54,4 @@ spec:
                    cluster restoring a large volume can outlast the default. */}}
             - name: AVURUOBS_MIGRATE_WAIT_SECONDS
               value: {{ .Values.migrate.clickhouseWaitSeconds | quote }}
-            - name: AVURUOBS_RETENTION_TRACES_DAYS
-              value: {{ .Values.retention.traces | quote }}
-            - name: AVURUOBS_RETENTION_LOGS_DAYS
-              value: {{ .Values.retention.logs | quote }}
-            - name: AVURUOBS_RETENTION_METRICS_DAYS
-              value: {{ .Values.retention.metrics | quote }}
-            - name: AVURUOBS_RETENTION_PROFILES_DAYS
-              value: {{ .Values.retention.profiles | quote }}
-            - name: AVURUOBS_RETENTION_ERRORS_DAYS
-              value: {{ .Values.retention.errors | quote }}
+            {{- include "avuruobs.retentionEnv" . | nindent 12 }}
