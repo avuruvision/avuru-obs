@@ -102,6 +102,14 @@ services:
       # otel_metrics_* tables seeded by metrics_kepler.json /
       # metrics_kubeletstats_pods.json.
       AVURUOBS_GREEN_CONFIG: /etc/avuruobs-green/green.json
+      # The same numbers the migrate service turns into table TTLs. The hub
+      # reports them (Settings → Storage: configured vs enforced) and bounds a
+      # per-project retention window with them, so the two must not drift.
+      AVURUOBS_RETENTION_TRACES_DAYS: "7"
+      AVURUOBS_RETENTION_LOGS_DAYS: "3"
+      AVURUOBS_RETENTION_METRICS_DAYS: "7"
+      AVURUOBS_RETENTION_PROFILES_DAYS: "3"
+      AVURUOBS_RETENTION_ERRORS_DAYS: "30"
     volumes:
       - ./groups.json:/etc/avuruobs/groups.json:ro
       - ./alerts.json:/etc/avuruobs-alerts/alerts.json:ro

@@ -96,6 +96,25 @@ otel
   value: {{ include "avuruobs.activeModules" . | quote }}
 {{- end -}}
 
+{{/* Global retention, in days per signal. BOTH the migrator and the hub need
+     it: the migrator turns it into table TTLs, and the hub reports it (Settings
+     → Storage compares configured against enforced) and uses it as the ceiling
+     for a per-project window. When only the Job carried it, a hub on chart
+     retention values fell back to its built-in defaults and reported drift that
+     was not there. */}}
+{{- define "avuruobs.retentionEnv" -}}
+- name: AVURUOBS_RETENTION_TRACES_DAYS
+  value: {{ .Values.retention.traces | quote }}
+- name: AVURUOBS_RETENTION_LOGS_DAYS
+  value: {{ .Values.retention.logs | quote }}
+- name: AVURUOBS_RETENTION_METRICS_DAYS
+  value: {{ .Values.retention.metrics | quote }}
+- name: AVURUOBS_RETENTION_PROFILES_DAYS
+  value: {{ .Values.retention.profiles | quote }}
+- name: AVURUOBS_RETENTION_ERRORS_DAYS
+  value: {{ .Values.retention.errors | quote }}
+{{- end -}}
+
 {{/* Service-health groups config: env pointing the hub at the mounted
      ConfigMap file, plus the volume and mount. Emitted only when the module is
      on, so a disabled install carries no config surface. The hub hot-reloads

@@ -76,6 +76,13 @@ services:
       AVURUOBS_CLICKHOUSE_ADDR: clickhouse:9000
       AVURUOBS_CLICKHOUSE_USER: avuru
       AVURUOBS_CLICKHOUSE_PASSWORD: avuru
+      # Must match the migrate service above: the hub reports these numbers and
+      # bounds a per-project retention window with them.
+      AVURUOBS_RETENTION_TRACES_DAYS: "7"
+      AVURUOBS_RETENTION_LOGS_DAYS: "3"
+      AVURUOBS_RETENTION_METRICS_DAYS: "7"
+      AVURUOBS_RETENTION_PROFILES_DAYS: "3"
+      AVURUOBS_RETENTION_ERRORS_DAYS: "30"
     ports:
       - "127.0.0.1:8080:8080" # raw hub API (the UI proxies /api here)
     depends_on:

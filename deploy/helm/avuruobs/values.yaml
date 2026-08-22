@@ -623,7 +623,12 @@ migrate:
   # the ways an install ends up with no schema.
   clickhouseWaitSeconds: 60
 
-# Per-signal retention in DAYS, applied as ClickHouse TTL by `hub migrate`.
+# Per-signal retention in DAYS, applied as ClickHouse TTL by `hub migrate`, and
+# reported by the hub (Settings -> Storage compares configured against enforced).
+# These are the INSTALL-WIDE windows and the ceiling for a per-project one: a
+# project can be given a SHORTER window in Settings -> General, which the hub
+# enforces by trimming that tenant hourly. Longer than this is refused — the
+# table TTL would drop the rows first regardless.
 retention:
   traces: 7
   logs: 3

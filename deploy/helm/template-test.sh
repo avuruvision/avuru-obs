@@ -723,4 +723,22 @@ grep -q 'ttlSecondsAfterFinished:' <<<"$migrate_job" || fail "migrate Job has no
 grep -q 'name: AVURUOBS_MIGRATE_WAIT_SECONDS' <<<"$migrate_job" || fail "migrate Job is missing AVURUOBS_MIGRATE_WAIT_SECONDS"
 ok "migrate Job: hook kept, survives success, ClickHouse wait configurable"
 
+echo "== retention reaches BOTH the migrator and the hub"
+out="$(render --set retention.traces=30)"
+hub_deploy="$(awk '/^# Source: avuruobs\/templates\/hub-deploy.yaml$/{f=1} /^---$/{f=0} f' <<<"$out")"
+migrate_job="$(awk '/^# Source: avuruobs\/templates\/migrate-job.yaml$/{f=1} /^---$/{f=0} f' <<<"$out")"
+# The migrator turns retention into table TTLs; the hub REPORTS it (configured
+# vs enforced on Settings -> Storage) and bounds a per-project window with it.
+# When only the Job carried the values, a hub on non-default retention fell back
+# to its built-in defaults and reported drift that did not exist.
+grep -A1 'name: AVURUOBS_RETENTION_TRACES_DAYS' <<<"$migrate_job" | grep -q 'value: "30"' \
+  || fail "retention.traces did not reach the migrate Job"
+grep -A1 'name: AVURUOBS_RETENTION_TRACES_DAYS' <<<"$hub_deploy" | grep -q 'value: "30"' \
+  || fail "retention.traces did not reach the hub Deployment"
+for signal in LOGS METRICS PROFILES ERRORS; do
+  grep -q "name: AVURUOBS_RETENTION_${signal}_DAYS" <<<"$hub_deploy" \
+    || fail "hub is missing AVURUOBS_RETENTION_${signal}_DAYS"
+done
+ok "retention values render on the hub and the migrate Job alike"
+
 echo "ALL TEMPLATE ASSERTIONS PASSED"
