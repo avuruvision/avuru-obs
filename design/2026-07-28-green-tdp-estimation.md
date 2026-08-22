@@ -220,9 +220,14 @@ existing metrics policy; no migration.
   estimator's real activation path (probe fails → estimate) runs in CI
   naturally, alongside the existing Kepler fake-cpu-meter leg; the **TTV and
   probe-canary gates unchanged**.
-- **Post-merge**: side-by-side on one RAPL machine — estimator (probe
-  overridden) vs Kepler on the same node — to publish the *observed* error band
-  the docs will cite instead of the literature figure.
+- **Post-merge**: side-by-side on one RAPL machine — a throwaway estimator pod
+  with `/proc` mounted and `/sys` absent, so its RAPL probe reports "no RAPL"
+  and it models the same node Kepler is measuring — to publish the *observed*
+  error band the docs will cite instead of the literature figure. Procedure:
+  [docs/runbooks/green-rapl-validation.md](../docs/runbooks/green-rapl-validation.md),
+  stage 5. The DaemonSet's own estimator is deliberately NOT forceable: it
+  probes once at startup and stays dormant where RAPL exists, which is what
+  keeps "measured" and "estimated" from ever coexisting on one node.
 
 ## Roadmap
 
@@ -241,6 +246,8 @@ existing metrics policy; no migration.
 - [ ] Export: estimation methodology subsection
 - [ ] Helm: values + schema + guards + template tests
 - [ ] e2e / e2e-helm estimator legs; RAPL side-by-side error-band note
+      (runbook written — [green-rapl-validation](../docs/runbooks/green-rapl-validation.md)
+      stage 5; the box closes on the measured band, not the procedure)
 - [ ] Docs (measured vs estimated, coefficients, methodology) via docs-align
 - [ ] Post-v1: hypervisor-assisted input (Scaphandre qemu / Kepler VM support),
       curve exponent, per-tenant coefficients

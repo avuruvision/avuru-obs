@@ -269,7 +269,8 @@ today (per-tenant factors couple to the auth seam later); storage stays behind
 - `make e2e-helm` — Kepler runs with its **dev fake-cpu-meter**; `kepler%` rows
   polled in ClickHouse; the **TTV and probe-canary gates unchanged**.
 - **Post-merge**: confirmation on real RAPL hardware (roadmap item below) —
-  blocks prod use.
+  blocks prod use. The procedure is written down:
+  [docs/runbooks/green-rapl-validation.md](../docs/runbooks/green-rapl-validation.md).
 
 ## Roadmap
 
@@ -287,7 +288,9 @@ today (per-tenant factors couple to the auth seam later); storage stays behind
 - [x] e2e (seeded) + Playwright + e2e-helm fake-cpu-meter leg (TTV + canary
       gates untouched)
 - [ ] **Confirm Kepler config keys, metric names/labels, port and RBAC on real
-      RAPL hardware** (blocks prod use)
+      RAPL hardware** (blocks prod use) — runbook written
+      ([green-rapl-validation](../docs/runbooks/green-rapl-validation.md));
+      the box closes when the run happens, not when the runbook lands
 - [ ] Docs (module page, factors/budgets configuration, methodology) via
       docs-align
 - [ ] Post-v1: TDP estimation for RAPL-less nodes
@@ -297,14 +300,17 @@ today (per-tenant factors couple to the auth seam later); storage stays behind
 
 ### Post-v1 follow-ups (from the branch review)
 
-- Per-budget deliverability signal on the budgets DTO — the UI footnote
-  currently gates on alerting-off only, not on whether the budget's channel
-  can actually deliver.
-- Extract a generic hot-reload config loader — green's loader is the third
-  copy of the groups.go pattern.
-- Warn at runtime when a budget names a serviceGroups group that doesn't
-  exist.
-- Node-based coverage: `NodeEnergy()` is collected (and e2e-helm pins the
-  rows land) but not yet queried by the API — expose nodes-reporting vs
-  known-nodes so a RAPL-less share becomes visible, not just unattributed
-  energy.
+- [x] Per-budget deliverability signal on the budgets DTO — `notifications`
+      (ok | alerting-off | no-channel | unknown-channel) resolved from the
+      modules, the file-config channels and the UI-stored ones; the card
+      footnote names the actual fix instead of only "alerting is off".
+- [x] Warn at runtime when a budget names a serviceGroups group that doesn't
+      exist — `warnings` on the budgets response plus an hourly-throttled
+      tick log, both from one check so the two never disagree. "Known" is the
+      configured groups UNION the groups services actually landed in, so
+      namespace auto-groups stay legitimate targets.
+- [x] Node-based coverage: `NodeEnergy()` now backs a per-node table on the
+      green summary (`nodes[]`, with quality), so a RAPL-less share is
+      visible per node rather than only as unattributed energy.
+- [ ] Extract a generic hot-reload config loader — green's loader is the third
+      copy of the groups.go pattern.

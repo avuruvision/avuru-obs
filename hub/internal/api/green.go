@@ -156,11 +156,28 @@ type greenServiceDTO struct {
 	Points           []greenPointDTO `json:"points,omitempty"`
 }
 
+// greenNodeDTO is one row of the per-node energy table: every KNOWN node
+// (NodeCoverage's universe), including absent ones at 0 Wh — the RAPL-less
+// share must be visible per node, not only as a count.
+type greenNodeDTO struct {
+	Node string  `json:"node"`
+	Wh   float64 `json:"wh"`
+	// EstimatedWh is the tdp-estimator portion of Wh — same never-blended
+	// split as the per-service rows (green TDP estimation AEP).
+	EstimatedWh float64 `json:"estimatedWh,omitempty"`
+	// Quality is the node's coverage tier: "measured" (any RAPL/Kepler
+	// energy), "estimated" (estimator only), "absent" (known but no energy),
+	// or "" for energy carrying no avuruobs_quality attribute at all
+	// (pre-AEP data; never assumed measured).
+	Quality string `json:"quality"`
+}
+
 type greenSummaryResponse struct {
 	Window   healthWindowDTO   `json:"window"`
 	Factors  greenFactorsDTO   `json:"factors"`
 	Totals   greenTotalsDTO    `json:"totals"`
 	Services []greenServiceDTO `json:"services"`
+	Nodes    []greenNodeDTO    `json:"nodes"`
 }
 
 // handleGreenSummary reports per-service energy and carbon over the requested
@@ -199,6 +216,10 @@ func (a *API) handleGreenSummary(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	nodeRows, err := store.NodeEnergy(r.Context(), greenQuery(cfg, ten, tenants, tr, 0))
+	if err != nil {
+		return err
+	}
 	f := resolveFactors(cfg)
 	services, totals := buildGreenRows(rows, requests, f, topN)
 	totals.NodeCoverage = nodeCoverageDTO{Known: cov.KnownNodes, Measured: cov.MeasuredNodes, Estimated: cov.EstimatedNodes, Absent: cov.AbsentNodes}
@@ -207,8 +228,66 @@ func (a *API) handleGreenSummary(w http.ResponseWriter, r *http.Request) error {
 		Factors:  greenFactorsDTO{GridIntensity: f.intensity, IntensitySource: f.source, PUE: f.pue, Dataset: green.IntensityDataset},
 		Totals:   totals,
 		Services: services,
+		Nodes:    buildGreenNodes(nodeRows, cov.Nodes),
 	})
 	return nil
+}
+
+// buildGreenNodes joins the per-node energy rows onto the known-node universe:
+// one output row per known node (absent ones at 0 Wh), heaviest first. A node
+// reporting energy but somehow missing from the known list (the two queries
+// run back to back, not in one snapshot) is kept — energy is never dropped to
+// honor a list.
+func buildGreenNodes(rows []storage.NodeEnergy, known []string) []greenNodeDTO {
+	type acc struct{ wh, measuredWh, estimatedWh float64 }
+	byNode := make(map[string]*acc, len(known))
+	order := make([]string, 0, len(known))
+	for _, n := range known {
+		if _, ok := byNode[n]; !ok {
+			byNode[n] = &acc{}
+			order = append(order, n)
+		}
+	}
+	for _, row := range rows {
+		a, ok := byNode[row.Node]
+		if !ok {
+			a = &acc{}
+			byNode[row.Node] = a
+			order = append(order, row.Node)
+		}
+		a.wh += row.WattHours
+		switch row.Quality {
+		case "measured":
+			a.measuredWh += row.WattHours
+		case "estimated":
+			a.estimatedWh += row.WattHours
+		}
+	}
+	out := make([]greenNodeDTO, 0, len(order))
+	for _, name := range order {
+		a := byNode[name]
+		dto := greenNodeDTO{Node: name, Wh: a.wh, EstimatedWh: a.estimatedWh}
+		switch {
+		case a.measuredWh > 0:
+			dto.Quality = "measured"
+		case a.estimatedWh > 0:
+			dto.Quality = "estimated"
+		case a.wh > 0:
+			// Energy with no avuruobs_quality attribute at all — deliberately
+			// not called measured (storage.ServiceEnergy's Quality contract).
+			dto.Quality = ""
+		default:
+			dto.Quality = "absent"
+		}
+		out = append(out, dto)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Wh != out[j].Wh {
+			return out[i].Wh > out[j].Wh
+		}
+		return out[i].Node < out[j].Node
+	})
+	return out
 }
 
 // serviceRequests joins request volume per service from the same span-count

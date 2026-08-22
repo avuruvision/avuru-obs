@@ -22,8 +22,9 @@ import (
 // green-without-alerting path). A nil value disables budget evaluation
 // entirely, so the tick runs health alerting alone.
 type greenBudgets struct {
-	cfg   func() green.Config
-	usage *budgetUsageCache
+	cfg    func() green.Config
+	usage  *budgetUsageCache
+	warned unknownGroupWarner
 }
 
 // newGreenBudgets returns the budget-evaluation hook, or nil when either module
@@ -39,7 +40,7 @@ func newGreenBudgets(active modules.Set, cfg func() green.Config, usage *budgetU
 // budgetUsageFn computes month-to-date used kgCO2e per group for one tenant. The
 // default wraps api.BudgetUsageByGroup (the shared carbon roll-up); tests inject
 // a counting fake to assert the cache throttles recompute.
-type budgetUsageFn func(ctx context.Context, store storage.Store, gcfg health.Config, cfg green.Config, tenant string, now time.Time) (map[string]float64, error)
+type budgetUsageFn func(ctx context.Context, store storage.Store, gcfg health.Config, cfg green.Config, tenant string, now time.Time) (api.BudgetUsage, error)
 
 // budgetUsageCache throttles the SQL-backed usage roll-up to at most once per
 // interval per tenant. Because budget state advances only when usage is
@@ -54,7 +55,7 @@ type budgetUsageCache struct {
 
 type usageEntry struct {
 	at   time.Time
-	used map[string]float64
+	used api.BudgetUsage
 }
 
 func newBudgetUsageCache(compute budgetUsageFn) *budgetUsageCache {
@@ -64,7 +65,7 @@ func newBudgetUsageCache(compute budgetUsageFn) *budgetUsageCache {
 // get returns the tenant's cached usage when fresher than interval, else
 // recomputes and caches it against now — the tick's injected clock, so the
 // throttle and month-rollover reset share one time source.
-func (c *budgetUsageCache) get(ctx context.Context, store storage.Store, gcfg health.Config, cfg green.Config, tenant string, now time.Time, interval time.Duration) (map[string]float64, error) {
+func (c *budgetUsageCache) get(ctx context.Context, store storage.Store, gcfg health.Config, cfg green.Config, tenant string, now time.Time, interval time.Duration) (api.BudgetUsage, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if e, ok := c.entries[tenant]; ok && interval > 0 && now.Sub(e.at) < interval {
@@ -72,7 +73,7 @@ func (c *budgetUsageCache) get(ctx context.Context, store storage.Store, gcfg he
 	}
 	used, err := c.compute(ctx, store, gcfg, cfg, tenant, now)
 	if err != nil {
-		return nil, err
+		return api.BudgetUsage{}, err
 	}
 	c.entries[tenant] = usageEntry{at: now, used: used}
 	return used, nil
@@ -81,7 +82,7 @@ func (c *budgetUsageCache) get(ctx context.Context, store storage.Store, gcfg he
 // defaultBudgetUsage is the production usage source: the shared carbon roll-up
 // in the api package, so the budgets endpoint and the alerting tick fire on one
 // implementation of the math.
-func defaultBudgetUsage(ctx context.Context, store storage.Store, gcfg health.Config, cfg green.Config, tenant string, now time.Time) (map[string]float64, error) {
+func defaultBudgetUsage(ctx context.Context, store storage.Store, gcfg health.Config, cfg green.Config, tenant string, now time.Time) (api.BudgetUsage, error) {
 	return api.BudgetUsageByGroup(ctx, store, cfg, gcfg, tenant, now)
 }
 
@@ -112,7 +113,8 @@ func evalGreenBudgets(ctx context.Context, store storage.Store, gcfg health.Conf
 		}
 		return notes
 	}
-	gNext, gNotes := green.EvaluateBudgets(cfg, used, prev, now)
+	gb.warnUnknownGroups(cfg, used.KnownGroups, tenant, now)
+	gNext, gNotes := green.EvaluateBudgets(cfg, used.UsedKgCO2e, prev, now)
 	for k, v := range gNext {
 		mergeGreenKey(next, k, v)
 	}
@@ -126,5 +128,46 @@ func evalGreenBudgets(ctx context.Context, store storage.Store, gcfg health.Conf
 func mergeGreenKey(next alerting.State, k alerting.StateKey, v alerting.TargetState) {
 	if _, ok := next[k]; !ok {
 		next[k] = v
+	}
+}
+
+// unknownGroupWarnLog is how often one budget's unknown-group misconfiguration
+// is repeated in the log. The tick runs every 30s by default; an hourly
+// reminder keeps the problem visible without burying everything else.
+const unknownGroupWarnLog = time.Hour
+
+// unknownGroupWarner throttles the unknown-group warning to once per interval
+// per (tenant, budget), against the tick's injected clock — the same time
+// source the usage cache and month rollover use, so tests never need a sleep.
+// The zero value is ready to use.
+type unknownGroupWarner struct {
+	mu   sync.Mutex
+	last map[string]time.Time
+}
+
+func (w *unknownGroupWarner) should(key string, now time.Time) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if at, ok := w.last[key]; ok && now.Sub(at) < unknownGroupWarnLog {
+		return false
+	}
+	if w.last == nil {
+		w.last = map[string]time.Time{}
+	}
+	w.last[key] = now
+	return true
+}
+
+// warnUnknownGroups logs budgets pointed at a group nothing rolls up to. Such
+// a budget evaluates forever at 0 and can never fire, which on a dashboard is
+// indistinguishable from a quiet month — the log (and the matching warning on
+// GET /api/v1/green/budgets) is what tells an operator the two apart. The
+// check is api.UnknownGroupWarnings, so the tick and the endpoint flag exactly
+// the same budgets.
+func (gb *greenBudgets) warnUnknownGroups(cfg green.Config, known map[string]bool, tenant string, now time.Time) {
+	for _, msg := range api.UnknownGroupWarnings(cfg, known) {
+		if gb.warned.should(tenant+"\x00"+msg, now) {
+			slog.Warn("alerting: green budget targets an unknown group", "tenant", tenant, "detail", msg)
+		}
 	}
 }

@@ -64,9 +64,10 @@ Beyond the core signals, the day-2 layer:
 - **Service health & alerting** — criticality tiers (T0/T1/T2) with
   critical-dependency propagation, and webhook notifications on health
   transitions.
-- **Green Obs — energy & carbon** *(opt-in)* — per-service Wh and gCO2e from
-  Kepler/RAPL, carbon budgets, and a CSRD-ready export that states its
-  methodology.
+- **Green Obs — energy & carbon** *(opt-in)* — per-service and per-node Wh and
+  gCO2e from Kepler/RAPL, carbon budgets, and a CSRD-ready export that states
+  its methodology. Before trusting the numbers in production, walk
+  [the RAPL validation runbook](docs/runbooks/green-rapl-validation.md).
 - **Auth & SSO** — secure-by-default login, per-project roles, OIDC single
   sign-on, and opt-in anonymous read access for public demos.
 - **Modules** — one switch per signal family gates schema, pipeline, API and

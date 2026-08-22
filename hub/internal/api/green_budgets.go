@@ -2,13 +2,16 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/green"
 	"github.com/avuru/avuru-obs/hub/internal/health"
+	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
@@ -17,6 +20,43 @@ import (
 // to the same groups the operator already sees in service health. Read-only
 // status — warn/exceeded notifications ride the alerting tick, not this
 // endpoint. See design/2026-07-22-green-carbon.md (budget lifecycle).
+
+// Notification deliverability for one budget, resolved at read time. A budget
+// whose crossing nobody will hear about is a silent budget, and the three
+// failure modes want different fixes: turn the module on, give the budget a
+// channel, or fix the name it points at. The UI says which — reporting only
+// "alerting is off" hid the other two entirely.
+const (
+	notifyOK             = "ok"
+	notifyAlertingOff    = "alerting-off"
+	notifyNoChannel      = "no-channel"
+	notifyUnknownChannel = "unknown-channel"
+)
+
+// budgetDelivery is the resolved notification plumbing: whether alerting runs
+// at all, plus the channel names that resolve — UI-stored ∪ file-config, the
+// same union the tick's channelResolver walks, so this endpoint cannot claim
+// a delivery the tick would drop (or vice versa).
+type budgetDelivery struct {
+	alertingOn bool
+	channels   map[string]bool
+}
+
+// status classifies one budget's deliverability. Budgets legitimately run
+// without a channel (the AEP's dashboard-only degradation), so no-channel is
+// a state to report, not an error.
+func (d budgetDelivery) status(b green.Budget) string {
+	switch {
+	case !d.alertingOn:
+		return notifyAlertingOff
+	case strings.TrimSpace(b.Channel) == "":
+		return notifyNoChannel
+	case !d.channels[b.Channel]:
+		return notifyUnknownChannel
+	default:
+		return notifyOK
+	}
+}
 
 type greenBurnPointDTO struct {
 	Time string `json:"time"`
@@ -42,11 +82,18 @@ type greenBudgetDTO struct {
 	// budget), but a threshold crossed mostly on modeled numbers must stay
 	// visibly soft here and in any alert payload (green TDP estimation AEP).
 	EstimatedShare float64 `json:"estimatedShare,omitempty"`
+	// Notifications reports whether a threshold crossing on THIS budget can
+	// actually be delivered: ok | alerting-off | no-channel | unknown-channel.
+	Notifications string `json:"notifications"`
 }
 
 type greenBudgetsResponse struct {
 	Window  healthWindowDTO  `json:"window"`
 	Budgets []greenBudgetDTO `json:"budgets"`
+	// Warnings are configuration problems that leave a budget inert without
+	// making it look broken — today, a budget pointed at a group nothing rolls
+	// up to. Surfaced here AND warn-logged on the tick.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // handleGreenBudgets reports month-to-date usage per configured budget. The
@@ -80,12 +127,42 @@ func (a *API) handleGreenBudgets(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	budgets := buildGreenBudgets(cfg, a.groupsConfig(r.Context()), resolveFactors(cfg), rows, stats, labels, now)
+	delivery, err := a.budgetDelivery(r.Context())
+	if err != nil {
+		return err
+	}
+	budgets, warnings := buildGreenBudgets(cfg, a.groupsConfig(r.Context()), resolveFactors(cfg), delivery, rows, stats, labels, now)
 	writeJSON(w, http.StatusOK, greenBudgetsResponse{
-		Window:  healthWindowDTO{Start: tr.Start.Format(time.RFC3339), End: tr.End.Format(time.RFC3339)},
-		Budgets: budgets,
+		Window:   healthWindowDTO{Start: tr.Start.Format(time.RFC3339), End: tr.End.Format(time.RFC3339)},
+		Budgets:  budgets,
+		Warnings: warnings,
 	})
 	return nil
+}
+
+// budgetDelivery resolves the notification plumbing once per request. With
+// alerting off the channel set is irrelevant (every budget reads
+// alerting-off), so the store read is skipped entirely.
+func (a *API) budgetDelivery(ctx context.Context) (budgetDelivery, error) {
+	d := budgetDelivery{alertingOn: a.modules.Enabled(modules.Alerting), channels: map[string]bool{}}
+	if !d.alertingOn {
+		return d, nil
+	}
+	store, err := a.store()
+	if err != nil {
+		return d, err
+	}
+	stored, err := store.ListAlertChannels(ctx)
+	if err != nil {
+		return d, err
+	}
+	for _, ch := range stored {
+		d.channels[ch.Name] = true
+	}
+	for _, ch := range a.alertsConfig().Channels {
+		d.channels[ch.Name] = true
+	}
+	return d, nil
 }
 
 // monthStartUTC is the first instant of now's UTC calendar month.
@@ -102,8 +179,9 @@ func monthToDate(now time.Time) storage.TimeRange {
 // cumulative burn-down. Pure (now injected) so the projection math is
 // testable without month-boundary flakes — the alerting-evaluator convention.
 // Every configured budget appears, including ones whose group matches no live
-// service (used=0): the operator must see them.
-func buildGreenBudgets(cfg green.Config, groups health.Config, f greenFactors, rows []storage.ServiceEnergy, stats []storage.ServiceStats, labels []storage.ServiceLabel, now time.Time) []greenBudgetDTO {
+// service (used=0): the operator must see them. Returns the budgets plus any
+// configuration warnings (unknown groups).
+func buildGreenBudgets(cfg green.Config, groups health.Config, f greenFactors, delivery budgetDelivery, rows []storage.ServiceEnergy, stats []storage.ServiceStats, labels []storage.ServiceLabel, now time.Time) ([]greenBudgetDTO, []string) {
 	assigned := assignEnergy(groups, rows, stats, labels)
 	usedByGroup, estimatedByGroup := usedKgByGroup(f, assigned, rows)
 
@@ -134,6 +212,7 @@ func buildGreenBudgets(cfg green.Config, groups health.Config, f greenFactors, r
 			ProjectedKgCO2e: used,
 			Status:          green.StatusOK,
 			BurnDown:        burnDown(buckets, f),
+			Notifications:   delivery.status(b),
 		}
 		if used > 0 {
 			dto.EstimatedShare = estimatedByGroup[b.Group] / used
@@ -156,6 +235,39 @@ func buildGreenBudgets(cfg green.Config, groups health.Config, f greenFactors, r
 		}
 		out = append(out, dto)
 	}
+	return out, unknownGroupWarnings(cfg, knownGroups(groups, assigned))
+}
+
+// knownGroups is every group name a budget could sensibly target: the ones
+// declared in the (config + DB) service-health configuration, plus the ones
+// services actually landed in — auto-groups by namespace are legitimate
+// targets, and a zero-config install has nothing but those.
+func knownGroups(groups health.Config, assigned map[string]health.Assignment) map[string]bool {
+	known := make(map[string]bool, len(groups.Groups)+len(assigned))
+	for _, g := range groups.Groups {
+		known[g.Name] = true
+	}
+	for _, a := range assigned {
+		if a.Group != "" {
+			known[a.Group] = true
+		}
+	}
+	return known
+}
+
+// unknownGroupWarnings names budgets whose group nothing rolls up to. Such a
+// budget is not an error — it renders at 0 and can never fire, which looks
+// exactly like a group that simply had a quiet month. The warning is what
+// tells those two apart. Sorted so the response is stable.
+func unknownGroupWarnings(cfg green.Config, known map[string]bool) []string {
+	var out []string
+	for _, b := range cfg.Budgets {
+		if b.Group == "" || known[b.Group] {
+			continue
+		}
+		out = append(out, fmt.Sprintf("budget %q targets group %q, which matches no configured service group and no service seen this month — it will always read 0 and can never fire", b.Name, b.Group))
+	}
+	sort.Strings(out)
 	return out
 }
 
@@ -207,29 +319,46 @@ func usedKgByGroup(f greenFactors, assigned map[string]health.Assignment, rows [
 	return total, estimated
 }
 
+// BudgetUsage is one tenant's month-to-date carbon roll-up plus the set of
+// group names that exist to roll up TO. The tick needs both: usage to
+// evaluate against, and the known set to tell a MISCONFIGURED budget (a group
+// nothing can ever land in) from a merely idle one — a distinction usage
+// alone cannot make, since both read 0.
+type BudgetUsage struct {
+	UsedKgCO2e  map[string]float64
+	KnownGroups map[string]bool
+}
+
 // BudgetUsageByGroup computes one tenant's month-to-date used kgCO2e per
 // serviceGroups group, composing the store reads (energy + population + labels)
 // with the same roll-up the budgets endpoint uses. It is the alerting tick's
 // usage source for green budget evaluation, kept here so the carbon math has
 // exactly one implementation. now is injected (no clock read); factors never
 // enter SQL — storage returns Wh, the conversion happens in Go (the AEP).
-func BudgetUsageByGroup(ctx context.Context, store storage.Store, cfg green.Config, groups health.Config, tenant string, now time.Time) (map[string]float64, error) {
+func BudgetUsageByGroup(ctx context.Context, store storage.Store, cfg green.Config, groups health.Config, tenant string, now time.Time) (BudgetUsage, error) {
 	tr := monthToDate(now)
 	rows, err := store.ServiceEnergy(ctx, greenQuery(cfg, tenant, nil, tr, 0))
 	if err != nil {
-		return nil, err
+		return BudgetUsage{}, err
 	}
 	sq := storage.ServiceQuery{Tenant: tenant, Range: tr, ExcludeAux: true}
 	stats, err := store.ListServices(ctx, sq)
 	if err != nil {
-		return nil, err
+		return BudgetUsage{}, err
 	}
 	labels, err := store.ServiceLabels(ctx, sq)
 	if err != nil {
-		return nil, err
+		return BudgetUsage{}, err
 	}
-	usedByGroup, _ := usedKgByGroup(resolveFactors(cfg), assignEnergy(groups, rows, stats, labels), rows)
-	return usedByGroup, nil
+	assigned := assignEnergy(groups, rows, stats, labels)
+	usedByGroup, _ := usedKgByGroup(resolveFactors(cfg), assigned, rows)
+	return BudgetUsage{UsedKgCO2e: usedByGroup, KnownGroups: knownGroups(groups, assigned)}, nil
+}
+
+// UnknownGroupWarnings is the exported form of the endpoint's own check, so
+// the alerting tick warns on exactly the budgets the UI flags.
+func UnknownGroupWarnings(cfg green.Config, known map[string]bool) []string {
+	return unknownGroupWarnings(cfg, known)
 }
 
 // elapsedMonthFraction is how far through the calendar month now is, in [0,1].

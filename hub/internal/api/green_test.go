@@ -172,6 +172,71 @@ func TestGreenSummaryTopNFold(t *testing.T) {
 	}
 }
 
+func TestGreenSummaryNodes(t *testing.T) {
+	fake := &storagetest.Fake{
+		ServiceEnergies: []storage.ServiceEnergy{{Service: "web", WattHours: 1}},
+		NodeEnergies: []storage.NodeEnergy{
+			// node-a is mixed: RAPL plus estimator on one node — the split must
+			// stay visible, never blended into one unlabeled number.
+			{Node: "node-a", Quality: "measured", WattHours: 10},
+			{Node: "node-a", Quality: "estimated", WattHours: 2},
+			{Node: "node-b", Quality: "estimated", WattHours: 5},
+		},
+		NodeCoverageResult: storage.NodeCoverage{
+			KnownNodes: 3, MeasuredNodes: 1, EstimatedNodes: 2, AbsentNodes: 1,
+			Nodes: []string{"node-a", "node-b", "node-c"},
+		},
+	}
+	mux := greenMux(fake, testGreenConfig())
+
+	rec := get(t, mux, "/api/v1/green/summary")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp greenSummaryResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Nodes) != 3 {
+		t.Fatalf("nodes = %+v, want 3 rows (absent node included at 0)", resp.Nodes)
+	}
+	// Heaviest first: node-a (12 Wh) > node-b (5) > node-c (0, absent).
+	a, b, c := resp.Nodes[0], resp.Nodes[1], resp.Nodes[2]
+	if a.Node != "node-a" || a.Wh != 12 || a.EstimatedWh != 2 || a.Quality != "measured" {
+		t.Errorf("node-a = %+v, want wh=12 estimatedWh=2 quality=measured", a)
+	}
+	if b.Node != "node-b" || b.Wh != 5 || b.EstimatedWh != 5 || b.Quality != "estimated" {
+		t.Errorf("node-b = %+v, want wh=5 estimatedWh=5 quality=estimated", b)
+	}
+	if c.Node != "node-c" || c.Wh != 0 || c.EstimatedWh != 0 || c.Quality != "absent" {
+		t.Errorf("node-c = %+v, want the known-but-silent node at 0", c)
+	}
+	// The counts panel keeps reading the store's coverage, not the table.
+	if nc := resp.Totals.NodeCoverage; nc.Known != 3 || nc.Measured != 1 || nc.Estimated != 2 || nc.Absent != 1 {
+		t.Errorf("node coverage = %+v", nc)
+	}
+}
+
+func TestBuildGreenNodes_UnknownAndUnlabeled(t *testing.T) {
+	rows := []storage.NodeEnergy{
+		// Energy from a node the known list missed: kept, never dropped.
+		{Node: "node-x", Quality: "measured", WattHours: 3},
+		// Rows with no avuruobs_quality attribute: counted in Wh, tier stays
+		// "" — never assumed measured.
+		{Node: "node-y", Quality: "", WattHours: 1},
+	}
+	nodes := buildGreenNodes(rows, []string{"node-y"})
+	if len(nodes) != 2 {
+		t.Fatalf("nodes = %+v, want 2", nodes)
+	}
+	if nodes[0].Node != "node-x" || nodes[0].Quality != "measured" || nodes[0].Wh != 3 {
+		t.Errorf("nodes[0] = %+v, want off-list node-x kept", nodes[0])
+	}
+	if nodes[1].Node != "node-y" || nodes[1].Quality != "" || nodes[1].Wh != 1 {
+		t.Errorf("nodes[1] = %+v, want unlabeled quality kept as empty", nodes[1])
+	}
+}
+
 func TestGreenSummaryBadParams(t *testing.T) {
 	mux := greenMux(&storagetest.Fake{}, testGreenConfig())
 	for _, path := range []string{
@@ -221,7 +286,7 @@ func TestGreenBudgetsStatusAndProjection(t *testing.T) {
 			{Name: "batch-team", Group: "(unlabeled)", MonthlyKgCO2e: 1, WarnRatio: 0.8},
 		},
 	}
-	budgets := buildGreenBudgets(cfg, health.Default(), resolveFactors(cfg), rows, stats, labels, now)
+	budgets, _ := buildGreenBudgets(cfg, health.Default(), resolveFactors(cfg), okDelivery(), rows, stats, labels, now)
 	if len(budgets) != 5 {
 		t.Fatalf("budgets = %+v, want 5", budgets)
 	}
@@ -564,7 +629,7 @@ func TestBuildGreenBudgets_EstimatedShare(t *testing.T) {
 		Budgets: []green.Budget{{Name: "prod", Group: "shop", MonthlyKgCO2e: 100, WarnRatio: 0.8}},
 	}
 
-	budgets := buildGreenBudgets(cfg, health.Default(), resolveFactors(cfg), rows, stats, labels, now)
+	budgets, _ := buildGreenBudgets(cfg, health.Default(), resolveFactors(cfg), okDelivery(), rows, stats, labels, now)
 	if len(budgets) != 1 {
 		t.Fatalf("len(budgets) = %d, want 1", len(budgets))
 	}
@@ -607,5 +672,98 @@ func TestBuildMethodology_NoEstimationSubsectionWhenFullyMeasured(t *testing.T) 
 	meth := buildMethodology(cfg, f, tr, totals)
 	if meth.Estimation != nil {
 		t.Errorf("Estimation = %+v, want nil (report stays unchanged for fully-measured installs)", meth.Estimation)
+	}
+}
+
+// okDelivery is the deliverability used by the budget tests that are not
+// about notifications: alerting on, with the named channels resolvable.
+func okDelivery(channels ...string) budgetDelivery {
+	d := budgetDelivery{alertingOn: true, channels: map[string]bool{}}
+	for _, c := range channels {
+		d.channels[c] = true
+	}
+	return d
+}
+
+// TestGreenBudgetNotifications: every way a budget can end up silent is
+// reported as its own state, so the UI can name the actual fix.
+func TestGreenBudgetNotifications(t *testing.T) {
+	now := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	cfg := green.Config{
+		GridIntensity: 500, PUE: 2,
+		Budgets: []green.Budget{
+			{Name: "wired", Group: "shop", MonthlyKgCO2e: 10, WarnRatio: 0.8, Channel: "ops"},
+			{Name: "silent", Group: "shop", MonthlyKgCO2e: 10, WarnRatio: 0.8},
+			{Name: "typo", Group: "shop", MonthlyKgCO2e: 10, WarnRatio: 0.8, Channel: "opz"},
+		},
+	}
+	stats := []storage.ServiceStats{{Name: "checkout", SpanCount: 10}}
+	labels := []storage.ServiceLabel{{Service: "checkout", K8sNamespace: "shop"}}
+
+	byName := func(d budgetDelivery) map[string]string {
+		budgets, _ := buildGreenBudgets(cfg, health.Default(), resolveFactors(cfg), d, nil, stats, labels, now)
+		out := map[string]string{}
+		for _, b := range budgets {
+			out[b.Name] = b.Notifications
+		}
+		return out
+	}
+
+	got := byName(okDelivery("ops"))
+	want := map[string]string{"wired": notifyOK, "silent": notifyNoChannel, "typo": notifyUnknownChannel}
+	for name, w := range want {
+		if got[name] != w {
+			t.Errorf("budget %q notifications = %q, want %q", name, got[name], w)
+		}
+	}
+
+	// Alerting off short-circuits everything: with no evaluator running, the
+	// channel a budget names is beside the point.
+	off := byName(budgetDelivery{alertingOn: false})
+	for _, name := range []string{"wired", "silent", "typo"} {
+		if off[name] != notifyAlertingOff {
+			t.Errorf("alerting off: budget %q = %q, want %q", name, off[name], notifyAlertingOff)
+		}
+	}
+}
+
+// TestGreenBudgetUnknownGroupWarning: a budget pointed at a group nothing
+// rolls up to renders at 0 and can never fire — indistinguishable from a
+// quiet month without this warning. Auto-groups (namespace-derived, no
+// config at all) are legitimate targets and must stay silent.
+func TestGreenBudgetUnknownGroupWarning(t *testing.T) {
+	now := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	cfg := green.Config{
+		GridIntensity: 500, PUE: 2,
+		Budgets: []green.Budget{
+			{Name: "declared", Group: "platform", MonthlyKgCO2e: 10, WarnRatio: 0.8},
+			{Name: "auto", Group: "shop", MonthlyKgCO2e: 10, WarnRatio: 0.8},
+			{Name: "ghost", Group: "team-that-left", MonthlyKgCO2e: 10, WarnRatio: 0.8},
+		},
+	}
+	groups := health.Default()
+	groups.Groups = []health.Group{{Name: "platform", Tier: health.TierT1}}
+
+	// checkout auto-groups into "shop" by namespace; nothing lands in
+	// "team-that-left".
+	stats := []storage.ServiceStats{{Name: "checkout", SpanCount: 10}}
+	labels := []storage.ServiceLabel{{Service: "checkout", K8sNamespace: "shop"}}
+
+	budgets, warnings := buildGreenBudgets(cfg, groups, resolveFactors(cfg), okDelivery(), nil, stats, labels, now)
+	if len(budgets) != 3 {
+		t.Fatalf("budgets = %d, want 3 (a warned budget must still render)", len(budgets))
+	}
+	if len(warnings) != 1 {
+		t.Fatalf("warnings = %v, want exactly one (the ghost budget)", warnings)
+	}
+	if !strings.Contains(warnings[0], `"ghost"`) || !strings.Contains(warnings[0], `"team-that-left"`) {
+		t.Errorf("warning does not name the budget and its group: %q", warnings[0])
+	}
+
+	// With no service-health config and no traffic at all, only the auto-group
+	// evidence disappears — the declared group survives on config alone.
+	_, bare := buildGreenBudgets(cfg, groups, resolveFactors(cfg), okDelivery(), nil, nil, nil, now)
+	if len(bare) != 2 {
+		t.Fatalf("bare warnings = %v, want 2 (auto + ghost, not the declared group)", bare)
 	}
 }
