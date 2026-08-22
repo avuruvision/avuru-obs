@@ -29,18 +29,22 @@ const maxProjectMembers = 32
 type createProjectRequest struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
+	// RetentionDays is optional at creation; omitted means 0 — inherit the
+	// install's global retention, which is what almost every project wants.
+	RetentionDays int `json:"retentionDays"`
 }
 
 // updateProjectRequest is a PARTIAL update: an omitted field keeps its stored
 // value. Both are pointers because the two editors are separate forms — the
 // members form must not blank the label it never showed, and vice versa.
 type updateProjectRequest struct {
-	Label   *string   `json:"label"`
-	Members *[]string `json:"members"`
+	Label         *string   `json:"label"`
+	Members       *[]string `json:"members"`
+	RetentionDays *int      `json:"retentionDays"`
 }
 
 func toProjectDTO(p storage.Project) projectDTO {
-	return projectDTO{ID: p.ID, Label: p.Label, Source: "db", Editable: true, Members: p.Members}
+	return projectDTO{ID: p.ID, Label: p.Label, Source: "db", Editable: true, Members: p.Members, RetentionDays: p.RetentionDays}
 }
 
 func (a *API) isConfigProject(id string) bool {
@@ -73,6 +77,10 @@ type projectDTO struct {
 	Source   string   `json:"source"`
 	Editable bool     `json:"editable"`
 	Members  []string `json:"members,omitempty"`
+	// RetentionDays is this project's own retention window in days; absent
+	// means it inherits the install's global retention. Absent and 0 are the
+	// same statement, so omitempty loses nothing.
+	RetentionDays int `json:"retentionDays,omitempty"`
 }
 
 type projectsResponse struct {
@@ -124,6 +132,7 @@ func (a *API) handleProjects(w http.ResponseWriter, r *http.Request) error {
 		d := add(p.ID, "db")
 		d.Label = p.Label
 		d.Members = p.Members
+		d.RetentionDays = p.RetentionDays
 		if d.Source == "db" {
 			d.Editable = true
 		}
@@ -179,17 +188,21 @@ func (a *API) handleCreateProject(w http.ResponseWriter, r *http.Request) error 
 	if id == storage.DefaultTenant || a.isConfigProject(id) {
 		return &apiError{status: http.StatusConflict, message: fmt.Sprintf("%q is a reserved project", id)}
 	}
+	if err := a.validateRetentionDays(req.RetentionDays); err != nil {
+		return err
+	}
 	if _, err := st.GetProject(r.Context(), id); err == nil {
 		return &apiError{status: http.StatusConflict, message: fmt.Sprintf("project %q already exists", id)}
 	} else if !errors.Is(err, storage.ErrNotFound) {
 		return err
 	}
 	p := storage.Project{
-		ID:        id,
-		Label:     label,
-		Members:   []string{},
-		CreatedBy: identityUserID(r.Context()),
-		CreatedAt: time.Now(),
+		ID:            id,
+		Label:         label,
+		Members:       []string{},
+		RetentionDays: req.RetentionDays,
+		CreatedBy:     identityUserID(r.Context()),
+		CreatedAt:     time.Now(),
 	}
 	if err := st.SaveProject(r.Context(), p); err != nil {
 		return err
@@ -247,6 +260,20 @@ func (a *API) handleUpdateProject(w http.ResponseWriter, r *http.Request) error 
 			return err
 		}
 		p.Members = members
+	}
+	if req.RetentionDays != nil {
+		if err := a.validateRetentionDays(*req.RetentionDays); err != nil {
+			return err
+		}
+		p.RetentionDays = *req.RetentionDays
+	}
+	// Checked on the RESULT, not on the request, so it catches both directions:
+	// giving an aggregate a retention window, and giving members to a project
+	// that already has one. An aggregate stores no telemetry of its own — the
+	// trimmer would run against a tenant with no rows and quietly do nothing,
+	// which reads as "retention is set" while the members keep everything.
+	if len(p.Members) > 0 && p.RetentionDays > 0 {
+		return aggregateWriteConflict(p.ID, "set retention on the member projects, which is where the data lives")
 	}
 	if err := st.SaveProject(r.Context(), p); err != nil {
 		return err
@@ -313,6 +340,39 @@ func (a *API) validateMembers(ctx context.Context, st storage.Store, id string, 
 		}
 	}
 	return out, nil
+}
+
+// validateRetentionDays bounds a project's own retention window. 0 is always
+// valid — inherit the install's global retention. A positive value must be
+// SHORTER than the longest global window: the trimmer deletes rows early, it
+// cannot keep rows the shared table TTL has already dropped, so accepting a
+// longer window would be a promise the storage layer breaks silently (the AEP
+// calls longer-than-global a non-goal). An install that configured no global
+// retention has no ceiling to check against.
+func (a *API) validateRetentionDays(days int) error {
+	if days == 0 {
+		return nil
+	}
+	if days < 0 {
+		return badRequest("retentionDays must be 0 (inherit the global retention) or a positive number of days")
+	}
+	if max := a.globalRetentionDays(); max > 0 && days > max {
+		return badRequest("retentionDays must be at most %d — the install's longest global retention; a longer window would be undone by the table TTL", max)
+	}
+	return nil
+}
+
+// globalRetentionDays is the longest global window this install keeps, across
+// signals. It is the ceiling for a per-project window, and 0 when nothing is
+// configured (no ceiling to enforce).
+func (a *API) globalRetentionDays() int {
+	max := 0
+	for _, d := range []int{a.cfg.RetentionTracesDays, a.cfg.RetentionLogsDays, a.cfg.RetentionMetricsDays, a.cfg.RetentionProfilesDays} {
+		if d > max {
+			max = d
+		}
+	}
+	return max
 }
 
 // handleDeleteProject tombstones a db project (its telemetry ages out by TTL).

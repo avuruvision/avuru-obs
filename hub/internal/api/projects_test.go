@@ -379,3 +379,158 @@ func TestUpdateProjectInvalidatesTheMemo(t *testing.T) {
 		t.Fatalf("tenants = %v, want [prod-eu] immediately after the write", ts)
 	}
 }
+
+// adminMuxRetention is adminMux with global retention configured — the ceiling
+// a per-project window is validated against.
+func adminMuxRetention(t *testing.T, traces, logs, metrics, profiles int) (*http.ServeMux, *http.Cookie, *storagetest.Fake) {
+	t.Helper()
+	f := &storagetest.Fake{}
+	svc := auth.NewService(func() storage.Store { return f }, time.Hour)
+	if _, err := svc.Bootstrap(context.Background(), "root-pw"); err != nil {
+		t.Fatal(err)
+	}
+	token, _, err := svc.Login(context.Background(), "admin", "root-pw", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return f }, Config{
+		Auth:                  svc,
+		RetentionTracesDays:   traces,
+		RetentionLogsDays:     logs,
+		RetentionMetricsDays:  metrics,
+		RetentionProfilesDays: profiles,
+	})
+	return mux, &http.Cookie{Name: sessionCookieName, Value: token}, f
+}
+
+// A project can be created with a window of its own; omitting the field means
+// 0 — inherit the install's global retention.
+func TestCreateProjectWithRetention(t *testing.T) {
+	mux, c, f := adminMuxRetention(t, 30, 7, 30, 7)
+
+	w := doBody(mux, http.MethodPost, "/api/v1/projects", c, `{"id":"staging","label":"Staging","retentionDays":3}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body)
+	}
+	if got := decodeProject(t, w).RetentionDays; got != 3 {
+		t.Fatalf("retentionDays = %d, want 3", got)
+	}
+	if got := f.Projects["staging"].RetentionDays; got != 3 {
+		t.Fatalf("stored retentionDays = %d, want 3", got)
+	}
+
+	w = doBody(mux, http.MethodPost, "/api/v1/projects", c, `{"id":"prod","label":"Prod"}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body)
+	}
+	if got := f.Projects["prod"].RetentionDays; got != 0 {
+		t.Fatalf("stored retentionDays = %d, want 0 (inherit)", got)
+	}
+}
+
+// The trimmer deletes rows EARLIER than the global TTL; it cannot resurrect
+// rows the table TTL already dropped. So a window longer than the longest
+// global one is refused instead of being silently unenforceable.
+func TestProjectRetentionCeiling(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want int
+	}{
+		{"under the ceiling", `{"retentionDays":3}`, http.StatusOK},
+		{"exactly the ceiling", `{"retentionDays":30}`, http.StatusOK},
+		{"over the ceiling", `{"retentionDays":31}`, http.StatusBadRequest},
+		{"negative", `{"retentionDays":-1}`, http.StatusBadRequest},
+		{"zero inherits", `{"retentionDays":0}`, http.StatusOK},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mux, c, f := adminMuxRetention(t, 30, 7, 30, 7)
+			dbProject(f, "staging", "Staging")
+			w := doBody(mux, "PUT", "/api/v1/projects/staging", c, tc.body)
+			if w.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body=%s)", w.Code, tc.want, w.Body)
+			}
+		})
+	}
+}
+
+// With no global retention configured there is no ceiling to enforce — the
+// install keeps everything, so any per-project window is shorter.
+func TestProjectRetentionNoGlobalCeiling(t *testing.T) {
+	mux, c, f := adminMuxRetention(t, 0, 0, 0, 0)
+	dbProject(f, "staging", "Staging")
+
+	w := doBody(mux, "PUT", "/api/v1/projects/staging", c, `{"retentionDays":365}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body)
+	}
+	if got := f.Projects["staging"].RetentionDays; got != 365 {
+		t.Fatalf("stored retentionDays = %d, want 365", got)
+	}
+}
+
+// An aggregate stores no telemetry of its own, so a retention window on it
+// would trim a tenant with no rows — set-and-forget that silently keeps
+// everything. Refused from BOTH directions, since either edit produces the
+// same broken state.
+func TestAggregateCannotCarryRetention(t *testing.T) {
+	t.Run("retention on an aggregate", func(t *testing.T) {
+		mux, c, f := adminMuxRetention(t, 30, 7, 30, 7)
+		dbProject(f, "estate", "Estate", "prod-eu", "prod-us")
+
+		w := doBody(mux, "PUT", "/api/v1/projects/estate", c, `{"retentionDays":3}`)
+		if w.Code != http.StatusConflict {
+			t.Fatalf("status = %d, want 409 (body=%s)", w.Code, w.Body)
+		}
+		if got := f.Projects["estate"].RetentionDays; got != 0 {
+			t.Fatalf("stored retentionDays = %d, want 0 — the refusal must not persist", got)
+		}
+	})
+
+	t.Run("members on a project with retention", func(t *testing.T) {
+		mux, c, f := adminMuxRetention(t, 30, 7, 30, 7)
+		dbProject(f, "estate", "Estate")
+		f.Projects["estate"] = storage.Project{ID: "estate", Label: "Estate", Members: []string{}, RetentionDays: 3}
+
+		w := doBody(mux, "PUT", "/api/v1/projects/estate", c, `{"members":["prod-eu"]}`)
+		if w.Code != http.StatusConflict {
+			t.Fatalf("status = %d, want 409 (body=%s)", w.Code, w.Body)
+		}
+		if got := f.Projects["estate"].Members; len(got) != 0 {
+			t.Fatalf("stored members = %v, want none — the refusal must not persist", got)
+		}
+	})
+
+	// Demoting an aggregate back to a leaf and giving it a window in one PUT is
+	// the legitimate version of the same edit.
+	t.Run("demote and set in one edit", func(t *testing.T) {
+		mux, c, f := adminMuxRetention(t, 30, 7, 30, 7)
+		dbProject(f, "estate", "Estate", "prod-eu")
+
+		w := doBody(mux, "PUT", "/api/v1/projects/estate", c, `{"members":[],"retentionDays":3}`)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d body=%s", w.Code, w.Body)
+		}
+		if got := f.Projects["estate"].RetentionDays; got != 3 {
+			t.Fatalf("stored retentionDays = %d, want 3", got)
+		}
+	})
+}
+
+// Retention has its own editor, like the label and the members list: a PUT
+// that omits it must not reset the window to "inherit".
+func TestUpdateProjectPartialKeepsRetention(t *testing.T) {
+	mux, c, f := adminMuxRetention(t, 30, 7, 30, 7)
+	dbProject(f, "staging", "Staging")
+	f.Projects["staging"] = storage.Project{ID: "staging", Label: "Staging", Members: []string{}, RetentionDays: 3}
+
+	w := doBody(mux, "PUT", "/api/v1/projects/staging", c, `{"label":"Staging EU"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body)
+	}
+	if got := decodeProject(t, w).RetentionDays; got != 3 {
+		t.Fatalf("retentionDays = %d, want 3 preserved across a label edit", got)
+	}
+}
