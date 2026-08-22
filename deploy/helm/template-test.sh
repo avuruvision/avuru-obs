@@ -844,4 +844,62 @@ for signal in LOGS METRICS PROFILES ERRORS; do
 done
 ok "retention values render on the hub and the migrate Job alike"
 
+echo "== component toggles: the secondary-cluster shape"
+# A cluster that only ships telemetry installs the gateway (+sensor) and points
+# at the central ClickHouse. Everything hub-owned must disappear — a hub
+# Deployment or a migrate Job here would race the primary cluster's schema.
+secondary=(--set hub.enabled=false --set ui.enabled=false
+           --set clickhouse.external.enabled=true --set clickhouse.external.address=ch.central:9000
+           --set auth.ingest.mode=off)
+out="$(render "${secondary[@]}")"
+for absent in "-hub$" "-ui$" "-migrate$" "kind: StatefulSet"; do
+  if grep -qE "name: test-avuruobs${absent}" <<<"$out" 2>/dev/null; then
+    fail "gateway-only render still contains ${absent}"
+  fi
+done
+grep -q "kind: Job" <<<"$out" && fail "gateway-only render still runs the migrate Job"
+grep -q "name: test-avuruobs-gateway" <<<"$out" || fail "gateway-only render lost the gateway"
+grep -q "kind: DaemonSet" <<<"$out" || fail "gateway-only render lost the sensor"
+ok "gateway-only: gateway + sensor render, hub/UI/migrate/ClickHouse do not"
+
+# The mirror image: an instance that only queries, fed by other clusters.
+out="$(render --set gateway.enabled=false --set sensor.enabled=false)"
+grep -q "name: test-avuruobs-hub" <<<"$out" || fail "query-only render lost the hub"
+grep -q "name: test-avuruobs-gateway" <<<"$out" && fail "query-only render still contains the gateway"
+grep -q "kind: DaemonSet" <<<"$out" && fail "query-only render still contains the sensor"
+ok "query-only: hub + UI render, gateway and sensor do not"
+
+echo "== component toggles: combinations that cannot work are refused"
+# Each of these installs pods that cannot reach what they need. Failing at
+# template time is the whole point — the alternative is a green rollout whose
+# every request 502s.
+render --set ui.enabled=false --set hub.enabled=false --set gateway.enabled=false --set sensor.enabled=false >/dev/null 2>&1 \
+  && fail "an install with no components at all was accepted"
+render --set hub.enabled=false >/dev/null 2>&1 \
+  && fail "ui.enabled without hub.enabled was accepted (the UI proxies /api to a hub that is not there)"
+render --set hub.enabled=false --set ui.enabled=false >/dev/null 2>&1 \
+  && fail "a hub-less install writing to the IN-CHART ClickHouse was accepted"
+render "${secondary[@]}" --set auth.ingest.mode=enforce >/dev/null 2>&1 \
+  && fail "ingest enforce without hub.external.url was accepted (nothing to validate keys against)"
+render "${secondary[@]}" --set auth.ingest.mode=enforce --set hub.external.url=https://obs.example.com >/dev/null 2>&1 \
+  && fail "ingest enforce without an explicit internalToken was accepted (a generated one the central hub never saw)"
+ok "four impossible combinations refused at template time"
+
+# With a real hub URL and the central token, the gateway validates against the
+# CENTRAL hub — the one thing that makes ingest keys work across clusters.
+out="$(render "${secondary[@]}" --set auth.ingest.mode=enforce \
+  --set hub.external.url=https://obs.example.com/ --set auth.ingest.internalToken=shared-token)"
+grep -q "hub_validate_url: https://obs.example.com/internal/v1/ingest-keys/validate" <<<"$out" \
+  || fail "the gateway does not validate ingest keys against hub.external.url"
+ok "ingest keys validate against the central hub"
+
+# An Ingress with no rules is rejected by the API server, so it must not render.
+render "${secondary[@]}" --set ingress.enabled=true >/dev/null 2>&1 \
+  && fail "ingress.enabled on a gateway-only install was accepted (an Ingress with no rules)"
+out="$(render "${secondary[@]}" --set ingress.enabled=true --set gateway.sentry.enabled=true --set ingress.sentryHost=sentry.example.com)"
+# grep -q ... && fail, never `grep -c | grep`: with pipefail a no-match grep
+# exits 1 and takes the whole pipeline with it, which reads as a failure here.
+grep -q "test-avuruobs-hub" <<<"$out" && fail "gateway-only ingress still routes to the hub"
+ok "ingress: no rules means no Ingress; the Sentry host still works alone"
+
 echo "ALL TEMPLATE ASSERTIONS PASSED"

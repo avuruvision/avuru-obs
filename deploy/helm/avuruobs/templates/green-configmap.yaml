@@ -1,4 +1,5 @@
-{{- if .Values.modules.green.enabled }}
+{{- /* Hub-owned config: not rendered on a gateway-only install. */}}
+{{- if and .Values.hub.enabled .Values.modules.green.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

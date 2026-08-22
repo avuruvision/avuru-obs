@@ -1,4 +1,5 @@
-{{- if .Values.modules.serviceHealth.enabled }}
+{{- /* Hub-owned config: not rendered on a gateway-only install. */}}
+{{- if and .Values.hub.enabled .Values.modules.serviceHealth.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

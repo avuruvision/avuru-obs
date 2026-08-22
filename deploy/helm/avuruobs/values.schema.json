@@ -14,6 +14,13 @@
     "hub": {
       "type": "object",
       "properties": {
+        "enabled": { "type": "boolean" },
+        "external": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string" }
+          }
+        },
         "repository": { "type": "string", "minLength": 1 },
         "tag": { "type": "string" },
         "replicas": { "type": "integer", "minimum": 1 },
@@ -23,6 +30,7 @@
     "ui": {
       "type": "object",
       "properties": {
+        "enabled": { "type": "boolean" },
         "repository": { "type": "string", "minLength": 1 },
         "tag": { "type": "string" },
         "replicas": { "type": "integer", "minimum": 1 }
@@ -31,6 +39,7 @@
     "gateway": {
       "type": "object",
       "properties": {
+        "enabled": { "type": "boolean" },
         "replicas": { "type": "integer", "minimum": 1 },
         "tenant": { "type": "string" },
         "tenantByNamespace": {

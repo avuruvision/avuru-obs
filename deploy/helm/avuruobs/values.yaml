@@ -15,6 +15,17 @@ image:
 # Hub: REST API only (the `migrate` subcommand runs the schema hook). The UI is
 # a separate deployable; the hub API is the client-agnostic contract.
 hub:
+  # Install the hub (API + UI backend + migrate Job) in THIS cluster. Turn it
+  # off for a secondary cluster that only ships telemetry to a central instance
+  # (see `external.url` below and deploy/helm/README.md). A hub-less install
+  # must point at the shared store: clickhouse.external.enabled=true.
+  enabled: true
+  # Where the hub lives when this install does not run one. The gateway needs
+  # it to validate per-project ingest keys; without it a hub-less install with
+  # ingest auth on would call a Service that does not exist here.
+  # Example: https://avuruobs.example.com
+  external:
+    url: ""
   repository: ghcr.io/avuruvision/avuru-obs-hub
   tag: "" # defaults to .Chart.AppVersion
   replicas: 1
@@ -37,6 +48,10 @@ hub:
 # UI: static SPA served by nginx, its own pod (separate resources/scaling).
 # Single-origin: the ingress routes `/`→ui and `/api`→hub (no CORS).
 ui:
+  # The UI proxies /api to the hub Service in its own namespace, so it is only
+  # installable where the hub is (the chart refuses ui.enabled without
+  # hub.enabled rather than rendering a pod that 502s).
+  enabled: true
   repository: ghcr.io/avuruvision/avuru-obs-ui
   tag: "" # defaults to .Chart.AppVersion
   replicas: 1
@@ -52,6 +67,10 @@ ui:
 # the same config — override repository/tag to fall back:
 #   otel/opentelemetry-collector-contrib : 0.154.0
 gateway:
+  # The ingest path. A secondary cluster installs this (plus the sensor) and
+  # nothing else; a query-only instance can turn it off and receive telemetry
+  # from elsewhere.
+  enabled: true
   image:
     repository: ghcr.io/avuruvision/avuru-obs-gateway
     tag: "" # defaults to .Chart.AppVersion

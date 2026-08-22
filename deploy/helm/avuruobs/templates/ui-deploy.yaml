@@ -1,3 +1,5 @@
+{{- /* UI-owned: the chart refuses ui.enabled without hub.enabled (component-toggles.yaml). */}}
+{{- if .Values.ui.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -50,3 +52,4 @@ spec:
             periodSeconds: 10
           resources:
             {{- toYaml .Values.ui.resources | nindent 12 }}
+{{- end }}

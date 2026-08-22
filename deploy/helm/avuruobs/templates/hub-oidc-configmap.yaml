@@ -4,7 +4,10 @@
 {{- if and .Values.auth.oidc.enabled (or (not .Values.auth.oidc.issuer) (not .Values.auth.oidc.clientId)) }}
 {{- fail "auth.oidc.enabled requires auth.oidc.issuer and auth.oidc.clientId — the hub refuses an OIDC config without them (fail-loud at startup), which would crash-loop the rollout." }}
 {{- end }}
-{{- if include "avuruobs.oidcEnabled" . }}
+{{- /* Hub-owned config: not rendered on a gateway-only install. The two
+       fail-guards above still run there — a contradictory values file should
+       be reported wherever it is applied. */}}
+{{- if and .Values.hub.enabled (include "avuruobs.oidcEnabled" .) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
