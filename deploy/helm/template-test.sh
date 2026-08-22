@@ -883,7 +883,9 @@ render "${secondary[@]}" --set auth.ingest.mode=enforce >/dev/null 2>&1 \
   && fail "ingest enforce without hub.external.url was accepted (nothing to validate keys against)"
 render "${secondary[@]}" --set auth.ingest.mode=enforce --set hub.external.url=https://obs.example.com >/dev/null 2>&1 \
   && fail "ingest enforce without an explicit internalToken was accepted (a generated one the central hub never saw)"
-ok "four impossible combinations refused at template time"
+render "${secondary[@]}" --set collection.runtimeControl.enabled=true --set sensor.enabled=true >/dev/null 2>&1 \
+  && fail "runtime collection control without a hub was accepted (RBAC for a controller that is not there)"
+ok "five impossible combinations refused at template time"
 
 # With a real hub URL and the central token, the gateway validates against the
 # CENTRAL hub — the one thing that makes ingest keys work across clusters.

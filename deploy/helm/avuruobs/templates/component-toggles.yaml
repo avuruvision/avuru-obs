@@ -20,6 +20,14 @@ schema all stay in the primary cluster.
 {{- fail "ui.enabled requires hub.enabled: the UI proxies /api to the hub Service in this namespace. Install the UI where the hub runs." }}
 {{- end }}
 
+{{- /* Runtime collection control is a HUB API (Settings -> Collection) backed
+       by a ServiceAccount that lets the hub patch this cluster's sensor
+       objects. With no hub here there is nothing to serve it, so the flag
+       would render RBAC for a controller that does not exist. */}}
+{{- if and .Values.collection.runtimeControl.enabled (not .Values.hub.enabled) }}
+{{- fail "collection.runtimeControl.enabled requires hub.enabled — the applier is a hub API; a cluster without a hub has nothing to serve it." }}
+{{- end }}
+
 {{- if not .Values.hub.enabled }}
   {{- /* Without a hub, this install writes telemetry nobody here can read. It
          is only meaningful pointed at the central instance's store. */}}
