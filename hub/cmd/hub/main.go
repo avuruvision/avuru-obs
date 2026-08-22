@@ -328,6 +328,11 @@ func run() error {
 		CollectionApplier:               collectionApplier(collectionRuntimeControlEnabled),
 	})
 
+	// Per-project retention: a background sweep, not a table TTL (see
+	// retention.go). It runs on every install — it is inert until a project
+	// asks for a shorter window than the global one.
+	go runRetentionTrimmer(ctx, provider, gate, time.Duration(envIntOr("AVURUOBS_RETENTION_TRIM_INTERVAL_MINUTES", 60))*time.Minute)
+
 	// The alerting evaluator is a single background loop (see runAlertingEvaluator);
 	// started only when the module is active.
 	if active.Enabled(modules.Alerting) {
