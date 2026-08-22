@@ -2,7 +2,10 @@
 
 - **Date:** 2026-07-27
 - **Author(s):** Berny ryders
-- **Status:** Accepted — Phase 1 (project CRUD) shipped in v0.3; per-project retention, per-project status, and chart component toggles remain. Phase 1 delivery design: [project-management combined spec](../docs/superpowers/specs/2026-07-28-project-management-design.md).
+- **Status:** Accepted — fully delivered. Phase 1 (project CRUD) shipped in
+  v0.3; member projects, per-project retention, per-project status and chart
+  component toggles shipped in v0.6. Phase 1 delivery design:
+  [project-management combined spec](../docs/superpowers/specs/2026-07-28-project-management-design.md).
 
 ## Summary
 
@@ -114,10 +117,52 @@ opt-in for the multi-cluster case.
 
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] `projects` table + store methods + API merge (config/UI/discovered)
-- [ ] Project CRUD API (Admin) + UI (Settings → Projects)
-- [ ] Per-project retention setting + scheduled trim job
-- [ ] Per-project system status (ingest rate + storage estimate)
-- [ ] Chart component toggles + external-ClickHouse values
-- [ ] e2e + helm template tests; docs-align (EN/FR)
+- [x] AEP accepted
+- [x] `projects` table + store methods + API merge (config/UI/discovered) — v0.3
+- [x] Project CRUD API (Admin) + UI (Settings → General) — v0.3
+- [x] **Member projects** (multi-cluster aggregation) — v0.6, PR #106
+- [x] Per-project retention setting + scheduled trim job — v0.6, PR #108
+- [x] Per-project system status (ingest rate + storage estimate) — v0.6, PR #109
+- [x] Chart component toggles + external-ClickHouse values — v0.6, PR #110
+- [x] e2e + helm template tests; docs-align (EN/FR)
+
+## What shipped, where it differs from this AEP
+
+Four decisions moved between writing this and building it. Each is recorded
+here rather than in a commit message, because each is the kind of thing a
+future reader would otherwise re-litigate.
+
+**Member projects were not in the original scope.** The AEP treated a project
+as an isolation boundary and listed cross-project aggregation as a non-goal.
+v0.6 added it anyway, as a READ-TIME union: `resolveTenants` expands membership
+once at the request edge and every store query fans out with `Tenant IN (?)`.
+The non-goal it actually preserved is the important one — an aggregate is a
+convenience over existing permissions, never a way around them: each viewer
+sees only the members they were already granted, and membership is one level
+deep so an expansion can never miss a subtree.
+
+**Retention is one number per project, not per signal.** The AEP said "a
+retention-days setting per project"; the temptation was to mirror the five
+global per-signal windows. One number won: a project that wants less wants
+less of everything, and five numbers would multiply the mutation surface by
+five for a distinction nobody asked for.
+
+**Longer-than-global is refused, not just documented.** The AEP called it a
+documented non-goal. In practice a stored 90 on a 7-day install is a number
+that changes nothing — the shared table TTL drops the rows first — so the API
+answers 400 and names the ceiling instead of accepting a promise it cannot
+keep. The trimmer only ever deletes EARLIER than the install would.
+
+**Per-project bytes are an estimate, and say so.** The AEP suggested reading
+`system.parts`/`system.columns` filtered by `Tenant`. That filter does not
+exist: parts hold every tenant's rows together, and our tables partition by
+date, not tenant. So rows, time bounds and ingest rate are counted exactly with
+the tenant filter, and bytes are apportioned by row share — surfaced as
+`estimatedBytes`, labelled "Size (est.)" with the reason in a footnote rather
+than printed as a measurement.
+
+**Writes on an aggregate answer 409.** Not in the AEP because aggregates were
+not either, but it follows from the same rule: an aggregate owns no rows, so
+every per-tenant WRITE (error triage, ingest keys, profile ingest, a retention
+window) has no single tenant to land in. Each refusal names the member project
+to use instead. Per-member fan-out writes are a later decision.

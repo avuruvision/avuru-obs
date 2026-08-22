@@ -50,7 +50,7 @@ only if the design needs to be pinned down before coding.
 | [2026-07-22](2026-07-22-green-carbon.md) | Green — per-service energy and carbon attribution (Kepler) | Accepted |
 | [2026-07-27](2026-07-27-projects-completion.md) | Projects completion — CRUD, per-project retention, status, chart toggles | Accepted |
 | [2026-07-27](2026-07-27-collection-control-plane.md) | Runtime collection control plane — switch collection from the UI | Draft |
-| [2026-07-27](2026-07-27-wider-ingest-compat.md) | Wider ingest compatibility — Jaeger/Zipkin/Prometheus/Loki + forwarding | Draft |
+| [2026-07-27](2026-07-27-wider-ingest-compat.md) | Wider ingest compatibility — Jaeger/Zipkin/Prometheus/Loki + forwarding | Accepted |
 | [2026-07-27](2026-07-27-auto-tagging.md) | Richer auto-tagging — K8s labels/annotations as business tags | Draft |
 | [2026-07-27](2026-07-27-clients-grafana-cli.md) | Additional clients — Grafana data source + CLI + API tokens | Draft |
 | [2026-07-28](2026-07-28-green-tdp-estimation.md) | Green TDP estimation — modeled energy for RAPL-less nodes | Accepted |
