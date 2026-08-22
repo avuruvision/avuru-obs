@@ -14,7 +14,7 @@ import (
 // bounded by project count so FINAL is cheap (same reasoning as alert_channel).
 func (s *Store) ListProjects(ctx context.Context) ([]storage.Project, error) {
 	rows, err := s.conn.Query(ctx, `
-SELECT Id, Label, Members, CreatedBy, CreatedAt, UpdatedAt
+SELECT Id, Label, Members, RetentionDays, CreatedBy, CreatedAt, UpdatedAt
 FROM project FINAL
 WHERE Deleted = 0
 ORDER BY Id`)
@@ -26,9 +26,13 @@ ORDER BY Id`)
 	var out []storage.Project
 	for rows.Next() {
 		var p storage.Project
-		if err := rows.Scan(&p.ID, &p.Label, &p.Members, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		// RetentionDays is UInt16 on the wire; the driver will not scan it into
+		// an int, so it lands in its own variable (same for GetProject).
+		var retention uint16
+		if err := rows.Scan(&p.ID, &p.Label, &p.Members, &retention, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan project: %w", err)
 		}
+		p.RetentionDays = int(retention)
 		out = append(out, p)
 	}
 	return out, rows.Err()
@@ -37,17 +41,19 @@ ORDER BY Id`)
 // GetProject returns one live project by id, or ErrNotFound (absent or deleted).
 func (s *Store) GetProject(ctx context.Context, id string) (storage.Project, error) {
 	var p storage.Project
+	var retention uint16
 	err := s.conn.QueryRow(ctx, `
-SELECT Id, Label, Members, CreatedBy, CreatedAt, UpdatedAt
+SELECT Id, Label, Members, RetentionDays, CreatedBy, CreatedAt, UpdatedAt
 FROM project FINAL
 WHERE Id = ? AND Deleted = 0`, id).
-		Scan(&p.ID, &p.Label, &p.Members, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt)
+		Scan(&p.ID, &p.Label, &p.Members, &retention, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.Project{}, storage.ErrNotFound
 	}
 	if err != nil {
 		return storage.Project{}, fmt.Errorf("get project: %w", err)
 	}
+	p.RetentionDays = int(retention)
 	return p, nil
 }
 
@@ -61,8 +67,8 @@ func (s *Store) SaveProject(ctx context.Context, p storage.Project) error {
 		members = []string{}
 	}
 	err := s.conn.Exec(ctx, `
-INSERT INTO project (Id, Label, Members, Deleted, CreatedBy, CreatedAt)
-VALUES (?, ?, ?, 0, ?, ?)`, p.ID, p.Label, members, p.CreatedBy, p.CreatedAt)
+INSERT INTO project (Id, Label, Members, RetentionDays, Deleted, CreatedBy, CreatedAt)
+VALUES (?, ?, ?, ?, 0, ?, ?)`, p.ID, p.Label, members, uint16(retentionDays(p)), p.CreatedBy, p.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("save project: %w", err)
 	}
@@ -81,9 +87,22 @@ SELECT count() FROM project FINAL WHERE Id = ? AND Deleted = 0`, id).Scan(&n); e
 		return storage.ErrNotFound
 	}
 	err := s.conn.Exec(ctx, `
-INSERT INTO project (Id, Label, Members, Deleted) VALUES (?, '', [], 1)`, id)
+INSERT INTO project (Id, Label, Members, RetentionDays, Deleted) VALUES (?, '', [], 0, 1)`, id)
 	if err != nil {
 		return fmt.Errorf("delete project: %w", err)
 	}
 	return nil
+}
+
+// retentionDays clamps a project's retention into the UInt16 column. Negative
+// is treated as 0 (inherit the global window) rather than wrapping to 65535 —
+// a validation slip must never turn into "keep this project for 179 years".
+func retentionDays(p storage.Project) int {
+	if p.RetentionDays < 0 {
+		return 0
+	}
+	if p.RetentionDays > 65535 {
+		return 65535
+	}
+	return p.RetentionDays
 }
