@@ -28,7 +28,29 @@ When a release is cut, that block is renamed to the version with its date.
   seconds. Members need not exist yet: an id can be added before its cluster
   ships its first span.
 
+- **A project can keep less than the install does.** Retention was one number
+  for the whole install, so a noisy staging tenant held thirty days of traces
+  because production needed to — the only way out was a second deployment. Any
+  UI-managed project can now be given a shorter window of its own in Settings →
+  General, and a background sweep trims that tenant hourly, scoped by project.
+  It cannot be a ClickHouse TTL: the telemetry tables are shared, and a TTL
+  expression cannot select the rows of one tenant — so the sweep issues bounded
+  lightweight mutations instead, skipping a table with a trim still running and
+  costing one indexed lookup per table once there is nothing left to delete. A
+  window LONGER than the install-wide one is refused rather than accepted and
+  quietly ignored: the shared table TTL would drop those rows first whatever the
+  project asked for. Aggregates are refused too — they own no rows, so a window
+  there would silently keep everything.
+
 ### Fixed
+
+- **The hub reported the retention it was built with, not the one you
+  configured.** `retention.*` reached the migrate Job but never the hub
+  Deployment, so an install keeping 30 days of traces had a hub still answering
+  with the 7-day built-in default — Settings → Storage read that as TTL drift
+  and told operators to re-run a migration that had already worked. Both now
+  render from one chart helper, and a template assertion fails if either side
+  loses it. Same values added to the compose hub service for the same reason.
 
 - **`make version-set` left the hub's embedded chart copy behind.** The hub
   embeds the sensor-relevant chart files (`hub/internal/collection/chart/`) so
