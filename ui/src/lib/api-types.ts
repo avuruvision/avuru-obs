@@ -322,6 +322,9 @@ export interface Project {
   source: "default" | "config" | "db" | "data" | "granted";
   editable?: boolean;
   members?: string[];
+  // Absent or 0: this project inherits the install-wide retention. A positive
+  // value is its own (shorter) window, enforced by the hub's retention trimmer.
+  retentionDays?: number;
 }
 
 export interface ProjectsResponse {
@@ -333,6 +336,7 @@ export interface ProjectsResponse {
 export interface CreateProjectRequest {
   id: string;
   label: string;
+  retentionDays?: number;
 }
 
 // PUT /projects/{id} is a partial update: an omitted field keeps its stored
@@ -340,6 +344,7 @@ export interface CreateProjectRequest {
 export interface UpdateProjectRequest {
   label?: string;
   members?: string[];
+  retentionDays?: number;
 }
 
 // Per-project ingest keys (auth Plan C). List/metadata only ever carries the

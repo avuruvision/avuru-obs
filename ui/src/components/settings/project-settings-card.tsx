@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Info, Layers } from "lucide-react";
+import { Info, Layers, Timer } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -263,6 +263,105 @@ function ProjectMembersCard({ project, all }: { project: Project; all: Project[]
         </div>
       </div>
     </Card>
+  );
+}
+
+// ProjectRetentionSection is the per-project half of the Retention card: this
+// project's own window, or the install-wide one it inherits. It lives beside
+// the global numbers deliberately — a window only makes sense read against the
+// install's, and the hub refuses a longer one (the shared table TTL would drop
+// the rows first regardless).
+export function ProjectRetentionSection({ maxDays }: { maxDays: number }) {
+  const { isAdmin } = useAuth();
+  const { project } = useProject();
+  const { data } = useProjects();
+  const current = data?.projects.find((p) => p.id === project);
+  const editable = !!current?.editable && isAdmin;
+
+  if (!current || !editable) {
+    return (
+      <p className="border-t border-neutral p-4 text-xs text-base-content/70">
+        <span className="font-mono">{project}</span> keeps{" "}
+        {current?.retentionDays
+          ? `${current.retentionDays} days`
+          : "everything above, the install-wide window"}
+        . A shorter, per-project window can be set on UI-managed projects.
+      </p>
+    );
+  }
+  if (isAggregate(current)) {
+    return (
+      <p className="flex items-start gap-2 border-t border-neutral p-4 text-xs text-base-content/70">
+        <Layers className="mt-0.5 h-3.5 w-3.5 shrink-0 text-base-content/50" aria-hidden />
+        An aggregate stores no telemetry of its own — its members do. Set
+        retention on each member project instead.
+      </p>
+    );
+  }
+  return <ProjectRetentionForm key={current.id} project={current} maxDays={maxDays} />;
+}
+
+function ProjectRetentionForm({ project, maxDays }: { project: Project; maxDays: number }) {
+  const update = useUpdateProject();
+  const [days, setDays] = useState(String(project.retentionDays ?? 0));
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  async function save() {
+    setError(null);
+    setSaved(false);
+    const n = Number(days);
+    if (!Number.isInteger(n) || n < 0) {
+      setError("Enter a whole number of days, or 0 to inherit.");
+      return;
+    }
+    try {
+      await update.mutateAsync({ id: project.id, input: { retentionDays: n } });
+      setSaved(true);
+    } catch (e) {
+      setError(errMessage(e, "Failed to save retention"));
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-neutral p-4">
+      <p className="flex items-start gap-2 text-xs text-base-content/70">
+        <Timer className="mt-0.5 h-3.5 w-3.5 shrink-0 text-base-content/50" aria-hidden />
+        Keep this project&apos;s telemetry for fewer days than the install does —
+        a noisy staging project need not hold as much as production. Trimming
+        runs hourly in the background and cannot extend beyond the install-wide
+        window above{maxDays > 0 ? ` (${maxDays} days)` : ""}.
+      </p>
+      <label className="flex flex-col gap-1 text-sm">
+        Keep for (days)
+        <div className="flex gap-2">
+          <input
+            className={inputClass}
+            type="number"
+            min={0}
+            max={maxDays > 0 ? maxDays : undefined}
+            aria-label="Project retention in days"
+            value={days}
+            onChange={(e) => {
+              setDays(e.target.value);
+              setSaved(false);
+            }}
+          />
+          <Button type="button" variant="primary" size="sm" onClick={save} disabled={update.isPending}>
+            Save retention
+          </Button>
+        </div>
+        <span className="text-xs text-base-content/50">
+          0 inherits the install-wide retention shown above.
+        </span>
+      </label>
+      {error && <p className="text-xs text-error">{error}</p>}
+      {saved && !error && (
+        <p className="text-xs text-base-content/60">
+          Saved. Older telemetry is removed on the next hourly sweep.
+        </p>
+      )}
+    </div>
   );
 }
 

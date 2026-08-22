@@ -1,7 +1,10 @@
 "use client";
 
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { ProjectSettingsCard } from "@/components/settings/project-settings-card";
+import {
+  ProjectSettingsCard,
+  ProjectRetentionSection,
+} from "@/components/settings/project-settings-card";
 import { IngestKeysCard } from "@/components/settings/ingest-keys-card";
 import { useSystemStatus } from "@/hooks/use-system-status";
 
@@ -35,6 +38,12 @@ export function GeneralTab() {
               </div>
             ))}
           </div>
+          {/* The install-wide windows above are the ceiling; a project may keep
+              less. Both live in one card so the two numbers are never read
+              apart. */}
+          <ProjectRetentionSection
+            maxDays={status.signals.reduce((m, s) => Math.max(m, s.retentionDays), 0)}
+          />
         </Card>
       )}
     </div>
