@@ -760,11 +760,22 @@ export interface GreenServiceEnergy {
   points?: GreenEnergyPoint[];
 }
 
+// One row of the per-node energy table: every KNOWN node, absent ones at 0 Wh.
+// quality is "measured" | "estimated" | "absent", or "" for energy carrying no
+// avuruobs_quality attribute (pre-AEP data — never assumed measured).
+export interface GreenNodeEnergy {
+  node: string;
+  wh: number;
+  estimatedWh?: number;
+  quality: string;
+}
+
 export interface GreenSummaryResponse {
   window: { start: string; end: string };
   factors: GreenFactors;
   totals: GreenTotals;
   services: GreenServiceEnergy[];
+  nodes?: GreenNodeEnergy[];
 }
 
 export interface GreenBurnPoint {
@@ -785,11 +796,18 @@ export interface GreenBudget {
   // Fraction of usedKgCO2e that came from modeled (tdp-estimator) rather
   // than measured energy — omitted when 0.
   estimatedShare?: number;
+  // Whether a threshold crossing on THIS budget can actually be delivered.
+  // Each value names a different fix: enable the alerting module, give the
+  // budget a channel, or correct the channel name it points at.
+  notifications: "ok" | "alerting-off" | "no-channel" | "unknown-channel";
 }
 
 export interface GreenBudgetsResponse {
   window: { start: string; end: string };
   budgets: GreenBudget[];
+  // Configuration problems that leave a budget inert without making it look
+  // broken (today: a group nothing rolls up to).
+  warnings?: string[];
 }
 
 // Runtime collection overlay (design/2026-07-27-collection-control-plane.md).

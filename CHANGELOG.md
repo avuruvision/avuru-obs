@@ -28,6 +28,40 @@ When a release is cut, that block is renamed to the version with its date.
   seconds. Members need not exist yet: an id can be added before its cluster
   ships its first span.
 
+- **Which nodes the energy numbers actually come from.** `/green` counted its
+  nodes — known, measured, estimated, absent — but never said which node spent
+  what, so a fleet where one node reports and eleven do not looked the same as
+  a fleet where all twelve do. The coverage panel now carries a per-node table:
+  one row per known node with its Wh, the measured/estimated split kept visible
+  per row, and nodes reporting nothing listed at 0 Wh instead of omitted. The
+  node names ride the coverage query that was already running, so the table can
+  never disagree with the counts above it, and the summary still costs the
+  screen a single request.
+- **A carbon budget now tells you whether it can actually reach anyone.** A
+  budget with no notification channel, or one pointing at a channel since
+  deleted, used to render exactly like a wired one — the footnote only checked
+  whether the alerting module was on. Each budget now resolves its own
+  deliverability (`ok`, alerting off, no channel, unknown channel) against the
+  same channel set the evaluator walks, so the screen cannot promise a delivery
+  the tick would drop, and every state names its own fix.
+- **Budgets aimed at a group that does not exist say so.** A budget whose
+  service-health group nothing rolls up to evaluates forever at zero and can
+  never fire, which on a dashboard is indistinguishable from a quiet month. The
+  budgets response now returns warnings for those, and the evaluator logs the
+  same finding once an hour per budget. "Known" means the configured groups
+  (chart and UI) plus the groups services actually landed in, so namespace
+  auto-groups stay legitimate targets and a zero-config install never warns
+  about its own working budgets.
+- **A runbook for validating green against real RAPL hardware.**
+  [docs/runbooks/green-rapl-validation.md](docs/runbooks/green-rapl-validation.md)
+  is the procedure the two green AEPs were missing: confirm a node exposes
+  RAPL, pin the sensor to it, then check every hop — Kepler's endpoint, the
+  metric names and their labels, measured-quality rows in ClickHouse, the API,
+  the screen — because a silent upstream rename is the likeliest failure and it
+  fails by showing nothing. Stage 5 measures the estimator's error band against
+  Kepler on the same node, so the ±30-50% figure can be replaced with an
+  observed one.
+
 - **Bring the senders you already run.** The drop-in promise stopped at OTLP:
   a fleet with Jaeger, Zipkin, Prometheus remote-write or Loki senders had to
   re-point or re-instrument them before it could try avuru-obs at all. The

@@ -239,7 +239,8 @@ ORDER BY node, quality, t`,
 // the same k8s.node.name resource attribute the whole infra view keys on)
 // cross-referenced against which of them reported measured vs estimated
 // green energy. A node with neither is absent — the gap the tdp-estimation
-// AEP makes visible for the first time.
+// AEP makes visible for the first time. The known-node names ride the same
+// single query (Nodes), so the per-node table can never drift from the counts.
 func (s *Store) NodeCoverage(ctx context.Context, q storage.GreenQuery) (storage.NodeCoverage, error) {
 	if len(q.NodeEnergyMetrics) == 0 {
 		return storage.NodeCoverage{}, nil
@@ -269,7 +270,8 @@ known AS (
 SELECT
     (SELECT count() FROM known) AS known_nodes,
     (SELECT count(DISTINCT node) FROM energy WHERE quality = 'measured') AS measured_nodes,
-    (SELECT count(DISTINCT node) FROM energy WHERE quality = 'estimated') AS estimated_nodes`,
+    (SELECT count(DISTINCT node) FROM energy WHERE quality = 'estimated') AS estimated_nodes,
+    (SELECT arraySort(groupArray(node)) FROM known) AS known_names`,
 		inList(len(q.NodeEnergyMetrics)))
 
 	tenants := tenantsOrDefault(q.Tenants, q.Tenant)
@@ -283,11 +285,14 @@ SELECT
 	// count() returns ClickHouse UInt64 — the driver requires scanning into
 	// *uint64, not *int (discovered by actually running this against a real
 	// ClickHouse, not assumed).
-	var known, measured, estimated uint64
-	if err := row.Scan(&known, &measured, &estimated); err != nil {
+	var (
+		known, measured, estimated uint64
+		names                      []string
+	)
+	if err := row.Scan(&known, &measured, &estimated, &names); err != nil {
 		return storage.NodeCoverage{}, fmt.Errorf("node coverage: %w", err)
 	}
-	cov := storage.NodeCoverage{KnownNodes: int(known), MeasuredNodes: int(measured), EstimatedNodes: int(estimated)}
+	cov := storage.NodeCoverage{KnownNodes: int(known), MeasuredNodes: int(measured), EstimatedNodes: int(estimated), Nodes: names}
 	cov.AbsentNodes = cov.KnownNodes - cov.MeasuredNodes - cov.EstimatedNodes
 	if cov.AbsentNodes < 0 {
 		cov.AbsentNodes = 0

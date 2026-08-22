@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/alerting"
+	"github.com/avuru/avuru-obs/hub/internal/api"
 	"github.com/avuru/avuru-obs/hub/internal/green"
 	"github.com/avuru/avuru-obs/hub/internal/health"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
@@ -242,9 +243,12 @@ func TestEvaluateOnceSkipsGreenWhenHookNil(t *testing.T) {
 // compute once; a tick past the window recomputes.
 func TestBudgetUsageCacheThrottlesRecompute(t *testing.T) {
 	var calls int
-	counting := func(_ context.Context, _ storage.Store, _ health.Config, _ green.Config, _ string, _ time.Time) (map[string]float64, error) {
+	counting := func(_ context.Context, _ storage.Store, _ health.Config, _ green.Config, _ string, _ time.Time) (api.BudgetUsage, error) {
 		calls++
-		return map[string]float64{"shop": 0.9}, nil
+		return api.BudgetUsage{
+			UsedKgCO2e:  map[string]float64{"shop": 0.9},
+			KnownGroups: map[string]bool{"shop": true},
+		}, nil
 	}
 	gb := newGreenBudgets(
 		modules.Set{modules.Green: true, modules.Alerting: true},
@@ -326,5 +330,64 @@ func TestEvaluateOnceChannelLessBudgetIsDashboardOnly(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("crossing not recorded in history: %+v", fake.AppendedHistory)
+	}
+}
+
+// TestGreenBudgetUnknownGroupWarnsOnceAnHour: a budget aimed at a group
+// nothing rolls up to is warn-logged — it can never fire, and on a dashboard
+// that is indistinguishable from a quiet month. But the tick runs every 30s,
+// so the same misconfiguration must not be re-logged on every pass.
+func TestGreenBudgetUnknownGroupWarnsOnceAnHour(t *testing.T) {
+	now := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	fake := &storagetest.Fake{
+		Services:        []storage.ServiceStats{{Name: "checkout", SpanCount: 10}},
+		Labels:          []storage.ServiceLabel{{Service: "checkout", K8sNamespace: "shop"}},
+		ServiceEnergies: []storage.ServiceEnergy{{Service: "checkout", WattHours: 900}},
+	}
+	cfg := green.Config{
+		GridIntensity: 500, PUE: 2, BudgetCheckIntervalSec: 1, // never cache across ticks
+		Budgets: []green.Budget{
+			{Name: "live", Group: "shop", MonthlyKgCO2e: 1, WarnRatio: 0.8},
+			{Name: "ghost", Group: "team-that-left", MonthlyKgCO2e: 1, WarnRatio: 0.8},
+		},
+	}
+	gb := newGreenBudgets(
+		modules.Set{modules.Green: true, modules.Alerting: true},
+		func() green.Config { return cfg },
+		newBudgetUsageCache(defaultBudgetUsage),
+	)
+
+	var logbuf bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logbuf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	defer slog.SetDefault(old)
+
+	run := func(at time.Time) {
+		if err := evaluateOnce(context.Background(), func() storage.Store { return fake }, health.Default(), alerting.Default(), &captureNotifier{}, nil, gb, at); err != nil {
+			t.Fatalf("evaluateOnce: %v", err)
+		}
+	}
+	count := func() int { return strings.Count(logbuf.String(), "unknown group") }
+
+	run(now)
+	if count() != 1 {
+		t.Fatalf("first tick logged %d unknown-group warnings, want 1:\n%s", count(), logbuf.String())
+	}
+	if !strings.Contains(logbuf.String(), "team-that-left") {
+		t.Errorf("warning does not name the offending group:\n%s", logbuf.String())
+	}
+	if strings.Contains(logbuf.String(), `budget \"live\"`) {
+		t.Errorf("the live budget must not be warned about:\n%s", logbuf.String())
+	}
+
+	run(now.Add(30 * time.Second))
+	run(now.Add(59 * time.Minute))
+	if count() != 1 {
+		t.Fatalf("warning repeated inside the hour (%d):\n%s", count(), logbuf.String())
+	}
+
+	run(now.Add(61 * time.Minute))
+	if count() != 2 {
+		t.Fatalf("warning not repeated after the hour (%d):\n%s", count(), logbuf.String())
 	}
 }
