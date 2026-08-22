@@ -96,13 +96,15 @@ func TestNetworkEdgesTenantIsolation(t *testing.T) {
 
 	insertSum(t, store, base.Add(1*time.Minute), networkFlowMetric,
 		map[string]string{"avuru.tenant": "acme"}, attrs, 1000)
+	insertSum(t, store, base.Add(2*time.Minute), networkFlowMetric,
+		map[string]string{}, attrs, 500) // Tenant defaults to "default"
 
 	edges, err := store.NetworkEdges(ctx, storage.ServiceQuery{Tenant: "default", Range: tr})
 	if err != nil {
 		t.Fatalf("NetworkEdges(default): %v", err)
 	}
-	if len(edges) != 0 {
-		t.Errorf("tenant leak: default sees %v, want none", edges)
+	if len(edges) != 1 || edges[0].Bytes != 500 {
+		t.Errorf("tenant leak: default sees %v, want one web->cart with 500 bytes", edges)
 	}
 
 	edges, err = store.NetworkEdges(ctx, storage.ServiceQuery{Tenant: "acme", Range: tr})
@@ -111,5 +113,15 @@ func TestNetworkEdgesTenantIsolation(t *testing.T) {
 	}
 	if len(edges) != 1 || edges[0].Source != "web" || edges[0].Target != "cart" || edges[0].Bytes != 1000 {
 		t.Errorf("acme edges = %v, want one web->cart with 1000 bytes", edges)
+	}
+
+	// Merged set: the same edge from two member tenants collapses into one row
+	// with the summed byte volume.
+	edges, err = store.NetworkEdges(ctx, storage.ServiceQuery{Tenant: "default", Tenants: []string{"default", "acme"}, Range: tr})
+	if err != nil {
+		t.Fatalf("NetworkEdges(merged): %v", err)
+	}
+	if len(edges) != 1 || edges[0].Bytes != 1500 {
+		t.Errorf("merged edges = %v, want one web->cart with 1500 bytes", edges)
 	}
 }

@@ -79,7 +79,7 @@ WITH series_deltas AS (
         %s                                               AS sid,
         greatest(max(Value) - min(Value), 0)             AS joules
     FROM otel_metrics_sum
-    WHERE Tenant = ? AND TimeUnix >= ? AND TimeUnix < ?
+    WHERE Tenant IN (?) AND TimeUnix >= ? AND TimeUnix < ?
       AND MetricName IN (%s)
     GROUP BY pod, ns, quality, t, sid
 ),
@@ -89,7 +89,7 @@ pod_workloads AS (
         ResourceAttributes['k8s.namespace.name'] AS ns,
         anyLast(%s) AS workload
     FROM otel_metrics_gauge
-    WHERE Tenant = ? AND TimeUnix >= ? AND TimeUnix < ?
+    WHERE Tenant IN (?) AND TimeUnix >= ? AND TimeUnix < ?
       AND MetricName = ?
       AND ResourceAttributes['k8s.pod.name'] != ''
     GROUP BY pod, ns
@@ -101,11 +101,15 @@ GROUP BY service, quality, t
 ORDER BY service, quality, t`,
 		int(bucket.Seconds()), greenSeriesID, inList(len(q.PodEnergyMetrics)), workloadExpr)
 
-	args := []any{q.PodNameAttr, q.PodNamespaceAttr, q.Tenant, q.Range.Start, q.Range.End}
+	// Both CTEs filter on the SAME resolved set: energy rows and the
+	// pod→workload map must cover the same tenants or the join drops energy
+	// into the unattributed bucket.
+	tenants := tenantsOrDefault(q.Tenants, q.Tenant)
+	args := []any{q.PodNameAttr, q.PodNamespaceAttr, tenants, q.Range.Start, q.Range.End}
 	for _, m := range q.PodEnergyMetrics {
 		args = append(args, m)
 	}
-	args = append(args, q.Tenant, q.Range.Start, q.Range.End, metricPodCPU)
+	args = append(args, tenants, q.Range.Start, q.Range.End, metricPodCPU)
 
 	rows, err := s.conn.Query(ctx, query, args...)
 	if err != nil {
@@ -174,7 +178,7 @@ FROM (
         %s                                               AS sid,
         greatest(max(Value) - min(Value), 0)             AS joules
     FROM otel_metrics_sum
-    WHERE Tenant = ? AND TimeUnix >= ? AND TimeUnix < ?
+    WHERE Tenant IN (?) AND TimeUnix >= ? AND TimeUnix < ?
       AND MetricName IN (%s)
       AND `+nodeAttr+` != ''
     GROUP BY node, quality, t, sid
@@ -183,7 +187,7 @@ GROUP BY node, quality, t
 ORDER BY node, quality, t`,
 		int(bucket.Seconds()), greenSeriesID, inList(len(q.NodeEnergyMetrics)))
 
-	args := []any{q.Tenant, q.Range.Start, q.Range.End}
+	args := []any{tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
 	for _, m := range q.NodeEnergyMetrics {
 		args = append(args, m)
 	}
@@ -247,7 +251,7 @@ WITH energy AS (
         `+nodeAttr+`                    AS node,
         Attributes['avuruobs_quality']  AS quality
     FROM otel_metrics_sum
-    WHERE Tenant = ? AND TimeUnix >= ? AND TimeUnix < ?
+    WHERE Tenant IN (?) AND TimeUnix >= ? AND TimeUnix < ?
       AND MetricName IN (%s)
       AND `+nodeAttr+` != ''
 ),
@@ -258,7 +262,7 @@ known AS (
     -- count as known, or it would double as both "known" and invisible.
     SELECT DISTINCT `+nodeAttr+` AS node
     FROM otel_metrics_gauge
-    WHERE Tenant = ? AND TimeUnix >= ? AND TimeUnix < ?
+    WHERE Tenant IN (?) AND TimeUnix >= ? AND TimeUnix < ?
       AND `+nodeAttr+` != ''
     UNION DISTINCT
     SELECT node FROM energy
@@ -270,11 +274,12 @@ SELECT
     (SELECT arraySort(groupArray(node)) FROM known) AS known_names`,
 		inList(len(q.NodeEnergyMetrics)))
 
-	args := []any{q.Tenant, q.Range.Start, q.Range.End}
+	tenants := tenantsOrDefault(q.Tenants, q.Tenant)
+	args := []any{tenants, q.Range.Start, q.Range.End}
 	for _, m := range q.NodeEnergyMetrics {
 		args = append(args, m)
 	}
-	args = append(args, q.Tenant, q.Range.Start, q.Range.End)
+	args = append(args, tenants, q.Range.Start, q.Range.End)
 
 	row := s.conn.QueryRow(ctx, query, args...)
 	// count() returns ClickHouse UInt64 — the driver requires scanning into

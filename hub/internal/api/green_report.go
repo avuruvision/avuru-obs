@@ -83,15 +83,15 @@ func (a *API) handleGreenReport(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	cfg := a.greenConfig()
-	ten, err := a.project(r, auth.RoleViewer)
+	ten, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return err
 	}
-	rows, err := store.ServiceEnergy(r.Context(), greenQuery(cfg, ten, tr, 0))
+	rows, err := store.ServiceEnergy(r.Context(), greenQuery(cfg, ten, tenants, tr, 0))
 	if err != nil {
 		return err
 	}
-	requests, err := a.serviceRequests(r, store, ten, tr)
+	requests, err := a.serviceRequests(r, store, ten, tenants, tr)
 	if err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func (a *API) handleGreenReport(w http.ResponseWriter, r *http.Request) error {
 // carries factor provenance (operator-set vs bundled + dataset vintage)
 // verbatim from green.EffectiveIntensity.
 func buildMethodology(cfg green.Config, f greenFactors, tr storage.TimeRange, totals greenTotalsDTO) greenMethodologyDTO {
-	q := greenQuery(cfg, "", storage.TimeRange{}, 0) // re-defaulted metric names
+	q := greenQuery(cfg, "", nil, storage.TimeRange{}, 0) // re-defaulted metric names
 	metrics := append(append([]string(nil), q.PodEnergyMetrics...), q.NodeEnergyMetrics...)
 	note := "no energy measured in the period"
 	if total := totals.AttributedWh + totals.UnattributedWh; total > 0 {

@@ -41,9 +41,9 @@ SELECT
     count()                                                                              AS c,
     countIf(` + errorSpanExpr("") + `)                                                   AS e
 FROM otel_traces
-WHERE Tenant = ?
+WHERE Tenant IN (?)
   AND Timestamp >= ? AND Timestamp < ?`
-	args := []any{q.Range.Start.Unix(), bucketSec, durBuckets, q.Tenant, q.Range.Start, q.Range.End}
+	args := []any{q.Range.Start.Unix(), bucketSec, durBuckets, tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
 	if q.Service != "" {
 		query += ` AND ServiceName = ? AND SpanKind IN ('Server', 'Consumer')`
 		args = append(args, q.Service)

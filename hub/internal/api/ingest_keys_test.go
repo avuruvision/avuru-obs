@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
 func TestCreateIngestKeyReturnsSecretOnce(t *testing.T) {
@@ -94,5 +96,24 @@ func TestIngestKeyCRUDAdminOnly(t *testing.T) {
 		if w.Code != http.StatusForbidden {
 			t.Fatalf("%s %s = %d, want 403 (admin-only)", tc.method, tc.path, w.Code)
 		}
+	}
+}
+
+// An ingest key stamps its project onto everything it authenticates. On an
+// aggregate that would write rows under an id no member reads — the union
+// reads members, never the aggregate itself — so the key is refused where it
+// would be useless.
+func TestCreateIngestKeyRefusedOnAggregate(t *testing.T) {
+	mux, c, f := adminMux(t)
+	f.Projects = map[string]storage.Project{
+		"estate": {ID: "estate", Members: []string{"prod-eu"}},
+	}
+
+	w := doBody(mux, "POST", "/api/v1/projects/estate/keys", c, `{"name":"prod-exporter"}`)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 (body %s)", w.Code, w.Body)
+	}
+	if len(f.IngestKeys) != 0 {
+		t.Fatalf("key created anyway: %+v", f.IngestKeys)
 	}
 }

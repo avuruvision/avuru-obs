@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -137,4 +138,112 @@ func TestProjectsList(t *testing.T) {
 	if src, ok := found["staging"]; !ok || src != "config" {
 		t.Errorf("projects staging = %q (present=%v), want config", src, ok)
 	}
+}
+
+// TestAggregateProjectUnionsMembers is the member-projects story end to end: an
+// admin creates a project, adds the two seeded tenants as members, and every
+// read through it answers with the union — while the members themselves stay
+// isolated (TestTenantIsolation above still holds).
+//
+// It writes real state, so it cleans up after itself: the project is deleted on
+// the way out whether the assertions passed or not.
+func TestAggregateProjectUnionsMembers(t *testing.T) {
+	admin, err := loginAs("admin", adminPassword)
+	if err != nil {
+		t.Fatalf("admin login: %v", err)
+	}
+	const agg = "e2e-estate"
+
+	do := func(method, path, body string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(method, hubURL+path, strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := admin.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+
+	resp := do(http.MethodPost, "/api/v1/projects", fmt.Sprintf(`{"id":%q,"label":"E2E estate"}`, agg))
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
+		t.Fatalf("create project: %s", resp.Status)
+	}
+	t.Cleanup(func() {
+		r := do(http.MethodDelete, "/api/v1/projects/"+agg, "")
+		r.Body.Close()
+	})
+
+	resp = do(http.MethodPut, "/api/v1/projects/"+agg, `{"members":["default","staging"]}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("set members: %s", resp.Status)
+	}
+
+	// The membership memo is per-replica with a 30s TTL; the write invalidates
+	// this replica's copy, so the union is readable immediately.
+	got := serviceNamesAs(t, admin, agg)
+	if !got[defaultSvc] || !got[stagingSvc] {
+		t.Fatalf("aggregate services = %v, want both %s and %s", got, defaultSvc, stagingSvc)
+	}
+
+	// By-id reads span the members too — the same tenant slice reaches the
+	// single-entity queries.
+	for _, id := range []string{seededTraceID, stagingTraceID} {
+		req, _ := http.NewRequest(http.MethodGet, hubURL+"/api/v1/traces/"+id, nil)
+		req.Header.Set("X-Avuru-Tenant", agg)
+		r, err := admin.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		if r.StatusCode != http.StatusOK {
+			t.Errorf("trace %s through the aggregate: got %s, want 200", id, r.Status)
+		}
+	}
+
+	// An aggregate stores nothing of its own, so per-tenant writes are refused
+	// rather than landing where no member would read them.
+	r := do(http.MethodPost, "/api/v1/projects/"+agg+"/keys", `{"name":"nope"}`)
+	r.Body.Close()
+	if r.StatusCode != http.StatusConflict {
+		t.Errorf("ingest key on an aggregate: got %s, want 409", r.Status)
+	}
+
+	// Members keep their own boundaries.
+	if names := serviceNamesAs(t, admin, "staging"); names[defaultSvc] {
+		t.Errorf("staging still leaks the default service after aggregation: %v", names)
+	}
+}
+
+// serviceNamesAs is serviceNames for a specific client (the admin session).
+func serviceNamesAs(t *testing.T, client *http.Client, tenant string) map[string]bool {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet,
+		hubURL+"/api/v1/services?start="+queryStart()+"&end="+queryEnd(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Avuru-Tenant", tenant)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("listing services (tenant %q): %v", tenant, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("listing services (tenant %q): %s", tenant, resp.Status)
+	}
+	var out serviceListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode services: %v", err)
+	}
+	names := map[string]bool{}
+	for _, s := range out.Services {
+		names[s.Name] = true
+	}
+	return names
 }

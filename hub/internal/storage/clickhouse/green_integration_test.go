@@ -406,3 +406,118 @@ func TestNodeCoverage(t *testing.T) {
 		t.Errorf("NodeCoverage.Nodes = %v, want the sorted known universe", cov.Nodes)
 	}
 }
+
+// greenQueryTenants is greenQuery with an explicit resolved tenant set.
+func greenQueryTenants(tenant string, tenants []string, start, end time.Time, interval time.Duration) storage.GreenQuery {
+	q := greenQuery(tenant, start, end, interval)
+	q.Tenants = tenants
+	return q
+}
+
+// TestMultiTenantGreenReads proves the Tenant IN (?) fan-out for the three
+// green reads. Energy is additive, so an aggregate project's number is the
+// sum over its members — including a node reporting under two tenants, whose
+// per-tenant deltas add up rather than one shadowing the other.
+func TestMultiTenantGreenReads(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	interval := 10 * time.Minute
+	base := greenBase(interval)
+	end := base.Add(interval)
+	both := []string{"m1", "m2"}
+
+	m1 := map[string]string{"avuru.tenant": "m1"}
+	m2 := map[string]string{"avuru.tenant": "m2"}
+	m1NodeA := map[string]string{"avuru.tenant": "m1", "k8s.node.name": "node-a"}
+	m2NodeA := map[string]string{"avuru.tenant": "m2", "k8s.node.name": "node-a"}
+	m2NodeB := map[string]string{"avuru.tenant": "m2", "k8s.node.name": "node-b"}
+
+	// Pod energy + the kubeletstats rows that attribute it to a workload.
+	insertSum(t, store, base.Add(1*time.Minute), testPodEnergyA, m1, podAttrs("web-1", "shop", nil), 0)
+	insertSum(t, store, base.Add(4*time.Minute), testPodEnergyA, m1, podAttrs("web-1", "shop", nil), 720)
+	insertSum(t, store, base.Add(1*time.Minute), testPodEnergyA, m2, podAttrs("api-1", "shop", nil), 0)
+	insertSum(t, store, base.Add(4*time.Minute), testPodEnergyA, m2, podAttrs("api-1", "shop", nil), 1440)
+	insertGauge(t, store, base.Add(2*time.Minute), metricPodCPU, map[string]string{
+		"avuru.tenant": "m1", "k8s.node.name": "node-a", "k8s.pod.name": "web-1",
+		"k8s.namespace.name": "shop", "k8s.deployment.name": "web",
+	}, 0.2)
+	insertGauge(t, store, base.Add(2*time.Minute), metricPodCPU, map[string]string{
+		"avuru.tenant": "m2", "k8s.node.name": "node-b", "k8s.pod.name": "api-1",
+		"k8s.namespace.name": "shop", "k8s.deployment.name": "api",
+	}, 0.4)
+
+	// node-a reports in BOTH tenants (measured); node-b only in m2 (estimated).
+	measured := map[string]string{"avuruobs_quality": "measured"}
+	estimated := map[string]string{"avuruobs_quality": "estimated"}
+	insertSum(t, store, base.Add(1*time.Minute), testNodeEnergyA, m1NodeA, measured, 0)
+	insertSum(t, store, base.Add(4*time.Minute), testNodeEnergyA, m1NodeA, measured, 3600)
+	insertSum(t, store, base.Add(1*time.Minute), testNodeEnergyA, m2NodeA, measured, 0)
+	insertSum(t, store, base.Add(4*time.Minute), testNodeEnergyA, m2NodeA, measured, 1800)
+	insertSum(t, store, base.Add(1*time.Minute), testNodeEnergyA, m2NodeB, estimated, 0)
+	insertSum(t, store, base.Add(4*time.Minute), testNodeEnergyA, m2NodeB, estimated, 7200)
+
+	t.Run("ServiceEnergy", func(t *testing.T) {
+		one, err := store.ServiceEnergy(ctx, greenQueryTenants("m1", []string{"m1"}, base, end, interval))
+		if err != nil {
+			t.Fatalf("ServiceEnergy one: %v", err)
+		}
+		if len(one) != 1 || one[0].Service != "web" {
+			t.Fatalf("single-tenant service energy = %+v, want just web", one)
+		}
+		wantWh(t, "m1 web", one[0].WattHours, 720)
+
+		merged, err := store.ServiceEnergy(ctx, greenQueryTenants("m1", both, base, end, interval))
+		if err != nil {
+			t.Fatalf("ServiceEnergy merged: %v", err)
+		}
+		if len(merged) != 2 || merged[0].Service != "api" || merged[1].Service != "web" {
+			t.Fatalf("merged service energy = %+v, want api then web (heaviest first)", merged)
+		}
+		wantWh(t, "merged api", merged[0].WattHours, 1440)
+		wantWh(t, "merged web", merged[1].WattHours, 720)
+	})
+
+	t.Run("NodeEnergy", func(t *testing.T) {
+		one, err := store.NodeEnergy(ctx, greenQueryTenants("m1", []string{"m1"}, base, end, interval))
+		if err != nil {
+			t.Fatalf("NodeEnergy one: %v", err)
+		}
+		if len(one) != 1 || one[0].Node != "node-a" {
+			t.Fatalf("single-tenant node energy = %+v, want node-a", one)
+		}
+		wantWh(t, "m1 node-a", one[0].WattHours, 3600)
+
+		merged, err := store.NodeEnergy(ctx, greenQueryTenants("m1", both, base, end, interval))
+		if err != nil {
+			t.Fatalf("NodeEnergy merged: %v", err)
+		}
+		if len(merged) != 2 || merged[0].Node != "node-b" || merged[1].Node != "node-a" {
+			t.Fatalf("merged node energy = %+v, want node-b then node-a", merged)
+		}
+		wantWh(t, "merged node-b", merged[0].WattHours, 7200)
+		// node-a's two per-tenant series each keep their own delta and sum:
+		// the series identity includes ResourceAttributes, so they never
+		// cross-cancel through max−min.
+		wantWh(t, "merged node-a", merged[1].WattHours, 3600+1800)
+	})
+
+	t.Run("NodeCoverage", func(t *testing.T) {
+		one, err := store.NodeCoverage(ctx, greenQueryTenants("m1", []string{"m1"}, base, end, interval))
+		if err != nil {
+			t.Fatalf("NodeCoverage one: %v", err)
+		}
+		if one.KnownNodes != 1 || one.MeasuredNodes != 1 || one.EstimatedNodes != 0 || one.AbsentNodes != 0 {
+			t.Fatalf("single-tenant coverage = %+v, want {Known:1 Measured:1}", one)
+		}
+
+		merged, err := store.NodeCoverage(ctx, greenQueryTenants("m1", both, base, end, interval))
+		if err != nil {
+			t.Fatalf("NodeCoverage merged: %v", err)
+		}
+		// node-a is measured in both tenants — counted once, not twice.
+		if merged.KnownNodes != 2 || merged.MeasuredNodes != 1 || merged.EstimatedNodes != 1 || merged.AbsentNodes != 0 {
+			t.Errorf("merged coverage = %+v, want {Known:2 Measured:1 Estimated:1 Absent:0}", merged)
+		}
+	})
+}

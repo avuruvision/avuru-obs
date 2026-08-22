@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Info } from "lucide-react";
+import { Info, Layers } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +10,7 @@ import { useProject } from "@/lib/project-context";
 import {
   useProjects,
   useCreateProject,
-  useRenameProject,
+  useUpdateProject,
   useDeleteProject,
 } from "@/hooks/use-projects";
 import { ApiError } from "@/lib/api";
@@ -53,7 +53,10 @@ export function ProjectSettingsCard() {
       <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle>Project</CardTitle>
-          {sourceBadge(current.source)}
+          <span className="flex items-center gap-2">
+            {isAggregate(current) && <Badge tone="primary">aggregate</Badge>}
+            {sourceBadge(current.source)}
+          </span>
         </CardHeader>
         <div className="flex flex-col gap-3 border-t border-neutral p-4">
           <div className="text-sm">
@@ -76,6 +79,14 @@ export function ProjectSettingsCard() {
         </div>
       </Card>
 
+      {editable && (
+        <ProjectMembersCard
+          key={current.id}
+          project={current}
+          all={data?.projects ?? []}
+        />
+      )}
+
       {isAdmin && <NewProjectCard />}
 
       {editable && <DangerZone project={current} />}
@@ -84,14 +95,14 @@ export function ProjectSettingsCard() {
 }
 
 function ProjectLabelForm({ project }: { project: Project }) {
-  const rename = useRenameProject();
+  const update = useUpdateProject();
   const [label, setLabel] = useState(project.label ?? "");
   const [error, setError] = useState<string | null>(null);
 
   async function save() {
     setError(null);
     try {
-      await rename.mutateAsync({ id: project.id, input: { label: label.trim() } });
+      await update.mutateAsync({ id: project.id, input: { label: label.trim() } });
     } catch (e) {
       setError(errMessage(e, "Failed to rename project"));
     }
@@ -108,13 +119,150 @@ function ProjectLabelForm({ project }: { project: Project }) {
             maxLength={200}
             onChange={(e) => setLabel(e.target.value)}
           />
-          <Button type="button" variant="primary" size="sm" onClick={save} disabled={rename.isPending}>
+          <Button type="button" variant="primary" size="sm" onClick={save} disabled={update.isPending}>
             Save
           </Button>
         </div>
       </label>
       {error && <p className="text-xs text-error">{error}</p>}
     </div>
+  );
+}
+
+// A project is an aggregate as soon as it has members — the hub derives it the
+// same way (resolveTenants), so there is no separate flag to drift.
+function isAggregate(p: Project): boolean {
+  return (p.members?.length ?? 0) > 0;
+}
+
+// ProjectMembersCard turns a db project into an aggregate: it reads the union
+// of its members' telemetry, filtered to what the viewer may see. Candidates
+// are every OTHER project that is not itself an aggregate — membership is one
+// level deep, and the hub refuses deeper with a 409.
+function ProjectMembersCard({ project, all }: { project: Project; all: Project[] }) {
+  const update = useUpdateProject();
+  const [members, setMembers] = useState<string[]>(project.members ?? []);
+  const [extra, setExtra] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const candidates = all.filter((p) => p.id !== project.id && !isAggregate(p));
+  // Ids already chosen that no longer appear in the list (a cluster that has
+  // not shipped data yet) must stay visible, or saving would silently drop them.
+  const unlisted = members.filter((m) => !candidates.some((c) => c.id === m));
+
+  function toggle(id: string, on: boolean) {
+    setSaved(false);
+    setMembers((cur) => (on ? [...cur, id] : cur.filter((m) => m !== id)));
+  }
+
+  function addUnlisted() {
+    const id = extra.trim();
+    if (!id || members.includes(id)) return;
+    setMembers((cur) => [...cur, id]);
+    setExtra("");
+    setSaved(false);
+  }
+
+  async function save() {
+    setError(null);
+    try {
+      await update.mutateAsync({ id: project.id, input: { members } });
+      setSaved(true);
+    } catch (e) {
+      setError(errMessage(e, "Failed to save members"));
+    }
+  }
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader>
+        <CardTitle>Member projects</CardTitle>
+        {members.length > 0 && <Badge tone="primary">{members.length} selected</Badge>}
+      </CardHeader>
+      <div className="flex flex-col gap-3 border-t border-neutral p-4">
+        <p className="flex items-start gap-2 text-xs text-base-content/70">
+          <Layers className="mt-0.5 h-3.5 w-3.5 shrink-0 text-base-content/50" aria-hidden />
+          With members selected, this project shows the union of their telemetry —
+          one screen across clusters. It stores nothing of its own: error triage
+          and ingest keys stay on the member projects, and each viewer sees only
+          the members they have access to. Clearing every member turns it back
+          into an ordinary project.
+        </p>
+        {candidates.length === 0 && unlisted.length === 0 ? (
+          <p className="text-xs text-base-content/50">
+            No other projects yet. Create one, or add an id below before its
+            cluster reports.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {candidates.map((p) => (
+              <li key={p.id} className="flex items-center justify-between gap-3 text-sm">
+                <span className="truncate">
+                  {p.label || p.id}{" "}
+                  {p.label && <span className="font-mono text-xs text-base-content/50">{p.id}</span>}
+                </span>
+                <input
+                  type="checkbox"
+                  className="toggle toggle-primary toggle-sm"
+                  aria-label={`Include ${p.id}`}
+                  checked={members.includes(p.id)}
+                  onChange={(e) => toggle(p.id, e.target.checked)}
+                />
+              </li>
+            ))}
+            {unlisted.map((id) => (
+              <li key={id} className="flex items-center justify-between gap-3 text-sm">
+                <span className="truncate font-mono text-xs">
+                  {id} <span className="text-base-content/50">(no data yet)</span>
+                </span>
+                <input
+                  type="checkbox"
+                  className="toggle toggle-primary toggle-sm"
+                  aria-label={`Include ${id}`}
+                  checked
+                  onChange={(e) => toggle(id, e.target.checked)}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+        <label className="flex flex-col gap-1 text-sm">
+          Add a project id
+          <div className="flex gap-2">
+            <input
+              className={inputClass}
+              value={extra}
+              placeholder="prod-eu"
+              onChange={(e) => setExtra(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addUnlisted();
+                }
+              }}
+            />
+            <Button type="button" variant="secondary" size="sm" onClick={addUnlisted}>
+              Add
+            </Button>
+          </div>
+          <span className="text-xs text-base-content/50">
+            For a cluster that has not reported yet — it appears here once it does.
+          </span>
+        </label>
+        {error && <p className="text-xs text-error">{error}</p>}
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="primary" size="sm" onClick={save} disabled={update.isPending}>
+            Save members
+          </Button>
+          {saved && !error && (
+            <span className="text-xs text-base-content/60">
+              Saved. Other replicas follow within 30 seconds.
+            </span>
+          )}
+        </div>
+      </div>
+    </Card>
   );
 }
 

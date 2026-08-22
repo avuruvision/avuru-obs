@@ -13,6 +13,21 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **One project can now span several clusters.** A UI-managed project gains
+  *member projects*: pick the projects it aggregates in Settings → General, and
+  every screen — services, map, traces, logs, metrics, errors, profiles, green,
+  alert history — answers for the union instead of a single tenant. Nothing
+  about the members changes: they stay separately queryable and separately
+  granted, and each viewer sees only the members they already had access to, so
+  an aggregate is a convenience over existing permissions and never a way
+  around them. Membership is one level deep (an aggregate cannot contain
+  another) and it is a read-time view, so the writes that need one tenant —
+  error triage, ingest keys, profile ingest — are refused on an aggregate with
+  a message naming the member to use instead. A membership change applies on
+  the replica that made it immediately and reaches the others within thirty
+  seconds. Members need not exist yet: an id can be added before its cluster
+  ships its first span.
+
 - **Which nodes the energy numbers actually come from.** `/green` counted its
   nodes — known, measured, estimated, absent — but never said which node spent
   what, so a fleet where one node reports and eleven do not looked the same as
