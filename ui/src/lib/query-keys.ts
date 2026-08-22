@@ -1,7 +1,9 @@
 // Query-key convention: [project, signal, scope, filters] — the project
 // (tenant) LEADS every data key so switching projects can never serve
 // another project's cached data (agent_docs/ui_patterns.md). Instance-global
-// keys (status, systemStatus, projects) carry no project element.
+// keys (status, projects) carry no project element. systemStatus USED to be one
+// of them; it now returns the selected project's usage alongside the
+// instance-wide health, so it leads with the project like any other data key.
 
 export interface TimeParams {
   start: string;
@@ -10,7 +12,10 @@ export interface TimeParams {
 
 export const queryKeys = {
   status: ["status"] as const,
-  systemStatus: ["system", "status"] as const,
+  // Instance-wide health AND the selected project's usage come back together,
+  // so this key is project-scoped: without it, switching projects would serve
+  // the previous project's footprint from cache.
+  systemStatus: (p: string) => [p, "system", "status"] as const,
   projects: ["projects"] as const,
   capabilities: ["capabilities"] as const,
   // The role/permission matrix — instance-global, like capabilities, and

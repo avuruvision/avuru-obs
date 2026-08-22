@@ -113,6 +113,20 @@ When a release is cut, that block is renamed to the version with its date.
   project asked for. Aggregates are refused too — they own no rows, so a window
   there would silently keep everything.
 
+- **What one project holds, not just what the install holds.** Settings →
+  Storage answered "how much data is there" for the whole install, which on a
+  shared instance is the wrong question: nobody could tell whether staging or
+  production was the reason the disk filled, or whether a project still ships
+  data at all. The tab now shows the selected project beside the instance-wide
+  table — rows, an estimated size, the ingest rate over the last hour, how far
+  back its data goes, and the retention window that actually applies to it
+  (its own, or the install's, labelled either way). An aggregate reports the
+  union of the members you may see and names them, and when its members keep
+  different windows it says "varies" rather than inventing an average. Sizes
+  are the one estimate: ClickHouse parts hold every project's rows together, so
+  a project's share can only be apportioned by row count — the column says so
+  instead of printing an exact-looking number.
+
 ### Fixed
 
 - **The hub reported the retention it was built with, not the one you

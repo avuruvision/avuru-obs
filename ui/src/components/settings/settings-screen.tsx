@@ -85,7 +85,8 @@ export function SettingsScreen() {
       {tab === "storage" && (
         <div className="flex flex-col gap-2">
           <p className="text-xs text-base-content/45">
-            Instance-wide (all projects) — storage is shared.
+            The install as a whole (storage is shared), and what the selected
+            project holds inside it.
           </p>
           <StorageTab />
         </div>
