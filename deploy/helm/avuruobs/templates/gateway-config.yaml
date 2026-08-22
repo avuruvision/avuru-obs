@@ -1,3 +1,5 @@
+{{- /* Ingest path: off for a query-only instance that receives telemetry from elsewhere. */}}
+{{- if .Values.gateway.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -238,7 +240,7 @@ data:
       # verdicts serving through a hub blip so a control-plane outage cannot
       # drop traffic.
       avuruingestauth:
-        hub_validate_url: http://{{ include "avuruobs.fullname" . }}-hub:80/internal/v1/ingest-keys/validate
+        hub_validate_url: {{ include "avuruobs.hubValidateUrl" . }}
         internal_token: ${env:AVURUOBS_INGEST_INTERNAL_TOKEN}
         mode: {{ .Values.auth.ingest.mode | quote }}
         cache_ttl: {{ .Values.auth.ingest.cacheTTL | quote }}
@@ -282,3 +284,4 @@ data:
           processors: [{{ $tenantStage }}batch]
           exporters: [clickhouse{{ $fwdM }}]
     {{- end }}
+{{- end }}

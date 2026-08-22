@@ -84,6 +84,11 @@ Beyond the core signals, the day-2 layer:
   sender that lies about its tenant lands where its key says. Default `log`
   mode changes nothing about the pipeline, so the drop-in promise survives the
   upgrade.
+- **One instance, many clusters** *(v0.6)* — a second cluster installs the
+  ingest half of the chart (`hub.enabled=false`) and writes to the central
+  instance's store under its own project; one screen already spans them. No
+  federation, no second UI, no second login — and the combinations that cannot
+  work are refused at install time instead of rolling out and failing quietly.
 - **A project keeps only what it is worth keeping** *(v0.6)* — set a shorter
   retention window on any UI-managed project: a noisy staging tenant need not
   hold thirty days of traces because production does. The hub trims that

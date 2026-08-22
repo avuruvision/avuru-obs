@@ -1,3 +1,5 @@
+{{- /* Hub-owned: skipped entirely on a gateway-only (secondary cluster) install. */}}
+{{- if .Values.hub.enabled }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -55,3 +57,4 @@ spec:
             - name: AVURUOBS_MIGRATE_WAIT_SECONDS
               value: {{ .Values.migrate.clickhouseWaitSeconds | quote }}
             {{- include "avuruobs.retentionEnv" . | nindent 12 }}
+{{- end }}

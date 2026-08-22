@@ -1,4 +1,9 @@
 {{- if .Values.ingress.enabled }}
+{{- $mainHost := or .Values.hub.enabled .Values.ui.enabled }}
+{{- $sentryHost := and (include "avuruobs.sentryEnabled" .) .Values.ingress.sentryHost }}
+{{- if not (or $mainHost $sentryHost) }}
+{{- fail "ingress.enabled=true but there is nothing to route: this install runs neither the hub nor the UI, and Sentry ingest (which has its own host) is off. An Ingress with no rules is rejected by the API server." }}
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -18,11 +23,16 @@ spec:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   rules:
+    {{- /* The main host serves the hub and the UI. A gateway-only install runs
+           neither, and a host rule with no paths is rejected outright — so the
+           whole rule goes, not just its backends. */}}
+    {{- if $mainHost }}
     - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
           # Single-origin split: API + health to the hub, everything else to
           # the UI (most-specific paths first).
+          {{- if .Values.hub.enabled }}
           - path: /api
             pathType: Prefix
             backend:
@@ -37,6 +47,8 @@ spec:
                 name: {{ include "avuruobs.fullname" . }}-hub
                 port:
                   number: 80
+          {{- end }}
+          {{- if .Values.ui.enabled }}
           - path: /
             pathType: Prefix
             backend:
@@ -44,7 +56,9 @@ spec:
                 name: {{ include "avuruobs.fullname" . }}-ui
                 port:
                   number: 80
-    {{- if and (include "avuruobs.sentryEnabled" .) .Values.ingress.sentryHost }}
+          {{- end }}
+    {{- end }}
+    {{- if $sentryHost }}
     # Sentry SDK ingest gets its OWN host: the SDKs POST to
     # /api/<project>/envelope/, which on the main host would be swallowed by the
     # /api -> hub rule above. The project id is part of the path, so no static

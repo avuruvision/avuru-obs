@@ -127,6 +127,24 @@ When a release is cut, that block is renamed to the version with its date.
   a project's share can only be apportioned by row count — the column says so
   instead of printing an exact-looking number.
 
+- **One chart, one instance, many clusters.** Every component now has a switch
+  — `hub.enabled`, `ui.enabled`, `gateway.enabled` beside the sensor's — so a
+  second cluster installs the ingest half alone and writes to the central
+  instance's ClickHouse under its own project. Until now the only way to
+  observe two clusters was two instances, each with its own store, UI and
+  login; with member projects (above) one screen already spans them, and this
+  is what makes the *install* match. The reductions are real: a secondary
+  cluster renders no hub, no UI, no auth Secret and — deliberately — no migrate
+  Job, because two clusters migrating one database is a race. Combinations that
+  cannot work are refused at `helm template` time with a sentence saying why:
+  a UI whose hub is elsewhere (its nginx proxies `/api` to a Service in its own
+  namespace), a hub-less install writing to the in-chart ClickHouse nothing
+  would ever query, ingest keys with no hub to validate against, and an Ingress
+  with nothing left to route. With keys on, the gateway validates against
+  `hub.external.url` and the central hub's own internal token — the chart will
+  not generate a local one, because a token the central hub has never seen
+  fails closed and looks like a broken sender.
+
 ### Fixed
 
 - **The hub reported the retention it was built with, not the one you

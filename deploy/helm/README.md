@@ -28,6 +28,11 @@ Contributors installing local changes use the chart in-tree instead:
 | ui | Deployment + Service (+ Ingress) | static SPA, single-origin `/api` → hub |
 | migrate | Job (Helm hook) | `hub migrate` on `post-install,post-upgrade` |
 
+Every component can be switched off — `hub.enabled`, `ui.enabled`,
+`gateway.enabled`, `sensor.enabled` — so one chart installs both a full
+instance and a cluster that only ships telemetry to one (see
+[Several clusters, one instance](#several-clusters-one-instance)).
+
 No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale.
 
 ## Key values
@@ -35,6 +40,8 @@ No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale.
 | Value | Default | Purpose |
 |---|---|---|
 | `image.registry` | `""` | Prefix every image (e.g. `harbor.example.com`) for a private registry |
+| `hub.enabled` / `ui.enabled` / `gateway.enabled` / `sensor.enabled` | `true` | Install a subset. A secondary cluster runs gateway(+sensor) only; a query-only instance runs hub+UI only |
+| `hub.external.url` | `""` | Where the hub is when this install does not run one — the gateway validates ingest keys against it |
 | `clickhouse.external.enabled` | `false` | BYO ClickHouse — set `.address` + `.existingSecret` |
 | `clickhouse.persistence.storageClassName` | `""` | `""` = cluster default StorageClass |
 | `clickhouse.persistence.size` | `50Gi` | PVC size |
@@ -297,6 +304,64 @@ Checking a protocol before you commit: `tools/compatsend` sends one real
 fixture per protocol (`-proto jaeger|zipkin|promrw|promrw-v1|loki`, `-key` for
 an ingest key) against any install — the same sender the compose
 (`make e2e-compat`) and kind gates use.
+
+## Several clusters, one instance
+
+One instance, many clusters: each cluster runs the ingest half of the chart and
+writes to the central ClickHouse under its own project. Nothing is federated —
+there is one store, and a project is how a cluster's telemetry stays
+identifiable inside it.
+
+**Central cluster** — the full install, plus a project per cluster so the
+switcher lists them before their first span arrives:
+
+```bash
+helm install avuruobs deploy/helm/avuruobs \
+  --set projects='{prod-eu,prod-us}'
+```
+
+**Each secondary cluster** — gateway (+ sensor), pointed at the shared store:
+
+```bash
+helm install avuruobs deploy/helm/avuruobs \
+  --set hub.enabled=false --set ui.enabled=false \
+  --set clickhouse.external.enabled=true \
+  --set clickhouse.external.address=clickhouse.central.example.com:9000 \
+  --set clickhouse.external.existingSecret=clickhouse-password \
+  --set gateway.tenant=prod-eu
+```
+
+`gateway.tenant` is what makes the telemetry identifiable: it stamps
+`avuru.tenant` on everything passing through, and the central UI shows it under
+that project. Give each cluster a different one.
+
+With **ingest keys** on (`auth.ingest.mode` ≠ `off`), a secondary cluster also
+needs to reach the hub that issues them, and to share its internal token:
+
+```bash
+  --set hub.external.url=https://avuruobs.example.com \
+  --set auth.ingest.internalToken=<the central hub's token>
+```
+
+The token is the one in the central cluster's `<release>-ingest` Secret
+(`internal-token`). The chart refuses the combination without it rather than
+generating a local one the central hub has never seen — every validation would
+fail closed, and the symptom (all telemetry rejected) would point at the wrong
+thing.
+
+What the secondary cluster does NOT get: the migrate Job (the schema belongs to
+the central instance — two clusters migrating one database is a race), the auth
+Secret, and any hub config. The chart refuses the combinations that cannot
+work — `ui.enabled` without a hub, or a hub-less install writing to the
+in-chart ClickHouse — at `helm template` time, with a sentence saying why.
+
+A **query-only** instance is the mirror image, for a cluster that receives
+telemetry from elsewhere and runs nothing of its own:
+
+```bash
+helm install avuruobs deploy/helm/avuruobs \
+  --set gateway.enabled=false --set sensor.enabled=false
+```
 
 ## Downstream consumption
 

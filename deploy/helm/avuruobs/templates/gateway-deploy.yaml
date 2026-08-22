@@ -1,3 +1,5 @@
+{{- /* Ingest path: off for a query-only instance that receives telemetry from elsewhere. */}}
+{{- if .Values.gateway.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -107,3 +109,4 @@ spec:
         - name: config
           configMap:
             name: {{ include "avuruobs.fullname" . }}-gateway
+{{- end }}

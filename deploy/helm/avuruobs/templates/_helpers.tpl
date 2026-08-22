@@ -96,6 +96,19 @@ otel
   value: {{ include "avuruobs.activeModules" . | quote }}
 {{- end -}}
 
+{{/* Where the gateway validates ingest keys. In a full install that is the hub
+     Service in this namespace; on a gateway-only (secondary cluster) install
+     the hub lives elsewhere and hub.external.url says where — component-toggles
+     .yaml refuses the combination without it, so this never renders an empty
+     host. */}}
+{{- define "avuruobs.hubValidateUrl" -}}
+{{- if .Values.hub.enabled -}}
+http://{{ include "avuruobs.fullname" . }}-hub:80/internal/v1/ingest-keys/validate
+{{- else -}}
+{{ trimSuffix "/" .Values.hub.external.url }}/internal/v1/ingest-keys/validate
+{{- end -}}
+{{- end -}}
+
 {{/* Global retention, in days per signal. BOTH the migrator and the hub need
      it: the migrator turns it into table TTLs, and the hub reports it (Settings
      → Storage compares configured against enforced) and uses it as the ceiling

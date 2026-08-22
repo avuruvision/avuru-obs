@@ -1,9 +1,19 @@
-Avuru Obs is installed.
+Avuru Obs is installed{{ if not .Values.hub.enabled }} (ingest only — no hub or UI in this cluster){{ end }}.
+
+{{- if .Values.gateway.enabled }}
 
 Point your OTLP exporters at the gateway (the ONLY change to migrate off Jaeger):
 
   OTEL_EXPORTER_OTLP_ENDPOINT = http://{{ include "avuruobs.fullname" . }}-gateway:4318   # HTTP
   (or {{ include "avuruobs.fullname" . }}-gateway:4317 for gRPC)
+{{- end }}
+{{- if not .Values.hub.enabled }}
+
+This cluster writes to the shared ClickHouse at {{ .Values.clickhouse.external.address }}
+under project "{{ default "default" .Values.gateway.tenant }}". Query it from the central
+instance — switch to that project there; nothing else here serves an API.
+{{- else }}
+{{- if .Values.ui.enabled }}
 
 Open the UI (separate static deployable; single-origin /api -> hub via ingress):
 {{- if .Values.ingress.enabled }}
@@ -13,12 +23,19 @@ Open the UI (separate static deployable; single-origin /api -> hub via ingress):
   http://localhost:8080/
   (port-forward svc/{{ include "avuruobs.fullname" . }}-hub for the raw API)
 {{- end }}
+{{- else }}
+
+UI: disabled — the hub API is still here:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "avuruobs.fullname" . }}-hub 8080:80
+{{- end }}
 
 Schema migrations run automatically via the `{{ include "avuruobs.fullname" . }}-migrate`
 hook (post-install / post-upgrade){{ if .Values.hub.autoMigrate }}, and the hub repairs the schema itself if
 that hook is ever skipped (a timed-out `--wait` does exactly that){{ end }}. Confirm with:
   kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "avuruobs.fullname" . }}-hub | grep 'clickhouse schema ready'
-Retention: traces {{ .Values.retention.traces }}d, logs {{ .Values.retention.logs }}d.
+Retention: traces {{ .Values.retention.traces }}d, logs {{ .Values.retention.logs }}d
+(a single project can be given a shorter window in Settings -> General).
+{{- end }}
 {{- if include "avuruobs.sentryEnabled" . }}
 
 Sentry SDK ingest: ENABLED. Point an existing SDK here by changing only its DSN
@@ -55,12 +72,15 @@ ClickHouse: EXTERNAL ({{ .Values.clickhouse.external.address }}).
 
 ClickHouse: in-chart single-node StatefulSet (persistence {{ if .Values.clickhouse.persistence.enabled }}{{ .Values.clickhouse.persistence.size }}{{ else }}DISABLED (ephemeral){{ end }}).
 {{- end }}
-{{- if not .Values.auth.enabled }}
+{{- /* Login and SSO notes are about the hub. A gateway-only install has no
+       auth Secret and no login page to describe — its credentials live in the
+       cluster that runs the hub. */}}
+{{- if and .Values.hub.enabled (not .Values.auth.enabled) }}
 
 NOTE: the UI ships open (no auth). Enforce authentication at your ingress
 (oauth2-proxy / Keycloak) before exposing it beyond a trusted network.
 {{- end }}
-{{- if .Values.auth.enabled }}
+{{- if and .Values.hub.enabled .Values.auth.enabled }}
 Login: user `admin`. Retrieve the bootstrap password with:
   kubectl -n {{ .Release.Namespace }} get secret {{ .Values.auth.existingSecret | default (printf "%s-auth" (include "avuruobs.fullname" .)) }} -o jsonpath='{.data.admin-password}' | base64 -d
 NOTE: if you front the hub with your own proxy, it must preserve the Host

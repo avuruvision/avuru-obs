@@ -1,3 +1,5 @@
+{{- /* Hub-owned: skipped entirely on a gateway-only (secondary cluster) install. */}}
+{{- if .Values.hub.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -14,3 +16,4 @@ spec:
     - name: http
       port: 80
       targetPort: http
+{{- end }}

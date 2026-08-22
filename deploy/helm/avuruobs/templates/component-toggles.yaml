@@ -1,0 +1,50 @@
+{{- /*
+Component-toggle validation. This template renders NOTHING — it exists so a
+contradictory combination fails at `helm template` time with a sentence, rather
+than installing a set of pods that cannot talk to each other.
+
+The shape it enables (design/2026-07-27-projects-completion.md): a secondary
+cluster installs `gateway` (+ `sensor`) only, pointed at the central instance's
+ClickHouse, and ships telemetry to it under its own project. The hub, UI and
+schema all stay in the primary cluster.
+*/ -}}
+
+{{- if not (or .Values.hub.enabled .Values.gateway.enabled .Values.sensor.enabled) }}
+{{- fail "nothing to install: enable at least one of hub.enabled, gateway.enabled, sensor.enabled." }}
+{{- end }}
+
+{{- /* The UI's nginx proxies /api to <release>-hub in ITS OWN namespace by
+       name. Without a hub here that pod renders fine and 502s on every API
+       call — a working-looking install with no data. */}}
+{{- if and .Values.ui.enabled (not .Values.hub.enabled) }}
+{{- fail "ui.enabled requires hub.enabled: the UI proxies /api to the hub Service in this namespace. Install the UI where the hub runs." }}
+{{- end }}
+
+{{- /* Runtime collection control is a HUB API (Settings -> Collection) backed
+       by a ServiceAccount that lets the hub patch this cluster's sensor
+       objects. With no hub here there is nothing to serve it, so the flag
+       would render RBAC for a controller that does not exist. */}}
+{{- if and .Values.collection.runtimeControl.enabled (not .Values.hub.enabled) }}
+{{- fail "collection.runtimeControl.enabled requires hub.enabled — the applier is a hub API; a cluster without a hub has nothing to serve it." }}
+{{- end }}
+
+{{- if not .Values.hub.enabled }}
+  {{- /* Without a hub, this install writes telemetry nobody here can read. It
+         is only meaningful pointed at the central instance's store. */}}
+  {{- if not .Values.clickhouse.external.enabled }}
+  {{- fail "hub.enabled=false requires clickhouse.external.enabled=true: a hub-less install must write to the shared ClickHouse, not to one nothing queries." }}
+  {{- end }}
+  {{- if ne .Values.auth.ingest.mode "off" }}
+    {{- /* The gateway validates keys against the hub's control-plane endpoint.
+           With no hub in this namespace it must be told where the real one is. */}}
+    {{- if and .Values.gateway.enabled (not .Values.hub.external.url) }}
+    {{- fail "hub.enabled=false with auth.ingest.mode != off requires hub.external.url: the gateway has no hub Service here to validate ingest keys against." }}
+    {{- end }}
+    {{- /* The internal token authenticates gateway→hub validation calls. A
+           generated one would be this cluster's, and the central hub has never
+           seen it — so every validation would fail closed. */}}
+    {{- if not .Values.auth.ingest.internalToken }}
+    {{- fail "hub.enabled=false with auth.ingest.mode != off requires auth.ingest.internalToken: it must be the token the CENTRAL hub knows, and the chart cannot generate that here." }}
+    {{- end }}
+  {{- end }}
+{{- end }}
