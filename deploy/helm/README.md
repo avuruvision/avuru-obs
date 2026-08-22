@@ -40,6 +40,12 @@ No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale.
 | `clickhouse.persistence.size` | `50Gi` | PVC size |
 | `modules.logs.enabled` / `modules.infraMetrics.enabled` / `modules.profiling.enabled` / `modules.errorTracking.enabled` | `true` | Run a signal family, or not — one switch for schema + API + pipeline + collection + UI (see Modules) |
 | `gateway.sentry.enabled` / `ingress.sentryHost` | `false` / `""` | Accept existing Sentry SDKs (needs the error-tracking + logs modules); give the ingest its own host |
+| `gateway.receivers.jaeger.enabled` | `false` | Jaeger gRPC (`:14250`) + thrift-HTTP (`:14268`). UDP/thrift is deliberately not offered — no auth hook, and jaeger-agent is deprecated upstream |
+| `gateway.receivers.zipkin.enabled` | `false` | Zipkin JSON/proto (`:9411`) |
+| `gateway.receivers.prometheusRemoteWrite.enabled` | `false` | Prometheus remote-write **v2** (`:9291`); also needs `modules.infraMetrics`. A v1 sender is refused with `415` rather than dropped silently |
+| `gateway.receivers.loki.enabled` | `false` | Loki push (`:3100`, Loki's own port so senders change hostname only); also needs `modules.logs` |
+| `gateway.forward.otlp.enabled` / `.endpoint` | `false` / `""` | Dual-write to a second OTLP backend during a migration — `protocol` (`grpc`\|`http`), `insecure`, `headers`, `signals` |
+| `gateway.forward.kafka.enabled` / `.brokers` | `false` / `[]` | Dual-write to Kafka — `topics` per signal, `encoding`, `tls`, and SASL **only** via `sasl.existingSecret` (keys `sasl-username` / `sasl-password`), never inline |
 | `retention.traces` / `retention.logs` | `7` / `3` | Per-signal TTL in days |
 | `ingress.enabled` / `ingress.host` | `false` / `avuruobs.local` | Expose the hub UI |
 | `auth.enabled` | `true` | Login + per-project RBAC, secure by default (bootstrap `admin` password in the release Secret — see the install NOTES) |
@@ -225,6 +231,73 @@ watch actual PVC/backend growth over one full retention window, and adjust —
 raising retention raises disk roughly linearly. The sensor's own CPU/memory
 scales with the number of processes per node, not with retention.
 
+## Migrating from another backend (non-OTLP senders)
+
+Every receiver below is off by default and adds a Service port; nothing else
+about the install changes. Enabled receivers go through the **same** tenant
+stage as OTLP, so `auth.ingest.mode: enforce` and per-project keys apply
+identically whatever protocol the data arrived on — there is no side door.
+
+The known limitation, stated once: a legacy sender that cannot set request
+headers has nowhere to put its ingest key. Under `enforce` such a sender is
+rejected. Give that environment its own gateway with `gateway.tenant` set, or
+keep `auth.ingest.mode: log` for it.
+
+```bash
+# From Jaeger — collector-compatible ports; senders change the endpoint only.
+helm upgrade avuruobs ... --reuse-values --set gateway.receivers.jaeger.enabled=true
+#   jaeger-client gRPC   -> avuruobs-gateway:14250
+#   thrift over HTTP     -> http://avuruobs-gateway:14268/api/traces
+
+# From Zipkin / Brave / OpenCensus.
+helm upgrade avuruobs ... --reuse-values --set gateway.receivers.zipkin.enabled=true
+#   -> http://avuruobs-gateway:9411/api/v2/spans
+
+# From Prometheus remote_write (v2 only; needs modules.infraMetrics).
+helm upgrade avuruobs ... --reuse-values --set gateway.receivers.prometheusRemoteWrite.enabled=true
+#   prometheus.yml:
+#     remote_write:
+#       - url: http://avuruobs-gateway:9291/api/v1/write
+#         headers: { Authorization: "Bearer avuruk_..." }   # required under enforce
+
+# From Loki / Promtail (needs modules.logs). Same port Loki uses, so the
+# sender's hostname is the only edit.
+helm upgrade avuruobs ... --reuse-values --set gateway.receivers.loki.enabled=true
+#   -> http://avuruobs-gateway:3100/loki/api/v1/push
+```
+
+Loki stream labels land as log **record** attributes, not resource identity —
+a pushed line is found by its body or attributes, not by the service filter,
+which is backed by `ServiceName`.
+
+Only Service ports are opened. The ingress rule routes `/api` to the hub, so
+exposing a receiver path publicly needs its own host — the same pattern as
+`ingress.sentryHost`; in-cluster senders need nothing.
+
+### Dual-writing while you evaluate
+
+Adopting a backend should be reversible, and evaluating one usually means
+running both for a while:
+
+```bash
+helm upgrade avuruobs ... --reuse-values \
+  --set gateway.forward.otlp.enabled=true \
+  --set gateway.forward.otlp.endpoint=old-collector.observability:4317 \
+  --set gateway.forward.otlp.insecure=true \
+  --set "gateway.forward.otlp.signals={traces,logs}"
+```
+
+Forwarders always render with a bounded sending queue, so a legacy target
+that goes down cannot backpressure the ClickHouse path — the failure mode
+that makes dual-write untrustworthy. `enabled` with an empty
+`endpoint`/`brokers` fails the render loudly rather than silently forwarding
+nowhere.
+
+Checking a protocol before you commit: `tools/compatsend` sends one real
+fixture per protocol (`-proto jaeger|zipkin|promrw|promrw-v1|loki`, `-key` for
+an ingest key) against any install — the same sender the compose
+(`make e2e-compat`) and kind gates use.
+
 ## Downstream consumption
 
 This chart is the canonical artifact. An enterprise overlay (separate repo)
@@ -236,3 +309,9 @@ the chart.
 
 `make e2e-helm` (from repo root) spins a kind cluster, installs the chart,
 seeds deterministic OTLP, and asserts traces + correlated logs via the hub API.
+The same install enables all four compat receivers and OTLP forwarding, sends
+one real fixture per protocol through the chart-rendered ports, asserts the
+rows in ClickHouse, and greps a stand-in legacy backend's logs for the
+forwarded trace — so the compatibility claim above is CI-enforced, not
+asserted. `make e2e-compat` is the faster compose equivalent (opt-in), and
+additionally covers enforce-mode rejection and the remote-write v1 `415`.

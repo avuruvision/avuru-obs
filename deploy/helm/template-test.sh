@@ -149,6 +149,109 @@ grep -q 'number: 4319' <<<"$out" || fail "sentry ingress backend port missing"
 grep -q 'name: test-avuruobs-hub' <<<"$out" || fail "hub backend lost from the main host"
 ok "dedicated sentry host routes to the gateway, hub keeps /api"
 
+echo "== wider ingest: all receivers off by default"
+out="$(render)"
+for port in 14250 14268 9411 9291 3100; do
+  grep -q "$port" <<<"$out" && fail "receiver port $port rendered by default"
+done
+grep -q 'receivers: \[otlp\]$' <<<"$out" || fail "default pipelines gained a receiver"
+ok "no wider-ingest receiver, port or pipeline entry by default"
+
+echo "== wider ingest: each flag opens exactly its own surface"
+out="$(render --set gateway.receivers.jaeger.enabled=true)"
+grep -q 'endpoint: 0.0.0.0:14250' <<<"$out" || fail "jaeger grpc endpoint missing"
+grep -q 'endpoint: 0.0.0.0:14268' <<<"$out" || fail "jaeger thrift_http endpoint missing"
+grep -q 'receivers: \[otlp, jaeger\]' <<<"$out" || fail "jaeger not wired into traces"
+grep -q 'containerPort: 14250' <<<"$out" || fail "jaeger-grpc containerPort missing"
+grep -q 'targetPort: jaeger-thrift' <<<"$out" || fail "jaeger-thrift Service port missing"
+grep -qE '68(31|32)' <<<"$out" && fail "jaeger UDP thrift rendered (deliberately unsupported)"
+grep -q '9411' <<<"$out" && fail "zipkin surface rendered by the jaeger flag"
+ok "jaeger: grpc+thrift_http, ports, traces pipeline — and nothing else"
+
+out="$(render --set gateway.receivers.zipkin.enabled=true)"
+grep -q 'endpoint: 0.0.0.0:9411' <<<"$out" || fail "zipkin endpoint missing"
+grep -q 'receivers: \[otlp, zipkin\]' <<<"$out" || fail "zipkin not wired into traces"
+grep -q 'targetPort: zipkin' <<<"$out" || fail "zipkin Service port missing"
+ok "zipkin: endpoint, ports, traces pipeline"
+
+out="$(render --set gateway.receivers.prometheusRemoteWrite.enabled=true)"
+grep -q 'endpoint: 0.0.0.0:9291' <<<"$out" || fail "prometheusremotewrite endpoint missing"
+grep -q 'receivers: \[otlp, prometheusremotewrite\]' <<<"$out" || fail "prom-rw not wired into metrics"
+grep -q 'targetPort: prom-rw' <<<"$out" || fail "prom-rw Service port missing"
+ok "prometheus remote-write: endpoint, ports, metrics pipeline"
+
+out="$(render --set gateway.receivers.loki.enabled=true)"
+grep -q 'endpoint: 0.0.0.0:3100' <<<"$out" || fail "loki endpoint missing"
+grep -q 'use_incoming_timestamp: true' <<<"$out" || fail "loki incoming-timestamp missing"
+grep -q 'receivers: \[otlp, loki\]' <<<"$out" || fail "loki not wired into logs"
+grep -q 'targetPort: loki-push' <<<"$out" || fail "loki Service port missing"
+ok "loki: endpoint, ports, logs pipeline"
+
+echo "== wider ingest: module-gated receivers disappear with their module"
+out="$(render --set gateway.receivers.prometheusRemoteWrite.enabled=true --set modules.infraMetrics.enabled=false)"
+grep -q '9291' <<<"$out" && fail "prom-rw surface survived infraMetrics off"
+out="$(render --set gateway.receivers.loki.enabled=true --set modules.logs.enabled=false)"
+grep -q '3100' <<<"$out" && fail "loki surface survived logs off"
+ok "prom-rw needs infra-metrics, loki needs logs"
+
+echo "== wider ingest: every enabled receiver carries the authenticator"
+out="$(render --set gateway.receivers.jaeger.enabled=true --set gateway.receivers.zipkin.enabled=true \
+  --set gateway.receivers.prometheusRemoteWrite.enabled=true --set gateway.receivers.loki.enabled=true)"
+# default auth.ingest.mode=log wires the authenticator; every listener (otlp
+# grpc+http, jaeger grpc+thrift, zipkin, prom-rw, loki) must carry it.
+n=$(grep -c 'authenticator: avuruingestauth' <<<"$out")
+[ "$n" = "7" ] || fail "expected 7 authenticator refs across all listeners (got $n)"
+out="$(render --set gateway.receivers.jaeger.enabled=true --set gateway.receivers.zipkin.enabled=true \
+  --set gateway.receivers.prometheusRemoteWrite.enabled=true --set gateway.receivers.loki.enabled=true \
+  --set auth.ingest.mode=off)"
+grep -q 'authenticator' <<<"$out" && fail "authenticator rendered with auth.ingest.mode=off"
+ok "ingest auth applies uniformly, and only when the mode asks for it"
+
+echo "== dual-write forwarding: off by default, single-exporter pipelines"
+out="$(render)"
+grep -q 'forward' <<<"$out" && fail "forward exporter rendered by default"
+n=$(grep -c 'exporters: \[clickhouse\]$' <<<"$out")
+[ "$n" = "3" ] || fail "default pipelines are not single-exporter (got $n)"
+ok "no forwarding surface by default"
+
+echo "== dual-write forwarding: otlp joins selected signals only"
+out="$(render --set gateway.forward.otlp.enabled=true --set gateway.forward.otlp.endpoint=legacy:4317 \
+  --set 'gateway.forward.otlp.signals={traces,logs}')"
+grep -q 'otlp/forward:' <<<"$out" || fail "otlp/forward exporter block missing"
+grep -q 'exporters: \[clickhouse, otlp/forward\]' <<<"$out" || fail "otlp/forward not in pipelines"
+grep -q 'sending_queue' <<<"$out" || fail "forward sending_queue missing (backpressure guard)"
+n=$(grep -c 'exporters: \[clickhouse, otlp/forward\]' <<<"$out")
+[ "$n" = "2" ] || fail "otlp/forward should be in exactly traces+logs (got $n)"
+grep -q 'exporters: \[clickhouse\]$' <<<"$out" || fail "metrics pipeline should stay single-exporter"
+ok "otlp/forward in traces+logs only, queue rendered"
+
+echo "== dual-write forwarding: http protocol renders otlphttp/forward"
+out="$(render --set gateway.forward.otlp.enabled=true --set gateway.forward.otlp.endpoint=https://legacy:4318 \
+  --set gateway.forward.otlp.protocol=http)"
+grep -q 'otlphttp/forward:' <<<"$out" || fail "otlphttp/forward exporter block missing"
+grep -q 'exporters: \[clickhouse, otlphttp/forward\]' <<<"$out" || fail "otlphttp/forward not in pipelines"
+ok "protocol=http switches the exporter component"
+
+echo "== dual-write forwarding: kafka renders topics, secret stays out of the ConfigMap"
+out="$(render --set gateway.forward.kafka.enabled=true --set 'gateway.forward.kafka.brokers={kafka:9092}' \
+  --set gateway.forward.kafka.sasl.enabled=true --set gateway.forward.kafka.sasl.existingSecret=kafka-creds)"
+grep -q 'kafka/forward:' <<<"$out" || fail "kafka/forward exporter block missing"
+grep -q 'topic: "otlp_spans"' <<<"$out" || fail "kafka traces topic missing"
+grep -q 'exporters: \[clickhouse, kafka/forward\]' <<<"$out" || fail "kafka/forward not in pipelines"
+grep -q '\${env:AVURUOBS_FORWARD_KAFKA_SASL_PASSWORD}' <<<"$out" || fail "kafka sasl password not env-indirected"
+grep -q 'name: kafka-creds' <<<"$out" || fail "kafka sasl secretKeyRef missing from Deployment"
+# The ConfigMap must never carry credential material beyond the env reference.
+cm=$(awk '/kind: ConfigMap/,/^---/' <<<"$out")
+grep -q 'kafka-creds' <<<"$cm" && fail "secret name leaked into a ConfigMap"
+ok "kafka forwarding rendered, credentials only as env references"
+
+echo "== dual-write forwarding: misconfiguration fails the render"
+render --set gateway.forward.otlp.enabled=true >/dev/null 2>&1 && fail "otlp forward without endpoint rendered"
+render --set gateway.forward.kafka.enabled=true >/dev/null 2>&1 && fail "kafka forward without brokers rendered"
+render --set gateway.forward.kafka.enabled=true --set 'gateway.forward.kafka.brokers={kafka:9092}' \
+  --set gateway.forward.kafka.sasl.enabled=true >/dev/null 2>&1 && fail "kafka sasl without existingSecret rendered"
+ok "empty endpoint/brokers/secret fail at template time"
+
 echo "== service-health: on by default -> module, ConfigMap, env, mount"
 out="$(render)"
 grep -qE 'value: "core,logs,infra-metrics,profiling,error-tracking,service-health(,|")' <<<"$out" || fail "service-health missing from AVURUOBS_MODULES"

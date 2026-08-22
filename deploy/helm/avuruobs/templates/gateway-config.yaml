@@ -11,6 +11,10 @@ data:
            the logs module (its table) as well as error-tracking + the flag.
            Shared with the container/Service ports and the ingress route. */}}
     {{- $sentry := include "avuruobs.sentryEnabled" . }}
+    {{- $jaeger := include "avuruobs.jaegerEnabled" . }}
+    {{- $zipkin := include "avuruobs.zipkinEnabled" . }}
+    {{- $promRW := include "avuruobs.promRWEnabled" . }}
+    {{- $loki := include "avuruobs.lokiEnabled" . }}
     {{- $ingestAuth := include "avuruobs.ingestAuthEnabled" . }}
     {{- $ingestStamp := include "avuruobs.ingestTenantStamp" . }}
     receivers:
@@ -28,6 +32,56 @@ data:
             auth:
               authenticator: avuruingestauth
             {{- end }}
+    {{- if $jaeger }}
+      # Legacy Jaeger senders (gRPC + thrift-HTTP only — UDP has no auth hook).
+      # Everything is OTLP by the first processor, so the tenant stage below
+      # applies unchanged.
+      jaeger:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:14250
+            {{- if $ingestAuth }}
+            auth:
+              authenticator: avuruingestauth
+            {{- end }}
+          thrift_http:
+            endpoint: 0.0.0.0:14268
+            {{- if $ingestAuth }}
+            auth:
+              authenticator: avuruingestauth
+            {{- end }}
+    {{- end }}
+    {{- if $zipkin }}
+      zipkin:
+        endpoint: 0.0.0.0:9411
+        {{- if $ingestAuth }}
+        auth:
+          authenticator: avuruingestauth
+        {{- end }}
+    {{- end }}
+    {{- if $promRW }}
+      # Remote-Write v2 only (v1 gets HTTP 415) — see values.yaml for the
+      # sender-side requirements.
+      prometheusremotewrite:
+        endpoint: 0.0.0.0:9291
+        {{- if $ingestAuth }}
+        auth:
+          authenticator: avuruingestauth
+        {{- end }}
+    {{- end }}
+    {{- if $loki }}
+      # Stream labels land as log-record attributes; keep the sender's entry
+      # timestamps (migration fidelity) instead of stamping observed time.
+      loki:
+        protocols:
+          http:
+            endpoint: 0.0.0.0:3100
+            {{- if $ingestAuth }}
+            auth:
+              authenticator: avuruingestauth
+            {{- end }}
+        use_incoming_timestamp: true
+    {{- end }}
     {{- if $sentry }}
       # Sentry SDK ingest (error-tracking module). Browser SDKs POST
       # cross-origin, so CORS must be open; expose :4319 via ingress to accept
@@ -96,6 +150,24 @@ data:
       batch:
         send_batch_size: 4096
         timeout: 2s
+    {{- $fwdOTLP := .Values.gateway.forward.otlp }}
+    {{- $fwdKafka := .Values.gateway.forward.kafka }}
+    {{- if and $fwdOTLP.enabled (not $fwdOTLP.endpoint) }}
+    {{- fail "gateway.forward.otlp.enabled requires gateway.forward.otlp.endpoint" }}
+    {{- end }}
+    {{- if and $fwdOTLP.enabled (not (has $fwdOTLP.protocol (list "grpc" "http"))) }}
+    {{- fail "gateway.forward.otlp.protocol must be grpc or http" }}
+    {{- end }}
+    {{- if and $fwdKafka.enabled (not $fwdKafka.brokers) }}
+    {{- fail "gateway.forward.kafka.enabled requires gateway.forward.kafka.brokers" }}
+    {{- end }}
+    {{- if and $fwdKafka.enabled $fwdKafka.sasl.enabled (not $fwdKafka.sasl.existingSecret) }}
+    {{- fail "gateway.forward.kafka.sasl.enabled requires sasl.existingSecret (inline credentials would land in the ConfigMap)" }}
+    {{- end }}
+    {{- /* The otlp and otlphttp exporters are distinct components, so the
+           forward exporter's NAME follows the protocol. */}}
+    {{- $fwdName := "otlp/forward" }}
+    {{- if eq $fwdOTLP.protocol "http" }}{{ $fwdName = "otlphttp/forward" }}{{ end }}
     exporters:
       clickhouse:
         endpoint: tcp://{{ include "avuruobs.clickhouseAddr" . }}
@@ -109,6 +181,54 @@ data:
           enabled: true
           initial_interval: 2s
           max_elapsed_time: 60s
+    {{- if $fwdOTLP.enabled }}
+      # Dual-write target. The sending queue + bounded retry are load-bearing:
+      # without them a dead target stalls the shared pipeline and takes the
+      # ClickHouse write path down with it. Forwarding is best-effort.
+      {{ $fwdName }}:
+        endpoint: {{ $fwdOTLP.endpoint | quote }}
+        {{- if $fwdOTLP.insecure }}
+        tls:
+          insecure: true
+        {{- end }}
+        {{- with $fwdOTLP.headers }}
+        headers:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        sending_queue:
+          enabled: true
+        retry_on_failure:
+          enabled: true
+          max_elapsed_time: 60s
+    {{- end }}
+    {{- if $fwdKafka.enabled }}
+      kafka/forward:
+        brokers:
+          {{- toYaml $fwdKafka.brokers | nindent 10 }}
+        {{- if $fwdKafka.tls.enabled }}
+        tls:
+          insecure_skip_verify: {{ $fwdKafka.tls.insecureSkipVerify }}
+        {{- end }}
+        {{- if $fwdKafka.sasl.enabled }}
+        auth:
+          sasl:
+            mechanism: {{ $fwdKafka.sasl.mechanism | quote }}
+            username: ${env:AVURUOBS_FORWARD_KAFKA_SASL_USERNAME}
+            password: ${env:AVURUOBS_FORWARD_KAFKA_SASL_PASSWORD}
+        {{- end }}
+        {{- range $signal := list "traces" "logs" "metrics" }}
+        {{- if has $signal $fwdKafka.signals }}
+        {{ $signal }}:
+          topic: {{ index $fwdKafka.topics $signal | quote }}
+          encoding: {{ $fwdKafka.encoding | quote }}
+        {{- end }}
+        {{- end }}
+        sending_queue:
+          enabled: true
+        retry_on_failure:
+          enabled: true
+          max_elapsed_time: 60s
+    {{- end }}
     extensions:
       health_check:
         endpoint: 0.0.0.0:13133
@@ -140,19 +260,25 @@ data:
            don't exist, so accepting the signal would only produce export
            errors. `traces` is core and always present, so the collector
            always has at least one pipeline. */}}
+    {{- /* Forward exporters join a pipeline only when its signal is selected —
+           an off-module signal is skipped silently (the pipeline itself is
+           absent), which is what "intersected with active pipelines" means. */}}
+    {{- $fwdT := "" }}{{ if and $fwdOTLP.enabled (has "traces" $fwdOTLP.signals) }}{{ $fwdT = printf ", %s" $fwdName }}{{ end }}{{ if and $fwdKafka.enabled (has "traces" $fwdKafka.signals) }}{{ $fwdT = printf "%s, kafka/forward" $fwdT }}{{ end }}
+    {{- $fwdL := "" }}{{ if and $fwdOTLP.enabled (has "logs" $fwdOTLP.signals) }}{{ $fwdL = printf ", %s" $fwdName }}{{ end }}{{ if and $fwdKafka.enabled (has "logs" $fwdKafka.signals) }}{{ $fwdL = printf "%s, kafka/forward" $fwdL }}{{ end }}
+    {{- $fwdM := "" }}{{ if and $fwdOTLP.enabled (has "metrics" $fwdOTLP.signals) }}{{ $fwdM = printf ", %s" $fwdName }}{{ end }}{{ if and $fwdKafka.enabled (has "metrics" $fwdKafka.signals) }}{{ $fwdM = printf "%s, kafka/forward" $fwdM }}{{ end }}
         traces:
-          receivers: [otlp]
+          receivers: [otlp{{ if $jaeger }}, jaeger{{ end }}{{ if $zipkin }}, zipkin{{ end }}]
           processors: [{{ $tenantStage }}batch]
-          exporters: [clickhouse]
+          exporters: [clickhouse{{ $fwdT }}]
     {{- if or .Values.modules.logs.enabled $sentry }}
         logs:
-          receivers: [otlp{{ if $sentry }}, sentry{{ end }}]
+          receivers: [otlp{{ if $sentry }}, sentry{{ end }}{{ if $loki }}, loki{{ end }}]
           processors: [{{ $tenantStage }}batch]
-          exporters: [clickhouse]
+          exporters: [clickhouse{{ $fwdL }}]
     {{- end }}
     {{- if .Values.modules.infraMetrics.enabled }}
         metrics:
-          receivers: [otlp]
+          receivers: [otlp{{ if $promRW }}, prometheusremotewrite{{ end }}]
           processors: [{{ $tenantStage }}batch]
-          exporters: [clickhouse]
+          exporters: [clickhouse{{ $fwdM }}]
     {{- end }}

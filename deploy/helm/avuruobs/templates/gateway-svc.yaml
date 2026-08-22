@@ -25,3 +25,29 @@ spec:
       port: 4319
       targetPort: sentry-http
     {{- end }}
+    {{- /* Wider-ingest receivers: in-cluster ports only; external exposure is
+           an ingress recipe (Zipkin's /api/v2/spans and remote-write's
+           /api/v1/write collide with the main host's /api → hub rule). */}}
+    {{- if include "avuruobs.jaegerEnabled" . }}
+    - name: jaeger-grpc
+      port: 14250
+      targetPort: jaeger-grpc
+    - name: jaeger-thrift
+      port: 14268
+      targetPort: jaeger-thrift
+    {{- end }}
+    {{- if include "avuruobs.zipkinEnabled" . }}
+    - name: zipkin
+      port: 9411
+      targetPort: zipkin
+    {{- end }}
+    {{- if include "avuruobs.promRWEnabled" . }}
+    - name: prom-rw
+      port: 9291
+      targetPort: prom-rw
+    {{- end }}
+    {{- if include "avuruobs.lokiEnabled" . }}
+    - name: loki-push
+      port: 3100
+      targetPort: loki-push
+    {{- end }}

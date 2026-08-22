@@ -299,6 +299,29 @@ otel
 {{- if and .Values.modules.errorTracking.enabled .Values.modules.logs.enabled .Values.gateway.sentry.enabled -}}true{{- end -}}
 {{- end -}}
 
+{{/* Wider-ingest receivers (design/2026-07-27-wider-ingest-compat.md). Each
+     helper gates the receiver, the container port, the Service port and the
+     pipeline entry together (sentryEnabled precedent). Jaeger and Zipkin feed
+     the always-present traces pipeline, so their flags stand alone; the
+     Prometheus remote-write and Loki receivers are silently and-gated on the
+     module whose pipeline (and tables) they need, exactly like sentry. Same
+     true/"" contract as the collect* helpers — consume via `if include`. */}}
+{{- define "avuruobs.jaegerEnabled" -}}
+{{- if .Values.gateway.receivers.jaeger.enabled -}}true{{- end -}}
+{{- end -}}
+
+{{- define "avuruobs.zipkinEnabled" -}}
+{{- if .Values.gateway.receivers.zipkin.enabled -}}true{{- end -}}
+{{- end -}}
+
+{{- define "avuruobs.promRWEnabled" -}}
+{{- if and .Values.modules.infraMetrics.enabled .Values.gateway.receivers.prometheusRemoteWrite.enabled -}}true{{- end -}}
+{{- end -}}
+
+{{- define "avuruobs.lokiEnabled" -}}
+{{- if and .Values.modules.logs.enabled .Values.gateway.receivers.loki.enabled -}}true{{- end -}}
+{{- end -}}
+
 {{/* ClickHouse env block shared by the hub Deployment and the migrate Job. */}}
 {{- define "avuruobs.clickhouseEnv" -}}
 - name: AVURUOBS_CLICKHOUSE_ADDR

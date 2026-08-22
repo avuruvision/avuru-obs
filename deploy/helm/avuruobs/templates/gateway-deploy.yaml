@@ -43,6 +43,20 @@ spec:
                   name: {{ include "avuruobs.ingestSecretName" . }}
                   key: internal-token
             {{- end }}
+            {{- if and .Values.gateway.forward.kafka.enabled .Values.gateway.forward.kafka.sasl.enabled }}
+            {{- /* Same ${env:...} indirection: SASL credentials come from the
+                   operator's Secret, never the gateway ConfigMap. */}}
+            - name: AVURUOBS_FORWARD_KAFKA_SASL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.gateway.forward.kafka.sasl.existingSecret }}
+                  key: sasl-username
+            - name: AVURUOBS_FORWARD_KAFKA_SASL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.gateway.forward.kafka.sasl.existingSecret }}
+                  key: sasl-password
+            {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/avuru
@@ -54,6 +68,24 @@ spec:
             {{- if include "avuruobs.sentryEnabled" . }}
             - name: sentry-http
               containerPort: 4319
+            {{- end }}
+            {{- if include "avuruobs.jaegerEnabled" . }}
+            - name: jaeger-grpc
+              containerPort: 14250
+            - name: jaeger-thrift
+              containerPort: 14268
+            {{- end }}
+            {{- if include "avuruobs.zipkinEnabled" . }}
+            - name: zipkin
+              containerPort: 9411
+            {{- end }}
+            {{- if include "avuruobs.promRWEnabled" . }}
+            - name: prom-rw
+              containerPort: 9291
+            {{- end }}
+            {{- if include "avuruobs.lokiEnabled" . }}
+            - name: loki-push
+              containerPort: 3100
             {{- end }}
             - name: health
               containerPort: 13133

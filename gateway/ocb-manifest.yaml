@@ -15,11 +15,16 @@ receivers:
   # envelopes and emits OTel log records the hub derives issues from. Built
   # from the in-repo module via the replaces entry below.
   - gomod: github.com/avuru/avuru-obs/gateway/sentryreceiver v0.1.0
-  # Drop-in Jaeger replacement is a product requirement (see
-  # agent_docs/architecture.md): OTLP senders migrate by changing only the
-  # endpoint address. If legacy Jaeger-protocol (thrift/gRPC) senders show up,
-  # add the contrib jaegerreceiver here as a transition aid:
-  # - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/jaegerreceiver v0.154.0
+  # Wider ingest compatibility (design/2026-07-27-wider-ingest-compat.md): the
+  # binary always carries these; only chart-rendered config wires a listener
+  # (each behind its gateway.receivers.* flag, default off). Jaeger's UDP
+  # thrift protocols stay unconfigured — no auth hook, deprecated agent.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/jaegerreceiver v0.154.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/zipkinreceiver v0.154.0
+  # Remote-Write v2 ONLY at this line: v1 payloads get HTTP 415; senders need
+  # Prometheus >= 3.8.0 with protobuf_message io.prometheus.write.v2.Request.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusremotewritereceiver v0.154.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/lokireceiver v0.154.0
 
 processors:
   - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.154.0
@@ -41,6 +46,13 @@ processors:
 
 exporters:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/clickhouseexporter v0.154.0
+  # Dual-write forwarding during migrations (gateway.forward.* in the chart,
+  # default off): OTLP in both transports (grpc + http for HTTP-only egress)
+  # and Kafka. Forward exporters are always rendered with a sending queue so a
+  # dead legacy target can never backpressure the ClickHouse path.
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.154.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.154.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter v0.154.0
 
 extensions:
   # healthcheck lives in contrib (no core equivalent).
