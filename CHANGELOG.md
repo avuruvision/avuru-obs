@@ -11,6 +11,24 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-08-22
+
+**Open at both ends.** Until now the deal was OTLP, from one cluster: you
+re-pointed every sender before you could try avuru-obs at all, and a second
+cluster meant a second instance with its own store, UI and login. v0.6 opens
+both ends. The gateway now speaks **Jaeger, Zipkin, Prometheus remote-write
+and Loki push** beside OTLP — one values flag each, every one default off, and
+all of them through the same tenant stage, so per-project ingest keys are
+enforced whatever protocol the data arrived on. It can also **dual-write**
+what it ingests to the backend you run today, which makes adopting this a
+reversible decision rather than a migration. At the other end, one project can
+now span **several clusters**: a secondary cluster installs the ingest half of
+the chart alone against the central store, and every screen answers for the
+union. Projects picked up the operational parts they were missing on the way —
+a retention window of their own, and their own storage usage beside the
+install's — and the compatibility claim is a CI gate now, not a sentence in a
+README.
+
 ### Added
 
 - **One project can now span several clusters.** A UI-managed project gains

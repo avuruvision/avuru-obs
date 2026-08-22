@@ -30,8 +30,8 @@ light up — no SDK, no sidecars, no YAML archaeology.
 
 </details>
 
-> **Status: v0.5.0 released** (2026-08-17); `main` is under active development
-> toward v0.6. See [CHANGELOG.md](CHANGELOG.md) for what shipped,
+> **Status: v0.6.0 released** (2026-08-22); `main` is under active development
+> toward v0.7. See [CHANGELOG.md](CHANGELOG.md) for what shipped,
 > [ROADMAP.md](ROADMAP.md) for where it's headed and
 > [`agent_docs/architecture.md`](agent_docs/architecture.md) for the living
 > architecture.
@@ -84,6 +84,13 @@ Beyond the core signals, the day-2 layer:
   sender that lies about its tenant lands where its key says. Default `log`
   mode changes nothing about the pipeline, so the drop-in promise survives the
   upgrade.
+- **Bring the senders you already run** *(v0.6)* — a fleet that already emits
+  Jaeger, Zipkin, Prometheus remote-write or Loki push points those senders
+  straight at the gateway: one values flag per protocol, every one default off,
+  and ingest keys enforced identically whatever arrived. You can dual-write to
+  the backend you run today while you decide, so adoption is reversible — and
+  every protocol is exercised in CI against a real Helm install, so the
+  compatibility claim is a gate rather than a sentence.
 - **One instance, many clusters** *(v0.6)* — a second cluster installs the
   ingest half of the chart (`hub.enabled=false`) and writes to the central
   instance's store under its own project; one screen already spans them. No
