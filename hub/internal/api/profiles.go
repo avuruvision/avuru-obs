@@ -48,13 +48,14 @@ func (a *API) handleProfiledServices(w http.ResponseWriter, r *http.Request) err
 	if err != nil {
 		return err
 	}
-	tenant, err := a.project(r, auth.RoleViewer)
+	tenant, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return err
 	}
 	services, err := store.ListProfiledServices(r.Context(), storage.ProfileQuery{
-		Tenant: tenant,
-		Range:  tr,
+		Tenant:  tenant,
+		Tenants: tenants,
+		Range:   tr,
 	})
 	if err != nil {
 		return err
@@ -81,12 +82,13 @@ func (a *API) handleFlamegraph(w http.ResponseWriter, r *http.Request) error {
 	if service == "" {
 		return badRequest("service is required")
 	}
-	tenant, err := a.project(r, auth.RoleViewer)
+	tenant, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return err
 	}
 	root, err := store.ProfileFlamegraph(r.Context(), storage.ProfileQuery{
 		Tenant:  tenant,
+		Tenants: tenants,
 		Range:   tr,
 		Service: service,
 	})

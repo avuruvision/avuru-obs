@@ -56,12 +56,13 @@ func (a *API) handleSearchLogs(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	tenant, err := a.project(r, auth.RoleViewer)
+	tenant, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return err
 	}
 	page, err := store.SearchLogs(r.Context(), storage.LogQuery{
 		Tenant:      tenant,
+		Tenants:     tenants,
 		Range:       tr,
 		Service:     r.URL.Query().Get("service"),
 		MinSeverity: r.URL.Query().Get("severity"),
@@ -89,11 +90,11 @@ func (a *API) handleLogsForTrace(w http.ResponseWriter, r *http.Request) error {
 	if traceID == "" {
 		return badRequest("missing traceId")
 	}
-	tenant, err := a.project(r, auth.RoleViewer)
+	_, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return err
 	}
-	logs, err := store.LogsForTrace(r.Context(), tenant, traceID)
+	logs, err := store.LogsForTrace(r.Context(), tenants, traceID)
 	if err != nil {
 		return err
 	}

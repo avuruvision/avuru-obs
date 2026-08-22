@@ -105,12 +105,13 @@ func (a *API) handleSearchErrorIssues(w http.ResponseWriter, r *http.Request) er
 	if err != nil {
 		return err
 	}
-	tenant, err := a.project(r, auth.RoleViewer)
+	tenant, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return err
 	}
 	issues, err := store.SearchErrorIssues(r.Context(), storage.ErrorIssueQuery{
 		Tenant:  tenant,
+		Tenants: tenants,
 		Range:   tr,
 		Status:  r.URL.Query().Get("status"),
 		Service: r.URL.Query().Get("service"),
@@ -138,11 +139,11 @@ func (a *API) handleGetErrorIssue(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	tenant, err := a.project(r, auth.RoleViewer)
+	_, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return err
 	}
-	issue, err := store.GetErrorIssue(r.Context(), tenant, fp)
+	issue, err := store.GetErrorIssue(r.Context(), tenants, fp)
 	if err != nil {
 		return err
 	}
@@ -167,12 +168,13 @@ func (a *API) handleListErrorEvents(w http.ResponseWriter, r *http.Request) erro
 	if err != nil {
 		return err
 	}
-	tenant, err := a.project(r, auth.RoleViewer)
+	tenant, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return err
 	}
 	page, err := store.ListErrorEvents(r.Context(), storage.ErrorEventQuery{
 		Tenant:      tenant,
+		Tenants:     tenants,
 		Fingerprint: fp,
 		Limit:       limit,
 		Cursor:      cursor,
@@ -221,11 +223,11 @@ func (a *API) handleErrorIssueHistogram(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		return err
 	}
-	tenant, err := a.project(r, auth.RoleViewer)
+	_, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return err
 	}
-	buckets, err := store.ErrorIssueHistogram(r.Context(), tenant, fp, tr, points)
+	buckets, err := store.ErrorIssueHistogram(r.Context(), tenants, fp, tr, points)
 	if err != nil {
 		return err
 	}
@@ -266,12 +268,21 @@ func (a *API) handleSetErrorIssueStatus(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		return err
 	}
+	// Triage state is stored per tenant, so an aggregate has nowhere to put it:
+	// the same fingerprint can exist in several members with different statuses.
+	agg, err := a.isAggregate(r.Context(), t)
+	if err != nil {
+		return err
+	}
+	if agg {
+		return aggregateWriteConflict(t, "switch to the member project that reported this issue to triage it")
+	}
 	if err := store.SetErrorIssueStatus(r.Context(), t, fp, body.Status); err != nil {
 		return err
 	}
 	// Return the issue as it now reads, so the client reflects the effective
 	// status (including a reset of regression).
-	issue, err := store.GetErrorIssue(r.Context(), t, fp)
+	issue, err := store.GetErrorIssue(r.Context(), []string{t}, fp)
 	if err != nil {
 		return err
 	}

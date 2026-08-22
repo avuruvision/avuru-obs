@@ -50,13 +50,14 @@ func (a *API) handleAgents(w http.ResponseWriter, r *http.Request) error {
 	if windowSec <= 0 {
 		return badRequest("windowSec must be positive")
 	}
-	tenant, err := a.project(r, auth.RoleViewer)
+	tenant, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return err
 	}
 	nodes, err := store.ListAgentNodes(r.Context(), storage.AgentQuery{
-		Tenant: tenant,
-		Window: time.Duration(windowSec) * time.Second,
+		Tenant:  tenant,
+		Tenants: tenants,
+		Window:  time.Duration(windowSec) * time.Second,
 	})
 	if err != nil {
 		return err

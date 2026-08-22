@@ -359,14 +359,14 @@ func TestErrorReadQueries(t *testing.T) {
 	})
 
 	t.Run("GetErrorIssue", func(t *testing.T) {
-		iss, err := store.GetErrorIssue(ctx, "default", 100)
+		iss, err := store.GetErrorIssue(ctx, []string{"default"}, 100)
 		if err != nil {
 			t.Fatalf("GetErrorIssue: %v", err)
 		}
 		if iss.Count != 3 || iss.Service != "web" {
 			t.Errorf("issue wrong: %+v", iss)
 		}
-		if _, err := store.GetErrorIssue(ctx, "default", 999); err != storage.ErrNotFound {
+		if _, err := store.GetErrorIssue(ctx, []string{"default"}, 999); err != storage.ErrNotFound {
 			t.Errorf("missing issue: want ErrNotFound, got %v", err)
 		}
 	})
@@ -392,7 +392,7 @@ func TestErrorReadQueries(t *testing.T) {
 	})
 
 	t.Run("Histogram", func(t *testing.T) {
-		pts, err := store.ErrorIssueHistogram(ctx, "default", 100, win, 60)
+		pts, err := store.ErrorIssueHistogram(ctx, []string{"default"}, 100, win, 60)
 		if err != nil {
 			t.Fatalf("ErrorIssueHistogram: %v", err)
 		}
@@ -402,6 +402,122 @@ func TestErrorReadQueries(t *testing.T) {
 		}
 		if total != 3 {
 			t.Errorf("histogram total = %d, want 3", total)
+		}
+	})
+
+	// Multi-tenant fan-out for the single-entity reads: fingerprint 400 lives
+	// in tenants m1 and m2 (untouched by the subtests above) — a single-tenant
+	// set sees only its share, the merged set the summed aggregate.
+	insertRawErrorEvent(t, store, base.Add(5*time.Minute), "m1", 400, "web", "NPE", "boom", "tM1")
+	insertRawErrorEvent(t, store, base.Add(6*time.Minute), "m2", 400, "web", "NPE", "boom", "tM2")
+
+	t.Run("GetErrorIssueMultiTenant", func(t *testing.T) {
+		if _, err := store.GetErrorIssue(ctx, []string{"default"}, 400); err != storage.ErrNotFound {
+			t.Fatalf("m1/m2 issue visible to [default]: %v", err)
+		}
+		one, err := store.GetErrorIssue(ctx, []string{"m1"}, 400)
+		if err != nil || one.Count != 1 {
+			t.Fatalf("single-tenant issue wrong: %+v, %v", one, err)
+		}
+		merged, err := store.GetErrorIssue(ctx, []string{"m1", "m2"}, 400)
+		if err != nil {
+			t.Fatalf("GetErrorIssue merged: %v", err)
+		}
+		if merged.Count != 2 || merged.LastTraceID != "tM2" {
+			t.Errorf("merged issue aggregate wrong: %+v", merged)
+		}
+	})
+
+	t.Run("HistogramMultiTenant", func(t *testing.T) {
+		sum := func(pts []storage.ErrorHistogramPoint) (total uint64) {
+			for _, p := range pts {
+				total += p.Count
+			}
+			return
+		}
+		one, err := store.ErrorIssueHistogram(ctx, []string{"m1"}, 400, win, 60)
+		if err != nil || sum(one) != 1 {
+			t.Fatalf("single-tenant histogram = %d, %v, want 1", sum(one), err)
+		}
+		merged, err := store.ErrorIssueHistogram(ctx, []string{"m1", "m2"}, 400, win, 60)
+		if err != nil || sum(merged) != 2 {
+			t.Fatalf("merged histogram = %d, %v, want 2", sum(merged), err)
+		}
+		if _, err := store.ErrorIssueHistogram(ctx, nil, 400, win, 60); err == nil {
+			t.Error("empty tenant set must error")
+		}
+	})
+
+	t.Run("SearchErrorIssuesMultiTenant", func(t *testing.T) {
+		one := mustSearch(t, store, storage.ErrorIssueQuery{
+			Tenant: "m1", Tenants: []string{"m1"}, Range: win, Sort: "count",
+		})
+		if len(one) != 1 || one[0].Fingerprint != 400 || one[0].Count != 1 {
+			t.Fatalf("single-tenant search wrong: %+v", one)
+		}
+
+		merged := mustSearch(t, store, storage.ErrorIssueQuery{
+			Tenant: "m1", Tenants: []string{"m1", "m2"}, Range: win, Sort: "count",
+		})
+		if len(merged) != 1 || merged[0].Count != 2 || merged[0].LastTraceID != "tM2" {
+			t.Fatalf("merged search wrong: %+v", merged)
+		}
+
+		// The window subquery and the outer filter bind the SAME set (the
+		// prepend trap): a window holding only m1's event still selects the
+		// fingerprint, and the aggregate stays all-time across both tenants.
+		narrow := mustSearch(t, store, storage.ErrorIssueQuery{
+			Tenant: "m1", Tenants: []string{"m1", "m2"}, Sort: "count",
+			Range: storage.TimeRange{Start: base, End: base.Add(6 * time.Minute)},
+		})
+		if len(narrow) != 1 || narrow[0].Count != 2 {
+			t.Fatalf("narrow-window merged search wrong: %+v", narrow)
+		}
+
+		// Inner-subquery filters apply across the union, not per tenant.
+		if got := mustSearch(t, store, storage.ErrorIssueQuery{
+			Tenant: "m1", Tenants: []string{"m1", "m2"}, Range: win, Service: "api",
+		}); len(got) != 0 {
+			t.Fatalf("service filter leaked over the union: %+v", got)
+		}
+	})
+
+	t.Run("ListErrorEventsMultiTenant", func(t *testing.T) {
+		one, err := store.ListErrorEvents(ctx, storage.ErrorEventQuery{
+			Tenant: "m1", Tenants: []string{"m1"}, Fingerprint: 400,
+		})
+		if err != nil {
+			t.Fatalf("ListErrorEvents one: %v", err)
+		}
+		if len(one.Events) != 1 || one.Events[0].TraceID != "tM1" {
+			t.Fatalf("single-tenant events wrong: %+v", one.Events)
+		}
+
+		merged, err := store.ListErrorEvents(ctx, storage.ErrorEventQuery{
+			Tenant: "m1", Tenants: []string{"m1", "m2"}, Fingerprint: 400,
+		})
+		if err != nil {
+			t.Fatalf("ListErrorEvents merged: %v", err)
+		}
+		if len(merged.Events) != 2 || merged.Events[0].TraceID != "tM2" || merged.Events[1].TraceID != "tM1" {
+			t.Fatalf("merged events wrong (newest-first): %+v", merged.Events)
+		}
+
+		// Keyset pagination walks the merged stream exactly once.
+		first, err := store.ListErrorEvents(ctx, storage.ErrorEventQuery{
+			Tenant: "m1", Tenants: []string{"m1", "m2"}, Fingerprint: 400, Limit: 1,
+		})
+		if err != nil || len(first.Events) != 1 || first.NextCursor == nil {
+			t.Fatalf("first page wrong: %+v, %v", first, err)
+		}
+		second, err := store.ListErrorEvents(ctx, storage.ErrorEventQuery{
+			Tenant: "m1", Tenants: []string{"m1", "m2"}, Fingerprint: 400, Limit: 1, Cursor: first.NextCursor,
+		})
+		if err != nil {
+			t.Fatalf("second page: %v", err)
+		}
+		if len(second.Events) != 1 || second.Events[0].TraceID != "tM1" {
+			t.Fatalf("second page wrong: %+v", second.Events)
 		}
 	})
 }
@@ -458,7 +574,7 @@ func TestTriageAndRegression(t *testing.T) {
 	if unresolvedCount() != 0 {
 		t.Errorf("resolved issue still in unresolved list")
 	}
-	iss, err := store.GetErrorIssue(ctx, "default", 777)
+	iss, err := store.GetErrorIssue(ctx, []string{"default"}, 777)
 	if err != nil {
 		t.Fatalf("get after resolve: %v", err)
 	}
@@ -472,7 +588,7 @@ func TestTriageAndRegression(t *testing.T) {
 	// a past-dated status row).
 	insertRawErrorEvent(t, store, base.Add(time.Minute), "default", 888, "web", "IOError", "disk", "u1")
 	setIssueStatusAt(t, store, "default", 888, "resolved", base.Add(5*time.Minute))
-	iss, err = store.GetErrorIssue(ctx, "default", 888)
+	iss, err = store.GetErrorIssue(ctx, []string{"default"}, 888)
 	if err != nil {
 		t.Fatalf("get 888 after resolve: %v", err)
 	}
@@ -482,7 +598,7 @@ func TestTriageAndRegression(t *testing.T) {
 
 	// A later occurrence → regression.
 	insertRawErrorEvent(t, store, base.Add(10*time.Minute), "default", 888, "web", "IOError", "disk", "u2")
-	iss, err = store.GetErrorIssue(ctx, "default", 888)
+	iss, err = store.GetErrorIssue(ctx, []string{"default"}, 888)
 	if err != nil {
 		t.Fatalf("get 888 after recurrence: %v", err)
 	}
@@ -501,7 +617,7 @@ func TestTriageAndRegression(t *testing.T) {
 
 	// Re-resolving AFTER the recurrence clears the regression (newer row wins).
 	setIssueStatusAt(t, store, "default", 888, "resolved", base.Add(15*time.Minute))
-	iss, err = store.GetErrorIssue(ctx, "default", 888)
+	iss, err = store.GetErrorIssue(ctx, []string{"default"}, 888)
 	if err != nil {
 		t.Fatalf("get 888 after re-resolve: %v", err)
 	}

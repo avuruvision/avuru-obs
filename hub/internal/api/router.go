@@ -140,6 +140,7 @@ type API struct {
 	cfg               Config
 	modules           modules.Set
 	tenants           tenantCache
+	projects          projectCache
 	collectionApplier collection.Applier
 	// routes is every registered route with the guard it enforces, captured
 	// by routeIndex during Register and read only by the permissions matrix.

@@ -210,3 +210,32 @@ func TestErrorTrackingRoutesGated(t *testing.T) {
 		}
 	}
 }
+
+// An aggregate project reads a union of its members and owns no rows of its
+// own, so triage has no tenant to write to — the same fingerprint can carry a
+// different status in each member. v0.6 refuses instead of guessing.
+func TestSetErrorIssueStatusRefusedOnAggregate(t *testing.T) {
+	fake := &storagetest.Fake{
+		Projects: map[string]storage.Project{
+			"estate": {ID: "estate", Members: []string{"prod-eu", "prod-us"}},
+		},
+	}
+	mux := newMux(fake)
+
+	req := httptest.NewRequest(http.MethodPost,
+		"/api/v1/errors/issues/00000000deadbeef/status", strings.NewReader(`{"status":"resolved"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Avuru-Tenant", "estate")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 (body %s)", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), "aggregate") {
+		t.Fatalf("body = %s, want it to name the aggregate", rec.Body)
+	}
+	if len(fake.StatusWrites) != 0 {
+		t.Fatalf("triage wrote anyway: %+v", fake.StatusWrites)
+	}
+}

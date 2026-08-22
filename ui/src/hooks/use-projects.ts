@@ -38,7 +38,10 @@ export function useCreateProject() {
   });
 }
 
-export function useRenameProject() {
+// Edits a db project: label, members, or both (the hub treats an omitted field
+// as "keep"). Named for the endpoint rather than the label form now that
+// membership shares it.
+export function useUpdateProject() {
   const invalidate = useInvalidateProjects();
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: UpdateProjectRequest }) =>

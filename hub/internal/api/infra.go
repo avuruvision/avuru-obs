@@ -64,14 +64,15 @@ func (a *API) handleInfraNodes(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	tenant, err := a.project(r, auth.RoleViewer)
+	tenant, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return err
 	}
 	nodes, err := store.ListNodeStats(r.Context(), storage.InfraQuery{
-		Tenant: tenant,
-		Range:  tr,
-		Points: points,
+		Tenant:  tenant,
+		Tenants: tenants,
+		Range:   tr,
+		Points:  points,
 	})
 	if err != nil {
 		return err
@@ -108,15 +109,16 @@ func (a *API) handleInfraPods(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	tenant, err := a.project(r, auth.RoleViewer)
+	tenant, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return err
 	}
 	pods, err := store.ListPodStats(r.Context(), storage.InfraQuery{
-		Tenant: tenant,
-		Range:  tr,
-		Node:   r.URL.Query().Get("node"),
-		Limit:  limit,
+		Tenant:  tenant,
+		Tenants: tenants,
+		Range:   tr,
+		Node:    r.URL.Query().Get("node"),
+		Limit:   limit,
 	})
 	if err != nil {
 		return err

@@ -316,7 +316,7 @@ func TestLogsIntegration(t *testing.T) {
 	})
 
 	t.Run("LogsForTrace", func(t *testing.T) {
-		got, err := store.LogsForTrace(ctx, "default", "trace-aaaa")
+		got, err := store.LogsForTrace(ctx, []string{"default"}, "trace-aaaa")
 		if err != nil {
 			t.Fatalf("LogsForTrace: %v", err)
 		}
@@ -414,7 +414,7 @@ func TestStoreIntegration(t *testing.T) {
 	})
 
 	t.Run("GetTrace", func(t *testing.T) {
-		got, err := store.GetTrace(ctx, "default", "aaaa0001")
+		got, err := store.GetTrace(ctx, []string{"default"}, "aaaa0001")
 		if err != nil {
 			t.Fatalf("GetTrace: %v", err)
 		}
@@ -433,7 +433,7 @@ func TestStoreIntegration(t *testing.T) {
 	})
 
 	t.Run("GetTraceNotFound", func(t *testing.T) {
-		_, err := store.GetTrace(ctx, "default", "doesnotexist")
+		_, err := store.GetTrace(ctx, []string{"default"}, "doesnotexist")
 		if err != storage.ErrNotFound {
 			t.Fatalf("want ErrNotFound, got %v", err)
 		}
@@ -1138,7 +1138,7 @@ func TestFindSpanTrace(t *testing.T) {
 	})
 
 	t.Run("Found", func(t *testing.T) {
-		traceID, err := store.FindSpanTrace(ctx, "default", "abcd1234abcd1234")
+		traceID, err := store.FindSpanTrace(ctx, []string{"default"}, "abcd1234abcd1234")
 		if err != nil {
 			t.Fatalf("FindSpanTrace: %v", err)
 		}
@@ -1148,13 +1148,13 @@ func TestFindSpanTrace(t *testing.T) {
 	})
 
 	t.Run("NotFound", func(t *testing.T) {
-		if _, err := store.FindSpanTrace(ctx, "default", "0000000000000000"); err != storage.ErrNotFound {
+		if _, err := store.FindSpanTrace(ctx, []string{"default"}, "0000000000000000"); err != storage.ErrNotFound {
 			t.Fatalf("want ErrNotFound, got %v", err)
 		}
 	})
 
 	t.Run("TenantIsolation", func(t *testing.T) {
-		if _, err := store.FindSpanTrace(ctx, "other", "abcd1234abcd1234"); err != storage.ErrNotFound {
+		if _, err := store.FindSpanTrace(ctx, []string{"other"}, "abcd1234abcd1234"); err != storage.ErrNotFound {
 			t.Fatalf("want ErrNotFound for other tenant, got %v", err)
 		}
 	})
@@ -1450,4 +1450,700 @@ func TestMigrateHonorsConfiguredDatabase(t *testing.T) {
 	if err := store.ApplyRetention(ctx, Retention{TracesDays: 7}); err != nil {
 		t.Errorf("ApplyRetention against a non-default database: %v", err)
 	}
+}
+
+// insertSpansTenant seeds spans into an explicit tenant via the avuru.tenant
+// resource attribute — the Tenant column's DEFAULT expression, i.e. the same
+// path production data takes through the gateway. Each service also carries a
+// per-tenant k8s.namespace.name so ServiceLabels has something to resolve.
+func insertSpansTenant(t *testing.T, s *Store, tenant string, spans []testSpan) {
+	t.Helper()
+	ctx := context.Background()
+	batch, err := s.conn.PrepareBatch(ctx, `INSERT INTO otel_traces
+		(Timestamp, TraceId, SpanId, ParentSpanId, SpanName, SpanKind, ServiceName,
+		 ResourceAttributes, SpanAttributes, Duration, StatusCode)`)
+	if err != nil {
+		t.Fatalf("preparing tenant batch: %v", err)
+	}
+	res := map[string]string{"avuru.tenant": tenant, "k8s.namespace.name": tenant + "-ns"}
+	for _, sp := range spans {
+		err := batch.Append(
+			sp.ts, sp.traceID, sp.spanID, sp.parentID, sp.name, sp.kind, sp.service,
+			res, map[string]string{}, uint64(sp.duration.Nanoseconds()), sp.status,
+		)
+		if err != nil {
+			t.Fatalf("appending tenant span: %v", err)
+		}
+	}
+	if err := batch.Send(); err != nil {
+		t.Fatalf("sending tenant batch: %v", err)
+	}
+}
+
+// insertLogsTenant is insertLogs with an explicit tenant (same avuru.tenant
+// resource-attribute path as insertSpansTenant).
+func insertLogsTenant(t *testing.T, s *Store, tenant string, logs []testLog) {
+	t.Helper()
+	ctx := context.Background()
+	batch, err := s.conn.PrepareBatch(ctx, `INSERT INTO otel_logs
+		(Timestamp, TraceId, SpanId, SeverityText, SeverityNumber, ServiceName, Body, ResourceAttributes)`)
+	if err != nil {
+		t.Fatalf("preparing tenant logs batch: %v", err)
+	}
+	res := map[string]string{"avuru.tenant": tenant}
+	for _, l := range logs {
+		if err := batch.Append(l.ts, l.traceID, l.spanID, l.severity, l.sevNum, l.service, l.body, res); err != nil {
+			t.Fatalf("appending tenant log: %v", err)
+		}
+	}
+	if err := batch.Send(); err != nil {
+		t.Fatalf("sending tenant logs batch: %v", err)
+	}
+}
+
+// TestMultiTenantTraceReads proves the Tenant IN (?) fan-out for the trace-
+// signal reads: a single-tenant set returns exactly what the pre-conversion
+// single-tenant query returned, and a two-tenant set returns the union /
+// merged aggregate. It is also the binding proof that clickhouse-go renders a
+// []string bound to IN (?) as an array literal ClickHouse accepts.
+func TestMultiTenantTraceReads(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	base := time.Now().UTC().Truncate(time.Minute).Add(-10 * time.Minute)
+	insertSpansTenant(t, store, "default", []testSpan{
+		// trace A: frontend root (error) -> client -> backend server.
+		{base.Add(1 * time.Minute), "aaaa0001", "s1", "", "GET /x", "Server", "frontend", 500 * time.Millisecond, "Error"},
+		{base.Add(1*time.Minute + time.Millisecond), "aaaa0001", "s2", "s1", "call backend", "Client", "frontend", 100 * time.Millisecond, "Unset"},
+		{base.Add(1*time.Minute + 2*time.Millisecond), "aaaa0001", "s3", "s2", "POST /b", "Server", "backend", 80 * time.Millisecond, "Unset"},
+		// trace B: frontend root ok.
+		{base.Add(2 * time.Minute), "bbbb0002", "s4", "", "GET /x", "Server", "frontend", 50 * time.Millisecond, "Unset"},
+	})
+	insertSpansTenant(t, store, "staging", []testSpan{
+		// trace C: checkout root -> client -> payments server.
+		{base.Add(3 * time.Minute), "cccc0003", "t1", "", "GET /y", "Server", "checkout", 200 * time.Millisecond, "Unset"},
+		{base.Add(3*time.Minute + time.Millisecond), "cccc0003", "t2", "t1", "call payments", "Client", "checkout", 150 * time.Millisecond, "Unset"},
+		{base.Add(3*time.Minute + 2*time.Millisecond), "cccc0003", "t3", "t2", "POST /p", "Server", "payments", 90 * time.Millisecond, "Unset"},
+	})
+	// The same trace id carries logs in both tenants (a trace crossing two
+	// member projects): the union is the merged-project read.
+	insertLogsTenant(t, store, "default", []testLog{
+		{base.Add(1 * time.Minute), "aaaa0001", "s1", "ERROR", 17, "frontend", "boom"},
+	})
+	insertLogsTenant(t, store, "staging", []testLog{
+		{base.Add(1*time.Minute + time.Second), "aaaa0001", "t9", "INFO", 9, "payments", "downstream view"},
+	})
+
+	tr := storage.TimeRange{Start: base.Add(-time.Minute), End: base.Add(9 * time.Minute)}
+	both := []string{"default", "staging"}
+
+	t.Run("ListServices", func(t *testing.T) {
+		one, err := store.ListServices(ctx, storage.ServiceQuery{Tenant: "default", Tenants: []string{"default"}, Range: tr})
+		if err != nil {
+			t.Fatalf("ListServices one: %v", err)
+		}
+		if len(one) != 2 || one[0].Name != "frontend" || one[0].SpanCount != 2 || one[0].ErrorCount != 1 {
+			t.Fatalf("single-tenant services wrong: %+v", one)
+		}
+		merged, err := store.ListServices(ctx, storage.ServiceQuery{Tenant: "default", Tenants: both, Range: tr})
+		if err != nil {
+			t.Fatalf("ListServices merged: %v", err)
+		}
+		if len(merged) != 4 {
+			t.Fatalf("merged services = %+v, want 4 (frontend backend checkout payments)", merged)
+		}
+	})
+
+	t.Run("SearchTraces", func(t *testing.T) {
+		one, err := store.SearchTraces(ctx, storage.TraceQuery{Tenant: "default", Range: tr})
+		if err != nil {
+			t.Fatalf("SearchTraces one: %v", err)
+		}
+		if len(one.Traces) != 2 || one.Traces[0].TraceID != "bbbb0002" || one.Traces[1].SpanCount != 3 {
+			t.Fatalf("single-tenant traces wrong: %+v", one.Traces)
+		}
+		merged, err := store.SearchTraces(ctx, storage.TraceQuery{Tenant: "default", Tenants: both, Range: tr})
+		if err != nil {
+			t.Fatalf("SearchTraces merged: %v", err)
+		}
+		if len(merged.Traces) != 3 || merged.Traces[0].TraceID != "cccc0003" {
+			t.Fatalf("merged traces wrong (want newest-first across tenants): %+v", merged.Traces)
+		}
+	})
+
+	t.Run("TraceOverview", func(t *testing.T) {
+		one, err := store.TraceOverview(ctx, storage.OverviewQuery{Tenant: "default", Range: tr})
+		if err != nil {
+			t.Fatalf("TraceOverview one: %v", err)
+		}
+		if len(one) != 2 || one[0].Service != "backend" || one[1].Count != 2 || one[1].ErrorCount != 1 {
+			t.Fatalf("single-tenant overview wrong: %+v", one)
+		}
+		merged, err := store.TraceOverview(ctx, storage.OverviewQuery{Tenant: "default", Tenants: both, Range: tr})
+		if err != nil {
+			t.Fatalf("TraceOverview merged: %v", err)
+		}
+		if len(merged) != 4 {
+			t.Fatalf("merged overview = %+v, want 4 rows", merged)
+		}
+	})
+
+	t.Run("ServiceEdges", func(t *testing.T) {
+		one, err := store.ServiceEdges(ctx, storage.ServiceQuery{Tenant: "default", Range: tr})
+		if err != nil {
+			t.Fatalf("ServiceEdges one: %v", err)
+		}
+		if len(one) != 1 || one[0].Source != "frontend" || one[0].Target != "backend" {
+			t.Fatalf("single-tenant edges wrong: %+v", one)
+		}
+		merged, err := store.ServiceEdges(ctx, storage.ServiceQuery{Tenant: "default", Tenants: both, Range: tr})
+		if err != nil {
+			t.Fatalf("ServiceEdges merged: %v", err)
+		}
+		if len(merged) != 2 {
+			t.Fatalf("merged edges = %+v, want frontend->backend and checkout->payments", merged)
+		}
+	})
+
+	t.Run("TraceHeatmap", func(t *testing.T) {
+		sum := func(hm storage.Heatmap) (total, errs uint64) {
+			for _, c := range hm.Cells {
+				total += c.Count
+				errs += c.ErrorCount
+			}
+			return
+		}
+		one, err := store.TraceHeatmap(ctx, storage.HeatmapQuery{Tenant: "default", Range: tr, TimeBuckets: 10, DurationBuckets: 12})
+		if err != nil {
+			t.Fatalf("TraceHeatmap one: %v", err)
+		}
+		if total, errs := sum(one); total != 2 || errs != 1 {
+			t.Fatalf("single-tenant heatmap totals: total=%d errs=%d, want 2/1", total, errs)
+		}
+		merged, err := store.TraceHeatmap(ctx, storage.HeatmapQuery{Tenant: "default", Tenants: both, Range: tr, TimeBuckets: 10, DurationBuckets: 12})
+		if err != nil {
+			t.Fatalf("TraceHeatmap merged: %v", err)
+		}
+		if total, errs := sum(merged); total != 3 || errs != 1 {
+			t.Fatalf("merged heatmap totals: total=%d errs=%d, want 3/1", total, errs)
+		}
+	})
+
+	t.Run("REDSeries", func(t *testing.T) {
+		one, err := store.REDSeries(ctx, storage.REDQuery{Tenant: "default", Range: tr, Points: 6, TopN: 6})
+		if err != nil {
+			t.Fatalf("REDSeries one: %v", err)
+		}
+		if len(one) != 2 {
+			t.Fatalf("single-tenant series = %+v, want 2", one)
+		}
+		merged, err := store.REDSeries(ctx, storage.REDQuery{Tenant: "default", Tenants: both, Range: tr, Points: 6, TopN: 6})
+		if err != nil {
+			t.Fatalf("REDSeries merged: %v", err)
+		}
+		if len(merged) != 4 {
+			t.Fatalf("merged series = %+v, want 4", merged)
+		}
+	})
+
+	t.Run("ServiceLabels", func(t *testing.T) {
+		one, err := store.ServiceLabels(ctx, storage.ServiceQuery{Tenant: "default", Range: tr})
+		if err != nil {
+			t.Fatalf("ServiceLabels one: %v", err)
+		}
+		if len(one) != 2 {
+			t.Fatalf("single-tenant labels = %+v, want 2", one)
+		}
+		merged, err := store.ServiceLabels(ctx, storage.ServiceQuery{Tenant: "default", Tenants: both, Range: tr})
+		if err != nil {
+			t.Fatalf("ServiceLabels merged: %v", err)
+		}
+		byService := map[string]storage.ServiceLabel{}
+		for _, l := range merged {
+			byService[l.Service] = l
+		}
+		if len(byService) != 4 {
+			t.Fatalf("merged labels = %+v, want 4 services", merged)
+		}
+		if byService["frontend"].K8sNamespace != "default-ns" || byService["checkout"].K8sNamespace != "staging-ns" {
+			t.Errorf("merged label namespaces wrong: %+v", byService)
+		}
+	})
+
+	t.Run("GetTrace", func(t *testing.T) {
+		if _, err := store.GetTrace(ctx, []string{"default"}, "cccc0003"); err != storage.ErrNotFound {
+			t.Fatalf("staging trace visible to [default]: %v", err)
+		}
+		got, err := store.GetTrace(ctx, both, "cccc0003")
+		if err != nil {
+			t.Fatalf("GetTrace merged: %v", err)
+		}
+		if len(got.Spans) != 3 {
+			t.Fatalf("merged GetTrace spans = %d, want 3", len(got.Spans))
+		}
+		if _, err := store.GetTrace(ctx, nil, "cccc0003"); err == nil {
+			t.Fatal("empty tenant set must error")
+		}
+	})
+
+	t.Run("FindSpanTrace", func(t *testing.T) {
+		if _, err := store.FindSpanTrace(ctx, []string{"default"}, "t1"); err != storage.ErrNotFound {
+			t.Fatalf("staging span visible to [default]: %v", err)
+		}
+		traceID, err := store.FindSpanTrace(ctx, both, "t1")
+		if err != nil || traceID != "cccc0003" {
+			t.Fatalf("merged FindSpanTrace = %q, %v", traceID, err)
+		}
+	})
+
+	t.Run("LogsForTrace", func(t *testing.T) {
+		one, err := store.LogsForTrace(ctx, []string{"default"}, "aaaa0001")
+		if err != nil {
+			t.Fatalf("LogsForTrace one: %v", err)
+		}
+		if len(one) != 1 || one[0].Service != "frontend" {
+			t.Fatalf("single-tenant logs wrong: %+v", one)
+		}
+		merged, err := store.LogsForTrace(ctx, both, "aaaa0001")
+		if err != nil {
+			t.Fatalf("LogsForTrace merged: %v", err)
+		}
+		if len(merged) != 2 || merged[1].Service != "payments" { // oldest first
+			t.Fatalf("merged logs wrong: %+v", merged)
+		}
+	})
+}
+
+// TestMultiTenantLogSearch proves the Tenant IN (?) fan-out for SearchLogs:
+// a single-tenant set returns exactly what the pre-conversion single-tenant
+// query returned; a two-tenant set returns the union newest-first, with
+// filters and keyset pagination applied across the merged stream.
+func TestMultiTenantLogSearch(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	base := time.Now().UTC().Truncate(time.Minute).Add(-10 * time.Minute)
+	insertLogsTenant(t, store, "default", []testLog{
+		{base.Add(1 * time.Minute), "trace-d1", "d1", "ERROR", 17, "checkout", "payment declined"},
+		{base.Add(3 * time.Minute), "trace-d2", "d2", "INFO", 9, "frontend", "request handled ok"},
+	})
+	insertLogsTenant(t, store, "staging", []testLog{
+		{base.Add(2 * time.Minute), "trace-s1", "s1", "WARN", 13, "checkout", "retrying payment"},
+		{base.Add(4 * time.Minute), "trace-s2", "s2", "ERROR", 17, "payments", "gateway timeout"},
+	})
+
+	tr := storage.TimeRange{Start: base.Add(-time.Minute), End: base.Add(9 * time.Minute)}
+	both := []string{"default", "staging"}
+
+	t.Run("SingleTenantParity", func(t *testing.T) {
+		one, err := store.SearchLogs(ctx, storage.LogQuery{Tenant: "default", Tenants: []string{"default"}, Range: tr})
+		if err != nil {
+			t.Fatalf("SearchLogs one: %v", err)
+		}
+		if len(one.Logs) != 2 || one.Logs[0].Service != "frontend" || one.Logs[1].Service != "checkout" {
+			t.Fatalf("single-tenant logs wrong: %+v", one.Logs)
+		}
+	})
+
+	t.Run("UnionNewestFirst", func(t *testing.T) {
+		merged, err := store.SearchLogs(ctx, storage.LogQuery{Tenant: "default", Tenants: both, Range: tr})
+		if err != nil {
+			t.Fatalf("SearchLogs merged: %v", err)
+		}
+		if len(merged.Logs) != 4 {
+			t.Fatalf("merged logs = %d, want 4 (%+v)", len(merged.Logs), merged.Logs)
+		}
+		want := []string{"payments", "frontend", "checkout", "checkout"} // base+4,3,2,1
+		for i, svc := range want {
+			if merged.Logs[i].Service != svc {
+				t.Fatalf("merged order wrong at %d: got %q want %q (%+v)", i, merged.Logs[i].Service, svc, merged.Logs)
+			}
+		}
+	})
+
+	t.Run("FiltersOverUnion", func(t *testing.T) {
+		errs, err := store.SearchLogs(ctx, storage.LogQuery{Tenant: "default", Tenants: both, Range: tr, MinSeverity: "ERROR"})
+		if err != nil {
+			t.Fatalf("SearchLogs severity: %v", err)
+		}
+		if len(errs.Logs) != 2 { // one ERROR per tenant
+			t.Fatalf("merged severity filter wrong: %+v", errs.Logs)
+		}
+		svc, err := store.SearchLogs(ctx, storage.LogQuery{Tenant: "default", Tenants: both, Range: tr, Service: "checkout"})
+		if err != nil {
+			t.Fatalf("SearchLogs service: %v", err)
+		}
+		if len(svc.Logs) != 2 { // checkout logs from both tenants
+			t.Fatalf("merged service filter wrong: %+v", svc.Logs)
+		}
+	})
+
+	t.Run("PaginationOverUnion", func(t *testing.T) {
+		seen := map[string]int{}
+		var cursor *storage.LogCursor
+		pages := 0
+		for range 5 {
+			page, err := store.SearchLogs(ctx, storage.LogQuery{Tenant: "default", Tenants: both, Range: tr, Limit: 3, Cursor: cursor})
+			if err != nil {
+				t.Fatalf("page %d: %v", pages, err)
+			}
+			pages++
+			for _, l := range page.Logs {
+				seen[l.SpanID]++
+			}
+			if page.NextCursor == nil {
+				break
+			}
+			cursor = page.NextCursor
+		}
+		if pages != 2 || len(seen) != 4 {
+			t.Fatalf("pagination pages=%d seen=%v, want 2 pages / 4 distinct logs", pages, seen)
+		}
+		for id, n := range seen {
+			if n != 1 {
+				t.Errorf("log %s seen %d times across pages", id, n)
+			}
+		}
+	})
+}
+
+// insertNodeSignals seeds one row in each of the four tables ListAgentNodes
+// probes (gauge / logs / traces / profiles), all carrying the same tenant and
+// k8s.node.name, so every probe has something to find for that tenant.
+func insertNodeSignals(t *testing.T, s *Store, tenant, node string, ts time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	res := map[string]string{"avuru.tenant": tenant, "k8s.node.name": node}
+
+	insertGauge(t, s, ts, metricNodeCPU, res, 1.0)
+
+	logBatch, err := s.conn.PrepareBatch(ctx, `INSERT INTO otel_logs
+		(Timestamp, TraceId, SpanId, SeverityText, SeverityNumber, ServiceName, Body, ResourceAttributes)`)
+	if err != nil {
+		t.Fatalf("preparing node log insert: %v", err)
+	}
+	if err := logBatch.Append(ts, "", "", "INFO", int32(9), "agent", "hello", res); err != nil {
+		t.Fatalf("appending node log: %v", err)
+	}
+	if err := logBatch.Send(); err != nil {
+		t.Fatalf("sending node log: %v", err)
+	}
+
+	spanBatch, err := s.conn.PrepareBatch(ctx, `INSERT INTO otel_traces
+		(Timestamp, TraceId, SpanId, ParentSpanId, SpanName, SpanKind, ServiceName,
+		 ResourceAttributes, SpanAttributes, Duration, StatusCode)`)
+	if err != nil {
+		t.Fatalf("preparing node span insert: %v", err)
+	}
+	if err := spanBatch.Append(ts, "node"+tenant, "sp1", "", "GET /x", "Server", "agent",
+		res, map[string]string{}, uint64(time.Millisecond), "Unset"); err != nil {
+		t.Fatalf("appending node span: %v", err)
+	}
+	if err := spanBatch.Send(); err != nil {
+		t.Fatalf("sending node span: %v", err)
+	}
+
+	if err := s.WriteProfileSamples(ctx, []storage.ProfileSample{{
+		Tenant: tenant, Timestamp: ts, Service: "agent", SampleType: "samples:count",
+		Frames: []string{"main"}, Value: 1, Node: node,
+	}}); err != nil {
+		t.Fatalf("writing node profile sample: %v", err)
+	}
+}
+
+// TestMultiTenantInfraReads proves the Tenant IN (?) fan-out for the
+// metrics-backed reads converted in this slice: node/pod stats (InfraQuery),
+// the agent inventory probes (AgentQuery), and network edge health
+// (ServiceQuery). A single-tenant set returns exactly the pre-conversion
+// result; a two-tenant set returns the union, and merges rows that share a
+// grouping key — the merged-project semantics ServiceEdges already established.
+func TestMultiTenantInfraReads(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+
+	base := time.Now().UTC().Truncate(time.Minute).Add(-10 * time.Minute)
+	both := []string{"default", "staging"}
+
+	nodeA := map[string]string{"avuru.tenant": "default", "k8s.node.name": "node-a"}
+	nodeB := map[string]string{"avuru.tenant": "staging", "k8s.node.name": "node-b"}
+	podA := map[string]string{
+		"avuru.tenant": "default", "k8s.node.name": "node-a", "k8s.pod.name": "web-1",
+		"k8s.namespace.name": "shop", "k8s.deployment.name": "web",
+	}
+	podB := map[string]string{
+		"avuru.tenant": "staging", "k8s.node.name": "node-b", "k8s.pod.name": "api-1",
+		"k8s.namespace.name": "shop", "k8s.deployment.name": "api",
+	}
+
+	for _, n := range []struct {
+		res       map[string]string
+		cpu, mem  float64
+		available float64
+		rxFrom    float64
+		rxTo      float64
+	}{
+		{nodeA, 2.0, 2048, 4096, 1000, 7000},
+		{nodeB, 3.0, 1024, 8192, 500, 2500},
+	} {
+		insertGauge(t, store, base.Add(1*time.Minute), metricNodeCPU, n.res, n.cpu/2)
+		insertGauge(t, store, base.Add(5*time.Minute), metricNodeCPU, n.res, n.cpu)
+		insertGauge(t, store, base.Add(5*time.Minute), metricNodeMem, n.res, n.mem)
+		insertGauge(t, store, base.Add(5*time.Minute), metricNodeMemAvail, n.res, n.available)
+		rx := map[string]string{"direction": "receive", "interface": "eth0"}
+		insertSum(t, store, base.Add(1*time.Minute), metricNodeNet, n.res, rx, n.rxFrom)
+		insertSum(t, store, base.Add(5*time.Minute), metricNodeNet, n.res, rx, n.rxTo)
+	}
+	insertGauge(t, store, base.Add(5*time.Minute), metricPodCPU, podA, 0.25)
+	insertGauge(t, store, base.Add(5*time.Minute), metricPodMem, podA, 512)
+	insertGauge(t, store, base.Add(5*time.Minute), metricPodCPU, podB, 0.75)
+	insertGauge(t, store, base.Add(5*time.Minute), metricPodMem, podB, 256)
+
+	tr := storage.TimeRange{Start: base, End: base.Add(6 * time.Minute)}
+
+	t.Run("NodeStats", func(t *testing.T) {
+		one, err := store.ListNodeStats(ctx, storage.InfraQuery{
+			Tenant: "default", Tenants: []string{"default"}, Range: tr, Points: 6,
+		})
+		if err != nil {
+			t.Fatalf("ListNodeStats one: %v", err)
+		}
+		if len(one) != 1 || one[0].Name != "node-a" || one[0].CPUUsage != 2.0 || one[0].PodCount != 1 {
+			t.Fatalf("single-tenant node stats wrong: %+v", one)
+		}
+		if len(one[0].CPUSeries) < 2 {
+			t.Errorf("cpu series too short: %+v", one[0].CPUSeries)
+		}
+		wantRate := 6000.0 / tr.End.Sub(tr.Start).Seconds()
+		if one[0].NetworkRxRate < wantRate*0.99 || one[0].NetworkRxRate > wantRate*1.01 {
+			t.Errorf("rx rate = %v, want ~%v", one[0].NetworkRxRate, wantRate)
+		}
+
+		merged, err := store.ListNodeStats(ctx, storage.InfraQuery{
+			Tenant: "default", Tenants: both, Range: tr, Points: 6,
+		})
+		if err != nil {
+			t.Fatalf("ListNodeStats merged: %v", err)
+		}
+		if len(merged) != 2 || merged[0].Name != "node-a" || merged[1].Name != "node-b" {
+			t.Fatalf("merged node stats wrong: %+v", merged)
+		}
+		if merged[1].CPUUsage != 3.0 || merged[1].MemoryUsage != 1024 || merged[1].PodCount != 1 {
+			t.Errorf("merged node-b wrong: %+v", merged[1])
+		}
+	})
+
+	t.Run("PodStats", func(t *testing.T) {
+		one, err := store.ListPodStats(ctx, storage.InfraQuery{
+			Tenant: "default", Tenants: []string{"default"}, Range: tr,
+		})
+		if err != nil {
+			t.Fatalf("ListPodStats one: %v", err)
+		}
+		if len(one) != 1 || one[0].Name != "web-1" || one[0].Workload != "web" {
+			t.Fatalf("single-tenant pod stats wrong: %+v", one)
+		}
+
+		merged, err := store.ListPodStats(ctx, storage.InfraQuery{
+			Tenant: "default", Tenants: both, Range: tr,
+		})
+		if err != nil {
+			t.Fatalf("ListPodStats merged: %v", err)
+		}
+		if len(merged) != 2 || merged[0].Name != "api-1" { // busiest first
+			t.Fatalf("merged pod stats wrong: %+v", merged)
+		}
+
+		// The node filter still applies over the merged set.
+		onNodeB, err := store.ListPodStats(ctx, storage.InfraQuery{
+			Tenant: "default", Tenants: both, Range: tr, Node: "node-b",
+		})
+		if err != nil {
+			t.Fatalf("ListPodStats node-b: %v", err)
+		}
+		if len(onNodeB) != 1 || onNodeB[0].Name != "api-1" {
+			t.Fatalf("node filter over union wrong: %+v", onNodeB)
+		}
+	})
+
+	t.Run("AgentInventory", func(t *testing.T) {
+		ts := time.Now().UTC().Add(-2 * time.Minute)
+		insertNodeSignals(t, store, "default", "agent-a", ts)
+		insertNodeSignals(t, store, "staging", "agent-b", ts)
+
+		names := func(nodes []storage.AgentNode) []string {
+			out := make([]string, 0, len(nodes))
+			for _, n := range nodes {
+				out = append(out, n.Node)
+			}
+			return out
+		}
+
+		one, err := store.ListAgentNodes(ctx, storage.AgentQuery{
+			Tenant: "default", Tenants: []string{"default"}, Window: time.Hour,
+		})
+		if err != nil {
+			t.Fatalf("ListAgentNodes one: %v", err)
+		}
+		if !slices.Contains(names(one), "agent-a") || slices.Contains(names(one), "agent-b") {
+			t.Fatalf("single-tenant agent inventory wrong: %v", names(one))
+		}
+		var a storage.AgentNode
+		for _, n := range one {
+			if n.Node == "agent-a" {
+				a = n
+			}
+		}
+		if a.Metrics == nil || a.Logs == nil || a.Traces == nil || a.Profiles == nil {
+			t.Errorf("agent-a probes incomplete: %+v", a)
+		}
+
+		merged, err := store.ListAgentNodes(ctx, storage.AgentQuery{
+			Tenant: "default", Tenants: both, Window: time.Hour,
+		})
+		if err != nil {
+			t.Fatalf("ListAgentNodes merged: %v", err)
+		}
+		if !slices.Contains(names(merged), "agent-a") || !slices.Contains(names(merged), "agent-b") {
+			t.Fatalf("merged agent inventory wrong: %v", names(merged))
+		}
+	})
+
+	t.Run("NetworkEdgeHealth", func(t *testing.T) {
+		bounds := []float64{0.01, 0.05, 0.1, 0.5} // 5 buckets, last is +Inf
+		edge := map[string]string{"k8s.src.owner.name": "cart", "k8s.dst.owner.name": "payments"}
+		other := map[string]string{"k8s.src.owner.name": "cart", "k8s.dst.owner.name": "shipping"}
+		def := map[string]string{"avuru.tenant": "default"}
+		stg := map[string]string{"avuru.tenant": "staging"}
+
+		// default: p95 lands in bucket 2 (0.05s). staging: everything in the
+		// +Inf bucket, so p95 caps at the last finite bound (0.5s). Merged, the
+		// staging tail dominates — a different answer from either tenant alone.
+		insertHistogram(t, store, base.Add(1*time.Minute), networkRTTMetric, def, edge, []uint64{90, 10, 0, 0, 0}, bounds)
+		insertHistogram(t, store, base.Add(1*time.Minute), networkRTTMetric, stg, edge, []uint64{0, 0, 0, 0, 100}, bounds)
+		insertSum(t, store, base.Add(1*time.Minute), networkFailedMetric, def, edge, 3)
+		insertSum(t, store, base.Add(1*time.Minute), networkFailedMetric, stg, edge, 4)
+		// An edge only the staging tenant sees.
+		insertSum(t, store, base.Add(1*time.Minute), networkFailedMetric, stg, other, 5)
+
+		one, err := store.NetworkEdgeHealth(ctx, storage.ServiceQuery{
+			Tenant: "default", Tenants: []string{"default"}, Range: tr,
+		})
+		if err != nil {
+			t.Fatalf("NetworkEdgeHealth one: %v", err)
+		}
+		if len(one) != 1 || one[0].Target != "payments" || one[0].RTTMs != 50 || one[0].FailedConnections != 3 {
+			t.Fatalf("single-tenant edge health wrong: %+v", one)
+		}
+
+		merged, err := store.NetworkEdgeHealth(ctx, storage.ServiceQuery{
+			Tenant: "default", Tenants: both, Range: tr,
+		})
+		if err != nil {
+			t.Fatalf("NetworkEdgeHealth merged: %v", err)
+		}
+		if len(merged) != 2 {
+			t.Fatalf("merged edges = %d, want 2 (%+v)", len(merged), merged)
+		}
+		byTarget := map[string]storage.NetworkEdgeHealth{}
+		for _, e := range merged {
+			byTarget[e.Target] = e
+		}
+		if p := byTarget["payments"]; p.RTTMs != 500 || p.FailedConnections != 7 {
+			t.Errorf("merged cart->payments wrong: %+v", p)
+		}
+		if s := byTarget["shipping"]; s.FailedConnections != 5 {
+			t.Errorf("merged cart->shipping wrong: %+v", s)
+		}
+	})
+}
+
+// TestMultiTenantProfileReads proves the Tenant IN (?) fan-out for the
+// profiling reads. The stacks dictionary stays joined per tenant, but the
+// flame graph groups by StackHash, so an identical stack sampled in two
+// member tenants merges into one node with the summed value.
+func TestMultiTenantProfileReads(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	both := []string{"m1", "m2"}
+
+	handler := []string{"handler", "main"}
+	if err := store.WriteProfileSamples(ctx, []storage.ProfileSample{
+		{Tenant: "m1", Timestamp: now, Service: "checkout", SampleType: "samples:count", Frames: handler, Value: 5},
+		{Tenant: "m2", Timestamp: now, Service: "checkout", SampleType: "samples:count", Frames: handler, Value: 3},
+		{Tenant: "m2", Timestamp: now, Service: "checkout", SampleType: "samples:count", Frames: []string{"encode", "handler", "main"}, Value: 2},
+		{Tenant: "m2", Timestamp: now, Service: "api", SampleType: "samples:count", Frames: []string{"serve", "main"}, Value: 7},
+	}); err != nil {
+		t.Fatalf("WriteProfileSamples: %v", err)
+	}
+
+	tr := storage.TimeRange{Start: now.Add(-time.Minute), End: now.Add(time.Minute)}
+
+	t.Run("ProfiledServices", func(t *testing.T) {
+		one, err := store.ListProfiledServices(ctx, storage.ProfileQuery{
+			Tenant: "m1", Tenants: []string{"m1"}, Range: tr,
+		})
+		if err != nil {
+			t.Fatalf("ListProfiledServices one: %v", err)
+		}
+		if len(one) != 1 || one[0].Name != "checkout" || one[0].Samples != 5 {
+			t.Fatalf("single-tenant profiled services wrong: %+v", one)
+		}
+
+		merged, err := store.ListProfiledServices(ctx, storage.ProfileQuery{
+			Tenant: "m1", Tenants: both, Range: tr,
+		})
+		if err != nil {
+			t.Fatalf("ListProfiledServices merged: %v", err)
+		}
+		if len(merged) != 2 || merged[0].Name != "checkout" || merged[0].Samples != 10 {
+			t.Fatalf("merged profiled services wrong (busiest first): %+v", merged)
+		}
+		if merged[1].Name != "api" || merged[1].Samples != 7 {
+			t.Errorf("merged second service wrong: %+v", merged[1])
+		}
+	})
+
+	t.Run("Flamegraph", func(t *testing.T) {
+		child := func(n storage.FlameNode, name string) *storage.FlameNode {
+			for _, c := range n.Children {
+				if c.Name == name {
+					return c
+				}
+			}
+			t.Fatalf("no child %q under %q: %+v", name, n.Name, n.Children)
+			return nil
+		}
+
+		one, err := store.ProfileFlamegraph(ctx, storage.ProfileQuery{
+			Tenant: "m1", Tenants: []string{"m1"}, Range: tr, Service: "checkout",
+		})
+		if err != nil {
+			t.Fatalf("ProfileFlamegraph one: %v", err)
+		}
+		if one.Value != 5 || len(one.Children) != 1 {
+			t.Fatalf("single-tenant flamegraph wrong: %+v", one)
+		}
+
+		merged, err := store.ProfileFlamegraph(ctx, storage.ProfileQuery{
+			Tenant: "m1", Tenants: both, Range: tr, Service: "checkout",
+		})
+		if err != nil {
+			t.Fatalf("ProfileFlamegraph merged: %v", err)
+		}
+		if merged.Value != 10 {
+			t.Fatalf("merged flamegraph total = %d, want 10 (%+v)", merged.Value, merged)
+		}
+		main := child(merged, "main")
+		h := child(*main, "handler")
+		if main.Value != 10 || h.Value != 10 {
+			t.Errorf("shared stack did not merge across tenants: main=%d handler=%d", main.Value, h.Value)
+		}
+		if e := child(*h, "encode"); e.Value != 2 {
+			t.Errorf("m2-only leaf wrong: %+v", e)
+		}
+		if h.Self != 8 {
+			t.Errorf("merged handler self = %d, want 8 (5+3)", h.Self)
+		}
+	})
 }

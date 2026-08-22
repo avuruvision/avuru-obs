@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/alerting"
@@ -18,68 +17,14 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
-const alertsReloadInterval = 15 * time.Second
-
 // loadAlertingConfig loads AVURUOBS_ALERTS_CONFIG and returns a hot-reloading
-// accessor (mtime poll, like the groups config). Unset → Default() (inert). A
-// present-but-invalid file fails loud at startup; a later bad edit is logged
-// and ignored (last good config stays live).
+// accessor for it (see loadHotReload). An unset path yields Default() (inert).
 func loadAlertingConfig(ctx context.Context) (func() alerting.Config, error) {
-	path := os.Getenv("AVURUOBS_ALERTS_CONFIG")
-	if path == "" {
-		cfg := alerting.Default()
-		return func() alerting.Config { return cfg }, nil
-	}
-	cfg, modTime, err := readAlertingConfig(path)
-	if err != nil {
-		return nil, fmt.Errorf("AVURUOBS_ALERTS_CONFIG: %w", err)
-	}
-	slog.Info("alerting config loaded", "path", path, "rules", len(cfg.Rules), "channels", len(cfg.Channels))
-
-	var current atomic.Pointer[alerting.Config]
-	current.Store(&cfg)
-	go func() {
-		ticker := time.NewTicker(alertsReloadInterval)
-		defer ticker.Stop()
-		last := modTime
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				info, err := os.Stat(path)
-				if err != nil || !info.ModTime().After(last) {
-					continue
-				}
-				c, mt, err := readAlertingConfig(path)
-				if err != nil {
-					slog.Warn("alerting config reload rejected, keeping current", "path", path, "error", err)
-					last = info.ModTime()
-					continue
-				}
-				current.Store(&c)
-				last = mt
-				slog.Info("alerting config reloaded", "path", path, "rules", len(c.Rules))
-			}
-		}
-	}()
-	return func() alerting.Config { return *current.Load() }, nil
-}
-
-func readAlertingConfig(path string) (alerting.Config, time.Time, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return alerting.Config{}, time.Time{}, err
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return alerting.Config{}, time.Time{}, err
-	}
-	cfg, err := alerting.ParseConfig(data)
-	if err != nil {
-		return alerting.Config{}, time.Time{}, err
-	}
-	return cfg, info.ModTime(), nil
+	return loadHotReload(ctx, "AVURUOBS_ALERTS_CONFIG", "alerting config",
+		alerting.Default(), alerting.ParseConfig,
+		func(cfg alerting.Config) []any {
+			return []any{"rules", len(cfg.Rules), "channels", len(cfg.Channels)}
+		})
 }
 
 // webhookAllowCIDRs parses AVURUOBS_WEBHOOK_ALLOW (comma-separated CIDRs) — the

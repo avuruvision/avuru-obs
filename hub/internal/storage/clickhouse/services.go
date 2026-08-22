@@ -18,10 +18,10 @@ SELECT
     countIf(` + errorSpanExpr("") + `)              AS errors,
     quantiles(0.5, 0.95, 0.99)(toFloat64(Duration)) AS qs
 FROM otel_traces
-WHERE Tenant = ?
+WHERE Tenant IN (?)
   AND Timestamp >= ? AND Timestamp < ?
   AND SpanKind IN ('Server', 'Consumer')`
-	args := []any{q.Tenant, q.Range.Start, q.Range.End}
+	args := []any{tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
 	if q.ExcludeAux {
 		query += auxExclusion("")
 	}
@@ -65,13 +65,16 @@ SELECT
 FROM otel_traces AS server
 INNER JOIN otel_traces AS client
     ON server.TraceId = client.TraceId AND server.ParentSpanId = client.SpanId
-WHERE server.Tenant = ?
+WHERE server.Tenant IN (?)
   AND server.Timestamp >= ? AND server.Timestamp < ?
-  AND client.Tenant = ?
+  AND client.Tenant IN (?)
   AND client.Timestamp >= ? AND client.Timestamp < ?
   AND server.SpanKind = 'Server' AND client.SpanKind = 'Client'
   AND server.ServiceName != client.ServiceName`
-	args := []any{q.Tenant, q.Range.Start, q.Range.End, q.Tenant, q.Range.Start, q.Range.End}
+	// Both join sides take the full set: a trace crossing two member tenants
+	// yields a cross-tenant edge, which is the merged-project semantics.
+	tenants := tenantsOrDefault(q.Tenants, q.Tenant)
+	args := []any{tenants, q.Range.Start, q.Range.End, tenants, q.Range.Start, q.Range.End}
 	if q.ExcludeAux {
 		query += auxExclusion("server.")
 	}
@@ -130,7 +133,7 @@ SELECT
     Attributes['k8s.dst.owner.name'] AS dst,
     toUInt64(sum(Value))             AS bytes
 FROM otel_metrics_sum
-WHERE Tenant = ?
+WHERE Tenant IN (?)
   AND MetricName = ?
   AND TimeUnix >= ? AND TimeUnix < ?
   AND Attributes['k8s.src.owner.name'] != ''
@@ -139,7 +142,7 @@ WHERE Tenant = ?
 GROUP BY src, dst
 ORDER BY bytes DESC`
 
-	rows, err := s.conn.Query(ctx, query, q.Tenant, networkFlowMetric, q.Range.Start, q.Range.End)
+	rows, err := s.conn.Query(ctx, query, tenantsOrDefault(q.Tenants, q.Tenant), networkFlowMetric, q.Range.Start, q.Range.End)
 	if err != nil {
 		return nil, fmt.Errorf("network edges: %w", err)
 	}
@@ -177,10 +180,10 @@ SELECT
     countIf(` + errorSpanExpr("") + `)              AS errors,
     quantiles(0.5, 0.95, 0.99)(toFloat64(Duration)) AS qs
 FROM otel_traces
-WHERE Tenant = ?
+WHERE Tenant IN (?)
   AND Timestamp >= ? AND Timestamp < ?
   AND SpanKind IN ('Server', 'Consumer')`
-	args := []any{q.Tenant, q.Range.Start, q.Range.End}
+	args := []any{tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
 	if q.Service != "" {
 		query += ` AND ServiceName = ?`
 		args = append(args, q.Service)

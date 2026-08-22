@@ -180,8 +180,8 @@ func TestSpanLookup(t *testing.T) {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 	}
 	// Tenant header is honored (the enterprise seam).
-	if fake.LastSpanLookupTenant != "staging" {
-		t.Errorf("tenant header not honored: %q", fake.LastSpanLookupTenant)
+	if len(fake.LastSpanLookupTenants) != 1 || fake.LastSpanLookupTenants[0] != "staging" {
+		t.Errorf("tenant header not honored: %v", fake.LastSpanLookupTenants)
 	}
 	var resp spanLookupResponse
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
