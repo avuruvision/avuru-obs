@@ -406,6 +406,28 @@ type SystemStats struct {
 	Disks   []DiskStats
 }
 
+// TenantSignalUsage is one signal's footprint for ONE project (or, for an
+// aggregate, the union of its members). Rows and time bounds are exact —
+// they are counted with the tenant filter — but EstimatedBytes is not: parts
+// are shared across tenants, so a project's share of a table's compressed
+// bytes can only be apportioned by row count. It is labeled an estimate
+// everywhere it is shown rather than presented as a measurement.
+type TenantSignalUsage struct {
+	Signal         string
+	Rows           uint64
+	EstimatedBytes uint64
+	Oldest         *time.Time
+	Newest         *time.Time
+	// RowsPerMinute is the recent ingest rate, measured over the last hour, so
+	// "is this project still sending?" has a number and not just a timestamp.
+	RowsPerMinute float64
+}
+
+// TenantUsage is one project's share of the store, per signal.
+type TenantUsage struct {
+	Signals []TenantSignalUsage
+}
+
 // SchemaStatus compares the migration ledger against what this install's
 // module set expects. Deliberately NOT a Store interface method: it is
 // backend-specific bookkeeping rather than a query, and the API receives it as
@@ -772,6 +794,12 @@ type Store interface {
 	// cheap delete. Doing nothing (no such table, a trim still running, no row
 	// old enough) is success with an empty list, not an error.
 	TrimTenant(ctx context.Context, tenant string, cutoff time.Time) ([]string, error)
+	// TenantUsage reports what ONE project holds — rows, an apportioned byte
+	// estimate, freshness and a recent ingest rate per signal — for the
+	// per-project half of Settings → Status. tenants is the resolved set, so an
+	// aggregate reports its members' union exactly as its screens read it.
+	// Absent tables (module off) are skipped, never an error.
+	TenantUsage(ctx context.Context, tenants []string, now time.Time) (TenantUsage, error)
 	// UI-authored service health groups (module service-health). Chart-declared
 	// groups stay in the ConfigMap and are NOT stored here — health.Resolver
 	// merges the two and lets the config win a name collision (design/

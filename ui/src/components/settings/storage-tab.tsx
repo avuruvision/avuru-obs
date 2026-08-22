@@ -5,7 +5,13 @@ import { useSystemStatus } from "@/hooks/use-system-status";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { CenteredSpinner } from "@/components/ui/spinner";
 import { formatAgo, formatBytes } from "@/lib/format";
-import type { DiskStats, SignalStats, StorageConnection } from "@/lib/api-types";
+import { Badge } from "@/components/ui/badge";
+import type {
+  DiskStats,
+  ProjectUsage,
+  SignalStats,
+  StorageConnection,
+} from "@/lib/api-types";
 
 // Where the telemetry lives and how much of it there is. The connection is
 // shown read-only on purpose rather than as a missing feature: ClickHouse is
@@ -26,6 +32,8 @@ export function StorageTab() {
   return (
     <div className="flex flex-col gap-4">
       {data.connection && <ConnectionCard c={data.connection} />}
+
+      {data.project && <ProjectUsageCard p={data.project} />}
 
       <Card className="overflow-hidden">
         <CardHeader>
@@ -50,10 +58,9 @@ export function StorageTab() {
         </table>
         <p className="border-t border-neutral px-4 py-2 text-xs text-base-content/45">
           Size is on disk (compressed). Retention is set with{" "}
-          <code className="rounded bg-base-300 px-1">
-            --set retention.tracesDays=…
-          </code>{" "}
-          and applied to the tables when the migration runs.
+          <code className="rounded bg-base-300 px-1">--set retention.traces=…</code>{" "}
+          and applied to the tables when the migration runs. A single project
+          can keep less — see Settings → General.
         </p>
       </Card>
 
@@ -105,6 +112,73 @@ function ConnectionCard({ c }: { c: StorageConnection }) {
           --set clickhouse.address=…
         </code>{" "}
         and restart the hub.
+      </p>
+    </Card>
+  );
+}
+
+// ProjectUsageCard answers "what does THIS project hold?" — the question the
+// instance-wide table below cannot answer on a shared install, and the one to
+// settle before changing a project's retention. Sizes are estimates by
+// construction: ClickHouse parts hold every tenant's rows together, so a
+// project's share can only be apportioned by row count. The card says so
+// rather than printing an exact-looking number.
+function ProjectUsageCard({ p }: { p: ProjectUsage }) {
+  const aggregate = p.tenants.length > 1;
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader>
+        <CardTitle>This project — {p.id}</CardTitle>
+        {aggregate && <Badge tone="primary">aggregate of {p.tenants.length}</Badge>}
+      </CardHeader>
+      <table className="table-dense w-full text-sm" data-testid="project-usage">
+        <thead>
+          <tr className="border-y border-neutral text-left">
+            <th>Signal</th>
+            <th className="text-right">Size (est.)</th>
+            <th className="text-right">Rows</th>
+            <th className="text-right">Ingest</th>
+            <th className="text-right">Data since</th>
+            <th className="text-right">Keeps</th>
+          </tr>
+        </thead>
+        <tbody>
+          {p.signals.map((s) => (
+            <tr key={s.signal} className="border-b border-neutral/50 last:border-0">
+              <td className="font-medium capitalize">{s.signal}</td>
+              <td className="text-right font-mono">{formatBytes(s.estimatedBytes)}</td>
+              <td className="text-right font-mono text-base-content/70">
+                {s.rows.toLocaleString()}
+              </td>
+              <td className="text-right font-mono text-base-content/70">
+                {s.rowsPerMinute > 0 ? `${s.rowsPerMinute.toFixed(1)}/min` : "—"}
+              </td>
+              <td className="text-right text-base-content/70">
+                {s.oldest ? formatAgo(s.oldest) : "—"}
+              </td>
+              <td className="text-right font-mono text-base-content/70">
+                {p.retentionVaries ? (
+                  <span title="Members keep different windows — open each member project">
+                    varies
+                  </span>
+                ) : (
+                  <>
+                    {s.retentionDays}d{" "}
+                    <span className="text-base-content/45">
+                      {s.inherited ? "(install)" : "(own)"}
+                    </span>
+                  </>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="border-t border-neutral px-4 py-2 text-xs text-base-content/45">
+        Size is an estimate: parts hold every project&apos;s rows together, so a
+        project&apos;s share is apportioned by row count. Rows, ingest rate and
+        &ldquo;data since&rdquo; are exact.
+        {aggregate && <> Union of {p.tenants.join(", ")}.</>}
       </p>
     </Card>
   );
