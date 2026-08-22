@@ -104,29 +104,34 @@ Everything below shipped in v0.5.0; the full detail lives in
 | **Personal API tokens** | `Authorization: Bearer avurut_…` for scripts and CI — hashed at rest, shown once, resolving to the owner's live permissions — [AEP](design/2026-08-13-api-tokens.md) |
 | **Dashboard & service-map restyle** | One overview screen (service summaries by group, live topology, capacity, active alerts) and a map that says *what* is wrong — status rings from the health rollup, real edge latency, URL-state filters. Nodes gained sort/filter |
 
-## v0.6 — open at both ends (directional)
+## v0.6 — open at both ends — SHIPPED (v0.6.0)
 
-The product observes one cluster well and speaks one protocol. Estates are
-bigger than that: fleets arrive with Jaeger, Zipkin, Prometheus and Loki
-senders already deployed, keep Grafana dashboards they trust, and run more
-than one cluster.
+The product observed one cluster well and spoke one protocol. Estates are
+bigger than that: fleets arrive with senders already deployed, and run more
+than one cluster. v0.6 opened both ends of the pipe.
 
 > **As a platform team we adopt avuru-obs without abandoning what we run
-> today — existing senders land unchanged, our Grafana keeps reading, one
-> screen spans our clusters — and we leave the same way we came, dual-writing
-> on the way in or out.**
+> today — existing senders land unchanged, one screen spans our clusters — and
+> we leave the same way we came, dual-writing on the way in or out.**
 
-- **Wider ingest compatibility** — the release-defining item: Jaeger, Zipkin,
-  Prometheus remote-write and Loki push receivers alongside OTLP (each one
-  values-flag opt-in, ingest keys enforced uniformly), plus forwarding
-  exporters (OTLP/Kafka) for dual-write during a migration. The README's
-  drop-in claim becomes CI-enforced, like the north star. See the
-  [AEP](design/2026-07-27-wider-ingest-compat.md).
-- **Projects completion (Phase 3):** **member projects** (multi-cluster
-  aggregation), per-project retention, per-project system status, and chart
-  component toggles so secondary clusters install gateway(+sensor)-only
-  against a shared ClickHouse. See the
-  [AEP](design/2026-07-27-projects-completion.md).
+The three themes below shipped in v0.6.0; the full detail lives in
+[CHANGELOG.md](CHANGELOG.md) and the linked AEPs. The client surfaces,
+declared service metadata and richer auto-tagging did not make the release and
+carry over to v0.7 with their AEPs intact; the inter-zone spike ended exactly
+as its gate allowed — the AEP landed, the feature moved.
+
+| Theme | Shipped |
+|---|---|
+| **Wider ingest compatibility** | The release-defining item: Jaeger (gRPC + thrift-HTTP), Zipkin, Prometheus remote-write and Loki push receivers beside OTLP, each values-flag opt-in and default off, every one through the same tenant stage so ingest keys are enforced whatever the protocol; forwarding exporters (OTLP/Kafka) dual-write to another backend during a migration, behind a bounded queue. The drop-in claim is now CI-enforced like the north star — real per-protocol fixtures through chart-rendered receivers on a kind install — [AEP](design/2026-07-27-wider-ingest-compat.md) |
+| **Projects completion (Phase 3)** | **Member projects**: one project reads the union of several clusters on every screen, one level deep, granted per member and refused for the writes that need a single tenant. Plus **per-project retention** (an hourly tenant-scoped trim, since a shared table's TTL cannot select one tenant), **per-project storage usage** in Settings → Storage, and **chart component toggles** so a secondary cluster installs the ingest half alone against the central store — with the combinations that cannot work refused at `helm template` time — [AEP](design/2026-07-27-projects-completion.md) |
+| **Green follow-through** | Per-node energy in the coverage panel (measured/estimated kept split per row), carbon budgets that say whether they can actually reach anyone and warn when they target a group nothing rolls up to, and the [real-RAPL validation runbook](docs/runbooks/green-rapl-validation.md) the two green AEPs were missing |
+
+## v0.7 — the clients and the labels (directional)
+
+v0.6 opened the ingest side; the data is only as useful as the surfaces that
+read it and the words it is filed under. Carried over from v0.6, unchanged in
+intent:
+
 - **More clients:** a **CLI** (`--fail-on` for CI gates) riding v0.5's API
   tokens, and Grafana reading the Hub API through its JSON data sources — a
   documented recipe with example dashboards; a custom plugin only if the
@@ -138,14 +143,12 @@ than one cluster.
 - **Richer auto-tagging:** map Kubernetes labels/annotations to business tags
   and filter by them across every signal. See the
   [AEP](design/2026-07-27-auto-tagging.md).
-- **Green follow-through:** per-node energy in the coverage story, budget
-  deliverability made visible, and the real-RAPL validation runbook that
-  closes the green module's last "verify on hardware" boxes.
-- **Inter-zone traffic accounting** *(gated on a spike)*: cross-zone bytes per
-  service pair from OBI network flows — rides v0.6 only if the pinned OBI
-  emits it; otherwise the AEP lands and the feature moves to v0.7.
+- **Inter-zone traffic accounting:** cross-zone bytes per service pair from OBI
+  network flows. The v0.6 spike settled the question the gate asked — the
+  design is written and the implementation is what remains. See the
+  [AEP](design/2026-08-18-inter-zone-traffic.md).
 
-## Beyond v0.6
+## Beyond v0.7
 
 - **Endpoint checks:** health when there is no traffic. See the
   [draft AEP](design/2026-07-20-endpoint-checks.md).
