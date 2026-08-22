@@ -51,8 +51,10 @@ hub (Go binary: API + OpAMP config plane)   ◄── UI (static SPA, own pod)
   metrics, with the live service map derived from those traces; OTLP ingest
   for apps you've already instrumented.
 - **One store**: ClickHouse for traces, metrics, logs, profiles, and flows.
-- **Drop-in**: already on OTLP/Jaeger? Point your exporter at the gateway —
-  no SDK or code changes (a hard product requirement).
+- **Drop-in**: already emitting OTLP — including to a Jaeger backend that
+  accepts it? Point your exporter at the gateway — no SDK or code changes
+  (a hard product requirement). Native Jaeger/Zipkin/Prometheus/Loki
+  receivers are v0.6's headline — see [ROADMAP.md](ROADMAP.md).
 
 Beyond the core signals, the day-2 layer:
 
