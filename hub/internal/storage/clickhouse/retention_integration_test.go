@@ -125,3 +125,28 @@ func TestProjectRetentionRoundtrip(t *testing.T) {
 		t.Fatalf("RetentionDays = %d, want 0 after clearing", back.RetentionDays)
 	}
 }
+
+// TestTrimTablesMatchTheSchema guards the table/column list itself. TrimTenant
+// skips a table with nothing old enough, so a typo in a column name — or an
+// upstream rename — would never fail a test that only seeds traces: the trim
+// would silently stop covering that signal while still reporting success.
+// This asserts every (table, timeCol) pair exists, and that each table really
+// carries the Tenant column the trim scopes by.
+func TestTrimTablesMatchTheSchema(t *testing.T) {
+	store := startClickHouse(t) // migrates with every module active
+	ctx := context.Background()
+
+	for _, tbl := range trimTables {
+		var n uint64
+		err := store.conn.QueryRow(ctx, `
+SELECT count() FROM system.columns
+WHERE database = ? AND table = ? AND name IN (?, 'Tenant')`,
+			store.db, tbl.table, tbl.timeCol).Scan(&n)
+		if err != nil {
+			t.Fatalf("%s: reading columns: %v", tbl.table, err)
+		}
+		if n != 2 {
+			t.Errorf("%s: want both %s and Tenant, found %d of the two", tbl.table, tbl.timeCol, n)
+		}
+	}
+}
