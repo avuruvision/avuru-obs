@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronsUpDown, FolderKanban } from "lucide-react";
+import { Check, ChevronsUpDown, FolderKanban, Layers } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useProject } from "@/lib/project-context";
 import { useProjects } from "@/hooks/use-projects";
@@ -20,7 +20,12 @@ export function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
   const projects = data?.projects ?? [{ id: project, source: "default" as const }];
   // The footer shows the active project's label when it has one (db projects),
   // falling back to the id; selection still keys on the id (the tenant).
-  const activeLabel = projects.find((p) => p.id === project)?.label || project;
+  const active = projects.find((p) => p.id === project);
+  const activeLabel = active?.label || project;
+  // An aggregate reads several projects at once; the footer says so, because
+  // "why does this screen show services I do not recognize" is otherwise a
+  // puzzle solved only in Settings.
+  const activeMembers = active?.members?.length ?? 0;
 
   useEffect(() => {
     if (!open) return;
@@ -55,7 +60,15 @@ export function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
               <span className="text-[10px] uppercase tracking-wider text-base-content/40">
                 Project
               </span>
-              <span className="truncate text-sm font-medium">{activeLabel}</span>
+              <span className="flex items-center gap-1">
+                <span className="truncate text-sm font-medium">{activeLabel}</span>
+                {activeMembers > 0 && (
+                  <Layers
+                    className="h-3 w-3 shrink-0 text-base-content/40"
+                    aria-label={`aggregate of ${activeMembers} projects`}
+                  />
+                )}
+              </span>
             </span>
             <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-base-content/50" aria-hidden />
           </>
@@ -83,7 +96,15 @@ export function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
                   isSel ? "text-primary" : "text-base-content",
                 )}
               >
-                <span className="truncate">{p.label || p.id}</span>
+                <span className="flex min-w-0 items-center gap-1">
+                  <span className="truncate">{p.label || p.id}</span>
+                  {(p.members?.length ?? 0) > 0 && (
+                    <Layers
+                      className="h-3 w-3 shrink-0 text-base-content/40"
+                      aria-label={`aggregate of ${p.members?.length} projects`}
+                    />
+                  )}
+                </span>
                 {isSel && <Check className="h-3.5 w-3.5 shrink-0" />}
               </li>
             );

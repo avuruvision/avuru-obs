@@ -38,10 +38,11 @@ SELECT
     countIf(%s)                                       AS errors,
     quantiles(0.5, 0.95, 0.99)(toFloat64(Duration))   AS qs
 FROM otel_traces
-WHERE Tenant = ?
+WHERE Tenant IN (?)
   AND Timestamp >= ? AND Timestamp < ?
   AND SpanKind IN ('Server', 'Consumer')`, int(bucket.Seconds()), errorSpanExpr(""))
-	args := []any{q.Tenant, q.Range.Start, q.Range.End}
+	tenants := tenantsOrDefault(q.Tenants, q.Tenant)
+	args := []any{tenants, q.Range.Start, q.Range.End}
 
 	if q.Service != "" {
 		query += ` AND ServiceName = ?`
@@ -51,9 +52,9 @@ WHERE Tenant = ?
 		sub := `
   AND ServiceName IN (
     SELECT ServiceName FROM otel_traces
-    WHERE Tenant = ? AND Timestamp >= ? AND Timestamp < ?
+    WHERE Tenant IN (?) AND Timestamp >= ? AND Timestamp < ?
       AND SpanKind IN ('Server', 'Consumer')`
-		subArgs := []any{q.Tenant, q.Range.Start, q.Range.End}
+		subArgs := []any{tenants, q.Range.Start, q.Range.End}
 		if q.ExcludeAux {
 			sub += auxExclusion("")
 		}

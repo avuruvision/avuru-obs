@@ -21,6 +21,7 @@ func (s *Store) ListAgentNodes(ctx context.Context, q storage.AgentQuery) ([]sto
 		window = defaultAgentWindow
 	}
 	since := time.Now().UTC().Add(-window)
+	tenants := tenantsOrDefault(q.Tenants, q.Tenant)
 
 	nodes := map[string]*storage.AgentNode{}
 	get := func(name string) *storage.AgentNode {
@@ -42,33 +43,33 @@ func (s *Store) ListAgentNodes(ctx context.Context, q storage.AgentQuery) ([]sto
 		{
 			query: `SELECT ` + nodeAttr + ` AS node, max(TimeUnix) AS newest
 FROM otel_metrics_gauge
-WHERE Tenant = ? AND TimeUnix >= ? AND MetricName IN (?, ?) AND ` + nodeAttr + ` != ''
+WHERE Tenant IN (?) AND TimeUnix >= ? AND MetricName IN (?, ?) AND ` + nodeAttr + ` != ''
 GROUP BY node`,
-			args:   []any{q.Tenant, since, metricNodeCPU, metricNodeMem},
+			args:   []any{tenants, since, metricNodeCPU, metricNodeMem},
 			assign: func(n *storage.AgentNode, t time.Time) { n.Metrics = &t },
 		},
 		{
 			query: `SELECT ` + nodeAttr + ` AS node, max(Timestamp) AS newest
 FROM otel_logs
-WHERE Tenant = ? AND Timestamp >= ? AND ` + nodeAttr + ` != ''
+WHERE Tenant IN (?) AND Timestamp >= ? AND ` + nodeAttr + ` != ''
 GROUP BY node`,
-			args:   []any{q.Tenant, since},
+			args:   []any{tenants, since},
 			assign: func(n *storage.AgentNode, t time.Time) { n.Logs = &t },
 		},
 		{
 			query: `SELECT ` + nodeAttr + ` AS node, max(Timestamp) AS newest
 FROM otel_traces
-WHERE Tenant = ? AND Timestamp >= ? AND ` + nodeAttr + ` != ''
+WHERE Tenant IN (?) AND Timestamp >= ? AND ` + nodeAttr + ` != ''
 GROUP BY node`,
-			args:   []any{q.Tenant, since},
+			args:   []any{tenants, since},
 			assign: func(n *storage.AgentNode, t time.Time) { n.Traces = &t },
 		},
 		{
 			query: `SELECT NodeName AS node, max(Timestamp) AS newest
 FROM profiling_samples
-WHERE Tenant = ? AND Timestamp >= ? AND NodeName != ''
+WHERE Tenant IN (?) AND Timestamp >= ? AND NodeName != ''
 GROUP BY node`,
-			args:   []any{q.Tenant, since},
+			args:   []any{tenants, since},
 			assign: func(n *storage.AgentNode, t time.Time) { n.Profiles = &t },
 		},
 	}

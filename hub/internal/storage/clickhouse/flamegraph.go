@@ -14,10 +14,10 @@ func (s *Store) ListProfiledServices(ctx context.Context, q storage.ProfileQuery
 	const query = `
 SELECT ServiceName, sum(Value) AS total
 FROM profiling_samples
-WHERE Tenant = ? AND Timestamp >= ? AND Timestamp < ?
+WHERE Tenant IN (?) AND Timestamp >= ? AND Timestamp < ?
 GROUP BY ServiceName
 ORDER BY total DESC`
-	rows, err := s.conn.Query(ctx, query, q.Tenant, q.Range.Start, q.Range.End)
+	rows, err := s.conn.Query(ctx, query, tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End)
 	if err != nil {
 		return nil, fmt.Errorf("profiled services: %w", err)
 	}
@@ -41,11 +41,11 @@ func (s *Store) ProfileFlamegraph(ctx context.Context, q storage.ProfileQuery) (
 SELECT any(st.Frames) AS frames, sum(sm.Value) AS total
 FROM profiling_samples AS sm
 INNER JOIN profiling_stacks AS st
-    ON sm.StackHash = st.StackHash AND sm.Tenant = st.Tenant
-WHERE sm.Tenant = ? AND sm.ServiceName = ?
+    ON sm.StackHash = st.StackHash AND sm.Tenant = st.Tenant -- per-tenant stack dictionary
+WHERE sm.Tenant IN (?) AND sm.ServiceName = ?
   AND sm.Timestamp >= ? AND sm.Timestamp < ?
 GROUP BY sm.StackHash`
-	rows, err := s.conn.Query(ctx, query, q.Tenant, q.Service, q.Range.Start, q.Range.End)
+	rows, err := s.conn.Query(ctx, query, tenantsOrDefault(q.Tenants, q.Tenant), q.Service, q.Range.Start, q.Range.End)
 	if err != nil {
 		return storage.FlameNode{}, fmt.Errorf("flamegraph stacks: %w", err)
 	}

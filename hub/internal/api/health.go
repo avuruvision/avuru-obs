@@ -107,12 +107,13 @@ func (a *API) buildHealthReport(r *http.Request) (health.Report, storage.TimeRan
 	if err != nil {
 		return health.Report{}, storage.TimeRange{}, err
 	}
-	tenant, err := a.project(r, auth.RoleViewer)
+	tenant, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return health.Report{}, storage.TimeRange{}, err
 	}
 	q := storage.ServiceQuery{
 		Tenant:     tenant,
+		Tenants:    tenants,
 		Range:      tr,
 		ExcludeAux: !parseBool(r, "includeAux", false),
 	}

@@ -50,6 +50,8 @@ func (s *Store) ListNodeStats(ctx context.Context, q storage.InfraQuery) ([]stor
 		bucket = time.Second
 	}
 
+	tenants := tenantsOrDefault(q.Tenants, q.Tenant)
+
 	nodes := map[string]*storage.NodeStat{}
 	get := func(name string) *storage.NodeStat {
 		if n, ok := nodes[name]; ok {
@@ -68,13 +70,13 @@ SELECT
     argMaxIf(Value, TimeUnix, MetricName = ?) AS mem,
     argMaxIf(Value, TimeUnix, MetricName = ?) AS memAvail
 FROM otel_metrics_gauge
-WHERE Tenant = ? AND TimeUnix >= ? AND TimeUnix < ?
+WHERE Tenant IN (?) AND TimeUnix >= ? AND TimeUnix < ?
   AND MetricName IN (?, ?, ?)
   AND ` + nodeAttr + ` != ''
 GROUP BY node`
 	rows, err := s.conn.Query(ctx, latestQ,
 		metricNodeCPU, metricNodeMem, metricNodeMemAvail,
-		q.Tenant, q.Range.Start, q.Range.End,
+		tenants, q.Range.Start, q.Range.End,
 		metricNodeCPU, metricNodeMem, metricNodeMemAvail)
 	if err != nil {
 		return nil, fmt.Errorf("node latest gauges: %w", err)
@@ -107,14 +109,14 @@ FROM (
         Attributes['interface'] AS iface,
         max(Value) - min(Value) AS delta
     FROM otel_metrics_sum
-    WHERE Tenant = ? AND TimeUnix >= ? AND TimeUnix < ?
+    WHERE Tenant IN (?) AND TimeUnix >= ? AND TimeUnix < ?
       AND MetricName = ?
       AND ` + nodeAttr + ` != ''
     GROUP BY node, dir, iface
 )
 GROUP BY node`
 	windowSec := q.Range.End.Sub(q.Range.Start).Seconds()
-	rows, err = s.conn.Query(ctx, netQ, q.Tenant, q.Range.Start, q.Range.End, metricNodeNet)
+	rows, err = s.conn.Query(ctx, netQ, tenants, q.Range.Start, q.Range.End, metricNodeNet)
 	if err != nil {
 		return nil, fmt.Errorf("node network rates: %w", err)
 	}
@@ -141,11 +143,11 @@ GROUP BY node`
 	podCountQ := `
 SELECT ` + nodeAttr + ` AS node, uniqExact(ResourceAttributes['k8s.pod.name']) AS pods
 FROM otel_metrics_gauge
-WHERE Tenant = ? AND TimeUnix >= ? AND TimeUnix < ?
+WHERE Tenant IN (?) AND TimeUnix >= ? AND TimeUnix < ?
   AND MetricName = ?
   AND ` + nodeAttr + ` != ''
 GROUP BY node`
-	rows, err = s.conn.Query(ctx, podCountQ, q.Tenant, q.Range.Start, q.Range.End, metricPodCPU)
+	rows, err = s.conn.Query(ctx, podCountQ, tenants, q.Range.Start, q.Range.End, metricPodCPU)
 	if err != nil {
 		return nil, fmt.Errorf("node pod counts: %w", err)
 	}
@@ -174,12 +176,12 @@ SELECT
     toStartOfInterval(TimeUnix, INTERVAL %d SECOND) AS t,
     avg(Value) AS v
 FROM otel_metrics_gauge
-WHERE Tenant = ? AND TimeUnix >= ? AND TimeUnix < ?
+WHERE Tenant IN (?) AND TimeUnix >= ? AND TimeUnix < ?
   AND MetricName IN (?, ?)
   AND `+nodeAttr+` != ''
 GROUP BY node, MetricName, t
 ORDER BY t`, int(bucket.Seconds()))
-	rows, err = s.conn.Query(ctx, seriesQ, q.Tenant, q.Range.Start, q.Range.End, metricNodeCPU, metricNodeMem)
+	rows, err = s.conn.Query(ctx, seriesQ, tenants, q.Range.Start, q.Range.End, metricNodeCPU, metricNodeMem)
 	if err != nil {
 		return nil, fmt.Errorf("node series: %w", err)
 	}
@@ -220,6 +222,7 @@ func (s *Store) ListPodStats(ctx context.Context, q storage.InfraQuery) ([]stora
 	if limit <= 0 {
 		limit = defaultPodLimit
 	}
+	tenants := tenantsOrDefault(q.Tenants, q.Tenant)
 	query := `
 SELECT
     ResourceAttributes['k8s.pod.name'] AS pod,
@@ -229,12 +232,12 @@ SELECT
     argMaxIf(Value, TimeUnix, MetricName = ?) AS cpu,
     argMaxIf(Value, TimeUnix, MetricName = ?) AS mem
 FROM otel_metrics_gauge
-WHERE Tenant = ? AND TimeUnix >= ? AND TimeUnix < ?
+WHERE Tenant IN (?) AND TimeUnix >= ? AND TimeUnix < ?
   AND MetricName IN (?, ?)
   AND ResourceAttributes['k8s.pod.name'] != ''`
 	args := []any{
 		metricPodCPU, metricPodMem,
-		q.Tenant, q.Range.Start, q.Range.End,
+		tenants, q.Range.Start, q.Range.End,
 		metricPodCPU, metricPodMem,
 	}
 	if q.Node != "" {

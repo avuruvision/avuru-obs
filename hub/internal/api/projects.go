@@ -22,13 +22,21 @@ var projectIDRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 
 const maxProjectLabelLen = 200
 
+// maxProjectMembers bounds an aggregate's fan-out: every member is one more id
+// in the `Tenant IN (?)` of every query the project runs.
+const maxProjectMembers = 32
+
 type createProjectRequest struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
 }
 
+// updateProjectRequest is a PARTIAL update: an omitted field keeps its stored
+// value. Both are pointers because the two editors are separate forms — the
+// members form must not blank the label it never showed, and vice versa.
 type updateProjectRequest struct {
-	Label string `json:"label"`
+	Label   *string   `json:"label"`
+	Members *[]string `json:"members"`
 }
 
 func toProjectDTO(p storage.Project) projectDTO {
@@ -186,6 +194,7 @@ func (a *API) handleCreateProject(w http.ResponseWriter, r *http.Request) error 
 	if err := st.SaveProject(r.Context(), p); err != nil {
 		return err
 	}
+	a.invalidateProjects()
 	writeJSON(w, http.StatusCreated, toProjectDTO(p))
 	return nil
 }
@@ -209,7 +218,9 @@ func (a *API) editableProject(ctx context.Context, st storage.Store, id string) 
 	return p, nil
 }
 
-// handleUpdateProject renames a db project's label (the id is immutable).
+// handleUpdateProject edits a db project's label and/or its members (the id is
+// immutable). Setting members turns the project into an aggregate: its queries
+// read the union of the members the caller may see (see resolveTenants).
 func (a *API) handleUpdateProject(w http.ResponseWriter, r *http.Request) error {
 	st, err := a.store()
 	if err != nil {
@@ -219,20 +230,89 @@ func (a *API) handleUpdateProject(w http.ResponseWriter, r *http.Request) error 
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil {
 		return decodeJSONError(err)
 	}
-	label := strings.TrimSpace(req.Label)
-	if len(label) > maxProjectLabelLen {
-		return badRequest("label must be %d characters or fewer", maxProjectLabelLen)
-	}
 	p, err := a.editableProject(r.Context(), st, r.PathValue("id"))
 	if err != nil {
 		return err
 	}
-	p.Label = label
+	if req.Label != nil {
+		label := strings.TrimSpace(*req.Label)
+		if len(label) > maxProjectLabelLen {
+			return badRequest("label must be %d characters or fewer", maxProjectLabelLen)
+		}
+		p.Label = label
+	}
+	if req.Members != nil {
+		members, err := a.validateMembers(r.Context(), st, p.ID, *req.Members)
+		if err != nil {
+			return err
+		}
+		p.Members = members
+	}
 	if err := st.SaveProject(r.Context(), p); err != nil {
 		return err
 	}
+	// Membership feeds authorization; leaving the memo in place would keep this
+	// replica resolving the OLD member set for up to tenantCacheTTL.
+	a.invalidateProjects()
 	writeJSON(w, http.StatusOK, toProjectDTO(p))
 	return nil
+}
+
+// validateMembers normalizes a requested member set: trimmed, deduped, sorted,
+// each a well-formed project id, never the project itself. Members need not
+// exist yet — a secondary cluster is a tenant the moment it ships its first
+// span, and an admin should be able to wire the aggregate before that.
+//
+// Membership is ONE level deep, enforced in both directions: a member may not
+// itself be an aggregate, and a project that is already someone's member may
+// not become one. resolveTenants expands exactly once, so a nested aggregate
+// would silently read less than its tree — a wrong answer that looks like data.
+func (a *API) validateMembers(ctx context.Context, st storage.Store, id string, in []string) ([]string, error) {
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, m := range in {
+		m = strings.TrimSpace(m)
+		if m == "" {
+			continue
+		}
+		if !projectIDRe.MatchString(m) {
+			return nil, badRequest("member %q must match ^[a-z][a-z0-9-]{0,62}$", m)
+		}
+		if m == id {
+			return nil, badRequest("a project cannot be a member of itself")
+		}
+		if seen[m] {
+			continue
+		}
+		seen[m] = true
+		out = append(out, m)
+	}
+	sort.Strings(out)
+	if len(out) > maxProjectMembers {
+		return nil, badRequest("at most %d members per project", maxProjectMembers)
+	}
+	if len(out) == 0 {
+		return []string{}, nil // an explicit [] demotes an aggregate back to a leaf
+	}
+	all, err := st.ListProjects(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range all {
+		if p.ID != id && len(p.Members) > 0 {
+			if seen[p.ID] {
+				return nil, &apiError{status: http.StatusConflict,
+					message: fmt.Sprintf("project %q is itself an aggregate; membership is one level deep", p.ID)}
+			}
+			for _, m := range p.Members {
+				if m == id {
+					return nil, &apiError{status: http.StatusConflict,
+						message: fmt.Sprintf("project %q is already a member of %q; membership is one level deep", id, p.ID)}
+				}
+			}
+		}
+	}
+	return out, nil
 }
 
 // handleDeleteProject tombstones a db project (its telemetry ages out by TTL).
@@ -248,6 +328,7 @@ func (a *API) handleDeleteProject(w http.ResponseWriter, r *http.Request) error 
 	if err := st.DeleteProject(r.Context(), id); err != nil {
 		return err
 	}
+	a.invalidateProjects()
 	w.WriteHeader(http.StatusNoContent)
 	return nil
 }

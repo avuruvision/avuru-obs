@@ -42,6 +42,15 @@ func (a *API) handleProfilesIngest(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
+	// Same rule as an ingest key: writing under an aggregate id produces rows
+	// no project reads, since the union reads members and never the aggregate.
+	agg, err := a.isAggregate(r.Context(), tenant)
+	if err != nil {
+		return err
+	}
+	if agg {
+		return aggregateWriteConflict(tenant, "send this project's telemetry to one of its member projects")
+	}
 	samples, err := profilesadapter.ParseProto(body, tenant)
 	if err != nil {
 		return badRequest("invalid profiles payload: %v", err)

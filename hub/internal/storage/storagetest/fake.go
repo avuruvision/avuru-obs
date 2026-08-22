@@ -78,7 +78,9 @@ type Fake struct {
 
 	// Project fakes. Projects keyed by ID; only live projects are ever stored
 	// (DeleteProject removes the entry, mirroring the tombstone-then-FINAL read).
+	// ProjectsErr forces ListProjects to fail (resolveTenants must fail closed).
 	Projects        map[string]storage.Project
+	ProjectsErr     error
 	SavedProjects   []storage.Project
 	DeletedProjects []string
 
@@ -113,18 +115,18 @@ type Fake struct {
 	TouchedTokens   []string
 
 	// Last*Query record the most recent inputs for asserting parameter parsing.
-	LastTraceQuery       storage.TraceQuery
-	LastServiceQuery     storage.ServiceQuery
-	LastOverviewQuery    storage.OverviewQuery
-	LastLogQuery         storage.LogQuery
-	LastInfraQuery       storage.InfraQuery
-	LastAgentQuery       storage.AgentQuery
-	LastREDQuery         storage.REDQuery
-	LastProfileQuery     storage.ProfileQuery
-	LastIssueQuery       storage.ErrorIssueQuery
-	LastEventQuery       storage.ErrorEventQuery
-	LastGreenQuery       storage.GreenQuery
-	LastSpanLookupTenant string
+	LastTraceQuery        storage.TraceQuery
+	LastServiceQuery      storage.ServiceQuery
+	LastOverviewQuery     storage.OverviewQuery
+	LastLogQuery          storage.LogQuery
+	LastInfraQuery        storage.InfraQuery
+	LastAgentQuery        storage.AgentQuery
+	LastREDQuery          storage.REDQuery
+	LastProfileQuery      storage.ProfileQuery
+	LastIssueQuery        storage.ErrorIssueQuery
+	LastEventQuery        storage.ErrorEventQuery
+	LastGreenQuery        storage.GreenQuery
+	LastSpanLookupTenants []string
 }
 
 // StatusWrite records a SetErrorIssueStatus call.
@@ -216,7 +218,7 @@ func (f *Fake) SearchTraces(_ context.Context, q storage.TraceQuery) (storage.Tr
 	return f.Page, nil
 }
 
-func (f *Fake) GetTrace(_ context.Context, _, traceID string) (storage.Trace, error) {
+func (f *Fake) GetTrace(_ context.Context, _ []string, traceID string) (storage.Trace, error) {
 	t, ok := f.Traces[traceID]
 	if !ok {
 		return storage.Trace{}, storage.ErrNotFound
@@ -224,8 +226,8 @@ func (f *Fake) GetTrace(_ context.Context, _, traceID string) (storage.Trace, er
 	return t, nil
 }
 
-func (f *Fake) FindSpanTrace(_ context.Context, tenant, spanID string) (string, error) {
-	f.LastSpanLookupTenant = tenant
+func (f *Fake) FindSpanTrace(_ context.Context, tenants []string, spanID string) (string, error) {
+	f.LastSpanLookupTenants = tenants
 	if id, ok := f.SpanTraces[spanID]; ok {
 		return id, nil
 	}
@@ -241,7 +243,7 @@ func (f *Fake) SearchLogs(_ context.Context, q storage.LogQuery) (storage.LogPag
 	return f.LogPage, nil
 }
 
-func (f *Fake) LogsForTrace(_ context.Context, _, traceID string) ([]storage.LogRecord, error) {
+func (f *Fake) LogsForTrace(_ context.Context, _ []string, traceID string) ([]storage.LogRecord, error) {
 	return f.TraceLogs[traceID], nil
 }
 
@@ -250,7 +252,7 @@ func (f *Fake) SearchErrorIssues(_ context.Context, q storage.ErrorIssueQuery) (
 	return f.Issues, nil
 }
 
-func (f *Fake) GetErrorIssue(_ context.Context, _ string, _ uint64) (storage.ErrorIssue, error) {
+func (f *Fake) GetErrorIssue(_ context.Context, _ []string, _ uint64) (storage.ErrorIssue, error) {
 	return f.Issue, f.IssueErr
 }
 
@@ -259,7 +261,7 @@ func (f *Fake) ListErrorEvents(_ context.Context, q storage.ErrorEventQuery) (st
 	return f.EventPage, nil
 }
 
-func (f *Fake) ErrorIssueHistogram(_ context.Context, _ string, _ uint64, _ storage.TimeRange, _ int) ([]storage.ErrorHistogramPoint, error) {
+func (f *Fake) ErrorIssueHistogram(_ context.Context, _ []string, _ uint64, _ storage.TimeRange, _ int) ([]storage.ErrorHistogramPoint, error) {
 	return f.Histogram, nil
 }
 
@@ -508,6 +510,9 @@ func (f *Fake) RevokeAuthSessionsForUser(_ context.Context, userID string) error
 // ListProjects returns live projects ordered by ID, matching the real
 // ClickHouse implementation's ORDER BY (map iteration order is random).
 func (f *Fake) ListProjects(context.Context) ([]storage.Project, error) {
+	if f.ProjectsErr != nil {
+		return nil, f.ProjectsErr
+	}
 	out := make([]storage.Project, 0, len(f.Projects))
 	for _, p := range f.Projects {
 		out = append(out, p)

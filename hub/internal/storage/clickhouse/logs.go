@@ -29,9 +29,9 @@ func (s *Store) SearchLogs(ctx context.Context, q storage.LogQuery) (storage.Log
 	query := `
 SELECT ` + logColumns + `
 FROM otel_logs
-WHERE Tenant = ?
+WHERE Tenant IN (?)
   AND Timestamp >= ? AND Timestamp < ?`
-	args := []any{q.Tenant, q.Range.Start, q.Range.End}
+	args := []any{tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
 
 	if q.Service != "" {
 		query += ` AND ServiceName = ?`
@@ -87,13 +87,16 @@ LIMIT ?`
 
 // LogsForTrace returns all logs correlated to a trace, oldest-first (matches
 // the waterfall reading order).
-func (s *Store) LogsForTrace(ctx context.Context, tenant, traceID string) ([]storage.LogRecord, error) {
+func (s *Store) LogsForTrace(ctx context.Context, tenants []string, traceID string) ([]storage.LogRecord, error) {
+	if err := requireTenants(tenants); err != nil {
+		return nil, fmt.Errorf("logs for trace: %w", err)
+	}
 	const query = `
 SELECT ` + logColumns + `
 FROM otel_logs
-WHERE Tenant = ? AND TraceId = ?
+WHERE Tenant IN (?) AND TraceId = ?
 ORDER BY Timestamp ASC`
-	rows, err := s.conn.Query(ctx, query, tenant, traceID)
+	rows, err := s.conn.Query(ctx, query, tenants, traceID)
 	if err != nil {
 		return nil, fmt.Errorf("logs for trace %s: %w", traceID, err)
 	}

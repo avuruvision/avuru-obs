@@ -6,7 +6,13 @@ import { test, expect, type Page } from "@playwright/test";
 // route-stub style in alerts.spec.ts. (The seeded-data switcher tests live in
 // projects.spec.ts.)
 
-type Proj = { id: string; label?: string; source: string; editable?: boolean };
+type Proj = {
+  id: string;
+  label?: string;
+  source: string;
+  editable?: boolean;
+  members?: string[];
+};
 
 async function stubAdmin(page: Page) {
   await page.route("**/api/v1/auth/me", (route) =>
@@ -37,8 +43,15 @@ async function stubProjects(page: Page, initial: Proj[]) {
     const id = decodeURIComponent(url.split("/").pop() as string);
     const i = projects.findIndex((p) => p.id === id);
     if (route.request().method() === "PUT") {
-      const body = route.request().postDataJSON() as { label: string };
-      if (i >= 0) projects[i] = { ...projects[i], label: body.label };
+      // Mirrors the hub: an omitted field keeps its stored value.
+      const body = route.request().postDataJSON() as { label?: string; members?: string[] };
+      if (i >= 0) {
+        projects[i] = {
+          ...projects[i],
+          ...(body.label !== undefined ? { label: body.label } : {}),
+          ...(body.members !== undefined ? { members: [...body.members].sort() } : {}),
+        };
+      }
       return route.fulfill({ status: 200, json: projects[i] });
     }
     if (route.request().method() === "DELETE") {
@@ -94,5 +107,59 @@ test.describe("admin project management", () => {
     // After delete the context falls back to default; team-a is gone from the switcher.
     await page.getByRole("button", { name: "Switch project" }).click();
     await expect(page.getByRole("option", { name: "Team A" })).toHaveCount(0);
+  });
+
+  test("admin turns a project into an aggregate and the switcher marks it", async ({ page }) => {
+    await stubAdmin(page);
+    await stubProjects(page, [
+      { id: "default", source: "default" },
+      { id: "estate", label: "Estate", source: "db", editable: true, members: [] },
+      { id: "prod-eu", source: "data" },
+      { id: "prod-us", source: "data" },
+    ]);
+
+    await page.goto("/settings?tab=general&project=estate");
+    await expect(page.getByRole("heading", { name: "Member projects" })).toBeVisible();
+
+    await page.getByLabel("Include prod-eu").check();
+    await page.getByLabel("Include prod-us").check();
+    await page.getByRole("button", { name: "Save members" }).click();
+    await expect(page.getByText("2 selected")).toBeVisible();
+    await expect(page.getByText("aggregate", { exact: true })).toBeVisible();
+
+    // The switcher marks an aggregate so a cross-cluster view is never a
+    // surprise ("why do I see services I do not recognize").
+    await page.getByRole("button", { name: "Switch project" }).click();
+    await expect(page.getByLabel("aggregate of 2 projects").first()).toBeVisible();
+  });
+
+  test("an aggregate cannot contain another aggregate", async ({ page }) => {
+    await stubAdmin(page);
+    await stubProjects(page, [
+      { id: "default", source: "default" },
+      { id: "estate", label: "Estate", source: "db", editable: true, members: [] },
+      { id: "europe", label: "Europe", source: "db", editable: true, members: ["prod-eu"] },
+    ]);
+
+    await page.goto("/settings?tab=general&project=estate");
+    // Aggregates are not offered as members at all — the hub also refuses with
+    // a 409, but the UI never presents the dead end.
+    await expect(page.getByLabel("Include europe")).toHaveCount(0);
+  });
+
+  test("a member id can be added before its cluster reports", async ({ page }) => {
+    await stubAdmin(page);
+    await stubProjects(page, [
+      { id: "default", source: "default" },
+      { id: "estate", label: "Estate", source: "db", editable: true, members: [] },
+    ]);
+
+    await page.goto("/settings?tab=general&project=estate");
+    await page.getByLabel("Add a project id").fill("prod-ap");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(page.getByText("(no data yet)")).toBeVisible();
+
+    await page.getByRole("button", { name: "Save members" }).click();
+    await expect(page.getByText("1 selected")).toBeVisible();
   });
 });

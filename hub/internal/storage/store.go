@@ -23,6 +23,7 @@ type TimeRange struct {
 // ServiceQuery filters ListServices and ServiceEdges.
 type ServiceQuery struct {
 	Tenant     string
+	Tenants    []string // resolved tenant set; empty means []string{Tenant}
 	Range      TimeRange
 	ExcludeAux bool // drop health-check/metrics/control-plane traffic
 }
@@ -87,6 +88,7 @@ type ServiceLabel struct {
 // OverviewQuery filters TraceOverview.
 type OverviewQuery struct {
 	Tenant     string
+	Tenants    []string // resolved tenant set; empty means []string{Tenant}
 	Range      TimeRange
 	Service    string // optional
 	ExcludeAux bool   // drop health-check/metrics/control-plane traffic
@@ -117,6 +119,7 @@ type TraceCursor struct {
 // TraceQuery filters SearchTraces. Zero values mean "no filter".
 type TraceQuery struct {
 	Tenant      string
+	Tenants     []string // resolved tenant set; empty means []string{Tenant}
 	Range       TimeRange
 	Service     string
 	Operation   string
@@ -184,6 +187,7 @@ type Trace struct {
 // HeatmapQuery filters TraceHeatmap.
 type HeatmapQuery struct {
 	Tenant          string
+	Tenants         []string // resolved tenant set; empty means []string{Tenant}
 	Range           TimeRange
 	Service         string
 	Operation       string
@@ -219,6 +223,7 @@ type LogCursor struct {
 // LogQuery filters SearchLogs. Zero values mean "no filter".
 type LogQuery struct {
 	Tenant      string
+	Tenants     []string // resolved tenant set; empty means []string{Tenant}
 	Range       TimeRange
 	Service     string
 	MinSeverity string // "", or a severity name (e.g. "ERROR") — matches >= its number
@@ -247,6 +252,7 @@ type LogPage struct {
 // REDQuery filters REDSeries. Empty Service means the busiest TopN services.
 type REDQuery struct {
 	Tenant     string
+	Tenants    []string // resolved tenant set; empty means []string{Tenant}
 	Range      TimeRange
 	Service    string
 	Points     int // series buckets (<=0 → backend default)
@@ -272,11 +278,12 @@ type REDSeries struct {
 
 // InfraQuery filters ListNodeStats / ListPodStats (kubeletstats metrics).
 type InfraQuery struct {
-	Tenant string
-	Range  TimeRange
-	Node   string // optional: only pods scheduled on this node
-	Points int    // series buckets over Range (<=0 → backend default)
-	Limit  int    // pods only: max rows (<=0 → backend default)
+	Tenant  string
+	Tenants []string // resolved tenant set; empty means []string{Tenant}
+	Range   TimeRange
+	Node    string // optional: only pods scheduled on this node
+	Points  int    // series buckets over Range (<=0 → backend default)
+	Limit   int    // pods only: max rows (<=0 → backend default)
 }
 
 // MetricPoint is one time-bucketed sample of a series.
@@ -327,6 +334,7 @@ type ProfileSample struct {
 // ProfileQuery filters ProfileFlamegraph / ListProfiledServices.
 type ProfileQuery struct {
 	Tenant  string
+	Tenants []string // resolved tenant set; empty means []string{Tenant}
 	Range   TimeRange
 	Service string // required for ProfileFlamegraph
 }
@@ -350,8 +358,9 @@ type FlameNode struct {
 // AgentQuery filters ListAgentNodes. Window is the lookback within which a
 // node counts as "reporting".
 type AgentQuery struct {
-	Tenant string
-	Window time.Duration // <=0 → backend default
+	Tenant  string
+	Tenants []string      // resolved tenant set; empty means []string{Tenant}
+	Window  time.Duration // <=0 → backend default
 }
 
 // AgentNode is one node with sensor data inside the window. Per-signal
@@ -413,6 +422,7 @@ type SchemaStatus struct {
 // ErrorIssueQuery filters SearchErrorIssues. Zero values mean "no filter".
 type ErrorIssueQuery struct {
 	Tenant  string
+	Tenants []string // resolved tenant set; empty means []string{Tenant}
 	Range   TimeRange
 	Status  string // "", "unresolved", "resolved", "ignored" (unresolved includes regressed)
 	Service string
@@ -447,6 +457,7 @@ type ErrorEventCursor struct {
 // ErrorEventQuery lists the occurrences of one issue (by fingerprint).
 type ErrorEventQuery struct {
 	Tenant      string
+	Tenants     []string // resolved tenant set; empty means []string{Tenant}
 	Fingerprint uint64
 	Range       TimeRange
 	Limit       int
@@ -559,8 +570,9 @@ type AuthToken struct {
 // not hardcode Kepler naming (an AEP verify item; operators can rename
 // without a rebuild).
 type GreenQuery struct {
-	Tenant string
-	Range  TimeRange
+	Tenant  string
+	Tenants []string // resolved tenant set; empty means []string{Tenant}
+	Range   TimeRange
 	// PodEnergyMetrics / NodeEnergyMetrics name the cumulative CPU-energy
 	// counters (joules). A query sums deltas across ALL named metrics because
 	// Kepler may split energy zones across several metrics.
@@ -648,12 +660,15 @@ type Store interface {
 	NetworkEdgeHealth(ctx context.Context, q ServiceQuery) ([]NetworkEdgeHealth, error)
 	TraceOverview(ctx context.Context, q OverviewQuery) ([]OperationStats, error)
 	SearchTraces(ctx context.Context, q TraceQuery) (TracePage, error)
-	GetTrace(ctx context.Context, tenant, traceID string) (Trace, error)
+	// GetTrace/FindSpanTrace/LogsForTrace (and the error-issue reads below)
+	// take the resolved tenant set — same semantics as the Tenants query
+	// field, but with no single-tenant fallback: callers pass at least one.
+	GetTrace(ctx context.Context, tenants []string, traceID string) (Trace, error)
 	// FindSpanTrace resolves the trace containing spanID, or ErrNotFound.
-	FindSpanTrace(ctx context.Context, tenant, spanID string) (traceID string, err error)
+	FindSpanTrace(ctx context.Context, tenants []string, spanID string) (traceID string, err error)
 	TraceHeatmap(ctx context.Context, q HeatmapQuery) (Heatmap, error)
 	SearchLogs(ctx context.Context, q LogQuery) (LogPage, error)
-	LogsForTrace(ctx context.Context, tenant, traceID string) ([]LogRecord, error)
+	LogsForTrace(ctx context.Context, tenants []string, traceID string) ([]LogRecord, error)
 	ListNodeStats(ctx context.Context, q InfraQuery) ([]NodeStat, error)
 	ListPodStats(ctx context.Context, q InfraQuery) ([]PodStat, error)
 	ListAgentNodes(ctx context.Context, q AgentQuery) ([]AgentNode, error)
@@ -666,9 +681,9 @@ type Store interface {
 	ProfileFlamegraph(ctx context.Context, q ProfileQuery) (FlameNode, error)
 	// Error tracking (module error-tracking).
 	SearchErrorIssues(ctx context.Context, q ErrorIssueQuery) ([]ErrorIssue, error)
-	GetErrorIssue(ctx context.Context, tenant string, fingerprint uint64) (ErrorIssue, error)
+	GetErrorIssue(ctx context.Context, tenants []string, fingerprint uint64) (ErrorIssue, error)
 	ListErrorEvents(ctx context.Context, q ErrorEventQuery) (ErrorEventPage, error)
-	ErrorIssueHistogram(ctx context.Context, tenant string, fingerprint uint64, r TimeRange, points int) ([]ErrorHistogramPoint, error)
+	ErrorIssueHistogram(ctx context.Context, tenants []string, fingerprint uint64, r TimeRange, points int) ([]ErrorHistogramPoint, error)
 	// SetErrorIssueStatus records a triage decision (unresolved|resolved|ignored).
 	SetErrorIssueStatus(ctx context.Context, tenant string, fingerprint uint64, status string) error
 	// Green energy (module green; requires infra-metrics — the pod→workload
@@ -855,7 +870,8 @@ type AlertHistoryEntry struct {
 
 // AlertHistoryQuery filters ListAlertHistory.
 type AlertHistoryQuery struct {
-	Tenant string
-	Range  TimeRange
-	Limit  int
+	Tenant  string
+	Tenants []string // resolved tenant set; empty means []string{Tenant}
+	Range   TimeRange
+	Limit   int
 }

@@ -75,7 +75,7 @@ func mgCO2ePerRequest(gco2e float64, requests uint64) float64 {
 // greenQuery builds the storage query from the config's metric names — the
 // backend must not hardcode Kepler naming. Empty names re-default like
 // resolveFactors: direct-constructed configs skip ParseConfig's normalize.
-func greenQuery(cfg green.Config, tenant string, tr storage.TimeRange, interval time.Duration) storage.GreenQuery {
+func greenQuery(cfg green.Config, tenant string, tenants []string, tr storage.TimeRange, interval time.Duration) storage.GreenQuery {
 	m, d := cfg.Metrics, green.Default().Metrics
 	if len(m.PodEnergy) == 0 {
 		m.PodEnergy = d.PodEnergy
@@ -91,6 +91,7 @@ func greenQuery(cfg green.Config, tenant string, tr storage.TimeRange, interval 
 	}
 	return storage.GreenQuery{
 		Tenant:            tenant,
+		Tenants:           tenants,
 		Range:             tr,
 		PodEnergyMetrics:  m.PodEnergy,
 		NodeEnergyMetrics: m.NodeEnergy,
@@ -182,19 +183,19 @@ func (a *API) handleGreenSummary(w http.ResponseWriter, r *http.Request) error {
 		return badRequest("invalid topN: must be >= 0")
 	}
 	cfg := a.greenConfig()
-	ten, err := a.project(r, auth.RoleViewer)
+	ten, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return err
 	}
-	rows, err := store.ServiceEnergy(r.Context(), greenQuery(cfg, ten, tr, 0))
+	rows, err := store.ServiceEnergy(r.Context(), greenQuery(cfg, ten, tenants, tr, 0))
 	if err != nil {
 		return err
 	}
-	requests, err := a.serviceRequests(r, store, ten, tr)
+	requests, err := a.serviceRequests(r, store, ten, tenants, tr)
 	if err != nil {
 		return err
 	}
-	cov, err := store.NodeCoverage(r.Context(), greenQuery(cfg, ten, tr, 0))
+	cov, err := store.NodeCoverage(r.Context(), greenQuery(cfg, ten, tenants, tr, 0))
 	if err != nil {
 		return err
 	}
@@ -212,9 +213,10 @@ func (a *API) handleGreenSummary(w http.ResponseWriter, r *http.Request) error {
 
 // serviceRequests joins request volume per service from the same span-count
 // source the service map composes (ListServices over the window).
-func (a *API) serviceRequests(r *http.Request, store storage.Store, tenant string, tr storage.TimeRange) (map[string]uint64, error) {
+func (a *API) serviceRequests(r *http.Request, store storage.Store, tenant string, tenants []string, tr storage.TimeRange) (map[string]uint64, error) {
 	stats, err := store.ListServices(r.Context(), storage.ServiceQuery{
 		Tenant:     tenant,
+		Tenants:    tenants,
 		Range:      tr,
 		ExcludeAux: !parseBool(r, "includeAux", false),
 	})
@@ -343,7 +345,7 @@ func toGreenPoints(points []storage.EnergyPoint) []greenPointDTO {
 // must still render, so the overlay is logged and skipped, never failed.
 func (a *API) stampServiceEnergy(ctx context.Context, store storage.Store, tenant string, tr storage.TimeRange, services []serviceDTO) {
 	cfg := a.greenConfig()
-	rows, err := store.ServiceEnergy(ctx, greenQuery(cfg, tenant, tr, 0))
+	rows, err := store.ServiceEnergy(ctx, greenQuery(cfg, tenant, nil, tr, 0))
 	if err != nil {
 		slog.Warn("service-map energy overlay skipped", "error", err)
 		return

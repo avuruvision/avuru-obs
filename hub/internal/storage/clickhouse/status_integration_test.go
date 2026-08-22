@@ -24,7 +24,7 @@ func TestEffectiveStatusIntegration(t *testing.T) {
 	fixtures := []struct {
 		traceID, spanID, parentID, name, kind, service, status string
 		attrs                                                  map[string]string
-		dur                                                     time.Duration // 0 means "default" (1ms)
+		dur                                                    time.Duration // 0 means "default" (1ms)
 	}{
 		// Rule 1: explicit Error always wins.
 		{"aaaa1111", "s1", "", "GET /x", "Server", "web", "Error", nil, 0},

@@ -60,18 +60,18 @@ func (a *API) handleGreenBudgets(w http.ResponseWriter, r *http.Request) error {
 	cfg := a.greenConfig()
 	now := time.Now().UTC()
 	tr := monthToDate(now)
-	ten, err := a.project(r, auth.RoleViewer)
+	ten, tenants, err := a.projectTenants(r, auth.RoleViewer)
 	if err != nil {
 		return err
 	}
 	// Daily buckets: one query serves both the used totals and the burn-down.
-	rows, err := store.ServiceEnergy(r.Context(), greenQuery(cfg, ten, tr, 24*time.Hour))
+	rows, err := store.ServiceEnergy(r.Context(), greenQuery(cfg, ten, tenants, tr, 24*time.Hour))
 	if err != nil {
 		return err
 	}
 	// Group assignment reads the same population service-health groups from;
 	// aux traffic stays excluded like the health rollup's default.
-	sq := storage.ServiceQuery{Tenant: ten, Range: tr, ExcludeAux: true}
+	sq := storage.ServiceQuery{Tenant: ten, Tenants: tenants, Range: tr, ExcludeAux: true}
 	stats, err := store.ListServices(r.Context(), sq)
 	if err != nil {
 		return err
@@ -215,7 +215,7 @@ func usedKgByGroup(f greenFactors, assigned map[string]health.Assignment, rows [
 // enter SQL — storage returns Wh, the conversion happens in Go (the AEP).
 func BudgetUsageByGroup(ctx context.Context, store storage.Store, cfg green.Config, groups health.Config, tenant string, now time.Time) (map[string]float64, error) {
 	tr := monthToDate(now)
-	rows, err := store.ServiceEnergy(ctx, greenQuery(cfg, tenant, tr, 0))
+	rows, err := store.ServiceEnergy(ctx, greenQuery(cfg, tenant, nil, tr, 0))
 	if err != nil {
 		return nil, err
 	}

@@ -27,10 +27,10 @@ FROM (
         ResourceAttributes['service.namespace']  AS svcns,
         count()                                   AS w
     FROM otel_traces
-    WHERE Tenant = ?
+    WHERE Tenant IN (?)
       AND Timestamp >= ? AND Timestamp < ?
       AND SpanKind IN ('Server', 'Consumer')`
-	args := []any{q.Tenant, q.Range.Start, q.Range.End}
+	args := []any{tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
 	if q.ExcludeAux {
 		query += auxExclusion("")
 	}
