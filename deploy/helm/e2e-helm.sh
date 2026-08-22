@@ -19,6 +19,19 @@ TDP_IMG=avuru-obs-tdp-estimator:local
 # unrelated process holds 8080; the test binary follows via AVURUOBS_E2E_HUB_URL.
 HUB_PORT_LOCAL="${HUB_PORT_LOCAL:-8080}"
 export AVURUOBS_E2E_HUB_URL="http://localhost:${HUB_PORT_LOCAL}"
+# Local ports the gateway's OTLP/HTTP (seeding) and the UI (serve check) are
+# forwarded to. Overridable for dev machines where something already binds
+# 4318/8081 — a failed bind would silently point the seed/assertion at the
+# WRONG process.
+GW_PORT_LOCAL="${GW_PORT_LOCAL:-4318}"
+UI_PORT_LOCAL="${UI_PORT_LOCAL:-8081}"
+# Local ports for the wider-ingest receiver port-forwards (compat leg below).
+# High and away from the compose compat overlay's remapped 2xxxx ports so this
+# can run next to a live compose stack on a shared machine.
+JAEGER_PORT_LOCAL="${JAEGER_PORT_LOCAL:-34250}"
+ZIPKIN_PORT_LOCAL="${ZIPKIN_PORT_LOCAL:-39411}"
+PROMRW_PORT_LOCAL="${PROMRW_PORT_LOCAL:-39291}"
+LOKI_PORT_LOCAL="${LOKI_PORT_LOCAL:-33100}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
@@ -35,11 +48,13 @@ docker build -t "$UI_IMG" -f ui/Dockerfile .
 docker build -t "$GW_IMG" -f gateway/Dockerfile .
 docker build -t "$TDP_IMG" -f sensor/tdp-estimator/Dockerfile .
 
-echo "==> pre-building test + seed binaries (toolchain time is not the product's clock)"
+echo "==> pre-building test + seed + compatsend binaries (toolchain time is not the product's clock)"
 E2E_BIN="$(mktemp -t avuru-e2e.XXXXXX)"
 SEED_BIN="$(mktemp -t avuru-seed.XXXXXX)"
+COMPAT_BIN="$(mktemp -t avuru-compatsend.XXXXXX)"
 ( cd e2e && go test -tags=e2ehelm -c -o "$E2E_BIN" . )
 ( cd tools/seed && go build -o "$SEED_BIN" . )
+( cd tools/compatsend && go build -o "$COMPAT_BIN" . )
 
 echo "==> pre-pulling wedge demo + sensor images (pull time is not the product's clock)"
 # Keep in sync with deploy/demo/wedge/wedge.yaml and values.yaml sensor pins.
@@ -137,7 +152,29 @@ helm install avuruobs deploy/helm/avuruobs -n "$NS" --create-namespace \
   --set sensor.green.estimation.enabled=true \
   --set sensor.green.estimation.image.repository=avuru-obs-tdp-estimator \
   --set sensor.green.estimation.image.tag=local \
-  --set collection.runtimeControl.enabled=true
+  --set collection.runtimeControl.enabled=true \
+  --set gateway.receivers.jaeger.enabled=true \
+  --set gateway.receivers.zipkin.enabled=true \
+  --set gateway.receivers.prometheusRemoteWrite.enabled=true \
+  --set gateway.receivers.loki.enabled=true \
+  --set gateway.forward.otlp.enabled=true \
+  --set gateway.forward.otlp.endpoint=forward-sink:4317 \
+  --set gateway.forward.otlp.insecure=true \
+  --set "gateway.forward.otlp.signals={traces}"
+# The last block above is WIDER INGEST riding the SAME install (born-off in
+# the chart; this leg opts in, like green): all four compat receivers plus
+# otlp/forward dual-write pointed at the forward-sink fixture below. The TTV
+# wedge gate and every other gate run UNCHANGED against it — which is itself
+# the assertion that enabling the compat surface changes nothing else.
+# auth.ingest.mode stays at its `log` default, so unkeyed compat sends land;
+# enforce-mode rejection is the compose suite's job (make e2e-compat).
+
+# Stand-in legacy backend for the dual-write assertion (image is pre-pulled
+# with the sensor images — same contrib pin). Applied right after install so
+# it rolls while the platform does; the forward exporter's sending queue
+# tolerates the window where the Service exists but the pod is still coming up.
+echo "==> deploying the forward-sink fixture (dual-write target)"
+kubectl -n "$NS" apply -f deploy/helm/e2e-forward-sink.yaml
 
 echo "==> waiting for the hub to answer (inside the wedge clock)"
 kubectl -n "$NS" wait --for=condition=Available deploy/avuruobs-hub --timeout=240s
@@ -154,7 +191,11 @@ echo "==> asserting the hub sees a complete schema"
 # itself; either way it must end up reporting the schema ready.
 SCHEMA_DEADLINE=$(( $(date +%s) + 120 ))
 while :; do
-  if kubectl -n "$NS" logs deploy/avuruobs-hub --tail=-1 2>/dev/null | grep -q 'clickhouse schema ready'; then
+  # grep -c for the same reason as the forward-sink poll below: a short-circuiting
+  # grep -q SIGPIPEs the producer, and pipefail turns that into a false negative
+  # once the log outgrows the pipe buffer.
+  ready_hits=$(kubectl -n "$NS" logs deploy/avuruobs-hub --tail=-1 2>/dev/null | grep -cF 'clickhouse schema ready' || true)
+  if [ "${ready_hits:-0}" -gt 0 ]; then
     echo "    hub reports the schema ready"
     break
   fi
@@ -181,23 +222,115 @@ case "$CANARY_UID_T0" in
   *" "*) echo "expected one probe-canary pod at sensor-ready, got uids: $CANARY_UID_T0"
          kubectl -n wedge-demo get pods -l app=probe-canary; exit 1 ;;
 esac
-kubectl -n "$NS" port-forward svc/avuruobs-gateway 4318:4318 >/dev/null 2>&1 &
+kubectl -n "$NS" port-forward svc/avuruobs-gateway "${GW_PORT_LOCAL}:4318" >/dev/null 2>&1 &
 PF_PIDS="$PF_PIDS $!"
-kubectl -n "$NS" port-forward svc/avuruobs-ui 8081:80 >/dev/null 2>&1 &
+kubectl -n "$NS" port-forward svc/avuruobs-ui "${UI_PORT_LOCAL}:80" >/dev/null 2>&1 &
 PF_PIDS="$PF_PIDS $!"
 sleep 4
 
 echo "==> seeding deterministic OTLP fixtures"
-"$SEED_BIN" -endpoint http://localhost:4318 -fixtures deploy/compose/seed/fixtures
+"$SEED_BIN" -endpoint "http://localhost:${GW_PORT_LOCAL}" -fixtures deploy/compose/seed/fixtures
 sleep 4
 
 echo "==> asserting the UI deployable serves"
-code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8081/)
+code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${UI_PORT_LOCAL}/")
 [ "$code" = "200" ] || { echo "UI pod not serving (HTTP $code)"; exit 1; }
 echo "    ui / -> 200"
 
 echo "==> asserting seeded traces + correlated logs via the hub API"
 ( cd e2e && "$E2E_BIN" -test.v -test.timeout 5m -test.run 'TestSeededViaHelm' )
+
+# WIDER INGEST (design/2026-07-27-wider-ingest-compat.md): the kind mirror of
+# the compose compat suite (`make e2e-compat`) — the same receiver/forward
+# shapes, but rendered BY THE CHART FLAGS on a real install and reached through
+# the chart's Service ports. One compatsend fixture per protocol, then rows
+# asserted straight in ClickHouse (tenant defaults to `default`: no enforce,
+# no gateway.tenant on this install) and the dual-write proven from the
+# forward-sink's debug logs. This is what makes the README claim ("point your
+# Jaeger/Zipkin/remote-write/Loki sender at us") empirically true in CI.
+echo "==> WIDER INGEST: waiting for the forward-sink fixture"
+kubectl -n "$NS" wait --for=condition=Available deploy/forward-sink --timeout=120s
+
+echo "==> WIDER INGEST: port-forwarding the compat receiver ports"
+kubectl -n "$NS" port-forward svc/avuruobs-gateway \
+  "${JAEGER_PORT_LOCAL}:14250" "${ZIPKIN_PORT_LOCAL}:9411" \
+  "${PROMRW_PORT_LOCAL}:9291" "${LOKI_PORT_LOCAL}:3100" >/dev/null 2>&1 &
+PF_PIDS="$PF_PIDS $!"
+sleep 3
+
+# Fixed ids/names for grep-ability (fresh cluster per run, so no collisions),
+# distinct from the compose suite's cafe000x ids to keep origins unambiguous.
+COMPAT_SVC=helm-compat-probe
+COMPAT_JAEGER_TRACE=cafe1002bbbb2222cccc3333dddd4444
+COMPAT_ZIPKIN_TRACE=cafe1003bbbb2222cccc3333dddd4444
+COMPAT_METRIC=helm_compat_gauge
+COMPAT_LINE="helm compat conformance log line"
+
+echo "==> WIDER INGEST: one compatsend fixture per protocol"
+"$COMPAT_BIN" -proto jaeger -endpoint "localhost:${JAEGER_PORT_LOCAL}" \
+  -service "$COMPAT_SVC" -trace-id "$COMPAT_JAEGER_TRACE"
+"$COMPAT_BIN" -proto zipkin -endpoint "http://localhost:${ZIPKIN_PORT_LOCAL}" \
+  -service "$COMPAT_SVC" -trace-id "$COMPAT_ZIPKIN_TRACE"
+"$COMPAT_BIN" -proto promrw -endpoint "http://localhost:${PROMRW_PORT_LOCAL}" \
+  -service "$COMPAT_SVC" -metric "$COMPAT_METRIC"
+"$COMPAT_BIN" -proto loki -endpoint "http://localhost:${LOKI_PORT_LOCAL}" \
+  -label "service=${COMPAT_SVC}" -line "$COMPAT_LINE"
+
+# Same landings the compose suite asserts: Jaeger + Zipkin spans in
+# otel_traces, the remote-write v2 gauge in otel_metrics_gauge with
+# ServiceName mapped from `job`, and the Loki line in otel_logs with the
+# stream label as a log-RECORD attribute (never resource identity).
+echo "==> WIDER INGEST: polling ClickHouse for one landing per protocol"
+COMPAT_SQL="SELECT
+  (SELECT count() FROM otel.otel_traces WHERE Tenant = 'default' AND ServiceName = '${COMPAT_SVC}' AND TraceId = '${COMPAT_JAEGER_TRACE}'),
+  (SELECT count() FROM otel.otel_traces WHERE Tenant = 'default' AND ServiceName = '${COMPAT_SVC}' AND TraceId = '${COMPAT_ZIPKIN_TRACE}'),
+  (SELECT count() FROM otel.otel_metrics_gauge WHERE Tenant = 'default' AND ServiceName = '${COMPAT_SVC}' AND MetricName = '${COMPAT_METRIC}'),
+  (SELECT count() FROM otel.otel_logs WHERE Tenant = 'default' AND LogAttributes['service'] = '${COMPAT_SVC}' AND Body = '${COMPAT_LINE}')"
+COMPAT_DEADLINE=$(( $(date +%s) + 120 ))
+while :; do
+  counts=$(kubectl -n "$NS" exec avuruobs-clickhouse-0 -- \
+    clickhouse-client -u avuru --password avuru -q "$COMPAT_SQL" 2>/dev/null || echo "")
+  jaeger_rows=$(awk '{print $1}' <<<"$counts")
+  zipkin_rows=$(awk '{print $2}' <<<"$counts")
+  promrw_rows=$(awk '{print $3}' <<<"$counts")
+  loki_rows=$(awk '{print $4}' <<<"$counts")
+  if [ "${jaeger_rows:-0}" -gt 0 ] 2>/dev/null && [ "${zipkin_rows:-0}" -gt 0 ] 2>/dev/null \
+    && [ "${promrw_rows:-0}" -gt 0 ] 2>/dev/null && [ "${loki_rows:-0}" -gt 0 ] 2>/dev/null; then
+    echo "    landings: jaeger=$jaeger_rows zipkin=$zipkin_rows promrw=$promrw_rows loki=$loki_rows"
+    break
+  fi
+  if [ "$(date +%s)" -ge "$COMPAT_DEADLINE" ]; then
+    echo "WIDER INGEST: not every protocol landed within 120s (jaeger=${jaeger_rows:-?} zipkin=${zipkin_rows:-?} promrw=${promrw_rows:-?} loki=${loki_rows:-?})"
+    kubectl -n "$NS" logs deploy/avuruobs-gateway --tail=40 || true
+    exit 1
+  fi
+  sleep 5
+done
+
+# Dual-write: the Jaeger-ingested trace id must reach the forward sink — proof
+# the chart-rendered otlp/forward exporter fans out what the compat receivers
+# ingest, through a real in-cluster Service.
+echo "==> WIDER INGEST: asserting dual-write in the forward-sink logs"
+SINK_DEADLINE=$(( $(date +%s) + 120 ))
+while :; do
+  # grep -c, not grep -q: the sink's detailed debug output is megabytes, so a
+  # `grep -q` that exits on the first match SIGPIPEs kubectl, and under
+  # `set -o pipefail` that 141 makes the whole pipeline look like "no match" —
+  # the assertion would then fail on a trace that DID arrive. -c reads to EOF,
+  # so the producer always exits cleanly.
+  sink_hits=$(kubectl -n "$NS" logs deploy/forward-sink --tail=-1 2>/dev/null | grep -cF "$COMPAT_JAEGER_TRACE" || true)
+  if [ "${sink_hits:-0}" -gt 0 ]; then
+    echo "    trace $COMPAT_JAEGER_TRACE present in forward-sink logs — otlp/forward fans out"
+    break
+  fi
+  if [ "$(date +%s)" -ge "$SINK_DEADLINE" ]; then
+    echo "WIDER INGEST: trace $COMPAT_JAEGER_TRACE never reached the forward sink within 120s"
+    kubectl -n "$NS" logs deploy/forward-sink --tail=20 || true
+    kubectl -n "$NS" logs deploy/avuruobs-gateway --tail=40 || true
+    exit 1
+  fi
+  sleep 5
+done
 
 # GREEN: the fake-cpu-meter Kepler leg. The seeded fixtures also carry
 # kepler_* rows (ScopeName avuru-seed-kepler), so the poll EXCLUDES seeded
@@ -374,4 +507,4 @@ while :; do
 done
 rm -f "$COOKIES"
 
-rm -f "$E2E_BIN" "$SEED_BIN"
+rm -f "$E2E_BIN" "$SEED_BIN" "$COMPAT_BIN"

@@ -44,6 +44,81 @@
             "allowedOrigins": { "type": "array", "items": { "type": "string" } },
             "projects": { "type": "object" }
           }
+        },
+        "receivers": {
+          "type": "object",
+          "properties": {
+            "jaeger": {
+              "type": "object",
+              "properties": { "enabled": { "type": "boolean" } }
+            },
+            "zipkin": {
+              "type": "object",
+              "properties": { "enabled": { "type": "boolean" } }
+            },
+            "prometheusRemoteWrite": {
+              "type": "object",
+              "properties": { "enabled": { "type": "boolean" } }
+            },
+            "loki": {
+              "type": "object",
+              "properties": { "enabled": { "type": "boolean" } }
+            }
+          }
+        },
+        "forward": {
+          "type": "object",
+          "properties": {
+            "otlp": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "endpoint": { "type": "string" },
+                "protocol": { "type": "string", "enum": ["grpc", "http"] },
+                "insecure": { "type": "boolean" },
+                "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+                "signals": {
+                  "type": "array",
+                  "items": { "type": "string", "enum": ["traces", "logs", "metrics"] }
+                }
+              }
+            },
+            "kafka": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "brokers": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                "topics": {
+                  "type": "object",
+                  "properties": {
+                    "traces": { "type": "string", "minLength": 1 },
+                    "logs": { "type": "string", "minLength": 1 },
+                    "metrics": { "type": "string", "minLength": 1 }
+                  }
+                },
+                "encoding": { "type": "string", "minLength": 1 },
+                "tls": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": { "type": "boolean" },
+                    "insecureSkipVerify": { "type": "boolean" }
+                  }
+                },
+                "sasl": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": { "type": "boolean" },
+                    "mechanism": { "type": "string", "enum": ["PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"] },
+                    "existingSecret": { "type": "string" }
+                  }
+                },
+                "signals": {
+                  "type": "array",
+                  "items": { "type": "string", "enum": ["traces", "logs", "metrics"] }
+                }
+              }
+            }
+          }
         }
       }
     },

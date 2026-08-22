@@ -81,6 +81,77 @@ gateway:
     allowedOrigins:
       - "*"
     projects: {}
+  # Wider ingest compatibility (design/2026-07-27-wider-ingest-compat.md):
+  # native receivers for the senders a fleet already runs, each opt-in and OFF
+  # by default. The gateway binary always ships the components; a flag wires
+  # the listener, container/Service ports and pipeline entry together. Every
+  # enabled receiver honors ingest keys exactly like OTLP (auth.ingest.mode) —
+  # senders attach the key as `Authorization: Bearer <key>`. In-cluster ports
+  # only; external exposure is an ingress recipe (deploy/helm/README.md), not
+  # chart surface.
+  receivers:
+    # Jaeger gRPC (:14250) and thrift-HTTP (:14268). The UDP thrift protocols
+    # are deliberately not offered: no authenticator hook, and jaeger-agent is
+    # deprecated upstream.
+    jaeger:
+      enabled: false
+    # Zipkin v2 JSON/protobuf (:9411, POST /api/v2/spans).
+    zipkin:
+      enabled: false
+    # Prometheus Remote-Write (:9291, POST /api/v1/write). v2 ONLY at the
+    # pinned collector line — a v1 sender gets HTTP 415. Senders need
+    # Prometheus >= 3.8.0 with `protobuf_message: io.prometheus.write.v2.Request`
+    # (and its metadata-wal-records feature flag). Requires modules.infraMetrics
+    # (samples land in otel_metrics_*); silently inert without it, like sentry.
+    prometheusRemoteWrite:
+      enabled: false
+    # Loki push (:3100, POST /loki/api/v1/push, JSON + snappy protobuf) — the
+    # port matches Loki's own so promtail/Alloy re-point by hostname alone.
+    # Stream labels land as log-RECORD attributes; entry timestamps are kept.
+    # Requires modules.logs; silently inert without it, like sentry.
+    loki:
+      enabled: false
+  # Dual-write forwarding during migrations: keep the legacy backend fed while
+  # avuru-obs takes over (or the reverse on the way out). Best-effort BY
+  # DESIGN: forward exporters always run behind a sending queue with bounded
+  # retry, so a dead target can never backpressure the ClickHouse path — a
+  # burst beyond the queue drops forwarded data, never stored data.
+  forward:
+    otlp:
+      enabled: false
+      # Required when enabled — host:port for grpc, a full URL for http.
+      endpoint: ""
+      protocol: grpc # grpc | http
+      # Skip TLS entirely (plaintext) — for in-cluster targets.
+      insecure: false
+      # Static headers on every export (e.g. the target's auth token). Values
+      # land in the gateway ConfigMap — put secrets in the target's namespace
+      # boundary, or front the target with its own auth proxy.
+      headers: {}
+      # Which signals to forward; intersected with the pipelines this install
+      # actually runs (a signal whose module is off is skipped, not an error).
+      signals: [traces, logs, metrics]
+    kafka:
+      enabled: false
+      # Required when enabled.
+      brokers: []
+      # Per-signal topics (the exporter's own defaults, made explicit).
+      topics:
+        traces: otlp_spans
+        logs: otlp_logs
+        metrics: otlp_metrics
+      encoding: otlp_proto
+      tls:
+        enabled: false
+        insecureSkipVerify: false
+      # SASL credentials come ONLY from an existing Secret (keys:
+      # sasl-username, sasl-password), referenced as ${env:...} — inline
+      # credentials would land in the gateway ConfigMap.
+      sasl:
+        enabled: false
+        mechanism: SCRAM-SHA-512 # PLAIN | SCRAM-SHA-256 | SCRAM-SHA-512
+        existingSecret: ""
+      signals: [traces, logs, metrics]
   resources:
     requests:
       cpu: 100m

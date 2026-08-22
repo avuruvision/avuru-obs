@@ -103,9 +103,24 @@ to point at, the values flag) — the drop-in promise, made concrete per source.
 
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] Add receivers (jaeger, zipkin, prometheusremotewrite, loki) to OCB manifest
-- [ ] Add forwarding exporters (otlp, kafka) to OCB manifest
-- [ ] Chart flags + pipeline wiring (per protocol, off by default)
-- [ ] Conformance tests per protocol + compose e2e (Jaeger + Zipkin)
-- [ ] "Migrate from X" docs per source; docs-align (EN/FR)
+- [x] AEP accepted
+- [x] Add receivers (jaeger, zipkin, prometheusremotewrite, loki) to OCB manifest
+      — Jaeger UDP/thrift CUT (no authenticator hook, jaeger-agent deprecated
+      upstream); the pinned `prometheusremotewrite` receiver is **v2-only**, so
+      a v1 sender gets `415` (documented, and asserted)
+- [x] Add forwarding exporters (otlp, kafka) to OCB manifest — plus core
+      `otlphttp`, so an HTTP-only egress path exists
+- [x] Chart flags + pipeline wiring (per protocol, off by default) — with the
+      module and-gates (PRW ∧ infra-metrics, loki ∧ logs), mandatory sending
+      queues on the forwarders, SASL via `existingSecret` only, and fail-loud
+      guards on an enabled-but-unconfigured target
+- [x] Conformance tests per protocol + compose e2e (Jaeger + Zipkin) —
+      `tools/compatsend` + opt-in `make e2e-compat`: parity across protocols,
+      enforce-mode rejection, the v1 `415`, and the dual-write forward sink
+- [x] kind gate: the same fixtures through chart-rendered receivers on a real
+      Helm install, rows asserted in ClickHouse and the forwarded trace greped
+      out of a stand-in legacy backend — what makes the README claim
+      CI-enforced rather than asserted
+- [ ] "Migrate from X" docs per source (repo docs done: README, helm README
+      recipes, CHANGELOG, architecture/tech_stack); docs-align (EN/FR) on the
+      docs site still open

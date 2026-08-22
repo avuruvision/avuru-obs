@@ -1,0 +1,118 @@
+# Gateway config for the protocol-conformance e2e (wider-ingest, I-4).
+#
+# Mirrors the Helm render with EVERY compat receiver enabled and ingest auth in
+# ENFORCE mode: Jaeger gRPC/thrift-HTTP, Zipkin v2, Prometheus remote-write v2
+# and Loki push all authenticate through avuruingestauth (Authorization: Bearer
+# <ingest key>), and tenantfromauth stamps the key's project — same ordering
+# trap as the chart: resource/tenant upserts first, the key must win.
+#
+# otlp/forward dual-writes traces to the forward-sink collector (debug exporter,
+# verbosity detailed) so the e2e can grep forwarded trace ids out of its logs.
+#
+# Used only by docker-compose.compat-e2e.yaml — the default sandbox config
+# (config.yaml) is untouched.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        auth:
+          authenticator: avuruingestauth
+      http:
+        endpoint: 0.0.0.0:4318
+        auth:
+          authenticator: avuruingestauth
+  # Legacy Jaeger senders (gRPC + thrift-HTTP only — UDP has no auth hook).
+  jaeger:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:14250
+        auth:
+          authenticator: avuruingestauth
+      thrift_http:
+        endpoint: 0.0.0.0:14268
+        auth:
+          authenticator: avuruingestauth
+  zipkin:
+    endpoint: 0.0.0.0:9411
+    auth:
+      authenticator: avuruingestauth
+  # Remote-Write v2 only at this collector line — a v1 sender gets HTTP 415,
+  # which the e2e asserts as a negative.
+  prometheusremotewrite:
+    endpoint: 0.0.0.0:9291
+    auth:
+      authenticator: avuruingestauth
+  # Stream labels land as log-record attributes; keep the sender's entry
+  # timestamps (migration fidelity), as the chart does.
+  loki:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:3100
+        auth:
+          authenticator: avuruingestauth
+    use_incoming_timestamp: true
+
+processors:
+  # Deliberately mirrors the chart's ordering trap: resource/tenant upserts a
+  # static tenant, and tenantfromauth must run AFTER it for the key to win.
+  resource/tenant:
+    attributes:
+      - key: avuru.tenant
+        value: "default"
+        action: upsert
+  tenantfromauth: {}
+  batch:
+    send_batch_size: 4096
+    timeout: 2s
+
+exporters:
+  clickhouse:
+    endpoint: tcp://clickhouse:9000
+    username: avuru
+    password: avuru
+    database: otel
+    create_schema: false
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 2s
+      max_elapsed_time: 60s
+  # Dual-write target. The sending queue + bounded retry are load-bearing (as
+  # in the chart): a dead sink must never backpressure the ClickHouse path.
+  otlp/forward:
+    endpoint: forward-sink:4317
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 60s
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  avuruingestauth:
+    hub_validate_url: http://hub:8080/internal/v1/ingest-keys/validate
+    internal_token: ${env:AVURUOBS_INGEST_INTERNAL_TOKEN}
+    mode: enforce
+    # Short TTL so the test does not have to wait out a stale verdict.
+    cache_ttl: 2s
+    stale_grace: 30s
+
+service:
+  extensions: [health_check, avuruingestauth]
+  pipelines:
+    traces:
+      receivers: [otlp, jaeger, zipkin]
+      processors: [resource/tenant, tenantfromauth, batch]
+      exporters: [clickhouse, otlp/forward]
+    logs:
+      receivers: [otlp, loki]
+      processors: [resource/tenant, tenantfromauth, batch]
+      exporters: [clickhouse]
+    metrics:
+      receivers: [otlp, prometheusremotewrite]
+      processors: [resource/tenant, tenantfromauth, batch]
+      exporters: [clickhouse]

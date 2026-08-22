@@ -62,6 +62,43 @@ When a release is cut, that block is renamed to the version with its date.
   Kepler on the same node, so the ±30-50% figure can be replaced with an
   observed one.
 
+- **Bring the senders you already run.** The drop-in promise stopped at OTLP:
+  a fleet with Jaeger, Zipkin, Prometheus remote-write or Loki senders had to
+  re-point or re-instrument them before it could try avuru-obs at all. The
+  gateway now speaks all four natively — Jaeger gRPC (`:14250`) and
+  thrift-HTTP (`:14268`), Zipkin (`:9411`), Prometheus remote-write
+  (`:9291`), Loki push (`:3100`) — each behind its own values flag, every one
+  default off, so an install that wants none renders byte-identically to
+  before. They are not a side door: every enabled receiver joins the same
+  tenant stage as OTLP, so per-project **ingest keys are enforced the same
+  way whatever protocol the data arrived on**. Loki and remote-write also
+  respect their signal's module, so enabling a receiver for a signal you do
+  not store is silently a no-op rather than a surprise. Two deliberate
+  limits, both documented rather than hidden: Jaeger UDP/thrift is not
+  offered (it has no authentication hook, and jaeger-agent is deprecated
+  upstream), and the pinned remote-write receiver is protocol v2 only — a v1
+  sender is refused with `415` instead of dropping data quietly.
+
+- **Leave the same way you came in.** Adopting a backend is a decision people
+  want to reverse, and evaluating one usually means running two at once.
+  `gateway.forward.otlp` and `gateway.forward.kafka` dual-write what the
+  gateway ingests to a second destination — your existing backend during a
+  migration, or a Kafka topic someone else owns — so avuru-obs can sit
+  alongside what you run today instead of replacing it on day one. The
+  forwarders always carry a bounded sending queue: a legacy target that goes
+  down cannot backpressure the ClickHouse path, which is the failure that
+  makes people distrust dual-write. Kafka SASL credentials come only from an
+  existing Secret, never inline, so they never land in a ConfigMap.
+
+- **The compatibility claim is tested, not asserted.** `make e2e-compat`
+  (opt-in, compose) and the kind Helm gate each send a real fixture per
+  protocol — a genuine Jaeger gRPC batch, Zipkin JSON, snappy-framed
+  remote-write, a Loki push — through the chart-rendered receivers, then
+  assert the rows in ClickHouse and the forwarded trace arriving at a
+  stand-in legacy backend. `tools/compatsend` is the sender, usable by hand
+  against any install when you want to check a protocol before committing to
+  it.
+
 - **A project can keep less than the install does.** Retention was one number
   for the whole install, so a noisy staging tenant held thirty days of traces
   because production needed to — the only way out was a second deployment. Any

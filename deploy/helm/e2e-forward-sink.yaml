@@ -1,0 +1,82 @@
+# E2E FIXTURE, NOT CHART SURFACE: stand-in "legacy backend" for the
+# wider-ingest dual-write assertion in deploy/helm/e2e-helm.sh — the kind
+# mirror of the compose suite's forward-sink service
+# (deploy/compose/gateway/config.compat-e2e-sink.yaml). A stock contrib
+# collector: OTLP gRPC in, debug exporter (detailed verbosity) out, so
+# forwarded trace ids appear verbatim in `kubectl logs` — exactly what the
+# script greps to prove the gateway's otlp/forward exporter really dual-writes.
+# Image pin rides the same contrib line the sensor pins (values.yaml), so the
+# e2e pre-pull already covers it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: forward-sink
+  labels:
+    app: forward-sink
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+
+    exporters:
+      debug:
+        verbosity: detailed
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          exporters: [debug]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: forward-sink
+  labels:
+    app: forward-sink
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: forward-sink
+  template:
+    metadata:
+      labels:
+        app: forward-sink
+    spec:
+      containers:
+        - name: forward-sink
+          image: otel/opentelemetry-collector-contrib:0.154.0
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol-contrib
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+      volumes:
+        - name: config
+          configMap:
+            name: forward-sink
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: forward-sink
+  labels:
+    app: forward-sink
+spec:
+  selector:
+    app: forward-sink
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
