@@ -57,6 +57,7 @@ only if the design needs to be pinned down before coding.
 | [2026-08-06](2026-08-06-users-crud-password.md) | Users CRUD completion — delete, password management, role editing | Accepted |
 | [2026-08-07](2026-08-07-service-groups-crud.md) | Service groups authored in the UI | Accepted |
 | [2026-08-13](2026-08-13-api-tokens.md) | API tokens — non-interactive access on the same identity | Draft |
+| [2026-08-18](2026-08-18-inter-zone-traffic.md) | Inter-zone traffic accounting — bytes by zone pair from kernel flows | Draft |
 
 ## Conventions
 
