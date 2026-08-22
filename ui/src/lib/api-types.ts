@@ -194,6 +194,35 @@ export interface DiskStats {
   totalBytes: number;
 }
 
+/** One signal's footprint for the SELECTED project. Rows, the bounds and the
+ *  rate are counted with the tenant filter; estimatedBytes is apportioned from
+ *  the table's compressed size by row share (parts are shared across tenants),
+ *  which is why it is shown as an estimate. */
+export interface ProjectSignalUsage {
+  signal: string;
+  rows: number;
+  estimatedBytes: number;
+  oldest?: string;
+  newest?: string;
+  rowsPerMinute: number;
+  /** What THIS project keeps for the signal; `inherited` says whether that is
+   *  its own window or the install-wide one. */
+  retentionDays: number;
+  inherited: boolean;
+}
+
+/** What the selected project holds, as opposed to what the install holds. An
+ *  aggregate reports the union of the members the viewer may see and names
+ *  them in `tenants`. */
+export interface ProjectUsage {
+  id: string;
+  tenants: string[];
+  /** An aggregate whose members keep different windows has no single honest
+   *  number, so the UI points at the members instead. */
+  retentionVaries?: boolean;
+  signals: ProjectSignalUsage[];
+}
+
 export interface SystemStatusResponse {
   version: string;
   overall: "healthy" | "degraded" | "down";
@@ -202,6 +231,9 @@ export interface SystemStatusResponse {
   signals: SignalStats[];
   disks: DiskStats[];
   connection?: StorageConnection;
+  /** Absent when the per-project read failed — the instance-wide half of the
+   *  page still renders. */
+  project?: ProjectUsage;
 }
 
 // Permissions matrix (GET /api/v1/auth/permissions). Derived by the hub from
