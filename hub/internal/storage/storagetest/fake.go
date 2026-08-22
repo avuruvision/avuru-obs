@@ -88,10 +88,15 @@ type Fake struct {
 	// asserted on which tenants it trimmed and to what cutoff, not on rows
 	// disappearing. TrimErr forces the call to fail (one bad tenant must not
 	// stop the sweep).
-	Trims   []TrimCall
-	TrimErr error
-	TrimMu  sync.Mutex
-	Trimmed []string // tables TrimTenant reports on success
+	// Per-project usage fakes. UsageTenants records the resolved tenant set the
+	// handler asked for — the assertion that an aggregate reports its members.
+	Usage        storage.TenantUsage
+	UsageErr     error
+	UsageTenants [][]string
+	Trims        []TrimCall
+	TrimErr      error
+	TrimMu       sync.Mutex
+	Trimmed      []string // tables TrimTenant reports on success
 
 	// Service-group fakes, keyed by Name on the same live-rows-only rule.
 	ServiceGroups        map[string]storage.ServiceGroup
@@ -557,6 +562,20 @@ func (f *Fake) DeleteProject(_ context.Context, id string) error {
 	}
 	delete(f.Projects, id)
 	return nil
+}
+
+// TenantUsage returns the canned per-project usage and records the resolved
+// tenant set it was asked for. The fake holds no telemetry, so a test states
+// the answer rather than seeding rows to derive it; what it CAN assert is that
+// the handler resolved an aggregate to its members before asking.
+func (f *Fake) TenantUsage(_ context.Context, tenants []string, _ time.Time) (storage.TenantUsage, error) {
+	f.TrimMu.Lock()
+	defer f.TrimMu.Unlock()
+	f.UsageTenants = append(f.UsageTenants, tenants)
+	if f.UsageErr != nil {
+		return storage.TenantUsage{}, f.UsageErr
+	}
+	return f.Usage, nil
 }
 
 // TrimCall is one recorded TrimTenant invocation.
