@@ -17,23 +17,30 @@ const STATUS: Record<GreenBudget["status"], { tone: BadgeProps["tone"]; bar: str
 // Per-group monthly carbon budgets: usage against the ceiling, a burn-down of
 // cumulative carbon, and the linear month-end projection. Budgets are
 // config-defined (a ConfigMap the hub hot-reloads) — read-only here.
-export function BudgetCards({
-  budgets,
-  alertingEnabled,
-}: {
-  budgets: GreenBudget[];
-  alertingEnabled: boolean;
-}) {
+export function BudgetCards({ budgets }: { budgets: GreenBudget[] }) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       {budgets.map((b) => (
-        <BudgetCard key={b.name} budget={b} alertingEnabled={alertingEnabled} />
+        <BudgetCard key={b.name} budget={b} />
       ))}
     </div>
   );
 }
 
-function BudgetCard({ budget, alertingEnabled }: { budget: GreenBudget; alertingEnabled: boolean }) {
+// Why this budget will stay silent, keyed by the hub's per-budget verdict.
+// The module flag alone could only ever say "alerting is off" — a budget with
+// no channel, or one pointing at a channel that no longer exists, looked
+// perfectly wired.
+const SILENT: Record<Exclude<GreenBudget["notifications"], "ok">, string> = {
+  "alerting-off":
+    "Notifications require the alerting module — this budget shows status only until it is enabled.",
+  "no-channel":
+    "No notification channel on this budget — it shows status here, but a crossing notifies no one.",
+  "unknown-channel":
+    "This budget's notification channel no longer exists — a crossing would be recorded but never delivered.",
+};
+
+function BudgetCard({ budget }: { budget: GreenBudget }) {
   const s = STATUS[budget.status];
   const pct = Math.min(100, budget.ratio * 100);
   const projectedPct = budget.monthlyKgCO2e > 0 ? budget.projectedKgCO2e / budget.monthlyKgCO2e : 0;
@@ -82,10 +89,9 @@ function BudgetCard({ budget, alertingEnabled }: { budget: GreenBudget; alerting
         )}
       </p>
 
-      {!alertingEnabled && (
+      {budget.notifications !== "ok" && (
         <p className="border-t border-neutral/50 pt-2 text-[11px] text-base-content/45">
-          Notifications require the alerting module — this budget shows status
-          only until it is enabled.
+          {SILENT[budget.notifications]}
         </p>
       )}
     </Card>
