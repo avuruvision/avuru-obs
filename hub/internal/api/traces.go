@@ -6,6 +6,7 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
+	"github.com/avuru/avuru-obs/hub/internal/topology"
 )
 
 func (a *API) handleServices(w http.ResponseWriter, r *http.Request) error {
@@ -96,6 +97,13 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 	for _, e := range edges {
 		resp.Edges = append(resp.Edges, toServiceEdgeDTO(e))
 	}
+	// Mark the mesh proxies and gateways. They emit spans and exchange bytes
+	// exactly like applications do, so without this the map draws every
+	// `app → proxy → app` hop as two application dependencies — a claimed
+	// relationship between services that never talk to each other. The hub
+	// reports the classification rather than acting on it: dropping the rows
+	// here would make the mesh unobservable, and the caller can then choose.
+	stampServiceRoles(a.topologyClassifier(), resp.Services)
 	// Energy overlay (module green): per-service Wh/gCO2e as a map lens.
 	// Best-effort — the map renders even if the energy read fails.
 	if a.modules.Enabled(modules.Green) {
@@ -104,6 +112,17 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 	resp.Edges = applyEdgeHealth(resp.Edges, health)
 	writeJSON(w, http.StatusOK, resp)
 	return nil
+}
+
+// stampServiceRoles labels each map node with its topology role, leaving
+// applications unstamped (the DTO omits the empty role) so a mesh-less install
+// gets the same bytes it did before.
+func stampServiceRoles(cls topology.Classifier, services []serviceDTO) {
+	for i := range services {
+		if cls.IsTransport(services[i].Name) {
+			services[i].Role = string(topology.RoleTransport)
+		}
+	}
 }
 
 // applyEdgeHealth overlays OBI per-edge connection health (RTT p95, failed

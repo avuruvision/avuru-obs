@@ -155,6 +155,33 @@ http://{{ include "avuruobs.fullname" . }}-hub:80/internal/v1/ingest-keys/valida
 {{- end }}
 {{- end -}}
 
+{{/* Service-map topology config: env + volume + mount, in its OWN dir so it
+     never collides with the other mounted configs. Says which workload names
+     are mesh/gateway TRANSPORT rather than applications, so the map stops
+     drawing `app → proxy → app` hops as application dependencies.
+
+     Ungated, unlike the module configs: the service map is core and cannot be
+     turned off, so the knob that corrects it has to exist on every install.
+     The default value is empty — the hub's built-in patterns apply — and an
+     operator who needs to correct a misclassification can `kubectl edit` the
+     ConfigMap and have it live within ~15s, without a helm upgrade. */}}
+{{- define "avuruobs.topologyEnv" -}}
+- name: AVURUOBS_TOPOLOGY_CONFIG
+  value: /etc/avuruobs-topology/topology.json
+{{- end -}}
+
+{{- define "avuruobs.topologyVolume" -}}
+- name: topology-config
+  configMap:
+    name: {{ include "avuruobs.fullname" . }}-topology
+{{- end -}}
+
+{{- define "avuruobs.topologyVolumeMount" -}}
+- name: topology-config
+  mountPath: /etc/avuruobs-topology
+  readOnly: true
+{{- end -}}
+
 {{/* Alerting rules config: env + volume + mount, mounted at its OWN dir so it
      never collides with the service-groups mount. AVURUOBS_WEBHOOK_ALLOW carries
      the SSRF override CIDRs. Emitted only when the module is on. */}}

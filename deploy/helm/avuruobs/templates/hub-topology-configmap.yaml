@@ -1,0 +1,18 @@
+{{- /* Hub-owned config: not rendered on a gateway-only install. Ungated
+       otherwise — the service map is core, so its correction knob ships with
+       every hub. */}}
+{{- if .Values.hub.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "avuruobs.fullname" . }}-topology
+  labels:
+    {{- include "avuruobs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hub
+data:
+  # The hub parses this as JSON (fail-loud on invalid content). An empty object
+  # means "use the built-in mesh and gateway patterns", which is what almost
+  # every install wants. The hub hot-reloads on change, so `kubectl edit`
+  # applies without a pod restart.
+  topology.json: {{ .Values.topology | toJson | quote }}
+{{- end }}

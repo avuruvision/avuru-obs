@@ -43,7 +43,12 @@ with the hub (`/`→UI, `/api`→hub). The hub API is the client-agnostic contra
    cross-service Client/Server span pairs give the call edges. OBI's built-in
    `network` feature (metric `obi.network.flow.bytes`, with k8s src/dst
    identity) enriches it with edges for un-instrumented services, so the map
-   still lights up where there are no stitched traces.
+   still lights up where there are no stitched traces. Both sources see
+   service-mesh proxies and ingress gateways as ordinary peers, so
+   `internal/topology` classifies those workloads as **transport** and the map
+   hides them by default — otherwise every `app → proxy → app` hop renders as
+   two application dependencies (`AVURUOBS_TOPOLOGY_CONFIG`,
+   design/2026-08-23-service-map-transport.md).
 
 ## Locked decisions and rationale
 

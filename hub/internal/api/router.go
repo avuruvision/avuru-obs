@@ -16,6 +16,7 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/health"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
+	"github.com/avuru/avuru-obs/hub/internal/topology"
 )
 
 // Version is the hub build version, overridden at link time via
@@ -117,6 +118,10 @@ type Config struct {
 	// CollectionApplier pushes an accepted overlay to the cluster. nil
 	// defaults to collection.NoopApplier{} in Register.
 	CollectionApplier collection.Applier
+	// Topology returns the current service-map topology configuration
+	// (hot-reloaded, like Groups): which workload names are transport
+	// infrastructure rather than applications. nil → topology.Default().
+	Topology func() topology.Config
 	// StorageConnection describes where telemetry is stored, for the
 	// admin-only Settings → Storage view. It carries NO password: the whole
 	// point of showing it is "which server and database am I looking at",
@@ -352,6 +357,18 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 // nil case is handled by the resolver itself.
 func (a *API) groupsConfig(ctx context.Context) health.Config {
 	return a.cfg.Groups.Config(ctx)
+}
+
+// topologyClassifier builds the transport classifier from the active topology
+// config, defaulting to Default() (the built-in mesh patterns) when none is
+// wired (mirrors greenConfig/alertsConfig). Built once per request and shared
+// across that response's services and edges, so one map cannot disagree with
+// itself mid-render.
+func (a *API) topologyClassifier() topology.Classifier {
+	if a.cfg.Topology != nil {
+		return topology.New(a.cfg.Topology())
+	}
+	return topology.New(topology.Default())
 }
 
 // alertsConfig resolves the active alerting config (for the read-only /rules

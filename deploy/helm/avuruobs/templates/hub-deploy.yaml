@@ -48,6 +48,7 @@ spec:
                    them, so it must see the SAME numbers the migrator applied. */}}
             {{- include "avuruobs.retentionEnv" . | nindent 12 }}
             {{- include "avuruobs.groupsEnv" . | nindent 12 }}
+            {{- include "avuruobs.topologyEnv" . | nindent 12 }}
             {{- include "avuruobs.alertsEnv" . | nindent 12 }}
             {{- /* with-guard on the OUTPUT, not a restated module condition:
                    an empty include piped through nindent would leave a stray
@@ -155,6 +156,7 @@ spec:
           {{- if or .Values.modules.serviceHealth.enabled .Values.modules.alerting.enabled .Values.modules.green.enabled (include "avuruobs.oidcEnabled" .) }}
           volumeMounts:
             {{- include "avuruobs.groupsVolumeMount" . | nindent 12 }}
+            {{- include "avuruobs.topologyVolumeMount" . | nindent 12 }}
             {{- include "avuruobs.alertsVolumeMount" . | nindent 12 }}
             {{- with include "avuruobs.greenVolumeMount" . }}{{ . | nindent 12 }}{{- end }}
             {{- with include "avuruobs.oidcVolumeMount" . }}{{ . | nindent 12 }}{{- end }}
@@ -162,6 +164,7 @@ spec:
       {{- if or .Values.modules.serviceHealth.enabled .Values.modules.alerting.enabled .Values.modules.green.enabled (include "avuruobs.oidcEnabled" .) }}
       volumes:
         {{- include "avuruobs.groupsVolume" . | nindent 8 }}
+        {{- include "avuruobs.topologyVolume" . | nindent 8 }}
         {{- include "avuruobs.alertsVolume" . | nindent 8 }}
         {{- with include "avuruobs.greenVolume" . }}{{ . | nindent 8 }}{{- end }}
         {{- with include "avuruobs.oidcVolume" . }}{{ . | nindent 8 }}{{- end }}

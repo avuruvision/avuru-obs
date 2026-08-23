@@ -21,6 +21,12 @@ type serviceDTO struct {
 	// byte-identical wire shape.
 	Wh    float64 `json:"wh,omitempty"`
 	GCO2e float64 `json:"gco2e,omitempty"`
+	// Role is "transport" for a mesh proxy, ingress/egress gateway or other
+	// infrastructure that carries other services' traffic rather than taking
+	// part in it — see internal/topology. Stamped by the service map only, and
+	// only when it is NOT the default: an application carries no role field, so
+	// a mesh-less install keeps a byte-identical wire shape.
+	Role string `json:"role,omitempty"`
 }
 
 type servicesResponse struct {

@@ -27,10 +27,18 @@ export function nodeEnergyTooltip(label: string, wh: number, gco2e: number): str
   return `${label} · ${wh.toFixed(1)} Wh · ${gco2e.toFixed(2)} gCO2e`;
 }
 
+// A flow-derived edge is a connection the kernel saw, not a call anyone traced:
+// it carries bytes and zero calls by construction. Saying "0 rpm" on it reads as
+// "this path is idle" when the truth is "nobody measured this path".
+function isFlowOnly(e: ServiceEdge): boolean {
+  return e.calls === 0;
+}
+
 // edgeTooltip is the hover text for an edge: call volume, this path's latency,
 // plus any network health OBI measured for the connection.
 function edgeTooltip(e: ServiceEdge, windowMinutes: number): string {
-  const parts = [`${e.source} → ${e.target}`, formatRpm(e.calls / windowMinutes)];
+  const parts = [`${e.source} → ${e.target}`];
+  parts.push(isFlowOnly(e) ? "network flow · no traced calls" : formatRpm(e.calls / windowMinutes));
   if (e.p95Ms !== undefined) parts.push(`p95 ${formatMs(e.p95Ms)}`);
   if ((e.errorRate ?? 0) > 0) parts.push(`${(e.errorRate * 100).toFixed(1)}% errors`);
   if (e.rttMs) parts.push(`RTT p95 ${e.rttMs.toFixed(0)}ms`);
@@ -41,9 +49,9 @@ function edgeTooltip(e: ServiceEdge, windowMinutes: number): string {
 
 // The label an edge reveals while its neighbourhood is focused. Kept short —
 // it is drawn along the line. p95 is omitted when the edge is flow-derived and
-// has no span to measure; showing 0ms there would be a lie.
+// has no span to measure; showing 0ms there would be a lie, and so would 0 rpm.
 function edgeFocusLabel(e: ServiceEdge, windowMinutes: number): string {
-  const parts = [formatRpm(e.calls / windowMinutes)];
+  const parts = [isFlowOnly(e) ? "network flow" : formatRpm(e.calls / windowMinutes)];
   if (e.p95Ms !== undefined) parts.push(`p95 ${formatMs(e.p95Ms)}`);
   if ((e.errorRate ?? 0) > 0) parts.push(`${(e.errorRate * 100).toFixed(1)}% err`);
   if (e.rttMs) parts.push(`RTT ${e.rttMs.toFixed(0)}ms`);
@@ -91,6 +99,9 @@ export function buildElements({
         ...(!healthEnabled && s.errorRate > 0 ? { errorRing: 1 } : {}),
         focusLabel: `${s.name}\n${formatRpm(rpm)} · p95 ${formatMs(s.p95Ms)}`,
         rate: s.ratePerSec,
+        // Only mesh/gateway nodes carry `transport`, and only when the user
+        // asked to see them — an application node's data is unchanged.
+        ...(s.role === "transport" ? { transport: 1 } : {}),
         // Carbon fields are added ONLY under the overlay, so a non-green node
         // carries the exact same data as before.
         ...(carbon && s.gco2e !== undefined
@@ -111,6 +122,10 @@ export function buildElements({
         calls: e.calls,
         error: e.errorRate,
         health: edgeUnhealthy(e) ? 1 : 0,
+        // Its own channel so the stylesheet can draw "connection we observed"
+        // differently from "call we traced" without borrowing dashed, which
+        // already means network-unhealthy.
+        flow: isFlowOnly(e) ? 1 : 0,
         focusLabel: edgeFocusLabel(e, windowMinutes),
         tooltip: edgeTooltip(e, windowMinutes),
       },

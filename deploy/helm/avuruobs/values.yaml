@@ -247,6 +247,37 @@ alerting:
   #      groups: [payments]  # or services: [...] or tiers: [T0]
   #    channel: ops
 
+# Service-map topology: which workloads are TRANSPORT (a service-mesh sidecar,
+# waypoint or ztunnel proxy, an ingress/egress gateway) rather than
+# applications. Transport carries other services' traffic, so it appears in
+# traces and in kernel flows exactly like a peer — and without this the map
+# draws every `app -> proxy -> app` hop as two application dependencies,
+# claiming a relationship between services that never talk to each other. The
+# map hides transport by default and offers a toggle to show it.
+#
+# Empty means "use the built-in patterns" (Istio sidecar/waypoint/ztunnel and
+# gateways, Linkerd, Consul, Kuma, Envoy Gateway) — right for almost every
+# install. Rendered to a ConfigMap the hub reads (AVURUOBS_TOPOLOGY_CONFIG) and
+# hot-reloads within ~15s, so a correction needs no restart or helm upgrade.
+topology: {}
+  # Add patterns for a mesh or gateway the built-ins don't know about. Globs
+  # (* and ?), matched case-insensitively against the workload name and against
+  # each dot-separated segment, so one pattern covers both "my-proxy" and
+  # "my-proxy.mesh-system".
+  # transport:
+  #   - "acme-mesh-*"
+  #
+  # Rescue a real application the patterns catch. Wins over every transport
+  # pattern, built-in or added — this is how you fix a false positive without
+  # waiting for a release.
+  # applications:
+  #   - "waypoint-api"
+  #
+  # Drop the built-in list entirely and classify only what `transport` lists.
+  # For an install whose naming collides often enough that subtracting is
+  # harder than starting from nothing. Requires a non-empty `transport`.
+  # disableDefaults: true
+
 # Service Health grouping/tier configuration. Rendered to a ConfigMap the hub
 # reads (mounted at AVURUOBS_GROUPS_CONFIG) when modules.serviceHealth.enabled.
 # Empty groups = auto-group every service by its Kubernetes namespace at

@@ -250,6 +250,15 @@
         }
       }
     },
+    "topology": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "transport": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "applications": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "disableDefaults": { "type": "boolean" }
+      }
+    },
     "serviceGroups": {
       "type": "object",
       "properties": {

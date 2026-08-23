@@ -5,7 +5,15 @@
 //
 // `health` false = the service-health module is off, so there are no status
 // rings to explain — the map falls back to marking error presence.
-export function MapLegend({ health, carbon }: { health: boolean; carbon: boolean }) {
+export function MapLegend({
+  health,
+  carbon,
+  infra,
+}: {
+  health: boolean;
+  carbon: boolean;
+  infra: boolean;
+}) {
   return (
     <div
       data-testid="map-legend"
@@ -26,6 +34,8 @@ export function MapLegend({ health, carbon }: { health: boolean; carbon: boolean
       <span>width = calls</span>
       <span className="text-warning/80">amber dashed = network health</span>
       <span className="text-error/80">red = errors</span>
+      <span>dotted = observed connection, no traced calls</span>
+      {infra && <span>diamond = mesh or gateway</span>}
       {carbon && <span className="text-success/80">halo = gCO2e</span>}
       <span className="text-base-content/40">hover a node for its edges</span>
     </div>

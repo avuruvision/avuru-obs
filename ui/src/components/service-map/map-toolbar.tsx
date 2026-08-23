@@ -10,7 +10,8 @@ import type { MapFilters } from "@/lib/map-filter";
 // state: it reads the current filters and reports changes upward.
 //
 // The status and group filters exist ONLY when the service-health module is on,
-// because both read the rollup that module produces.
+// because both read the rollup that module produces. The mesh toggle appears
+// only when there IS a mesh — a checkbox that would change nothing is noise.
 export function MapToolbar({
   filters,
   groups,
@@ -18,9 +19,12 @@ export function MapToolbar({
   canCarbon,
   carbon,
   includeAux,
+  showInfra,
+  hasInfra,
   onFilters,
   onCarbon,
   onIncludeAux,
+  onShowInfra,
   onZoomIn,
   onZoomOut,
   onFit,
@@ -32,9 +36,12 @@ export function MapToolbar({
   canCarbon: boolean;
   carbon: boolean;
   includeAux: boolean;
+  showInfra: boolean;
+  hasInfra: boolean;
   onFilters: (next: MapFilters) => void;
   onCarbon: (on: boolean) => void;
   onIncludeAux: (on: boolean) => void;
+  onShowInfra: (on: boolean) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
@@ -99,6 +106,21 @@ export function MapToolbar({
         />
         Show auxiliary requests
       </label>
+
+      {hasInfra && (
+        <label
+          className="flex cursor-pointer items-center gap-1.5 text-xs text-base-content/70"
+          title="Mesh sidecars, waypoint proxies and ingress gateways carry other services' traffic. Their edges are hops between two services, not a dependency between them."
+        >
+          <input
+            type="checkbox"
+            checked={showInfra}
+            onChange={(e) => onShowInfra(e.target.checked)}
+            className="accent-primary"
+          />
+          Show mesh &amp; gateways
+        </label>
+      )}
 
       <div className="ml-auto flex items-center gap-1">
         <Button variant="ghost" size="icon" aria-label="Zoom in" onClick={onZoomIn}>

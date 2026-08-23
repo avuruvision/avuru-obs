@@ -269,6 +269,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	topologyConfig, err := loadTopologyConfig(ctx)
+	if err != nil {
+		return err
+	}
 	// OIDC is hot-reloaded like the other mounted configs; nil accessors when
 	// AVURUOBS_AUTH_OIDC_CONFIG is unset (or auth is disabled). Installs the
 	// SSO group→grant mapper on authSvc as a side effect. provider is threaded
@@ -319,6 +323,7 @@ func run() error {
 		DemoEmail:                       demoEmail,
 		DemoPassword:                    demoPassword,
 		GreenConfig:                     greenConfig,
+		Topology:                        topologyConfig,
 		OIDC:                            oidcProvider,
 		OIDCSettings:                    oidcSettings,
 		OIDCMapping:                     oidcMapping,
