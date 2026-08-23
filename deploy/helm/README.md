@@ -373,6 +373,36 @@ layers Harbor image refs, Kustomize patches, and Keycloak/oauth2-proxy via
 `helm template ./avuruobs -f overlay-values.yaml | kustomize ...` — it never forks
 the chart.
 
+## Declared service metadata
+
+A service can group and tier itself with three optional OTLP resource
+attributes — no hub config needed:
+
+| Attribute | Meaning |
+|---|---|
+| `service.namespace` | logical domain; becomes the group name (spans k8s namespaces) |
+| `deployment.environment.name` | environment; splits a domain into per-env groups |
+| `avuru.tier` | criticality `T0`–`T3` |
+
+The environment falls back to the deprecated `deployment.environment` when the
+current semconv key is absent, so SDKs emitting either are picked up.
+
+Declaring nothing keeps the zero-config behavior: services auto-group by
+Kubernetes namespace at `serviceGroups.defaultTier`.
+
+Tier precedence, most specific first:
+`serviceGroups.tierOverrides[<service>]` → a matched `serviceGroups.groups`
+entry → the declared `avuru.tier` → `serviceGroups.defaultTier`. Where members
+of one group declare different tiers, the **most critical** wins.
+
+An invalid declared tier never fails the hub: the service falls back to the
+default tier and the `/api/v1/health/groups` response carries a warning. This is
+deliberately the opposite of `serviceGroups` config, where a bad tier fails the
+hub loud — config is operator-reviewed, application telemetry is not.
+
+A rule or budget naming a group covers **every** environment of that group
+unless narrowed (`selector.environments` on an alerting rule).
+
 ## Verification
 
 `make e2e-helm` (from repo root) spins a kind cluster, installs the chart,
@@ -383,3 +413,4 @@ rows in ClickHouse, and greps a stand-in legacy backend's logs for the
 forwarded trace — so the compatibility claim above is CI-enforced, not
 asserted. `make e2e-compat` is the faster compose equivalent (opt-in), and
 additionally covers enforce-mode rejection and the remote-write v1 `415`.
+

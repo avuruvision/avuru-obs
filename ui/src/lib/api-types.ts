@@ -567,8 +567,12 @@ export interface HealthMember {
 
 export interface HealthGroup {
   name: string;
+  // Declared deployment environment. Absent = the service declared none, and
+  // the group is identified by name alone (pre-environment behavior).
+  environment?: string;
   tier: string;
   source: "config" | "auto";
+  tierSource: "override" | "config" | "declared" | "default";
   status: HealthStatus;
   reason: string;
   counts: Record<string, number>;
@@ -584,6 +588,8 @@ export interface HealthGroupsResponse {
   checkedAt: string;
   window: { start: string; end: string };
   groups: HealthGroup[];
+  // Declarations the hub could not honour (e.g. an invalid avuru.tier).
+  warnings?: string[];
 }
 
 // Group DEFINITIONS (what the groups are), as opposed to HealthGroup above

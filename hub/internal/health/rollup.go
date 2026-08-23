@@ -32,32 +32,40 @@ type Member struct {
 	Dependencies    []Dependency
 }
 
-// GroupHealth is one group's rolled-up health.
+// GroupHealth is one group's rolled-up health. Identity is the pair
+// (Name, Environment): Name stays the domain so name-keyed consumers (the
+// group-detail route, alerting selectors, green budgets) keep matching, and
+// Environment carries the new dimension.
 type GroupHealth struct {
-	Name       string
-	Tier       Tier
-	Source     string // "config" | "auto"
-	Status     string
-	Reason     string
-	Counts     map[string]int // per-status member tally
-	SpanCount  uint64
-	RatePerSec float64
-	ErrorRate  float64
-	P95Ms      float64
-	Members    []Member
+	Name        string
+	Environment string
+	Tier        Tier
+	Source      string // "config" | "auto"
+	TierSource  string // "override" | "config" | "declared" | "default"
+	Status      string
+	Reason      string
+	Counts      map[string]int // per-status member tally
+	SpanCount   uint64
+	RatePerSec  float64
+	ErrorRate   float64
+	P95Ms       float64
+	Members     []Member
 }
 
-// Report is the whole tenant's group health for a window.
+// Report is the whole tenant's group health for a window. Warnings carry
+// declarations the hub could not honour (e.g. an invalid avuru.tier); they are
+// informational and never block the report.
 type Report struct {
-	Overall string
-	Groups  []GroupHealth
+	Overall  string
+	Groups   []GroupHealth
+	Warnings []string
 }
 
 // Rollup computes group health from the RED population (stats), grouping
 // labels, and dependency edges, over a window. It is pure: no I/O, no clock.
 // The window is used only to derive per-second rates.
 func Rollup(cfg Config, window time.Duration, stats []storage.ServiceStats, labels []storage.ServiceLabel, edges []storage.ServiceEdge) Report {
-	assign := resolve(cfg, stats, labels)
+	assign, warnings := resolve(cfg, stats, labels)
 	statByService := make(map[string]storage.ServiceStats, len(stats))
 	for _, s := range stats {
 		statByService[s.Name] = s
@@ -78,7 +86,7 @@ func Rollup(cfg Config, window time.Duration, stats []storage.ServiceStats, labe
 	members := buildMembers(assign, statByService, base, effective, effReason, deps, window)
 	groups := groupAndRoll(assign, members)
 
-	return Report{Overall: overallStatus(groups), Groups: groups}
+	return Report{Overall: overallStatus(groups), Groups: groups, Warnings: warnings}
 }
 
 // propagate applies the golden rule: an edge s→t is critical iff t is T0 (or a
@@ -173,12 +181,24 @@ func buildMembers(assign map[string]assignment, statByService map[string]storage
 	return out
 }
 
-// groupAndRoll buckets members by group and computes each group's rolled-up
-// status (worst-of effective, ignoring idle) and aggregate RED.
+// groupKey is a group's composite identity. An empty environment collapses to
+// the bare group name so installs that declare nothing keep today's keys.
+func groupKey(group, env string) string {
+	if env == "" {
+		return group
+	}
+	return group + "\x00" + env
+}
+
+// groupAndRoll buckets members by (group, environment) and computes each
+// group's rolled-up status (worst-of effective, ignoring idle) and aggregate
+// RED. The group's tier is its MOST CRITICAL member's tier.
 func groupAndRoll(assign map[string]assignment, members map[string]Member) []GroupHealth {
 	type acc struct {
+		name, env         string
 		tier              Tier
 		source            string
+		tierSource        string
 		members           []Member
 		spanCount, errCnt uint64
 		rate, p95         float64
@@ -186,11 +206,15 @@ func groupAndRoll(assign map[string]assignment, members map[string]Member) []Gro
 	byGroup := map[string]*acc{}
 	order := []string{}
 	for svc, a := range assign {
-		g, ok := byGroup[a.Group]
+		k := groupKey(a.Group, a.Environment)
+		g, ok := byGroup[k]
 		if !ok {
-			g = &acc{tier: a.Tier, source: a.Source}
-			byGroup[a.Group] = g
-			order = append(order, a.Group)
+			g = &acc{name: a.Group, env: a.Environment, tier: a.Tier, source: a.Source, tierSource: a.TierSource}
+			byGroup[k] = g
+			order = append(order, k)
+		} else if t := moreCritical(g.tier, a.Tier); t != g.tier {
+			// A more critical member takes over the group's tier and its provenance.
+			g.tier, g.tierSource = t, a.TierSource
 		}
 		m := members[svc]
 		g.members = append(g.members, m)
@@ -204,8 +228,8 @@ func groupAndRoll(assign map[string]assignment, members map[string]Member) []Gro
 	sort.Strings(order)
 
 	out := make([]GroupHealth, 0, len(order))
-	for _, name := range order {
-		g := byGroup[name]
+	for _, k := range order {
+		g := byGroup[k]
 		sort.Slice(g.members, func(i, j int) bool { return g.members[i].Service < g.members[j].Service })
 		status, counts := rollUpMembers(g.members)
 		var errRate float64
@@ -213,17 +237,19 @@ func groupAndRoll(assign map[string]assignment, members map[string]Member) []Gro
 			errRate = float64(g.errCnt) / float64(g.spanCount)
 		}
 		out = append(out, GroupHealth{
-			Name:       name,
-			Tier:       g.tier,
-			Source:     g.source,
-			Status:     status,
-			Reason:     groupReason(status, g.members),
-			Counts:     counts,
-			SpanCount:  g.spanCount,
-			RatePerSec: g.rate,
-			ErrorRate:  errRate,
-			P95Ms:      g.p95,
-			Members:    g.members,
+			Name:        g.name,
+			Environment: g.env,
+			Tier:        g.tier,
+			Source:      g.source,
+			TierSource:  g.tierSource,
+			Status:      status,
+			Reason:      groupReason(status, g.members),
+			Counts:      counts,
+			SpanCount:   g.spanCount,
+			RatePerSec:  g.rate,
+			ErrorRate:   errRate,
+			P95Ms:       g.p95,
+			Members:     g.members,
 		})
 	}
 	return out

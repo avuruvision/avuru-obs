@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { Activity, SlidersHorizontal } from "lucide-react";
+import { Activity, SlidersHorizontal, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useTimeRange } from "@/hooks/use-time-range";
 import { useURLState } from "@/hooks/use-url-state";
@@ -61,6 +61,32 @@ export function HealthScreen() {
   return (
     <div className="flex flex-col gap-4 lg:flex-row">
       <div className="flex min-w-0 flex-1 flex-col gap-5">
+        {/* Declarations fail soft — an unusable avuru.tier falls back to the
+            default rather than breaking the board. That is the right behaviour
+            (application telemetry gets no operator review) and it is also how a
+            team never finds out their declaration was ignored. So it is said
+            here, once, above the lanes it affected. */}
+        {data?.warnings?.length ? (
+          <div
+            className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-2.5 text-xs"
+            data-testid="health-warnings"
+          >
+            <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden />
+            <div className="flex flex-col gap-0.5">
+              <span className="font-medium">
+                {data.warnings.length === 1
+                  ? "A service declared something the hub could not use"
+                  : `${data.warnings.length} services declared something the hub could not use`}
+              </span>
+              {data.warnings.map((w) => (
+                <span key={w} className="text-base-content/70">
+                  {w}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div className="flex items-center gap-2 text-sm">
           {data && (
             <span className={cn("h-3 w-3 rounded-full", statusDotClass(data.overall))} aria-hidden />
@@ -99,6 +125,7 @@ export function HealthScreen() {
               key={lane.tier}
               title={lane.title}
               subtitle={lane.subtitle}
+              tier={lane.tier}
               groups={laneGroups}
               selectedMember={selected}
               onSelectMember={selectMember}

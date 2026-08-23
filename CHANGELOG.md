@@ -13,6 +13,26 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **Declared service metadata — services group and tier themselves.** A service
+  can now set `service.namespace` (logical domain), `deployment.environment.name`
+  and `avuru.tier` as resource attributes, and the service-health board picks
+  them up with no hub config: groups span Kubernetes namespaces, and one domain
+  declared in two environments becomes two groups carrying their own tiers.
+  Declaring nothing is unchanged — services still auto-group by namespace at
+  `serviceGroups.defaultTier`. Tier precedence is
+  `serviceGroups.tierOverrides` → a matched config group → the declared
+  `avuru.tier` → `defaultTier`, and where group members disagree the most
+  critical tier wins. An invalid declared tier never fails the hub: it falls
+  back to the default and the board says so, in a banner naming the service and
+  the value it tried to use — the opposite of operator config, which still fails
+  loud. Failing soft is right (application telemetry gets no operator review)
+  but silence is not: without the banner a team would never learn their
+  declaration did nothing. A card also says **declared** when the service chose
+  its own tier, so a T0 lane distinguishes what ops decided from what an app
+  claimed (AEP `design/2026-07-28-declared-service-metadata.md`).
+- **`serviceGroups.tierOverrides`** — per-service operator tier, winning over
+  both a declared tier and a matched group's tier. Corrects one service's
+  criticality without moving it into a different group.
 - **Cross-zone traffic accounting.** Cloud providers bill data that crosses an
   availability-zone boundary, and the usual way to find out what is driving that
   line is a flow-log pipeline or a cost SaaS. The sensor already watches every
@@ -912,6 +932,14 @@ accountability. The project is now licensed AGPL-3.0.
   [`design/2026-07-17-sensor-safe-by-default.md`](design/2026-07-17-sensor-safe-by-default.md).
 
 ### Changed
+
+- **Alerting rules and green budgets that name a group now cover every
+  environment of that group.** Group targets are keyed per environment
+  (`group:payments[prod]`), so two environments no longer collide into one
+  target — previously the second would have silently replaced the first.
+  Environment-less groups keep their bare `group:<name>` key, so existing rules
+  and stored alert state are untouched until services start declaring
+  `deployment.environment.name`. Narrow a rule with `selector.environments`.
 
 - **Relicensed from Apache-2.0 to AGPL-3.0.**
 

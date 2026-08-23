@@ -294,6 +294,12 @@ func assignEnergy(groups health.Config, rows []storage.ServiceEnergy, stats []st
 // estimated-only — the alerting tick's usage source (BudgetUsageByGroup) and
 // the budgets endpoint share this so both fire/report on identical numbers.
 // The unattributed bucket (empty Service) has no group and never counts.
+//
+// Keyed by GROUP NAME, deliberately summing ACROSS environments: a budget names
+// a domain, and with no environment configured it covers every environment of
+// that domain — the same rule alerting selectors use. Unlike the alerting
+// targets map, summing here is correct rather than lossy: carbon is additive,
+// so two environments of one domain contribute to one domain-wide budget.
 func usedKgByGroup(f greenFactors, assigned map[string]health.Assignment, rows []storage.ServiceEnergy) (total, estimated map[string]float64) {
 	whByGroup := map[string]float64{}
 	estWhByGroup := map[string]float64{}

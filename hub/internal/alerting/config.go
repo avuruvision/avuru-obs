@@ -50,10 +50,30 @@ type Selector struct {
 	Groups   []string `json:"groups,omitempty"`
 	Services []string `json:"services,omitempty"`
 	Tiers    []string `json:"tiers,omitempty"`
+	// Environments narrows a group match to specific declared environments.
+	// EMPTY MEANS ALL — a rule written before environments existed must keep
+	// firing on the same set once services start declaring one.
+	Environments []string `json:"environments,omitempty"`
 }
 
+// empty deliberately ignores Environments: environments NARROW a match, they
+// never constitute one on their own.
 func (s Selector) empty() bool {
 	return len(s.Groups) == 0 && len(s.Services) == 0 && len(s.Tiers) == 0
+}
+
+// matchesEnvironment reports whether a group in env is in scope. No configured
+// environments = every environment.
+func (s Selector) matchesEnvironment(env string) bool {
+	if len(s.Environments) == 0 {
+		return true
+	}
+	for _, e := range s.Environments {
+		if e == env {
+			return true
+		}
+	}
+	return false
 }
 
 // Rule fires Channel when a matched target's health matches When for For.

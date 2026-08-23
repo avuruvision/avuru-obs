@@ -53,6 +53,7 @@ only if the design needs to be pinned down before coding.
 | [2026-07-27](2026-07-27-wider-ingest-compat.md) | Wider ingest compatibility — Jaeger/Zipkin/Prometheus/Loki + forwarding | Accepted |
 | [2026-07-27](2026-07-27-auto-tagging.md) | Richer auto-tagging — K8s labels/annotations as business tags | Draft |
 | [2026-07-27](2026-07-27-clients-grafana-cli.md) | Additional clients — Grafana data source + CLI + API tokens | Draft |
+| [2026-07-28](2026-07-28-declared-service-metadata.md) | Declared service metadata — self-service tier, environment, and domain | Draft |
 | [2026-07-28](2026-07-28-green-tdp-estimation.md) | Green TDP estimation — modeled energy for RAPL-less nodes | Accepted |
 | [2026-08-06](2026-08-06-users-crud-password.md) | Users CRUD completion — delete, password management, role editing | Accepted |
 | [2026-08-07](2026-08-07-service-groups-crud.md) | Service groups authored in the UI | Accepted |
