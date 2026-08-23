@@ -154,14 +154,24 @@ cytoscape edge data.
 
 ### Documented v1 limitations
 
-- **The exact OBI stats-feature config key and per-edge attribution are
-  unverified against a running OBI** — they need a real kind/eBPF environment
-  (the sensor-config uses a best-guess `stats: enable: true` + `attributes.select`,
-  and the k8s-owner attribution on the stats metrics is assumed from the flow
-  metric's behavior). This MUST be confirmed by enabling `sensor.obi.network`
-  (+ stats) in a kind cluster and inspecting `otel_metrics_*` before relying on
-  it in prod. The wedge `e2e-helm` gate is deliberately left unchanged (network
-  is off by default) so this collection-side unknown can't destabilize it.
+- ~~**The exact OBI stats-feature config key and per-edge attribution are
+  unverified against a running OBI**~~ — **resolved 2026-08-23 against the
+  pinned OBI v0.9.0 source, and the guess was wrong twice.** `stats: enable:
+  true` addressed a field that does not exist on `StatsConfig`: the config
+  loader ignores unknown keys, so the switch was silently inert and the two
+  metrics were never collected. Metric families are selected by name in
+  `metrics.features` (`pkg/export/feature.go` — `stats`, or the granular
+  `stats_tcp_rtt` / `stats_tcp_failed_connections`), which is the only switch
+  that exists. Worse, the `attributes.select` block was emitted as a *second*
+  `attributes:` mapping beside the Kubernetes decorator; OBI loads its YAML with
+  `yaml.v3`, which rejects a repeated root key outright, so the sensor could not
+  start at all whenever `stats` was on — which is the default with
+  `network.enabled`. Both are fixed, and `template-test.sh` now parses the
+  rendered document instead of grepping it. The metric names themselves
+  (`obi.stat.tcp.rtt`, `obi.stat.tcp.failed.connections`) and the dotted/
+  underscored equivalence of `attributes.select` keys were confirmed correct.
+  **Per-edge attribution to `k8s.src.owner.name`/`k8s.dst.owner.name` remains
+  unconfirmed on a running sensor** — that still needs the kind/eBPF run.
 - **No retransmissions** (OBI gap).
 - **Failed-connection count is a cumulative-counter `sum()` approximation** for
   edge weighting, the same caveat as `NetworkEdges` byte sums; a per-series delta
@@ -194,6 +204,11 @@ cytoscape edge data.
 - [x] API: `serviceEdgeDTO` rttMs/failedConnections
 - [x] UI: edge tooltip + health styling; extend `ServiceEdge` type
 - [x] Storage p95-from-histogram SQL validated against real ClickHouse (integration test)
-- [ ] **Confirm the OBI stats key + per-edge attribution in a kind/eBPF env** (blocks prod use)
+- [x] OBI stats config key pinned against the v0.9.0 source (2026-08-23) — the
+      shipped `stats.enable` key was inert and the duplicate `attributes:` block
+      stopped the sensor from starting; both fixed, rendered configs now parsed
+      in `template-test.sh`
+- [ ] **Confirm per-edge attribution (k8s owner keys on the stats metrics) in a
+      kind/eBPF env** (blocks prod use)
 - [ ] Docs (service-map page, network-health config) via docs-align
 - [ ] Later: per-reason failure breakdown, edge-health alerting (feeds the alerting module), retransmissions if OBI adds them

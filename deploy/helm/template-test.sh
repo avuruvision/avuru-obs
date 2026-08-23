@@ -9,6 +9,26 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 ok() { echo "  ok: $*"; }
 render() { helm template test "$CHART" "$@"; }
 
+# The OBI config is a YAML document embedded in a ConfigMap literal block, so
+# `helm template` happily renders one that OBI itself refuses to load. Pull the
+# block out so assertions can be made against the document the sensor actually
+# parses.
+obi_config() {
+  awk '/^  obi-config\.yml: \|/{f=1;next} f&&/^[^ ]/{f=0} f&&/^  [^ ]/{f=0} f' <<<"$1" | sed 's/^    //'
+}
+
+# OBI parses its config with strict YAML: a repeated key at the document root is
+# a load error that stops the process, not a merge. Nothing in `helm lint` or a
+# render sees that, so assert it here — a template whose branches each emit
+# their own `attributes:` block shipped once and took the whole sensor down.
+assert_obi_config_valid() {
+  local body dups
+  body="$(obi_config "$1")"
+  [ -n "$body" ] || fail "$2: obi-config.yml rendered empty"
+  dups="$(grep -E '^[a-z_][a-z0-9_.-]*:' <<<"$body" | sed 's/:.*//' | sort | uniq -d)"
+  [ -z "$dups" ] || fail "$2: obi-config.yml repeats root key(s) [$(tr '\n' ' ' <<<"$dups")] — OBI will not start"
+}
+
 echo "== helm lint"
 helm lint "$CHART" >/dev/null || fail "helm lint"
 helm lint "$CHART" -f values-staging.yaml >/dev/null || fail "helm lint (staging overlay)"
@@ -292,20 +312,40 @@ ok "no module entry, ConfigMap, env or mount when disabled"
 
 echo "== OBI network stats: off by default"
 out="$(render)"
-grep -q 'obi_stat_tcp_rtt' <<<"$out" && fail "OBI stats config rendered without sensor.obi.network.enabled"
-ok "no TCP-stats config by default"
+grep -q 'obi.stat.tcp.rtt' <<<"$out" && fail "OBI stats config rendered without sensor.obi.network.enabled"
+grep -q 'features:' <<<"$out" && fail "OBI metric features pinned without sensor.obi.network.enabled"
+assert_obi_config_valid "$out" "default render"
+ok "no TCP-stats config by default; OBI's own feature defaults left alone"
 
 echo "== OBI network stats: enabled with the network feature (+ infra-metrics)"
 out="$(render --set sensor.obi.network.enabled=true)"
-grep -q 'stats:' <<<"$out" || fail "OBI stats feature not enabled with network on"
-grep -q 'obi_stat_tcp_rtt' <<<"$out" || fail "obi_stat_tcp_rtt attribute selection missing"
-grep -q 'obi_stat_tcp_failed_connections' <<<"$out" || fail "obi_stat_tcp_failed_connections attribute selection missing"
-ok "stats feature + k8s-owner attribute selection render"
+assert_obi_config_valid "$out" "network.enabled"
+body="$(obi_config "$out")"
+grep -qE '^\s+- stats$' <<<"$body" || fail "the stats feature is not in OBI's metric feature list"
+grep -qE '^\s+- network$' <<<"$body" || fail "the network feature is not in OBI's metric feature list"
+# Naming any feature replaces OBI's default list, so dropping this line would
+# silently turn OBI's application metrics off the moment flows are enabled.
+grep -qE '^\s+- application$' <<<"$body" || fail "application feature lost when the network feature list is pinned"
+grep -q 'obi.stat.tcp.rtt:' <<<"$body" || fail "obi.stat.tcp.rtt attribute selection missing"
+grep -q 'obi.stat.tcp.failed.connections:' <<<"$body" || fail "obi.stat.tcp.failed.connections attribute selection missing"
+# Left to OBI's defaults, flow bytes carry direction + per-interface labels and
+# the stats metrics carry src/dst IP addresses — a series per address pair.
+grep -q 'obi.network.flow.bytes:' <<<"$body" || fail "flow-bytes attribute selection missing (cardinality unbounded)"
+grep -q 'allowed_attributes' <<<"$body" && fail "allowed_attributes is not an OBI v0.9.0 key — use attributes.select"
+# The selection has to live in the same `attributes` mapping as the kubernetes
+# decorator, not a second one.
+[ "$(grep -cE '^attributes:' <<<"$body")" = "1" ] || fail "attributes: is not a single root mapping"
+grep -q 'enable: true' <<<"$body" || fail "kubernetes decoration lost from the attributes mapping"
+ok "stats feature + k8s-owner attribute selection render into one valid document"
 
 echo "== OBI network stats: can be turned off while keeping flow bytes"
 out="$(render --set sensor.obi.network.enabled=true --set sensor.obi.network.stats=false)"
-grep -q 'obi_stat_tcp_rtt' <<<"$out" && fail "stats config survived network.stats=false"
-grep -qE 'network:' <<<"$out" || fail "network flow config missing"
+assert_obi_config_valid "$out" "network.stats=false"
+body="$(obi_config "$out")"
+grep -q 'obi.stat.tcp.rtt' <<<"$body" && fail "stats config survived network.stats=false"
+grep -qE '^\s+- stats$' <<<"$body" && fail "stats feature survived network.stats=false"
+grep -qE '^network:' <<<"$body" || fail "network flow config missing"
+grep -q 'obi.network.flow.bytes:' <<<"$body" || fail "flow-bytes attribute selection lost with stats off"
 ok "flow bytes without TCP stats"
 
 echo "== service-map topology: ungated, because the map cannot be turned off"
@@ -422,7 +462,8 @@ grep -q 'hostNetwork: true' <<<"$out" || fail "hostNetwork missing with obi.netw
 grep -q 'name: kepler' <<<"$out" || fail "kepler container lost next to obi.network"
 grep -q 'prometheus/green:' <<<"$out" || fail "green receiver lost next to obi.network"
 grep -q 'metrics/green:' <<<"$out" || fail "green pipeline lost next to obi.network"
-grep -q 'obi_stat_tcp_rtt' <<<"$out" || fail "OBI TCP-stats config lost next to green"
+grep -q 'obi.stat.tcp.rtt' <<<"$out" || fail "OBI TCP-stats config lost next to green"
+assert_obi_config_valid "$out" "green + obi.network"
 # Under hostNetwork the Kepler bind hits the HOST loopback (values.yaml
 # caveat) — it must still be 127.0.0.1, never a pod/host-wide address.
 grep -q '127.0.0.1:28282' <<<"$out" || fail "Kepler loopback bind lost under hostNetwork"

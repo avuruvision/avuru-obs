@@ -13,6 +13,29 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Fixed
 
+- **Turning on network flows stopped the sensor instead of enriching it.**
+  `sensor.obi.network.enabled=true` rendered a sensor config with the same
+  `attributes:` key twice — once for Kubernetes decoration, once for the
+  TCP-stats attribute selection. Kubernetes rejects nothing here (it is a
+  ConfigMap value, not a manifest), but the sensor parses that document
+  strictly and refuses to start on a repeated key, so the whole eBPF container
+  crash-looped and took traces, flows and per-edge health with it. Both blocks
+  now render into one mapping. In the same config, the TCP-stats switch was
+  written as a `stats.enable` key the sensor has no field for: it was accepted
+  and ignored, so per-edge RTT and failed-connection metrics were never
+  collected even when the config did load. Metric families are now selected by
+  the sensor's own feature names, which is the only switch that exists for
+  them. A third key, `network.allowed_attributes`, was likewise not a field the
+  sensor has — so the cardinality bound the chart documented was never applied.
+  Left to their defaults, flow metrics also carry traffic direction and
+  per-interface labels, and the TCP-stats metrics carry source and destination
+  **IP addresses**, which is a time series per address pair. All three metrics
+  are now pinned to the Kubernetes workload identity the service map joins on.
+  Per-edge network health has therefore never worked on a real cluster since it
+  shipped in v0.2.0 — if you enabled it, it is worth re-checking the sensor pod.
+  Rendered configs are now parsed in the chart's own tests, so a document the
+  sensor cannot load fails the build.
+
 - **The service map no longer draws mesh hops as dependencies.** On a cluster
   running a service mesh, every application call is intercepted by a proxy, so
   what reached the map was `app → proxy → app` — two edges, neither of them a
