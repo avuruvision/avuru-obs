@@ -1,0 +1,79 @@
+# Deterministic cross-zone traffic for the inter-zone accounting gate.
+#
+# Scheduling alone would not guarantee a zone crossing: with two nodes the
+# scheduler may put a client and its server on the same one, and the metric
+# under test counts ONLY crossings. So the two halves are pinned to opposite
+# zones by node label — the client cannot reach the server without leaving its
+# zone, which is the traffic the sensor is supposed to account for.
+#
+# Both images are already loaded into the cluster with the wedge demo's, so
+# this fixture costs no extra pulls.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: zone-demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zone-echo
+  namespace: zone-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: zone-echo }
+  template:
+    metadata:
+      labels: { app: zone-echo }
+    spec:
+      nodeSelector:
+        topology.kubernetes.io/zone: zone-a
+      containers:
+        - name: nginx
+          image: nginx:1.29-alpine
+          ports:
+            - containerPort: 80
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zone-echo
+  namespace: zone-demo
+spec:
+  selector: { app: zone-echo }
+  ports:
+    - port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zone-client
+  namespace: zone-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: zone-client }
+  template:
+    metadata:
+      labels: { app: zone-client }
+    spec:
+      nodeSelector:
+        topology.kubernetes.io/zone: zone-b
+      containers:
+        - name: client
+          image: busybox:1.37
+          # Bodies large enough that the byte counter is unambiguous, in a tight
+          # loop so the flow cache flushes something on every export interval.
+          command:
+            - /bin/sh
+            - -c
+            - |
+              while true; do
+                wget -q -O /dev/null http://zone-echo.zone-demo.svc.cluster.local/ || true
+                sleep 1
+              done
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }

@@ -348,6 +348,41 @@ grep -qE '^network:' <<<"$body" || fail "network flow config missing"
 grep -q 'obi.network.flow.bytes:' <<<"$body" || fail "flow-bytes attribute selection lost with stats off"
 ok "flow bytes without TCP stats"
 
+echo "== inter-zone accounting: off by default, standalone when on"
+out="$(render)"
+grep -q 'network_inter_zone' <<<"$out" && fail "inter-zone feature rendered by default"
+ok "no inter-zone accounting by default"
+
+out="$(render --set sensor.obi.network.interZone.enabled=true)"
+assert_obi_config_valid "$out" "interZone standalone"
+body="$(obi_config "$out")"
+grep -qE '^\s+- network_inter_zone$' <<<"$body" || fail "inter-zone feature missing from the metric feature list"
+# The point of the standalone shape: zone accounting without buying the
+# per-edge flow stream.
+grep -qE '^\s+- network$' <<<"$body" && fail "the per-edge network feature came along with inter-zone"
+grep -qE '^network:' <<<"$body" && fail "the per-edge network config rendered for inter-zone alone"
+grep -q 'obi.network.flow.bytes:' <<<"$body" && fail "per-edge attribute selection rendered for inter-zone alone"
+grep -q 'hostNetwork: true' <<<"$out" || fail "hostNetwork missing with inter-zone on"
+ok "inter-zone alone: its feature, the flow pipeline's hostNetwork, nothing per-edge"
+
+echo "== inter-zone accounting: composes with per-edge flows"
+out="$(render --set sensor.obi.network.interZone.enabled=true --set sensor.obi.network.enabled=true)"
+assert_obi_config_valid "$out" "interZone + network"
+body="$(obi_config "$out")"
+for feat in application network stats network_inter_zone; do
+  grep -qE "^\\s+- $feat\$" <<<"$body" || fail "$feat missing when both network flags are on"
+done
+ok "both flags on: one feature list, one valid document"
+
+echo "== inter-zone accounting: needs somewhere to store the counters"
+if render --set sensor.obi.network.interZone.enabled=true --set modules.infraMetrics.enabled=false >/dev/null 2>&1; then
+  fail "inter-zone without infra-metrics should fail at template time"
+fi
+if render --set sensor.obi.network.interZone.enabled=maybe >/dev/null 2>&1; then
+  fail "non-boolean interZone.enabled should fail schema validation"
+fi
+ok "infra-metrics guard fires; schema rejects a non-boolean"
+
 echo "== service-map topology: ungated, because the map cannot be turned off"
 out="$(render)"
 grep -q 'AVURUOBS_TOPOLOGY_CONFIG' <<<"$out" || fail "topology env missing on a default install"

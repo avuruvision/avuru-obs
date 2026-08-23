@@ -2,7 +2,7 @@
 
 - **Date:** 2026-08-18
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted — implemented 2026-08-23
 
 ## Summary
 
@@ -296,10 +296,12 @@ auth/RBAC middleware as every read surface.
   and semantics are source-verified at v0.9.0; the features-list/legacy
   `network.enable` interaction is confirmed by template-test + e2e-helm, not
   assumed.
-- **Partial labeling undercounts** — nodes missing
-  `topology.kubernetes.io/zone` contribute flows with an empty zone, which
-  the query filters; what OBI emits for unlabeled nodes (empty attribute vs
-  skipped flow) is confirmed in the kind run either way.
+- **Partial labeling undercounts** — confirmed on the cluster: an endpoint the
+  sensor cannot resolve to a labelled node yields a row with an empty zone
+  attribute (not a skipped flow), and those rows can outweigh the real
+  crossings. The query drops them, so an under-labelled cluster reports LESS
+  cross-zone traffic than it moves — never a pair with a blank half, which
+  would read as a real zone named "".
 - **Experimental upstream, Kubernetes-only** — the feature is marked
   experimental in OBI; the values comment says so.
 
@@ -329,26 +331,67 @@ auth/RBAC middleware as every read surface.
   everything disappears when disabled; `sync-hub-chart` leaves no diff.
 - **Full gate:** `make check`, `cd ui && npm run build`.
 
+## What the cluster said
+
+The first real run produced four zone pairs:
+
+```
+        zone-b   251859958
+zone-b           2391119
+zone-a  zone-b   1375240
+zone-b  zone-a   171510
+```
+
+Two are crossings. **The other two carry an empty zone on one side** — traffic
+whose peer the sensor could not resolve to a labelled node — and they are by far
+the largest, which means an unfiltered query would have been dominated by rows
+that name no zone at all. The AEP guessed at this ("what OBI emits for an
+unlabeled node… confirmed in the kind run either way") and specified the blank
+filter defensively; it turns out to be load-bearing. `ZoneTraffic` drops them in
+SQL, and the limitation below is now a measured fact rather than a caveat.
+
+## What implementation changed
+
+**The config surface was pinned, and pinning it uncovered that the block this
+feature renders into was broken.** The AEP planned to write the feature into
+`otel_metrics_export.features`; the key OBI v0.9.0 actually reads is
+`metrics.features`, and naming any feature there *replaces* the default list
+rather than adding to it — so `application` has to be repeated or turning flows
+on silently turns OBI's application metrics off.
+
+Getting there meant reading the neighbouring lines, which turned out to be
+wrong in three places and are fixed in their own change: a duplicated
+`attributes:` root key that stopped the sensor from starting at all, a
+`stats.enable` key that does not exist, and a `network.allowed_attributes` key
+that does not exist either — so the cardinality bound the chart documented was
+never applied. See the network-health AEP's limitations section.
+
+`network.enable: true` is kept beside the feature list for the per-edge case:
+redundant and deprecated upstream, but it is the switch that has actually been
+exercised.
+
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] Sensor: `sensor.obi.network.interZone.enabled` value + schema +
+- [x] AEP accepted
+- [x] Sensor: `sensor.obi.network.interZone.enabled` value + schema +
       features-list rendering + infra-metrics `{{ fail }}` guard +
       hostNetwork gate widened to `or(network, interZone)`; `make sync-hub-chart`
-- [ ] Hub: `ZoneTraffic` store method (+ fake) with the documented
+- [x] Hub: `ZoneTraffic` store method (+ fake) with the documented
       cumulative-counter caveat; ClickHouse integration test incl. tenant
       isolation
-- [ ] API: `GET /api/v1/network/zones` inside the infra-metrics route block
-- [ ] UI: zone-pair table on the Dashboard capacity band (no-rows → no card)
-- [ ] **e2e-helm: two-node kind config + synthetic
+- [x] API: `GET /api/v1/network/zones` inside the infra-metrics route block
+- [x] UI: zone-pair table on the Dashboard capacity band (no-rows → no card)
+- [x] **e2e-helm: two-node kind config + synthetic
       `topology.kubernetes.io/zone` labels + flag on; assert
       `obi.network.inter.zone.bytes` rows with differing src/dst zones in
-      `otel_metrics_sum`** (the empirical attribution proof; TTV + canary
-      gates unchanged)
-- [ ] **Confirm in the same kind run: RBAC sufficiency of the existing
-      `nodes` list/watch grant (no new rule expected), what OBI emits for an
-      unlabeled node, and whether the flows pipeline works without
-      hostNetwork** (relax the gate for both flags if so)
+      `otel_metrics_sum`** — passed on the first real run, and every existing
+      gate (TTV wedge, probe canary, do-no-harm soak, wider ingest, dual-write,
+      green, TDP, collection runtime control) passed unchanged beside it
+- [x] Confirmed in that run: the existing `nodes` list/watch grant is
+      sufficient (no new RBAC rule), and **the sensor does emit rows with an
+      EMPTY zone on one side** — see below
+- [ ] Whether the flows pipeline works without hostNetwork (would relax the
+      gate for both flags) — still unproven; the run had it on
 - [ ] Docs (feature page, config reference, v0.6 status flip) via docs-align
 - [ ] Follow-ups: cost-per-GB factors (green static-factor pattern),
       per-workload zone attribution (join with the `network` feature),

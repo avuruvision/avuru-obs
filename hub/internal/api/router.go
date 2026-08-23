@@ -316,6 +316,10 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		// The sensor inventory reads collector self-metrics from the metrics
 		// tables, so it lives with infra-metrics (see the module AEP).
 		mux.Handle("GET /api/v1/agents", a.secured(auth.RoleViewer, a.handleAgents))
+		// Cross-zone byte volume — sensor counters in the same metrics tables,
+		// hence the same module gate. Not a service-map extension: zones are
+		// node topology, not graph elements.
+		mux.Handle("GET /api/v1/network/zones", a.secured(auth.RoleViewer, a.handleZoneTraffic))
 	}
 	if active.Enabled(modules.ErrorTracking) {
 		mux.Handle("GET /api/v1/errors/issues", a.secured(auth.RoleViewer, a.handleSearchErrorIssues))

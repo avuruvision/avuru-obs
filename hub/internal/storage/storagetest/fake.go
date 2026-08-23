@@ -19,6 +19,7 @@ type Fake struct {
 	Edges         []storage.ServiceEdge
 	NetEdges      []storage.ServiceEdge
 	NetEdgeHealth []storage.NetworkEdgeHealth
+	Zones         []storage.ZoneTraffic
 	Ops           []storage.OperationStats
 	Page          storage.TracePage
 	Traces        map[string]storage.Trace
@@ -220,6 +221,11 @@ func (f *Fake) NetworkEdges(_ context.Context, q storage.ServiceQuery) ([]storag
 func (f *Fake) NetworkEdgeHealth(_ context.Context, q storage.ServiceQuery) ([]storage.NetworkEdgeHealth, error) {
 	f.LastServiceQuery = q
 	return f.NetEdgeHealth, nil
+}
+
+func (f *Fake) ZoneTraffic(_ context.Context, q storage.ServiceQuery) ([]storage.ZoneTraffic, error) {
+	f.LastServiceQuery = q
+	return f.Zones, nil
 }
 
 func (f *Fake) TraceOverview(_ context.Context, q storage.OverviewQuery) ([]storage.OperationStats, error) {

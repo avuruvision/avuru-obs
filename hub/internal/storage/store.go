@@ -74,6 +74,20 @@ type NetworkEdgeHealth struct {
 	FailedConnections uint64
 }
 
+// ZoneTraffic is the byte volume exchanged between two availability zones over
+// the window. Zones are node topology, not workload identity: the pair count is
+// bounded by how many zones a cluster spans, which is why this can be collected
+// without the per-workload flow stream. Same-zone traffic never appears — the
+// sensor drops it before export — so every row is a zone crossing.
+//
+// Reads the otel_metrics_* tables, so callers must gate on the infra-metrics
+// module, same as NetworkEdges.
+type ZoneTraffic struct {
+	SrcZone string
+	DstZone string
+	Bytes   uint64
+}
+
 // ServiceLabel carries a service's dominant grouping labels, resolved from
 // ResourceAttributes over entry spans (argMax by span volume — a service whose
 // spans disagree collapses to its single most common value). Used by the
@@ -690,6 +704,10 @@ type Store interface {
 	// NetworkEdgeHealth returns per-edge RTT p95 + failed-connection counts from
 	// OBI's TCP-stats metrics. Same infra-metrics gating as NetworkEdges.
 	NetworkEdgeHealth(ctx context.Context, q ServiceQuery) ([]NetworkEdgeHealth, error)
+	// ZoneTraffic returns bytes exchanged per (src zone, dst zone) pair over the
+	// window, from the sensor's inter-zone counters. Same infra-metrics gating
+	// as NetworkEdges, and the same cumulative-counter caveat.
+	ZoneTraffic(ctx context.Context, q ServiceQuery) ([]ZoneTraffic, error)
 	TraceOverview(ctx context.Context, q OverviewQuery) ([]OperationStats, error)
 	SearchTraces(ctx context.Context, q TraceQuery) (TracePage, error)
 	// GetTrace/FindSpanTrace/LogsForTrace (and the error-issue reads below)

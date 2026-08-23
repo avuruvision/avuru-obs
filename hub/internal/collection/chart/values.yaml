@@ -466,6 +466,24 @@ sensor:
       # failures) — surfaced on the service-map edges. Only effective when
       # network.enabled, and on by default with it.
       stats: true
+      # Cross-zone traffic accounting (OBI `network_inter_zone` feature): bytes
+      # exchanged BETWEEN availability zones, per zone pair. Unlike `stats`
+      # above this is effective ON ITS OWN — it activates the same kernel flow
+      # pipeline without the per-edge `network` feature, so a cluster can have
+      # the cloud bill explained without paying for per-workload flow metrics.
+      # Cardinality is the number of zone pairs, not workload pairs.
+      #
+      # Zones come from the node label topology.kubernetes.io/zone; nodes
+      # without it contribute flows the hub filters out. Same-zone traffic is
+      # never counted (dropped at the sensor). REQUIRES modules.infraMetrics
+      # (counters land in otel_metrics_*); a chart guard enforces it.
+      #
+      # COST: like network.enabled, this turns on hostNetwork for the sensor
+      # pod. Whether the flow pipeline truly needs the host namespace is
+      # unconfirmed — the requirement is inherited conservatively, not proven.
+      # Marked experimental upstream, and Kubernetes-only.
+      interZone:
+        enabled: false
     resources:
       requests:
         cpu: 50m

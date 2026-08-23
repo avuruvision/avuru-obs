@@ -47,6 +47,7 @@ export const queryKeys = {
   flamegraph: (p: string, t: TimeParams, service: string) =>
     [p, "profiles", "flamegraph", { ...t, service }] as const,
   infraNodes: (p: string, t: TimeParams) => [p, "infra", "nodes", t] as const,
+  zoneTraffic: (p: string, t: TimeParams) => [p, "network", "zones", t] as const,
   infraPods: (p: string, t: TimeParams, node?: string) =>
     [p, "infra", "pods", { ...t, node }] as const,
   agents: (p: string, windowSec?: number) => [p, "agents", { windowSec }] as const,
