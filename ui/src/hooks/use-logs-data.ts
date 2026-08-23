@@ -10,6 +10,7 @@ export interface LogFilters {
   service?: string;
   severity?: string;
   q?: string;
+  tags?: string; // "key=value,key2=value2" — the same string the traces screen uses
 }
 
 export function useLogSearch(time: TimeParams, filters: LogFilters) {

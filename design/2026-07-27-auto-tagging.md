@@ -2,7 +2,7 @@
 
 - **Date:** 2026-07-27
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted — implemented 2026-08-23, with the scope corrections below
 
 ## Summary
 
@@ -89,6 +89,58 @@ Upholds the storage discipline (bounded maps, no proprietary columns).
 - **UI-authored tag rules now** — more surface (validation, precedence, storage);
   chart-defined mapping matches how collection is configured today and ships first.
 
+## What implementation changed
+
+Three corrections, each because the codebase disagreed with the design.
+
+**1. Collection happens at the sensor, not the gateway.** The AEP said the
+mapping would be applied "in the gateway by the collector's
+`k8sattributesprocessor` (already in the distro)". The gateway does not run that
+processor and should not: it is central, may receive from several clusters, and
+deliberately holds no cluster-wide RBAC. Enrichment happens where the metadata
+is — node-local, in the sensor.
+
+That splits the work in two, because the sensor's agent has no traces pipeline:
+
+- **Logs and metrics** get their tags from `k8sattributes.extract.labels`.
+- **Traces** get theirs from the eBPF tracer's own
+  `attributes.kubernetes.resource_labels`, which maps any resource-attribute
+  name to a list of pod labels.
+
+Both write the same `avuru.tag.<key>` names, so one filter string reads either.
+Worth noting the two neighbouring config keys behave *oppositely*: naming metric
+features replaces the tracer's default list, while `resource_labels` merges into
+its defaults — verified against v0.9.0, so the built-in
+`service.name`/`namespace`/`version` resolution survives.
+
+**2. Labels only; annotations are cut.** The trace path sources tags from pod
+labels. An annotation-mapped tag would appear on logs and metrics and silently
+vanish from traces — a filter vocabulary that means different things depending
+on the screen is worse than one that does not exist. Annotations return when
+the trace path can carry them.
+
+**3. Tag filters land on traces and logs, not on every signal.** Metrics and
+profiles have no attribute-filter UI to extend, and inventing one is a
+different feature. The tags are *stamped* on metrics either way, so the query
+side can follow whenever those screens grow filters.
+
+`ServiceQuery`-shaped group selectors matching by tag are likewise deferred:
+group resolution reads `ServiceLabel`, which carries namespace only, and
+widening it is a service-health change rather than a tagging one.
+
+### One vocabulary, one routing rule
+
+A business tag describes the *workload*, so it lives in `ResourceAttributes`,
+while an ordinary tag filter matches the record's own attributes
+(`SpanAttributes` / `LogAttributes`). The storage layer routes on the reserved
+prefix, so the API and the UI keep a single `tags=k=v,k2=v2` parameter and a
+link carries between the traces and logs screens unchanged.
+
+On traces the match is **participation-based** — the same rule the service
+filter uses. A trace matches when any service that took part carries the tag,
+not only when the root does; a root-only rule would hide every trace a tagged
+service joined downstream, which is most of them.
+
 ## Verification
 
 - **Unit**: k8sattributes rename config renders correctly; query builder accepts
@@ -104,9 +156,16 @@ Upholds the storage discipline (bounded maps, no proprietary columns).
 
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] Chart `tags:` mapping → k8sattributes extract + `avuru.tag.*` rename
-- [ ] `avuru.tag.*` added to trace/log/metric/profile query filters
-- [ ] `GET /api/v1/tags` (bounded keys→values discovery)
-- [ ] UI tag filter chips across views + group-by-tag selector
-- [ ] kind e2e; cardinality cap docs; docs-align (EN/FR)
+- [x] AEP accepted
+- [x] Chart `tags.labels` mapping → k8sattributes extract (logs, metrics) AND
+      the tracer's `resource_labels` (traces), both writing `avuru.tag.*`
+- [x] `avuru.tag.*` filters on traces (participation-based) and logs
+- [x] `GET /api/v1/tags` (bounded keys→values discovery)
+- [x] UI tag filter chips on the traces and logs screens
+- [x] Cardinality cap (12 keys) and key-shape validation enforced at
+      template time
+- [ ] kind e2e: label a demo workload and assert its traces and logs carry the
+      tag end to end
+- [ ] docs-align (EN/FR)
+- [ ] Deferred with reasons above: annotations as tag sources, metric/profile
+      tag filters, group selectors matching by tag

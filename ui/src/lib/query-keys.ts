@@ -46,6 +46,7 @@ export const queryKeys = {
   profiledServices: (p: string, t: TimeParams) => [p, "profiles", "services", t] as const,
   flamegraph: (p: string, t: TimeParams, service: string) =>
     [p, "profiles", "flamegraph", { ...t, service }] as const,
+  tags: (p: string, t: TimeParams) => [p, "tags", t] as const,
   infraNodes: (p: string, t: TimeParams) => [p, "infra", "nodes", t] as const,
   zoneTraffic: (p: string, t: TimeParams) => [p, "network", "zones", t] as const,
   infraPods: (p: string, t: TimeParams, node?: string) =>

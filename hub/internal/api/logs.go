@@ -65,6 +65,7 @@ func (a *API) handleSearchLogs(w http.ResponseWriter, r *http.Request) error {
 		Tenants:     tenants,
 		Range:       tr,
 		Service:     r.URL.Query().Get("service"),
+		Tags:        parseTags(r),
 		MinSeverity: r.URL.Query().Get("severity"),
 		Query:       r.URL.Query().Get("q"),
 		Limit:       limit,

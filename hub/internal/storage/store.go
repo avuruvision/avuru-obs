@@ -88,6 +88,14 @@ type ZoneTraffic struct {
 	Bytes   uint64
 }
 
+// TagKey is one business tag key and a bounded sample of the values seen on it.
+// Values are for populating a filter control, not for counting: the sample is
+// truncated and carries no frequency.
+type TagKey struct {
+	Key    string
+	Values []string
+}
+
 // ServiceLabel carries a service's dominant grouping labels, resolved from
 // ResourceAttributes over entry spans (argMax by span volume — a service whose
 // spans disagree collapses to its single most common value). Used by the
@@ -242,8 +250,12 @@ type LogQuery struct {
 	Service     string
 	MinSeverity string // "", or a severity name (e.g. "ERROR") — matches >= its number
 	Query       string // full-text substring on Body (case-insensitive)
-	Limit       int
-	Cursor      *LogCursor
+	// Tags are equality filters. Keys under the business-tag prefix
+	// (avuru.tag.*) match the emitting workload's resource attributes; any
+	// other key matches the record's own log attributes.
+	Tags   map[string]string
+	Limit  int
+	Cursor *LogCursor
 }
 
 // LogRecord is one log row, ready for the table and trace correlation.
@@ -697,6 +709,10 @@ type Store interface {
 	// service-health module to auto-group unassigned services by namespace.
 	ServiceLabels(ctx context.Context, q ServiceQuery) ([]ServiceLabel, error)
 	ServiceEdges(ctx context.Context, q ServiceQuery) ([]ServiceEdge, error)
+	// TagKeys returns the business tags (avuru.tag.*) present on telemetry in
+	// the window with a bounded sample of each one's values, for filter
+	// discovery.
+	TagKeys(ctx context.Context, q ServiceQuery) ([]TagKey, error)
 	// NetworkEdges derives service→service edges from OBI network flow metrics
 	// (otel_metrics_sum). It reads the metrics tables, so callers must gate it
 	// on the infra-metrics module being active (the tables exist only then).

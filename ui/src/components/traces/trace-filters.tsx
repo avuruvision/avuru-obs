@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Combobox } from "@/components/ui/combobox";
 import { ApiError } from "@/lib/api";
+import { TagChips } from "@/components/filters/tag-chips";
 import { useResolveSpan, type TraceFilters } from "@/hooks/use-traces-data";
 
 const INPUT =
@@ -190,6 +191,14 @@ export function TraceFilterPanel({
           />
         </Field>
       </div>
+
+      {/* Business tags edit the same `tags` string as the field above — the
+          chips are discovery, not a second filter. */}
+      <TagChips
+        value={filters.tags}
+        onChange={(next) => set({ tags: next })}
+        className="mt-2.5"
+      />
 
       <div className="mt-3 flex items-center justify-between border-t border-neutral/50 pt-3">
         <label className="flex cursor-pointer items-center gap-1.5 text-xs text-base-content/70">

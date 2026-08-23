@@ -225,6 +225,9 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 	// identity has no business seeing it. Global admin only.
 	mux.Handle("GET /api/v1/system/status", a.securedAdmin(a.handleSystemStatus))
 	mux.Handle("GET /api/v1/services", a.secured(auth.RoleViewer, a.handleServices))
+	// Business tags present in the window, for filter discovery. Core: tags
+	// ride resource attributes on traces, which every install collects.
+	mux.Handle("GET /api/v1/tags", a.secured(auth.RoleViewer, a.handleTags))
 	mux.Handle("GET /api/v1/service-map", a.secured(auth.RoleViewer, a.handleServiceMap))
 	mux.Handle("GET /api/v1/traces", a.secured(auth.RoleViewer, a.handleSearchTraces))
 	mux.Handle("GET /api/v1/traces/overview", a.secured(auth.RoleViewer, a.handleTraceOverview))

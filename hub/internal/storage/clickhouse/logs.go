@@ -50,6 +50,7 @@ WHERE Tenant IN (?)
 		query += ` AND positionCaseInsensitive(Body, ?) > 0`
 		args = append(args, q.Query)
 	}
+	query, args = logTagFilters(query, q.Tags, args)
 	if q.Cursor != nil {
 		query += ` AND (Timestamp, TraceId, SpanId) < (?, ?, ?)`
 		args = append(args, q.Cursor.Timestamp, q.Cursor.TraceID, q.Cursor.SpanID)
@@ -83,6 +84,23 @@ LIMIT ?`
 		page.NextCursor = &storage.LogCursor{Timestamp: last.Timestamp, TraceID: last.TraceID, SpanID: last.SpanID}
 	}
 	return page, nil
+}
+
+// logTagFilters is tagFilters for the log table, where a record's own
+// attributes live in LogAttributes rather than SpanAttributes. Business tags
+// (see TagPrefix) describe the emitting workload and so read
+// ResourceAttributes, exactly as they do on traces — that shared rule is what
+// makes one filter string mean the same thing on both screens.
+func logTagFilters(query string, tags map[string]string, args []any) (string, []any) {
+	for _, k := range sortedKeys(tags) {
+		if isResourceTag(k) {
+			query += ` AND ResourceAttributes[?] = ?`
+		} else {
+			query += ` AND LogAttributes[?] = ?`
+		}
+		args = append(args, k, tags[k])
+	}
+	return query, args
 }
 
 // LogsForTrace returns all logs correlated to a trace, oldest-first (matches

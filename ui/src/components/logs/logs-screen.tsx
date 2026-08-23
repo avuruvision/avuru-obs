@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { useTimeRange } from "@/hooks/use-time-range";
 import { useURLState } from "@/hooks/use-url-state";
+import { TagChips } from "@/components/filters/tag-chips";
 import { useLogSearch, type LogFilters } from "@/hooks/use-logs-data";
 import { LogTable } from "./log-table";
 
@@ -24,10 +25,15 @@ export function LogsScreen() {
   const { get, setMany } = useURLState();
 
   const filters: LogFilters = useMemo(
-    () => ({ service: get("service"), severity: get("severity"), q: get("q") }),
+    () => ({
+      service: get("service"),
+      severity: get("severity"),
+      q: get("q"),
+      tags: get("tags"),
+    }),
     [get],
   );
-  const hasFilters = Boolean(filters.service || filters.severity || filters.q);
+  const hasFilters = Boolean(filters.service || filters.severity || filters.q || filters.tags);
 
   const search = useLogSearch(time, filters);
 
@@ -72,11 +78,16 @@ export function LogsScreen() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setMany({ service: undefined, severity: undefined, q: undefined })}
+            onClick={() =>
+              setMany({ service: undefined, severity: undefined, q: undefined, tags: undefined })
+            }
           >
             <FilterX className="h-3.5 w-3.5" /> Clear
           </Button>
         )}
+        {/* Same tag vocabulary as the traces screen, and the same URL param —
+            a filtered link carries between them. */}
+        <TagChips value={filters.tags} onChange={(next) => setMany({ tags: next })} />
       </div>
 
       <LogTable

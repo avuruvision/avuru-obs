@@ -70,6 +70,7 @@ No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale.
 | `sensor.obi.discovery.mode` | `optOut` | `optIn` attaches uprobes ONLY to pods labeled `avuru.obs/instrument: "true"` (logs/metrics/inventory unaffected) |
 | `sensor.obi.network.enabled` | `false` | Kernel L4 flow topology + per-edge connection health, without uprobes. Needs `modules.infraMetrics`; turns on `hostNetwork` for the sensor pod |
 | `sensor.obi.network.interZone.enabled` | `false` | Bytes crossing an availability-zone boundary, per zone pair — the cross-AZ line on a cloud bill, measured in the kernel. Works **on its own**: it does not require `sensor.obi.network.enabled`, and its cardinality is zone pairs rather than workload pairs. Needs `modules.infraMetrics`, nodes labeled `topology.kubernetes.io/zone`, and (like the flow feature) `hostNetwork` |
+| `tags.labels` | `{}` | Business tags: map a pod label onto every signal as `avuru.tag.<key>` (e.g. `team: team`), then filter traces and logs by it. Applied at collection, so uninstrumented workloads are tagged too. Capped at 12 keys — each one is a metric dimension |
 
 ## Modules (which signal families this install runs)
 
