@@ -18,19 +18,21 @@ function laneStatus(groups: HealthGroup[]): HealthStatus {
 export function TierLane({
   title,
   subtitle,
+  tier,
   groups,
   selectedMember,
   onSelectMember,
 }: {
   title: string;
   subtitle?: string;
+  tier?: string;
   groups: HealthGroup[];
   selectedMember: string | null;
   onSelectMember: (service: string) => void;
 }) {
   const status = laneStatus(groups);
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-2" data-testid={`tier-lane-${tier ?? "other"}`}>
       <div className="flex items-center gap-2 border-b border-neutral pb-1.5">
         <span className={cn("h-2.5 w-2.5 rounded-full", statusDotClass(status))} aria-hidden />
         <h2 className="text-sm font-semibold">{title}</h2>
@@ -40,7 +42,9 @@ export function TierLane({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {groups.map((g) => (
           <GroupCard
-            key={g.name}
+            // Identity is (domain, environment) now, so the name alone is not
+            // unique: one domain declared in two environments is two cards.
+            key={`${g.name}\u0000${g.environment ?? ""}`}
             group={g}
             selectedMember={selectedMember}
             onSelectMember={onSelectMember}

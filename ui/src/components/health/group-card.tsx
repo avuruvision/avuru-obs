@@ -24,7 +24,7 @@ export function GroupCard({
   onSelectMember: (service: string) => void;
 }) {
   return (
-    <Card className="flex flex-col gap-2 p-3">
+    <Card className="flex flex-col gap-2 p-3" data-testid="group-card">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", statusDotClass(group.status))} aria-hidden />
@@ -38,6 +38,17 @@ export function GroupCard({
               )}
               {group.source === "auto" && (
                 <span className="rounded bg-base-300 px-1 text-[10px] text-base-content/50">auto</span>
+              )}
+              {/* Where the tier came from. Worth saying out loud only when the
+                  service chose it: an operator reading a T0 lane should know
+                  whether ops put it there or the app claimed it. */}
+              {group.tierSource === "declared" && (
+                <span
+                  className="rounded bg-base-300 px-1 text-[10px] text-base-content/50"
+                  title="Tier declared by the service itself (avuru.tier). Override it in Settings → Groups."
+                >
+                  declared
+                </span>
               )}
             </div>
             <p className="truncate text-xs text-base-content/55">{group.reason}</p>

@@ -2,7 +2,7 @@
 
 - **Date:** 2026-07-28
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted — implemented 2026-08-23
 
 ## Summary
 
@@ -263,15 +263,22 @@ no hub config; an operator can override any declaration.
 
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] Storage: `ServiceLabel` gains `Environment` + `Tier`; `ServiceLabels` SQL
-- [ ] Health: declared-tier resolution, composite group key, conflict rule,
+- [x] AEP accepted
+- [x] Storage: `ServiceLabel` gains `Environment` + `Tier`; `ServiceLabels` SQL
+- [x] Health: declared-tier resolution, composite group key, conflict rule,
       `tierOverrides`, soft validation + warnings
-- [ ] API: `environment` on `HealthGroup`, `warnings` on the response
-- [ ] UI: env badge, `declared` source badge, warnings affordance
-- [ ] Chart: `serviceGroups.tierOverrides` + `values.schema.json`
-- [ ] Name-keyed consumers: `?environment=` on the group-detail endpoint,
+- [x] API: `environment` on `HealthGroup`, `warnings` on the response
+- [x] UI: env badge, `declared` tier-source badge, warnings banner above the
+      lanes — a declaration that failed soft has to be findable, or a team
+      never learns theirs was ignored
+- [x] Chart: `serviceGroups.tierOverrides` + `values.schema.json`
+- [x] Name-keyed consumers: `?environment=` on the group-detail endpoint,
       optional `environments` in the alerting rule selector, optional
-      `environment` on green budgets
-- [ ] Docs: declared-attribute contract in `deploy/helm/README.md`; supersession
+      `environment` on green budgets — **and the UI's React keys**, which were
+      still name-only and therefore collided the moment one domain appeared in
+      two environments (found on the live board, fixed here)
+- [x] Docs: declared-attribute contract in `deploy/helm/README.md`; supersession
       note on [AEP 2026-07-18](2026-07-18-service-health-groups.md)
+- [x] Seeded two-environment fixture + Playwright coverage of the split, the
+      declared badge and the fail-soft warning
+- [ ] docs-align (EN/FR)

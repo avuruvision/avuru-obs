@@ -34,7 +34,8 @@ interface Tile {
 
 function groupTile(g: HealthGroup): Tile {
   return {
-    key: `group:${g.name}`,
+    // One domain in two environments is two groups sharing a name.
+    key: `group:${g.name}:${g.environment ?? ""}`,
     title: g.name,
     caption: g.tier,
     status: g.status,
