@@ -126,36 +126,44 @@ as its gate allowed — the AEP landed, the feature moved.
 | **Projects completion (Phase 3)** | **Member projects**: one project reads the union of several clusters on every screen, one level deep, granted per member and refused for the writes that need a single tenant. Plus **per-project retention** (an hourly tenant-scoped trim, since a shared table's TTL cannot select one tenant), **per-project storage usage** in Settings → Storage, and **chart component toggles** so a secondary cluster installs the ingest half alone against the central store — with the combinations that cannot work refused at `helm template` time — [AEP](design/2026-07-27-projects-completion.md) |
 | **Green follow-through** | Per-node energy in the coverage panel (measured/estimated kept split per row), carbon budgets that say whether they can actually reach anyone and warn when they target a group nothing rolls up to, and the [real-RAPL validation runbook](docs/runbooks/green-rapl-validation.md) the two green AEPs were missing |
 
-## v0.7 — the clients and the labels (directional)
+## v0.7 — the clients and the labels — SHIPPED (v0.7.0)
 
-v0.6 opened the ingest side; the data is only as useful as the surfaces that
-read it and the words it is filed under. Carried over from v0.6, unchanged in
-intent:
+v0.6 opened both ends of the pipe. The data that arrived was only as useful as
+the words it was filed under and the surfaces that could read it — and, it
+turned out, as truthful as the map drawing it.
 
-- **A map you can trust:** shipped early in the line, because a dependency
-  graph that asserts relationships which do not exist is worse than one that
-  omits them. Service-mesh proxies and ingress gateways are classified as
-  transport and hidden by default, so a meshed cluster stops seeing every
-  `app → proxy → app` hop drawn as two application dependencies; edges derived
-  from kernel flows are counted and drawn apart from traced calls. Collapsing
-  the hop — recovering the real `app → app` dependency across a proxy — needs
-  per-trace ancestry and is the open half. See the
-  [AEP](design/2026-08-23-service-map-transport.md).
-- **More clients:** a **CLI** (`--fail-on` for CI gates) riding v0.5's API
-  tokens, and Grafana reading the Hub API through its JSON data sources — a
-  documented recipe with example dashboards; a custom plugin only if the
-  recipe's limits bite. See the [AEP](design/2026-07-27-clients-grafana-cli.md).
-- **Declared service metadata:** direct-OTLP services declare their own
-  domain/environment/tier as resource attributes instead of collapsing into
-  `(unlabeled)` — group identity grows up to (domain, environment). Its AEP
-  lands with the feature branch.
-- **Richer auto-tagging:** map Kubernetes labels/annotations to business tags
-  and filter by them across every signal. See the
-  [AEP](design/2026-07-27-auto-tagging.md).
-- **Inter-zone traffic accounting:** cross-zone bytes per service pair from OBI
-  network flows. The v0.6 spike settled the question the gate asked — the
-  design is written and the implementation is what remains. See the
-  [AEP](design/2026-08-18-inter-zone-traffic.md).
+> **As a platform team we slice telemetry by the vocabulary our org already
+> uses, read it from wherever we work, and trust what the map shows us.**
+
+The themes below shipped in v0.7.0; the full detail lives in
+[CHANGELOG.md](CHANGELOG.md) and the linked AEPs.
+
+| Theme | Shipped |
+|---|---|
+| **A map you can trust** | A mesh proxy is a hop, not a dependency. The hub now recognises transport workloads (mesh sidecars, waypoint and ztunnel proxies, ingress and egress gateways) and the map hides them behind a **Show mesh & gateways** toggle, with a `topology` config to correct a misclassification without waiting for a release. Flow-derived edges are drawn and counted apart from traced calls instead of claiming "0 rpm" — [AEP](design/2026-08-23-service-map-transport.md) |
+| **The words your org already uses** | **Business tags**: map a Kubernetes label once and it rides every signal as `avuru.tag.<key>`, applied at collection so uninstrumented workloads are tagged too, then offered as a filter on traces and logs. And **declared service metadata**: a service states its own domain, environment and tier as resource attributes, so a board groups by capability across namespaces with no hub config — with a warning when a declaration cannot be honoured — [AEPs](design/2026-07-27-auto-tagging.md), [2](design/2026-07-28-declared-service-metadata.md) |
+| **More clients** | The **`avuruobs` CLI** — `services`, `health`, `traces`, `logs`, `status`, and a `--fail-on` predicate for CI gates with three exit codes so a tripped gate is distinguishable from a broken one — and a **Grafana data source**, backend-side so the API token never reaches a browser and queries leave the Grafana server. Plus a `docs ↗` on every screen — [AEP](design/2026-07-27-clients-grafana-cli.md) |
+| **Inter-zone traffic accounting** | Bytes per availability-zone pair from kernel flows, standalone from the per-edge feature so the cloud bill can be explained at zone-pair cardinality. Proven on a two-node cluster in CI — [AEP](design/2026-08-18-inter-zone-traffic.md) |
+| **A sensor config the sensor could load** | Turning on network flows had been rendering a config the eBPF tracer refuses to parse, so the container never started; two more keys in the same block did not exist at all, leaving TCP-stats collection inert and the documented cardinality bound unapplied. Rendered configs are now parsed in the chart's own tests |
+
+## v0.8 — the map grows up (directional)
+
+The map is the product's front page and it has been a graph of circles since
+v0.1. v0.8 is mostly UI and in-database derivation — no new collection:
+
+- **A map that carries more meaning:** namespace and group boundaries, edge
+  volume on the edge itself, distinct treatment for external and undetected
+  peers, and a legend that explains the encoding — without disturbing the
+  channels the map already uses (health, identity, rate, carbon, calls,
+  network).
+- **Virtual targets:** databases, caches and message brokers as first-class
+  nodes, derived from the exit spans already stored — the same
+  derived-in-database shape as error tracking, so no new agent and no new table.
+- **Navigation that grows with the product:** the four flat sections are
+  starting to strain; a layered structure that keeps the wedge's
+  first-five-minutes path short.
+- **A page for the map** on the docs site, which the in-app `docs ↗` link is
+  currently pointing past.
 
 ## Beyond v0.7
 

@@ -47,6 +47,17 @@ go_report() { # $1 = module dir
   echo "modules pinned in [gateway/ocb-manifest.yaml](gateway/ocb-manifest.yaml),"
   echo "all Apache-2.0."
   echo
+  echo "## Grafana data source backend (Go)"
+  echo
+  echo "| Module | License |"
+  echo "|---|---|"
+  go_report clients/grafana-datasource
+  echo
+  echo "The \`avuruobs\` CLI has no third-party dependencies, so it contributes"
+  echo "no attribution here. The data source's FRONTEND bundle likewise ships"
+  echo "none: every Grafana and React package it uses is external, resolved from"
+  echo "the host at load time rather than bundled."
+  echo
   echo "## UI (npm, production dependencies)"
   echo
   echo "| Package | License |"

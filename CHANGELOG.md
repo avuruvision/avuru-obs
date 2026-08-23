@@ -11,6 +11,23 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-08-23
+
+**The clients and the labels.** v0.6 opened both ends of the pipe. What arrived
+was only as useful as the words it could be filed under and the surfaces that
+could read it — and, it turned out, as truthful as the map drawing it.
+
+So v0.7 does three things. It lets telemetry be sliced by the vocabulary your
+organisation already uses: map a Kubernetes label once and it rides every
+signal, or let a service declare its own domain, environment and tier and be
+grouped accordingly with no hub config. It adds two more clients — a CLI that
+can fail a deploy on a predicate, and a Grafana data source that reads Avuru Obs
+from dashboards you already run — plus a link to the manual on every screen. And
+it fixes what the map was telling you: on a meshed cluster every application
+call was drawn as two hops through a proxy, and turning on kernel network flows
+had been rendering a sensor config the eBPF tracer refuses to parse, so the
+container never started at all.
+
 ### Added
 
 - **Every screen links to the page of the manual that explains it.** A small
@@ -1109,7 +1126,9 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
 
 <!--
 Release links:
-[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/avuruvision/avuru-obs/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/avuruvision/avuru-obs/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/avuruvision/avuru-obs/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/avuruvision/avuru-obs/compare/v0.3.1...v0.4.0
 [0.3.0]: https://github.com/avuruvision/avuru-obs/compare/v0.2.0...v0.3.0
