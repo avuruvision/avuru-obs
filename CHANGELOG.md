@@ -11,6 +11,23 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **Cross-zone traffic accounting.** Cloud providers bill data that crosses an
+  availability-zone boundary, and the usual way to find out what is driving that
+  line is a flow-log pipeline or a cost SaaS. The sensor already watches every
+  connection in the kernel, so `sensor.obi.network.interZone.enabled` turns that
+  into a byte matrix per zone pair — `eu-west-1a → eu-west-1b`, both directions
+  counted separately, on the Dashboard's capacity band and at
+  `GET /api/v1/network/zones`. Same-zone traffic is never counted and no
+  per-workload data is involved: the number of series is the number of zone
+  pairs, so this stays cheap on a cluster where per-workload flow metrics would
+  not. It works **on its own** — it does not require the per-edge network
+  feature, so a cluster can have its bill explained without paying for the full
+  flow topology. Off by default; needs the infra-metrics module, nodes carrying
+  the standard `topology.kubernetes.io/zone` label, and (like the flow feature)
+  host networking on the sensor pod.
+
 ### Fixed
 
 - **Turning on network flows stopped the sensor instead of enriching it.**

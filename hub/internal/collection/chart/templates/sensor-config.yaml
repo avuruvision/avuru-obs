@@ -1,6 +1,9 @@
 {{- if and .Values.sensor.obi.network.enabled (not .Values.modules.infraMetrics.enabled) }}
 {{- fail "sensor.obi.network.enabled requires modules.infraMetrics.enabled — OBI network flows are stored in the otel_metrics_* tables owned by the infra-metrics module." }}
 {{- end }}
+{{- if and .Values.sensor.obi.network.interZone.enabled (not .Values.modules.infraMetrics.enabled) }}
+{{- fail "sensor.obi.network.interZone.enabled requires modules.infraMetrics.enabled — inter-zone byte counters are stored in the otel_metrics_* tables owned by the infra-metrics module." }}
+{{- end }}
 {{- /* Green's hard dependency, mirroring the hub's modules.Parse: the
        pod→workload energy join reads the kubeletstats resource attributes the
        infra-metrics module owns. Fire on the MODULE flag (unconditional, like
@@ -125,7 +128,7 @@ data:
       # heuristic keeps http.route cardinality bounded (ids -> wildcards);
       # explicit because RED metric cardinality is a product concern.
       unmatched: heuristic
-    {{- if .Values.sensor.obi.network.enabled }}
+    {{- if or .Values.sensor.obi.network.enabled .Values.sensor.obi.network.interZone.enabled }}
     # Which metric families OBI exports, by the names in its own feature mapper
     # (v0.9.0 pkg/export/feature.go). Naming any feature REPLACES the default
     # list, which is ["application"] — hence application is repeated here so
@@ -133,14 +136,28 @@ data:
     metrics:
       features:
         - application
+        {{- if .Values.sensor.obi.network.enabled }}
         - network
-        {{- if .Values.sensor.obi.network.stats }}
+        {{- end }}
+        {{- if and .Values.sensor.obi.network.enabled .Values.sensor.obi.network.stats }}
         # TCP stats: obi.stat.tcp.rtt (RTT histogram) and
         # obi.stat.tcp.failed.connections (resets/failures). This list is the
         # ONLY switch for them — the stats config section has no `enable` key,
         # so nothing else turns them on.
         - stats
         {{- end }}
+        {{- if .Values.sensor.obi.network.interZone.enabled }}
+        # Cross-zone byte counters: obi.network.inter.zone.bytes, carrying
+        # src.zone / dst.zone (from the node label topology.kubernetes.io/zone)
+        # and nothing workload-shaped — bounded by the number of zone pairs, not
+        # by the number of workload pairs. Same-zone flows are dropped at the
+        # exporter, so the metric is cross-zone by construction. Standalone:
+        # this entry activates the flows pipeline on its own, WITHOUT the
+        # per-edge `network` feature.
+        - network_inter_zone
+        {{- end }}
+    {{- end }}
+    {{- if .Values.sensor.obi.network.enabled }}
     # Kernel L4 network flows: service-map completeness for workloads OBI's L7
     # probes don't parse — WITHOUT uprobes (no app-cgroup cost). Exported as the
     # OTLP metric obi.network.flow.bytes -> otel_metrics_sum, aggregated by k8s

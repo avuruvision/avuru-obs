@@ -348,7 +348,14 @@
               "type": "object",
               "properties": {
                 "enabled": { "type": "boolean" },
-                "stats": { "type": "boolean" }
+                "stats": { "type": "boolean" },
+                "interZone": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": { "type": "boolean" }
+                  },
+                  "additionalProperties": false
+                }
               }
             }
           }

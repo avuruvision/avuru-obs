@@ -1,0 +1,16 @@
+# Two nodes, so the cluster can span availability zones.
+#
+# The e2e cluster was single-node until inter-zone accounting needed a zone
+# BOUNDARY to exist: the sensor resolves each flow's endpoints to their node's
+# topology.kubernetes.io/zone label and drops same-zone traffic before export,
+# so on one node the metric is correct and always empty. The nodes are labelled
+# with synthetic zones right after creation (kind has no cloud topology), which
+# is exactly what a real provider's node labels look like to the sensor.
+#
+# Both nodes come up BEFORE the wedge clock starts (T0 is the helm install), so
+# the time-to-value gate measures the same thing it always did.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+  - role: worker

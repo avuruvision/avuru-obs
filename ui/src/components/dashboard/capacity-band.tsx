@@ -6,9 +6,9 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/cn";
 import { formatBytes } from "@/lib/format";
 import { useTimeRange } from "@/hooks/use-time-range";
-import { useNodesData, usePodsData } from "@/hooks/use-infra-data";
+import { useNodesData, usePodsData, useZoneTraffic } from "@/hooks/use-infra-data";
 import { CenteredSpinner } from "@/components/ui/spinner";
-import type { NodeStats, PodStats } from "@/lib/api-types";
+import type { NodeStats, PodStats, ZoneTraffic } from "@/lib/api-types";
 
 // Band 3 of the Dashboard: Kubernetes capacity, as far as the data honestly
 // goes.
@@ -42,6 +42,11 @@ function barTone(ratio: number): string {
 // belongs.
 const MAX_BARS = 6;
 
+// Zone crossings shown before the list is truncated. Cardinality here is zone
+// pairs, so a realistic cluster has a handful; the cap exists for the estate
+// that spans many regions, not for the common case.
+const MAX_ZONE_PAIRS = 6;
+
 function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <Card className="flex flex-col gap-0.5 p-3">
@@ -60,15 +65,26 @@ export function CapacityBandLive() {
   const { time } = useTimeRange();
   const { data: nodesData, isLoading } = useNodesData(time);
   const { data: podsData } = usePodsData(time);
+  const { data: zonesData } = useZoneTraffic(time);
 
   if (isLoading) return <CenteredSpinner />;
   const nodes = nodesData?.nodes ?? [];
   if (!nodes.length) return null;
 
-  return <CapacityBand nodes={nodes} pods={podsData?.pods ?? []} />;
+  return (
+    <CapacityBand nodes={nodes} pods={podsData?.pods ?? []} zones={zonesData?.zones ?? []} />
+  );
 }
 
-export function CapacityBand({ nodes, pods }: { nodes: NodeStats[]; pods: PodStats[] }) {
+export function CapacityBand({
+  nodes,
+  pods,
+  zones = [],
+}: {
+  nodes: NodeStats[];
+  pods: PodStats[];
+  zones?: ZoneTraffic[];
+}) {
   const totals = useMemo(() => {
     const memUsed = nodes.reduce((a, n) => a + n.memoryUsageBytes, 0);
     const memTotal = nodes.reduce((a, n) => a + n.memoryUsageBytes + n.memoryAvailableBytes, 0);
@@ -157,6 +173,52 @@ export function CapacityBand({ nodes, pods }: { nodes: NodeStats[]; pods: PodSta
           )}
         </Card>
       )}
+
+      <ZoneCrossings zones={zones} />
     </section>
+  );
+}
+
+// Cross-zone traffic, when the sensor is counting it. No rows means no card —
+// the same rule as the band above: accounting is opt-in, a single-zone cluster
+// never produces a crossing, and an empty table would read as "no cross-zone
+// traffic" when the truthful answer is "nobody is measuring".
+//
+// Bytes, not currency. What a crossing costs depends on the cloud, the
+// direction and the contract; naming a number here would be a guess wearing a
+// measurement's clothes. The measurement ships; a price factor is config.
+function ZoneCrossings({ zones }: { zones: ZoneTraffic[] }) {
+  const total = zones.reduce((a, z) => a + z.bytes, 0);
+  if (!zones.length || total <= 0) return null;
+  const shown = zones.slice(0, MAX_ZONE_PAIRS);
+
+  return (
+    <Card className="flex flex-col gap-2.5 p-3" data-testid="zone-crossings">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-base-content/70">Cross-zone traffic</span>
+        <span className="text-xs text-base-content/45">
+          {formatBytes(total)} over the window, measured in the kernel
+        </span>
+      </div>
+      {shown.map((z) => (
+        <div key={`${z.srcZone}->${z.dstZone}`} className="flex items-center gap-3 text-xs">
+          <span className="w-40 shrink-0 truncate font-medium" title={z.srcZone}>
+            {z.srcZone}
+          </span>
+          <span className="shrink-0 text-base-content/45" aria-label="to">
+            →
+          </span>
+          <span className="flex-1 truncate font-medium" title={z.dstZone}>
+            {z.dstZone}
+          </span>
+          <span className="w-24 shrink-0 text-right tabular-nums">{formatBytes(z.bytes)}</span>
+        </div>
+      ))}
+      {zones.length > shown.length && (
+        <span className="text-xs text-base-content/45">
+          +{zones.length - shown.length} more zone pairs
+        </span>
+      )}
+    </Card>
   );
 }

@@ -28,9 +28,12 @@ spec:
       serviceAccountName: {{ include "avuruobs.fullname" . }}-sensor
       # eBPF containers discover and inspect host processes.
       hostPID: true
-      {{- if .Values.sensor.obi.network.enabled }}
+      {{- if or .Values.sensor.obi.network.enabled .Values.sensor.obi.network.interZone.enabled }}
       # OBI's network-flow feature observes node-level L4 traffic and needs the
-      # host network namespace. Scoped to sensor.obi.network.enabled only.
+      # host network namespace. Inter-zone accounting activates the same flow
+      # pipeline, so it inherits the requirement — conservatively: whether the
+      # pipeline actually needs the host namespace is unconfirmed, and if a
+      # cluster run says it does not, this relaxes for both flags at once.
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       {{- end }}

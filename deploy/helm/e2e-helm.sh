@@ -81,8 +81,14 @@ if ! docker pull -q --platform "$KEPLER_PLATFORM" "$KEPLER_IMG" >/dev/null 2>&1;
   docker pull -q --platform "$KEPLER_PLATFORM" "$KEPLER_IMG" >/dev/null
 fi
 
-echo "==> creating kind cluster '$CLUSTER'"
-kind create cluster --name "$CLUSTER" --wait 120s
+echo "==> creating kind cluster '$CLUSTER' (two nodes — a zone boundary has to exist)"
+kind create cluster --name "$CLUSTER" --config deploy/helm/e2e-kind.yaml --wait 180s
+# Synthetic availability zones. kind has no cloud topology, but the sensor only
+# ever reads the standard node label, so labelling the two nodes gives it
+# exactly what a real provider supplies. Done before T0, like everything else
+# in cluster bring-up.
+kubectl label node "${CLUSTER}-control-plane" topology.kubernetes.io/zone=zone-a --overwrite
+kubectl label node "${CLUSTER}-worker" topology.kubernetes.io/zone=zone-b --overwrite
 kind load docker-image "$HUB_IMG" --name "$CLUSTER"
 kind load docker-image "$UI_IMG" --name "$CLUSTER"
 kind load docker-image "$GW_IMG" --name "$CLUSTER"
@@ -160,6 +166,7 @@ helm install avuruobs deploy/helm/avuruobs -n "$NS" --create-namespace \
   --set gateway.forward.otlp.enabled=true \
   --set gateway.forward.otlp.endpoint=forward-sink:4317 \
   --set gateway.forward.otlp.insecure=true \
+  --set sensor.obi.network.interZone.enabled=true \
   --set "gateway.forward.otlp.signals={traces}"
 # The last block above is WIDER INGEST riding the SAME install (born-off in
 # the chart; this leg opts in, like green): all four compat receivers plus
@@ -175,6 +182,11 @@ helm install avuruobs deploy/helm/avuruobs -n "$NS" --create-namespace \
 # tolerates the window where the Service exists but the pod is still coming up.
 echo "==> deploying the forward-sink fixture (dual-write target)"
 kubectl -n "$NS" apply -f deploy/helm/e2e-forward-sink.yaml
+
+# Cross-zone chatter for the inter-zone gate: client and server pinned to
+# opposite zones, so every request between them is a crossing by construction.
+echo "==> deploying the cross-zone traffic fixture"
+kubectl apply -f deploy/helm/e2e-zone-traffic.yaml
 
 echo "==> waiting for the hub to answer (inside the wedge clock)"
 kubectl -n "$NS" wait --for=condition=Available deploy/avuruobs-hub --timeout=240s
@@ -358,6 +370,37 @@ while :; do
     exit 1
   fi
   sleep 5
+done
+
+# INTER-ZONE ACCOUNTING: the empirical half of the feature. Everything below
+# ClickHouse is unit- and integration-tested, but nothing except a real cluster
+# can answer whether the sensor attributes a flow to the right node's zone —
+# which is the whole claim. The fixture above guarantees the crossing exists;
+# this asserts the sensor counted it, with the two zone attributes DIFFERENT
+# (a metric that fired with src.zone == dst.zone would mean the exporter's
+# same-zone drop is not doing what its source says).
+echo "==> INTER-ZONE: polling ClickHouse for cross-zone byte counters"
+ZONE_SQL="SELECT count(), countIf(Attributes['src.zone'] != '' AND Attributes['dst.zone'] != '' AND Attributes['src.zone'] != Attributes['dst.zone']) FROM otel.otel_metrics_sum WHERE MetricName = 'obi.network.inter.zone.bytes'"
+ZONE_DEADLINE=$(( $(date +%s) + 300 ))
+while :; do
+  zone_counts=$(kubectl -n "$NS" exec avuruobs-clickhouse-0 -- \
+    clickhouse-client -u avuru --password avuru -q "$ZONE_SQL" 2>/dev/null || echo "")
+  zone_rows=$(awk '{print $1}' <<<"$zone_counts")
+  crossing_rows=$(awk '{print $2}' <<<"$zone_counts")
+  if [ "${crossing_rows:-0}" -gt 0 ] 2>/dev/null; then
+    echo "    inter-zone rows in otel_metrics_sum: $zone_rows total, $crossing_rows with differing zones"
+    kubectl -n "$NS" exec avuruobs-clickhouse-0 -- clickhouse-client -u avuru --password avuru \
+      -q "SELECT Attributes['src.zone'], Attributes['dst.zone'], toUInt64(sum(Value)) FROM otel.otel_metrics_sum WHERE MetricName = 'obi.network.inter.zone.bytes' GROUP BY 1, 2 ORDER BY 3 DESC" 2>/dev/null || true
+    break
+  fi
+  if [ "$(date +%s)" -ge "$ZONE_DEADLINE" ]; then
+    echo "INTER-ZONE: no cross-zone counters within 300s (rows=${zone_rows:-?} crossings=${crossing_rows:-?})"
+    kubectl get nodes -L topology.kubernetes.io/zone || true
+    kubectl -n zone-demo get pods -o wide || true
+    kubectl -n "$NS" logs ds/avuruobs-sensor -c obi --tail=40 || true
+    exit 1
+  fi
+  sleep 10
 done
 
 # GREEN TDP ESTIMATION: kind nodes have no powercap, so the estimator's own

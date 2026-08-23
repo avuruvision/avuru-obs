@@ -315,6 +315,18 @@ export interface PodsResponse {
   pods: PodStats[];
 }
 
+// Bytes that crossed an availability-zone boundary, per zone pair. Direction
+// matters — a -> b and b -> a are separate rows, as they are on a cloud bill.
+export interface ZoneTraffic {
+  srcZone: string;
+  dstZone: string;
+  bytes: number;
+}
+
+export interface ZonesResponse {
+  zones: ZoneTraffic[];
+}
+
 export interface RedPoint {
   time: string;
   ratePerSec: number;

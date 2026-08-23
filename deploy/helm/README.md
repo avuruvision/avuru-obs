@@ -68,6 +68,8 @@ No operator, no Zookeeper/Keeper — see the M2 design spec for the rationale.
 | `sensor.collection.optOutLabel` | `avuru.obs/instrument` | Pods labeled `=false` are never traced; their logs/pod-metrics dropped |
 | `sensor.collection.nodeOptOutLabel` | `avuru.obs/collect` | Nodes labeled `=false` get no sensor pod at all |
 | `sensor.obi.discovery.mode` | `optOut` | `optIn` attaches uprobes ONLY to pods labeled `avuru.obs/instrument: "true"` (logs/metrics/inventory unaffected) |
+| `sensor.obi.network.enabled` | `false` | Kernel L4 flow topology + per-edge connection health, without uprobes. Needs `modules.infraMetrics`; turns on `hostNetwork` for the sensor pod |
+| `sensor.obi.network.interZone.enabled` | `false` | Bytes crossing an availability-zone boundary, per zone pair — the cross-AZ line on a cloud bill, measured in the kernel. Works **on its own**: it does not require `sensor.obi.network.enabled`, and its cardinality is zone pairs rather than workload pairs. Needs `modules.infraMetrics`, nodes labeled `topology.kubernetes.io/zone`, and (like the flow feature) `hostNetwork` |
 
 ## Modules (which signal families this install runs)
 
