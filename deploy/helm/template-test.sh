@@ -308,6 +308,29 @@ grep -q 'obi_stat_tcp_rtt' <<<"$out" && fail "stats config survived network.stat
 grep -qE 'network:' <<<"$out" || fail "network flow config missing"
 ok "flow bytes without TCP stats"
 
+echo "== service-map topology: ungated, because the map cannot be turned off"
+out="$(render)"
+grep -q 'AVURUOBS_TOPOLOGY_CONFIG' <<<"$out" || fail "topology env missing on a default install"
+grep -q 'name: test-avuruobs-topology' <<<"$out" || fail "topology ConfigMap missing on a default install"
+grep -q 'topology.json: "{}"' <<<"$out" || fail "empty topology should render {} (hub built-ins)"
+# Its own mount dir: sharing one with service-groups would make either config
+# clobber the other's file.
+grep -q '/etc/avuruobs-topology' <<<"$out" || fail "topology mounted outside its own directory"
+ok "env, ConfigMap and an isolated mount on every hub"
+
+out="$(render --set-json 'topology={"transport":["acme-mesh-*"],"applications":["waypoint-api"]}')"
+grep -q 'acme-mesh' <<<"$out" || fail "configured transport patterns did not reach the ConfigMap"
+grep -q 'waypoint-api' <<<"$out" || fail "configured application overrides did not reach the ConfigMap"
+ok "operator patterns reach the hub"
+
+# Query-only (secondary-cluster) installs still run the map, so they still get
+# the knob; a gateway-only install has no hub and must render neither.
+out="$(render --set hub.enabled=false --set ui.enabled=false \
+  --set clickhouse.external.enabled=true --set clickhouse.external.address=ch.central:9000 \
+  --set auth.ingest.mode=off)"
+grep -q 'test-avuruobs-topology' <<<"$out" && fail "topology ConfigMap rendered on a gateway-only install"
+ok "absent on a hub-less install"
+
 echo "== green: born opt-off -> no energy surface at all"
 out="$(render)"
 grep -q 'name: kepler' <<<"$out" && fail "kepler container rendered without opt-in"
