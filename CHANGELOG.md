@@ -13,6 +13,14 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **Every screen links to the page of the manual that explains it.** A small
+  `docs ↗` beside the breadcrumb, because the question "what am I looking at?"
+  is asked while looking at the screen, not from a help menu two clicks away.
+  The link comes from the same navigation model the sidebar and breadcrumbs
+  already use, so a new screen gets one by declaring where its documentation
+  lives — and a screen with no page yet renders nothing at all, since a link
+  that 404s is worse than no link.
+
 - **Declared service metadata — services group and tier themselves.** A service
   can now set `service.namespace` (logical domain), `deployment.environment.name`
   and `avuru.tier` as resource attributes, and the service-health board picks
