@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
+  "type": "datasource",
+  "name": "Avuru Obs",
+  "id": "avuru-obs-datasource",
+  "metrics": true,
+  "backend": true,
+  "executable": "gpx_avuru_obs",
+  "info": {
+    "description": "Read service RED metrics, service health, traces and cross-zone traffic from an Avuru Obs hub.",
+    "author": { "name": "Avuru", "url": "https://avuruobs.io" },
+    "keywords": ["observability", "opentelemetry", "tracing", "kubernetes"],
+    "logos": { "small": "img/logo.svg", "large": "img/logo.svg" },
+    "links": [
+      { "name": "Source", "url": "https://github.com/avuruvision/avuru-obs" },
+      { "name": "License", "url": "https://github.com/avuruvision/avuru-obs/blob/main/LICENSE" }
+    ],
+    "screenshots": [],
+    "version": "%VERSION%",
+    "updated": "%TODAY%"
+  },
+  "dependencies": {
+    "grafanaDependency": ">=10.4.0",
+    "plugins": []
+  }
+}

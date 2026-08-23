@@ -223,8 +223,60 @@ jobs:
           path: clients/cli/dist/*
           if-no-files-found: error
 
+  # The Grafana data source ships as a plugin zip: the AMD frontend bundle, the
+  # manifest, and one backend binary per platform Grafana runs on. All of them
+  # in one archive, because Grafana picks the binary matching its own host at
+  # load time and a per-platform zip would make the operator do that lookup.
+  grafana-plugin:
+    needs: meta
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build frontend
+        working-directory: clients/grafana-datasource
+        env:
+          PLUGIN_VERSION: ${{ needs.meta.outputs.version }}
+        run: npm ci && npm run build
+      - name: Build backend binaries
+        working-directory: clients/grafana-datasource
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            os="${target%/*}"; arch="${target#*/}"
+            ext=""; [ "$os" = "windows" ] && ext=".exe"
+            GOOS="$os" GOARCH="$arch" go build \
+              -ldflags "-s -w" \
+              -o "dist/gpx_avuru_obs_${os}_${arch}${ext}" ./pkg
+          done
+      - name: Package
+        working-directory: clients/grafana-datasource
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          cp -r dashboards dist/dashboards
+          mkdir -p package/avuru-obs-datasource
+          cp -r dist/* package/avuru-obs-datasource/
+          ( cd package && zip -qr "../avuru-obs-datasource-${VERSION}.zip" avuru-obs-datasource )
+          sha256sum "avuru-obs-datasource-${VERSION}.zip" > "avuru-obs-datasource-${VERSION}.zip.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grafana-plugin
+          path: |
+            clients/grafana-datasource/avuru-obs-datasource-*.zip
+            clients/grafana-datasource/avuru-obs-datasource-*.zip.sha256
+          if-no-files-found: error
+
   release:
-    needs: [meta, images, chart, cli]
+    needs: [meta, images, chart, cli, grafana-plugin]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -240,6 +292,10 @@ jobs:
         with:
           name: cli-binaries
           path: artifacts/cli
+      - uses: actions/download-artifact@v4
+        with:
+          name: grafana-plugin
+          path: artifacts/grafana-plugin
       - name: Extract changelog notes
         id: notes
         run: |
@@ -273,6 +329,7 @@ jobs:
             artifacts/installer/install.sh
             artifacts/installer/install.sh.sha256
             artifacts/cli/*
+            artifacts/grafana-plugin/*
       - name: Dry-run summary
         if: needs.meta.outputs.dry_run == 'true'
         run: echo "Dry run — built images and chart, skipped push and release for ${{ needs.meta.outputs.tag }}"

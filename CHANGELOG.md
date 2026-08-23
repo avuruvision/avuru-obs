@@ -61,6 +61,25 @@ When a release is cut, that block is renamed to the version with its date.
   both architectures are attached to each release with checksums, and the binary
   has **no third-party dependencies** — a tool you hand an API token should have
   a supply chain you can read in an afternoon.
+- **A Grafana data source.** Teams live in Grafana; this brings Avuru Obs into
+  the dashboards they already run — service RED metrics, service health, trace
+  search and cross-zone traffic, through the public Hub API. The panel's time
+  range is the query's time range, and a panel can name its own project, so one
+  dashboard can show two environments side by side.
+
+  It is a **backend** plugin, and two things follow from that: the API token is
+  held in Grafana's encrypted settings and decrypted only inside the plugin's own
+  process, so it never reaches a browser — and queries leave the Grafana server
+  rather than the viewer's machine, so a hub reachable only inside the cluster
+  works without exposing it. **Save & test** calls the same endpoint every query
+  goes through, so a green check means the credential works, not merely that
+  something answered on that host.
+
+  A token resolves to its owner's live permissions, so the data source sees
+  exactly what that person sees. An example dashboard ships with it. The plugin
+  is not signed by Grafana Labs — signing means publishing through their
+  catalogue, which is a separate step — so it currently loads as an unsigned
+  plugin; the README says how, and why.
 
 - **Cross-zone traffic accounting.** Cloud providers bill data that crosses an
   availability-zone boundary, and the usual way to find out what is driving that

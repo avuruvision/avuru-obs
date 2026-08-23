@@ -63,7 +63,7 @@ GATEWAY_MODULES := sentryreceiver avuruingestauth tenantfromauth
 SENSOR_MODULES := tdp-estimator
 # Client binaries under clients/ — separate modules with their own toolchains,
 # so they never weigh on the hub build.
-CLIENTS := cli
+CLIENTS := cli grafana-datasource
 
 check:
 	cd hub && go build ./... && go test -race ./...

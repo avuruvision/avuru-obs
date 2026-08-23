@@ -2,7 +2,7 @@
 
 - **Date:** 2026-07-27
 - **Author(s):** Berny ryders
-- **Status:** Partially implemented — the CLI shipped 2026-08-23; the Grafana data source remains
+- **Status:** Accepted — implemented 2026-08-23
 - **Note:** the **API-token seam** described here is narrowed and superseded by
   [2026-08-13 API tokens](2026-08-13-api-tokens.md), which ships tokens on their
   own. The Grafana data source and the CLI remain this AEP's, unbuilt.
@@ -141,6 +141,30 @@ available.
 boolean algebra is a gate whose failure is hard to read in a CI log at 3am; two
 invocations say the same thing legibly.
 
+**The data source is backend-only, and that is the design.** The AEP said
+"TypeScript frontend + Go backend"; the split matters more than the sentence
+implies. Everything about authentication lives in the backend process: the API
+token is stored in Grafana's encrypted secure settings and decrypted only there,
+so it never reaches a browser — and queries leave the *Grafana server*, so a hub
+reachable only inside the cluster still works. The frontend is two editors and
+nothing else.
+
+**A small closed set of query kinds** — service RED, service health, traces,
+cross-zone traffic — rather than a query language. The data source brings the
+numbers Avuru Obs already computes into a dashboard; a second way to compute
+them would drift from the product.
+
+**The build is hand-written**, not scaffolded: thirty lines of webpack emitting
+an AMD bundle with every `@grafana/*` package and React external. A plugin that
+bundles its own React fights the host's singletons and breaks hooks at runtime,
+which no type check can see — so CI asserts the built bundle's shape, not just
+that it compiled.
+
+**Unsigned.** Signing requires publishing through Grafana's catalogue, which is
+a separate act from building the thing. Until then it loads with
+`GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS`, and the README says so plainly
+rather than leaving an operator to discover it from a startup warning.
+
 ## Roadmap
 
 - [x] AEP accepted
@@ -150,7 +174,10 @@ invocations say the same thing legibly.
       — same
 - [x] CLI (`clients/cli/`): `login`, `services`, `health`, `traces`, `logs`,
       `status`, `-o table|json`, `--project`, `--fail-on`
-- [x] Release artifacts: static binaries for linux/darwin/windows on amd64 and
-      arm64, with checksums, attached to the GitHub release
-- [ ] Grafana data source (`clients/grafana-datasource/`): RED, traces, health
-- [ ] Plugin zip in the release; docs-align (EN/FR)
+- [x] Grafana data source (`clients/grafana-datasource/`): service RED, health,
+      traces, cross-zone traffic; token in encrypted secure settings; per-panel
+      project override; example dashboard
+- [x] Release artifacts: CLI binaries for linux/darwin/windows on amd64 and
+      arm64, and the plugin zip, with checksums, attached to the GitHub release
+- [ ] Grafana catalogue submission (which is what signing needs)
+- [ ] docs-align (EN/FR)

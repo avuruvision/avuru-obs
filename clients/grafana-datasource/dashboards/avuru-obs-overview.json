@@ -1,0 +1,74 @@
+{
+  "title": "Avuru Obs — service overview",
+  "uid": "avuru-obs-overview",
+  "schemaVersion": 39,
+  "editable": true,
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "1m",
+  "panels": [
+    {
+      "type": "table",
+      "title": "Service health",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "avuru-obs-datasource", "uid": "${datasource}" },
+      "targets": [{ "refId": "A", "kind": "health" }],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "status" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "healthy": { "color": "green", "index": 0 }, "degraded": { "color": "orange", "index": 1 }, "down": { "color": "red", "index": 2 } } }
+                ]
+              },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "table",
+      "title": "Service RED",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "avuru-obs-datasource", "uid": "${datasource}" },
+      "targets": [{ "refId": "A", "kind": "services" }],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "errorRate" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              {
+                "id": "thresholds",
+                "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 0.01 }, { "color": "red", "value": 0.05 }] }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "table",
+      "title": "Slowest traces",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 9 },
+      "datasource": { "type": "avuru-obs-datasource", "uid": "${datasource}" },
+      "targets": [{ "refId": "A", "kind": "traces", "limit": 20 }]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "avuru-obs-datasource",
+        "current": {},
+        "hide": 0
+      }
+    ]
+  }
+}
