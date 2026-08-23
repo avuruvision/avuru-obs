@@ -11,6 +11,30 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The service map no longer draws mesh hops as dependencies.** On a cluster
+  running a service mesh, every application call is intercepted by a proxy, so
+  what reached the map was `app → proxy → app` — two edges, neither of them a
+  dependency, joining services that never talk to each other. The hub now
+  recognises transport workloads (mesh sidecars, waypoint and ztunnel proxies,
+  ingress and egress gateways for Istio, Linkerd, Consul, Kuma and Envoy
+  Gateway) and the map hides them by default, with a **Show mesh & gateways**
+  toggle when you want to see the plumbing. The classification is a name-match
+  and therefore install-specific, so it is configurable: `topology.transport`
+  adds patterns for a mesh the built-ins don't know, and `topology.applications`
+  rescues a real service the built-ins catch. It ships on every install (the map
+  is core, so its correction knob has to be), lives in a ConfigMap the hub
+  hot-reloads, and applies within ~15s of a `kubectl edit` — no restart, no
+  upgrade. Deliberately narrow by default: erasing a real service from the map
+  is a worse failure than the noise this removes.
+- **The map counted connections as calls.** Edges derived from kernel flows
+  carry no call volume by construction, so a map showing "5 call edges" could
+  have observed no calls at all. The count line now separates traced calls from
+  observed network flows, a flow-only edge is drawn dotted rather than as a thin
+  call, and hovering one says "network flow · no traced calls" instead of
+  claiming 0 rpm and 0 ms.
+
 ## [0.6.0] — 2026-08-22
 
 **Open at both ends.** Until now the deal was OTLP, from one cluster: you

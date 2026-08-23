@@ -132,6 +132,15 @@ v0.6 opened the ingest side; the data is only as useful as the surfaces that
 read it and the words it is filed under. Carried over from v0.6, unchanged in
 intent:
 
+- **A map you can trust:** shipped early in the line, because a dependency
+  graph that asserts relationships which do not exist is worse than one that
+  omits them. Service-mesh proxies and ingress gateways are classified as
+  transport and hidden by default, so a meshed cluster stops seeing every
+  `app → proxy → app` hop drawn as two application dependencies; edges derived
+  from kernel flows are counted and drawn apart from traced calls. Collapsing
+  the hop — recovering the real `app → app` dependency across a proxy — needs
+  per-trace ancestry and is the open half. See the
+  [AEP](design/2026-08-23-service-map-transport.md).
 - **More clients:** a **CLI** (`--fail-on` for CI gates) riding v0.5's API
   tokens, and Grafana reading the Hub API through its JSON data sources — a
   documented recipe with example dashboards; a custom plugin only if the
