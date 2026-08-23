@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        client: [cli]
+        client: [cli, grafana-datasource]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -62,6 +62,29 @@ jobs:
       - name: build + vet + test
         working-directory: clients/${{ matrix.client }}
         run: go build ./... && go vet ./... && go test ./...
+
+  # The Grafana data source's frontend half. Its own job because it needs Node,
+  # and because a plugin that type-checks but does not BUILD is a plugin Grafana
+  # silently refuses to load.
+  grafana-plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: build the plugin frontend
+        working-directory: clients/grafana-datasource
+        run: npm ci && npm run typecheck && npm run build
+      - name: the built bundle must externalize Grafana's own packages
+        working-directory: clients/grafana-datasource
+        # A plugin bundling its own React fights the host's singletons and
+        # breaks hooks at runtime — which no type check can see.
+        run: |
+          head -c 400 dist/module.js | grep -q 'define(\[' \
+            || { echo "module.js is not an AMD bundle"; exit 1; }
+          grep -q '"executable": "gpx_avuru_obs"' dist/plugin.json \
+            || { echo "plugin.json lost its backend executable"; exit 1; }
 
   # The in-repo sensor modules (first-party additions to the DaemonSet, like
   # tdp-estimator) are separate Go modules the hub job never touches — same
