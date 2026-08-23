@@ -62,8 +62,15 @@ func parseBool(r *http.Request, name string, def bool) bool {
 	}
 }
 
-// parseTags reads `tags=key=value,key2=value2` into a map of span-attribute
-// equality filters. Blank or malformed pairs (missing '=') are skipped.
+// parseTags reads `tags=key=value,key2=value2` into a map of equality filters.
+// Blank or malformed pairs (missing '=') are skipped.
+//
+// One vocabulary, deliberately: keys under the business-tag prefix
+// (avuru.tag.*) are resolved against the emitting workload's resource
+// attributes and everything else against the record's own attributes, so the
+// same filter string carries between the traces and logs screens. The storage
+// layer owns that routing (clickhouse.TagPrefix) — the API just passes the
+// keys through.
 func parseTags(r *http.Request) map[string]string {
 	v := r.URL.Query().Get("tags")
 	if v == "" {

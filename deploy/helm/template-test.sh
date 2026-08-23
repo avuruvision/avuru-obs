@@ -382,6 +382,40 @@ if render --set sensor.obi.network.interZone.enabled=maybe >/dev/null 2>&1; then
   fail "non-boolean interZone.enabled should fail schema validation"
 fi
 ok "infra-metrics guard fires; schema rejects a non-boolean"
+echo "== business tags: nothing mapped by default"
+out="$(render)"
+grep -q 'avuru.tag.' <<<"$out" && fail "a business tag rendered with no tags.labels set"
+grep -q 'resource_labels' <<<"$out" && fail "resource_labels rendered with no tags.labels set"
+assert_obi_config_valid "$out" "no tags"
+ok "no tag mapping until an operator maps one"
+
+echo "== business tags: one mapping reaches BOTH collection paths"
+out="$(render --set 'tags.labels.team=team' --set 'tags.labels.tier=app.kubernetes.io/component')"
+assert_obi_config_valid "$out" "tags mapped"
+body="$(obi_config "$out")"
+# Traces: the eBPF tracer's own Kubernetes decoration.
+grep -q 'avuru.tag.team: \["team"\]' <<<"$body" || fail "team tag missing from the tracer's resource_labels"
+grep -q 'avuru.tag.tier: \["app.kubernetes.io/component"\]' <<<"$body" || fail "tier tag missing from the tracer's resource_labels"
+# Logs + metrics: the agent's k8sattributes. Both must be present, or a filter
+# would mean different things on different screens.
+grep -q 'tag_name: avuru.tag.team' <<<"$out" || fail "team tag missing from k8sattributes labels"
+grep -q 'tag_name: avuru.tag.tier' <<<"$out" || fail "tier tag missing from k8sattributes labels"
+# The opt-out label must survive alongside: it shares the labels list.
+grep -q 'tag_name: avuru.obs.collect' <<<"$out" || fail "collection opt-out label lost next to business tags"
+ok "one mapping renders into the tracer and the agent, opt-out label intact"
+
+echo "== business tags: refused when they would cost more than they say"
+if render --set 'tags.labels.a=a' --set 'tags.labels.b=b' --set 'tags.labels.c=c' \
+  --set 'tags.labels.d=d' --set 'tags.labels.e=e' --set 'tags.labels.f=f' \
+  --set 'tags.labels.g=g' --set 'tags.labels.h=h' --set 'tags.labels.i=i' \
+  --set 'tags.labels.j=j' --set 'tags.labels.k=k' --set 'tags.labels.l=l' \
+  --set 'tags.labels.m=m' >/dev/null 2>&1; then
+  fail "13 mapped tags should exceed the cardinality cap"
+fi
+if render --set 'tags.labels.9bad=team' >/dev/null 2>&1; then
+  fail "a tag key that is not a usable attribute name should fail the render"
+fi
+ok "cardinality cap and key shape enforced at template time"
 
 echo "== service-map topology: ungated, because the map cannot be turned off"
 out="$(render)"

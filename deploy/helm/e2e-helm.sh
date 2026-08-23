@@ -167,6 +167,7 @@ helm install avuruobs deploy/helm/avuruobs -n "$NS" --create-namespace \
   --set gateway.forward.otlp.endpoint=forward-sink:4317 \
   --set gateway.forward.otlp.insecure=true \
   --set sensor.obi.network.interZone.enabled=true \
+  --set 'tags.labels.team=team' \
   --set "gateway.forward.otlp.signals={traces}"
 # The last block above is WIDER INGEST riding the SAME install (born-off in
 # the chart; this leg opts in, like green): all four compat receivers plus
@@ -427,6 +428,39 @@ while :; do
     exit 1
   fi
   sleep 5
+done
+
+# BUSINESS TAGS: the mapping renders into TWO independent collection paths —
+# k8sattributes in the agent (logs, metrics) and the eBPF tracer's own
+# Kubernetes decoration (traces) — from one values entry. Neither key was
+# verified against a running sensor before this, and a tag that reaches one
+# signal but not the other is worse than no tag at all: the same filter would
+# mean different things on different screens. The wedge demo carries
+# `team: wedge-*` pod labels, so this asserts BOTH tables.
+echo "==> BUSINESS TAGS: polling ClickHouse for avuru.tag.team on traces AND logs"
+TAGS_SQL="SELECT
+  (SELECT count() FROM otel.otel_traces WHERE ResourceAttributes['avuru.tag.team'] != ''),
+  (SELECT count() FROM otel.otel_logs WHERE ResourceAttributes['avuru.tag.team'] != '')"
+TAGS_DEADLINE=$(( $(date +%s) + 240 ))
+while :; do
+  tag_counts=$(kubectl -n "$NS" exec avuruobs-clickhouse-0 -- \
+    clickhouse-client -u avuru --password avuru -q "$TAGS_SQL" 2>/dev/null || echo "")
+  tagged_traces=$(awk '{print $1}' <<<"$tag_counts")
+  tagged_logs=$(awk '{print $2}' <<<"$tag_counts")
+  if [ "${tagged_traces:-0}" -gt 0 ] 2>/dev/null && [ "${tagged_logs:-0}" -gt 0 ] 2>/dev/null; then
+    echo "    tagged rows: traces=$tagged_traces logs=$tagged_logs"
+    kubectl -n "$NS" exec avuruobs-clickhouse-0 -- clickhouse-client -u avuru --password avuru \
+      -q "SELECT DISTINCT ResourceAttributes['avuru.tag.team'] FROM otel.otel_traces WHERE ResourceAttributes['avuru.tag.team'] != ''" 2>/dev/null || true
+    break
+  fi
+  if [ "$(date +%s)" -ge "$TAGS_DEADLINE" ]; then
+    echo "BUSINESS TAGS: avuru.tag.team missing within 240s (traces=${tagged_traces:-?} logs=${tagged_logs:-?})"
+    kubectl -n wedge-demo get pods --show-labels || true
+    kubectl -n "$NS" logs ds/avuruobs-sensor -c obi --tail=30 || true
+    kubectl -n "$NS" logs ds/avuruobs-sensor -c otel-agent --tail=30 || true
+    exit 1
+  fi
+  sleep 10
 done
 
 # REGRESSION GATE (docs/runbooks/app-probe-failures.md): installing avuru-obs

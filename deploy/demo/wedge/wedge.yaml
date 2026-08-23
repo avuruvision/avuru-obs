@@ -23,7 +23,7 @@ spec:
     matchLabels: { app: api }
   template:
     metadata:
-      labels: { app: api }
+      labels: { app: api, team: wedge-platform }
     spec:
       containers:
         - name: api
@@ -70,7 +70,7 @@ spec:
     matchLabels: { app: frontend }
   template:
     metadata:
-      labels: { app: frontend }
+      labels: { app: frontend, team: wedge-storefront }
     spec:
       containers:
         - name: frontend

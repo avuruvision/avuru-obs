@@ -259,6 +259,33 @@ alerting:
 # gateways, Linkerd, Consul, Kuma, Envoy Gateway) — right for almost every
 # install. Rendered to a ConfigMap the hub reads (AVURUOBS_TOPOLOGY_CONFIG) and
 # hot-reloads within ~15s, so a correction needs no restart or helm upgrade.
+# Business tags: Kubernetes pod labels carried onto every signal as
+# avuru.tag.<key> resource attributes, so telemetry can be sliced by the words
+# your org already stamps on its workloads (team, tier, cost-center) instead of
+# only by service and namespace. Nothing is mapped by default.
+#
+# The key on the left is the tag name; the value is the pod label it reads.
+#
+# tags:
+#   labels:
+#     team: team
+#     tier: app.kubernetes.io/component
+#     cost-center: finance.example.com/cost-center
+#
+# Applied where telemetry is collected — the sensor's log/metric enrichment and
+# the eBPF tracer's Kubernetes decoration — so no application changes anything.
+# TWO CONSEQUENCES worth knowing before you map a label:
+#
+#   1. A service that sends OTLP straight to the gateway is not decorated by
+#      this: nothing in that path reads the Kubernetes API. Such a service
+#      declares its own resource attributes, and can set avuru.tag.* among them.
+#   2. Every distinct value becomes a series dimension on the metrics it
+#      touches. Map identity (team, tier, owner), never anything unbounded like
+#      a commit SHA or a pod-specific annotation. A cap on the number of mapped
+#      keys is enforced at template time.
+tags:
+  labels: {}
+
 topology: {}
   # Add patterns for a mesh or gateway the built-ins don't know about. Globs
   # (* and ?), matched case-insensitively against the workload name and against

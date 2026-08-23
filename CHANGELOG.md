@@ -27,6 +27,22 @@ When a release is cut, that block is renamed to the version with its date.
   flow topology. Off by default; needs the infra-metrics module, nodes carrying
   the standard `topology.kubernetes.io/zone` label, and (like the flow feature)
   host networking on the sensor pod.
+- **Slice telemetry by the words your organisation already uses.** A cluster
+  encodes ownership in labels — `team=payments`, `tier=critical`,
+  `cost-center=…` — and until now none of it reached the product: you could
+  group by service and by namespace, and that was the vocabulary. Map a label
+  once in `tags.labels` and it is carried onto every signal the platform
+  collects as a first-class tag, then offered as a filter on the traces and logs
+  screens. No application changes anything: the mapping is applied where
+  telemetry is collected, which means the workloads you never instrumented are
+  tagged too. A trace matches when **any** service that took part carries the
+  tag, not only the one that started it, so filtering by a team shows the
+  requests that reached it rather than only the ones it began. Discovered keys
+  and their values are offered as controls, so nobody has to remember what the
+  cluster is labelled with, and both screens share one filter string — a link
+  carries between them. Deliberately bounded: every mapped tag becomes a
+  dimension on the metrics it touches, so the chart refuses more than twelve and
+  the values documentation says to map identity, never per-pod detail.
 
 ### Fixed
 

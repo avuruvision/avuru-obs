@@ -3,6 +3,7 @@ package clickhouse
 import (
 	"errors"
 	"sort"
+	"strings"
 )
 
 // tenantsOrDefault owns the resolved-tenant default rule for the query
@@ -66,16 +67,37 @@ func auxExclusion(prefix string) string {
         OR upperUTF8(` + prefix + `SpanAttributes['db.operation']) IN ('PING', 'INFO', 'HELLO', 'ISMASTER'))))`
 }
 
-// tagFilters appends `AND SpanAttributes['k'] = ?` for each tag (keys sorted for
-// a stable query string) and returns the extended SQL plus the value args.
-func tagFilters(query string, tags map[string]string, args []any) (string, []any) {
+// TagPrefix is the namespace business tags are mapped into at collection (chart
+// values `tags.labels`). It is reserved: nothing else writes it, and a tag only
+// ever exists as a RESOURCE attribute — it describes the workload, not the
+// operation. So a filter on a key under this prefix is answered from
+// ResourceAttributes while every other key stays a span-attribute match, which
+// is what lets one filter vocabulary read whichever signal you are looking at.
+const TagPrefix = "avuru.tag."
+
+func isResourceTag(key string) bool { return strings.HasPrefix(key, TagPrefix) }
+
+// sortedKeys returns a map's keys in order, so a query string built from them
+// is stable (and therefore cacheable and diffable).
+func sortedKeys(tags map[string]string) []string {
 	keys := make([]string, 0, len(tags))
 	for k := range tags {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	for _, k := range keys {
-		query += " AND SpanAttributes[?] = ?"
+	return keys
+}
+
+// tagFilters appends `AND SpanAttributes['k'] = ?` for each tag (keys sorted for
+// a stable query string) and returns the extended SQL plus the value args.
+// Business tags read ResourceAttributes instead — see TagPrefix.
+func tagFilters(query string, tags map[string]string, args []any) (string, []any) {
+	for _, k := range sortedKeys(tags) {
+		if isResourceTag(k) {
+			query += " AND ResourceAttributes[?] = ?"
+		} else {
+			query += " AND SpanAttributes[?] = ?"
+		}
 		args = append(args, k, tags[k])
 	}
 	return query, args
@@ -106,13 +128,17 @@ func auxExclusionRep() string {
 // effective-root span's attribute, so it compares argMin(SpanAttributes[k],
 // repTuple) rather than a raw row value. Emitted into HAVING.
 func tagFiltersRep(query string, tags map[string]string, args []any) (string, []any) {
-	keys := make([]string, 0, len(tags))
-	for k := range tags {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		query += " AND argMin(SpanAttributes[?], " + repTuple + ") = ?"
+	for _, k := range sortedKeys(tags) {
+		if isResourceTag(k) {
+			// A business tag describes the SERVICE behind a span, and a trace
+			// crosses several. The useful question is "did a service carrying
+			// this tag take part?" — the same participation rule the service
+			// filter uses — rather than "does the root service carry it",
+			// which would hide every trace a tagged service joined downstream.
+			query += " AND countIf(ResourceAttributes[?] = ?) > 0"
+		} else {
+			query += " AND argMin(SpanAttributes[?], " + repTuple + ") = ?"
+		}
 		args = append(args, k, tags[k])
 	}
 	return query, args

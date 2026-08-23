@@ -4,6 +4,21 @@
 {{- if and .Values.sensor.obi.network.interZone.enabled (not .Values.modules.infraMetrics.enabled) }}
 {{- fail "sensor.obi.network.interZone.enabled requires modules.infraMetrics.enabled — inter-zone byte counters are stored in the otel_metrics_* tables owned by the infra-metrics module." }}
 {{- end }}
+{{- /* Business tags become a series dimension on every metric they touch, so
+       the count is capped at render time rather than discovered as a
+       ClickHouse bill. The cap is on KEYS; each key's own cardinality is the
+       operator's judgement, and values.yaml says so. */}}
+{{- if gt (len .Values.tags.labels) 12 }}
+{{- fail (printf "tags.labels maps %d keys; the cap is 12 — each mapped tag multiplies metric cardinality, so map identity (team, tier, owner) and not per-pod detail." (len .Values.tags.labels)) }}
+{{- end }}
+{{- range $key, $label := .Values.tags.labels }}
+{{- if not (regexMatch "^[a-zA-Z][a-zA-Z0-9_.-]*$" $key) }}
+{{- fail (printf "tags.labels key %q is not a usable attribute name — use letters, digits, dot, dash or underscore, starting with a letter." $key) }}
+{{- end }}
+{{- if not $label }}
+{{- fail (printf "tags.labels[%q] has no pod label to read — the value is the Kubernetes label name this tag is sourced from." $key) }}
+{{- end }}
+{{- end }}
 {{- /* Green's hard dependency, mirroring the hub's modules.Parse: the
        pod→workload energy join reads the kubeletstats resource attributes the
        infra-metrics module owns. Fire on the MODULE flag (unconditional, like
@@ -95,6 +110,16 @@ data:
     attributes:
       kubernetes:
         enable: true
+        {{- if .Values.tags.labels }}
+        # Business tags on TRACES. Unlike the metric feature list below, this
+        # map MERGES into the tracer's defaults rather than replacing them, so
+        # the built-in service.name/namespace/version resolution from the
+        # app.kubernetes.io/* labels is untouched.
+        resource_labels:
+          {{- range $key, $label := .Values.tags.labels }}
+          avuru.tag.{{ $key }}: [{{ $label | quote }}]
+          {{- end }}
+        {{- end }}
     {{- if .Values.sensor.obi.network.enabled }}
       # Per-metric attribute sets. `include` REPLACES OBI's defaults for the
       # named metric, which is the point: left alone, flow bytes also carry
@@ -278,13 +303,25 @@ data:
             - k8s.statefulset.name
             - k8s.daemonset.name
             - k8s.node.name
-          {{- if .Values.sensor.collection.optOutLabel }}
+          {{- if or .Values.sensor.collection.optOutLabel .Values.tags.labels }}
           labels:
+            {{- if .Values.sensor.collection.optOutLabel }}
             # Surfaces the per-pod opt-out label so filter/collection can
             # drop that pod's logs and metrics (same label OBI honors).
             - tag_name: avuru.obs.collect
               key: {{ .Values.sensor.collection.optOutLabel }}
               from: pod
+            {{- end }}
+            {{- if .Values.tags.labels }}
+            # Business tags on LOGS and METRICS. The traces half is the eBPF
+            # tracer's resource_labels above; both write the same attribute
+            # names, so one filter reads every signal.
+            {{- end }}
+            {{- range $key, $label := .Values.tags.labels }}
+            - tag_name: avuru.tag.{{ $key }}
+              key: {{ $label | quote }}
+              from: pod
+            {{- end }}
           {{- end }}
         pod_association:
           - sources:

@@ -327,6 +327,20 @@ export interface ZonesResponse {
   zones: ZoneTraffic[];
 }
 
+// A business tag mapped from a Kubernetes label at collection. `key` is the
+// full attribute a filter string carries (avuru.tag.team); `name` is what a
+// person calls it (team). Values are a bounded sample for a filter control, not
+// a complete or ranked list.
+export interface TagKey {
+  key: string;
+  name: string;
+  values: string[];
+}
+
+export interface TagsResponse {
+  tags: TagKey[];
+}
+
 export interface RedPoint {
   time: string;
   ratePerSec: number;
