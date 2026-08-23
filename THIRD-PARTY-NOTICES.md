@@ -165,6 +165,86 @@ The gateway binary additionally bundles the OpenTelemetry Collector
 modules pinned in [gateway/ocb-manifest.yaml](gateway/ocb-manifest.yaml),
 all Apache-2.0.
 
+## Grafana data source backend (Go)
+
+| Module | License |
+|---|---|
+| github.com/apache/arrow-go/v18 | Apache-2.0 |
+| github.com/beorn7/perks/quantile | MIT |
+| github.com/cenkalti/backoff/v5 | MIT |
+| github.com/cespare/xxhash/v2 | MIT |
+| github.com/cheekybits/genny/generic | MIT |
+| github.com/clipperhouse/displaywidth | MIT |
+| github.com/clipperhouse/uax29/v2/graphemes | MIT |
+| github.com/fatih/color | MIT |
+| github.com/go-logr/logr | Apache-2.0 |
+| github.com/go-logr/stdr | Apache-2.0 |
+| github.com/goccy/go-json | MIT |
+| github.com/gogo/googleapis/google/api | Apache-2.0 |
+| github.com/gogo/protobuf | BSD-3-Clause |
+| github.com/golang/protobuf/ptypes/empty | BSD-3-Clause |
+| github.com/google/flatbuffers/go | Apache-2.0 |
+| github.com/google/go-cmp/cmp | BSD-3-Clause |
+| github.com/google/uuid | BSD-3-Clause |
+| github.com/grafana/grafana-plugin-sdk-go | Apache-2.0 |
+| github.com/grafana/otel-profiling-go | Apache-2.0 |
+| github.com/grafana/pyroscope-go/godeltaprof | Apache-2.0 |
+| github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus | Apache-2.0 |
+| github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors | Apache-2.0 |
+| github.com/grpc-ecosystem/grpc-gateway/v2 | BSD-3-Clause |
+| github.com/hashicorp/go-hclog | MIT |
+| github.com/hashicorp/go-plugin | MPL-2.0 |
+| github.com/hashicorp/yamux | MPL-2.0 |
+| github.com/jaegertracing/jaeger-idl | Apache-2.0 |
+| github.com/json-iterator/go | MIT |
+| github.com/klauspost/compress | Apache-2.0 |
+| github.com/klauspost/compress/internal/snapref | BSD-3-Clause |
+| github.com/klauspost/compress/zstd/internal/xxhash | MIT |
+| github.com/mattetti/filebuffer | MIT |
+| github.com/mattn/go-colorable | MIT |
+| github.com/mattn/go-isatty | MIT |
+| github.com/mattn/go-runewidth | MIT |
+| github.com/modern-go/concurrent | Apache-2.0 |
+| github.com/modern-go/reflect2 | Apache-2.0 |
+| github.com/munnerz/goautoneg | BSD-3-Clause |
+| github.com/oklog/run | Apache-2.0 |
+| github.com/olekukonko/cat | MIT |
+| github.com/olekukonko/errors | MIT |
+| github.com/olekukonko/ll | MIT |
+| github.com/olekukonko/tablewriter | MIT |
+| github.com/patrickmn/go-cache | MIT |
+| github.com/pierrec/lz4/v4 | BSD-3-Clause |
+| github.com/prometheus/client_golang/internal/github.com/golang/gddo/httputil | BSD-3-Clause |
+| github.com/prometheus/client_golang/prometheus | Apache-2.0 |
+| github.com/prometheus/client_model/go | Apache-2.0 |
+| github.com/prometheus/common | Apache-2.0 |
+| github.com/zeebo/xxh3 | BSD-2-Clause |
+| go.opentelemetry.io/auto/sdk | Apache-2.0 |
+| go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc | Apache-2.0 |
+| go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace | Apache-2.0 |
+| go.opentelemetry.io/contrib/propagators/jaeger | Apache-2.0 |
+| go.opentelemetry.io/contrib/samplers/jaegerremote | Apache-2.0 |
+| go.opentelemetry.io/otel | Apache-2.0 |
+| go.opentelemetry.io/otel/exporters/otlp/otlptrace | Apache-2.0 |
+| go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc | Apache-2.0 |
+| go.opentelemetry.io/otel/metric | Apache-2.0 |
+| go.opentelemetry.io/otel/sdk | Apache-2.0 |
+| go.opentelemetry.io/otel/trace | Apache-2.0 |
+| go.opentelemetry.io/proto/otlp | Apache-2.0 |
+| golang.org/x/exp/constraints | BSD-3-Clause |
+| golang.org/x/net | BSD-3-Clause |
+| golang.org/x/sys | BSD-3-Clause |
+| golang.org/x/text | BSD-3-Clause |
+| google.golang.org/genproto/googleapis/api/httpbody | Apache-2.0 |
+| google.golang.org/genproto/googleapis/rpc | Apache-2.0 |
+| google.golang.org/grpc | Apache-2.0 |
+| google.golang.org/protobuf | BSD-3-Clause |
+
+The `avuruobs` CLI has no third-party dependencies, so it contributes
+no attribution here. The data source's FRONTEND bundle likewise ships
+none: every Grafana and React package it uses is external, resolved from
+the host at load time rather than bundled.
+
 ## UI (npm, production dependencies)
 
 | Package | License |
