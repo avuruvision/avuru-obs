@@ -51,8 +51,8 @@ const EMPTY_HEALTH: Map<string, ServiceHealth> = new Map();
 
 // Service-map graph. Nodes = services (sized by request rate, ring = health
 // status); edges = caller→callee call volume derived from trace spans. Hover a
-// node to focus its neighbourhood and reveal per-edge rpm/latency; click a node
-// to open its traces.
+// node to focus its neighbourhood and reveal per-edge rpm/latency; click a
+// service to open its traces (a virtual target has none to open).
 export function ServiceMap({
   services,
   edges,
@@ -121,6 +121,11 @@ export function ServiceMap({
     if (compact) cy.fit(undefined, fitPadding(compact));
 
     cy.on("tap", "node", (e) => {
+      // A virtual target has no service to open: it never sent a span, and
+      // filtering traces by its system would match on the trace's ROOT span
+      // and quietly return a different set of traces than the one asked for.
+      // Doing nothing is the honest answer until there is a per-target view.
+      if (e.target.data("virtual")) return;
       router.push(`/traces?service=${encodeURIComponent(e.target.id())}&tab=traces`);
     });
 
@@ -149,8 +154,15 @@ export function ServiceMap({
     // tooltip. Both live in one handler so they cannot fight over mouseover.
     cy.on("mouseover", "node", (evt) => {
       focusNeighbourhood(cy, evt.target as NodeSingular);
-      if (!carbon) return;
       const d = evt.target.data();
+      // A virtual target's label drops its URI scheme to keep the graph
+      // readable; the hover is where the full identity comes back, along with
+      // the reminder that every number on it was measured at the caller.
+      if (d.virtual) {
+        showTip(String(d.tooltip ?? ""), evt.renderedPosition);
+        return;
+      }
+      if (!carbon) return;
       if (d.wh === undefined || d.gco2e === undefined) return;
       showTip(
         nodeEnergyTooltip(String(d.label), Number(d.wh), Number(d.gco2e)),

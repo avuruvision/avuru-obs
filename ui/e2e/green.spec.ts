@@ -425,7 +425,7 @@ test.describe("service map carbon overlay", () => {
       }),
     );
     await page.goto("/service-map?carbon=true");
-    await expect(page.getByText(/click a node for its traces/)).toBeVisible();
+    await expect(page.getByText(/click a service for its traces/)).toBeVisible();
 
     // Canvas hover is positional: sweep a 3×3 grid around the centre until the
     // node's mouseover fires. FLAKE-FLAGGED — healer: if this cannot be kept
@@ -459,7 +459,7 @@ test.describe("service map carbon overlay", () => {
     // A stale ?carbon=true bookmark must not resurrect the lens.
     await page.goto("/service-map?carbon=true&range=24h");
 
-    await expect(page.getByText(/click a node for its traces/)).toBeVisible();
+    await expect(page.getByText(/click a service for its traces/)).toBeVisible();
     await expect(page.getByRole("checkbox", { name: "Carbon" })).toHaveCount(0);
     await expect(page.getByText(/Carbon lens on/)).toHaveCount(0);
   });
@@ -479,7 +479,7 @@ test.describe("service map carbon overlay", () => {
     );
     await page.goto("/service-map");
 
-    await expect(page.getByText(/click a node for its traces/)).toBeVisible();
+    await expect(page.getByText(/click a service for its traces/)).toBeVisible();
     await expect(page.getByRole("checkbox", { name: "Carbon" })).toHaveCount(0);
     await expect(page.getByRole("checkbox", { name: "Show auxiliary requests" })).toBeVisible();
   });

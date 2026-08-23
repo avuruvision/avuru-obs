@@ -43,6 +43,34 @@ export function splitInfrastructure(
   };
 }
 
+// Splits the derived dependencies out of the map.
+//
+// A virtual target — a database, cache or broker — is real infrastructure, but
+// it is inferred from its callers' exit spans rather than observed directly, and
+// on a chatty estate it can outnumber the applications. This is the same VIEW
+// decision splitInfrastructure makes: the hub reports every node, and the
+// toolbar toggle brings them back with no refetch.
+//
+// `count` is the number of virtual targets present BEFORE the split, so the
+// count line can say how many are hidden as easily as how many are shown.
+export function splitVirtual(
+  services: ServiceStats[],
+  edges: ServiceEdge[],
+  show: boolean,
+): { services: ServiceStats[]; edges: ServiceEdge[]; count: number } {
+  const count = services.filter((s) => s.role === "virtual").length;
+  if (show || count === 0) return { services, edges, count };
+
+  const names = new Set(services.filter((s) => s.role !== "virtual").map((s) => s.name));
+  return {
+    services: services.filter((s) => s.role !== "virtual"),
+    // Every edge with a virtual endpoint goes too — a dangling edge draws to
+    // nothing.
+    edges: edges.filter((e) => names.has(e.source) && names.has(e.target)),
+    count,
+  };
+}
+
 // Narrows the graph to the services a filter keeps, then drops every edge with
 // an endpoint that went away — a dangling edge would draw to nothing.
 //

@@ -85,6 +85,13 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 	}
+	// Infrastructure that emits no telemetry of its own — databases, caches,
+	// brokers — derived from the exit spans of the services calling it. Core:
+	// it reads otel_traces, so there is no module to gate on.
+	virtual, err := store.VirtualTargets(r.Context(), q)
+	if err != nil {
+		return err
+	}
 	edges = mergeEdges(edges, flowEdges)
 	resp := serviceMapResponse{
 		Services: make([]serviceDTO, 0, len(services)),
@@ -109,6 +116,11 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 	if a.modules.Enabled(modules.Green) {
 		a.stampServiceEnergy(r.Context(), store, q.Tenant, tr, resp.Services)
 	}
+	// Virtual targets go on LAST, after both stamps: they are neither workloads
+	// the topology classifier should re-label nor pods the energy read can find,
+	// and appending them here keeps both of those loops walking real services
+	// only.
+	resp.Services, resp.Edges = appendVirtualTargets(resp.Services, resp.Edges, virtual, window)
 	resp.Edges = applyEdgeHealth(resp.Edges, health)
 	writeJSON(w, http.StatusOK, resp)
 	return nil

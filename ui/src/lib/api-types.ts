@@ -37,11 +37,13 @@ export interface ServiceStats {
   wh?: number;
   gco2e?: number;
   // "transport" when the hub classified this workload as infrastructure that
-  // carries other services' traffic — a mesh sidecar, waypoint or ztunnel
-  // proxy, an ingress/egress gateway. Absent for applications, so a cluster
-  // with no mesh returns the same shape it always did. The map hides transport
-  // by default: its edges are hops, not dependencies.
-  role?: string; // "transport"
+  // carries other services' traffic; "virtual" when the node is a dependency
+  // that sends no telemetry of its own and was derived from its callers' exit
+  // spans. Absent for applications, so a cluster with neither returns the shape
+  // it always did.
+  role?: string; // "transport" | "virtual"
+  // What a virtual target actually is. Only ever set beside role "virtual".
+  kind?: string; // "database" | "cache" | "queue"
 }
 
 export interface ServicesResponse {

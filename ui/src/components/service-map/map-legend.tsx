@@ -9,10 +9,12 @@ export function MapLegend({
   health,
   carbon,
   infra,
+  virtual,
 }: {
   health: boolean;
   carbon: boolean;
   infra: boolean;
+  virtual: boolean;
 }) {
   return (
     <div
@@ -36,6 +38,7 @@ export function MapLegend({
       <span className="text-error/80">red = errors</span>
       <span>dotted = observed connection, no traced calls</span>
       {infra && <span>diamond = mesh or gateway</span>}
+      {virtual && <span>dashed hexagon = database, cache or queue</span>}
       {carbon && <span className="text-success/80">halo = gCO2e</span>}
       <span className="text-base-content/40">hover a node for its edges</span>
     </div>

@@ -47,7 +47,7 @@ test("capture launch screenshots", async ({ page }) => {
 
   // 2. Service map — the hero shot.
   await page.goto("/service-map");
-  await expect(page.getByText(/click a node for its traces/)).toBeVisible();
+  await expect(page.getByText(/click a service for its traces/)).toBeVisible();
   // Give the force layout a moment to relax before freezing the frame.
   await page.waitForTimeout(4_000);
   await shoot(page, "service-map");
