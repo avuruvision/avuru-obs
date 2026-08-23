@@ -13,6 +13,26 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **Declared service metadata — services group and tier themselves.** A service
+  can now set `service.namespace` (logical domain), `deployment.environment.name`
+  and `avuru.tier` as resource attributes, and the service-health board picks
+  them up with no hub config: groups span Kubernetes namespaces, and one domain
+  declared in two environments becomes two groups carrying their own tiers.
+  Declaring nothing is unchanged — services still auto-group by namespace at
+  `serviceGroups.defaultTier`. Tier precedence is
+  `serviceGroups.tierOverrides` → a matched config group → the declared
+  `avuru.tier` → `defaultTier`, and where group members disagree the most
+  critical tier wins. An invalid declared tier never fails the hub: it falls
+  back to the default and the board says so, in a banner naming the service and
+  the value it tried to use — the opposite of operator config, which still fails
+  loud. Failing soft is right (application telemetry gets no operator review)
+  but silence is not: without the banner a team would never learn their
+  declaration did nothing. A card also says **declared** when the service chose
+  its own tier, so a T0 lane distinguishes what ops decided from what an app
+  claimed (AEP `design/2026-07-28-declared-service-metadata.md`).
+- **`serviceGroups.tierOverrides`** — per-service operator tier, winning over
+  both a declared tier and a matched group's tier. Corrects one service's
+  criticality without moving it into a different group.
 - **Cross-zone traffic accounting.** Cloud providers bill data that crosses an
   availability-zone boundary, and the usual way to find out what is driving that
   line is a flow-log pipeline or a cost SaaS. The sensor already watches every
@@ -779,23 +799,6 @@ energy/carbon — turn the data you already collect into triage, status and
 accountability. The project is now licensed AGPL-3.0.
 
 ### Added
-
-- **Declared service metadata — services group and tier themselves.** A service
-  can now set `service.namespace` (logical domain), `deployment.environment.name`
-  and `avuru.tier` as resource attributes, and the service-health board picks
-  them up with no hub config: groups span Kubernetes namespaces, and one domain
-  declared in two environments becomes two groups carrying their own tiers.
-  Declaring nothing is unchanged — services still auto-group by namespace at
-  `serviceGroups.defaultTier`. Tier precedence is
-  `serviceGroups.tierOverrides` → a matched config group → the declared
-  `avuru.tier` → `defaultTier`, and where group members disagree the most
-  critical tier wins. An invalid declared tier never fails the hub: it falls
-  back to the default and surfaces a warning on the API, the opposite of
-  operator config which still fails loud (AEP
-  `design/2026-07-28-declared-service-metadata.md`).
-- **`serviceGroups.tierOverrides`** — per-service operator tier, winning over
-  both a declared tier and a matched group's tier. Corrects one service's
-  criticality without moving it into a different group.
 
 - **Authentication & per-project access control (secure by default).** The hub
   now requires login: local users with fixed roles — Admin, Editor, Viewer —
