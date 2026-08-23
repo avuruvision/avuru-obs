@@ -58,6 +58,27 @@ function edgeFocusLabel(e: ServiceEdge, windowMinutes: number): string {
   return parts.join(" · ");
 }
 
+// A virtual target is named as a URI (`postgresql://orders-db`) so its node id
+// can never collide with a service.name. That is the right identity and the
+// wrong LABEL — the scheme repeats what the shape and the legend already say,
+// twice per node, on the busiest part of the graph. So the label drops it and
+// the hover restores it in full.
+export function virtualLabel(name: string): string {
+  const at = name.indexOf("://");
+  return at < 0 ? name : name.slice(at + 3);
+}
+
+// The hover text for a derived dependency: what it is, how hard it is being
+// used, and what the callers are getting back. Deliberately says "callers" —
+// everything here is measured from the calling side, because the target itself
+// tells us nothing.
+export function virtualTooltip(s: ServiceStats, rpm: number): string {
+  const parts = [s.name, s.kind ?? "dependency", formatRpm(rpm)];
+  if (s.p95Ms) parts.push(`p95 ${formatMs(s.p95Ms)} at the caller`);
+  if (s.errorRate > 0) parts.push(`${(s.errorRate * 100).toFixed(1)}% failed`);
+  return parts.join(" · ");
+}
+
 export interface BuildOptions {
   services: ServiceStats[];
   edges: ServiceEdge[];
@@ -84,10 +105,11 @@ export function buildElements({
 
   const nodes: ElementDefinition[] = services.map((s) => {
     const rpm = s.ratePerSec * 60;
+    const virtual = s.role === "virtual";
     return {
       data: {
         id: s.name,
-        label: s.name,
+        label: virtual ? virtualLabel(s.name) : s.name,
         // The ring's channel. Absent from the rollup → "unknown", which is the
         // neutral ring: an unmeasured service is never drawn as healthy.
         status: health.get(s.name)?.status ?? "unknown",
@@ -97,8 +119,13 @@ export function buildElements({
         // than faking a "down" status: "this service erred" is a weaker claim
         // than the hub's verdict.
         ...(!healthEnabled && s.errorRate > 0 ? { errorRing: 1 } : {}),
-        focusLabel: `${s.name}\n${formatRpm(rpm)} · p95 ${formatMs(s.p95Ms)}`,
+        focusLabel: `${virtual ? virtualLabel(s.name) : s.name}\n${formatRpm(rpm)} · p95 ${formatMs(s.p95Ms)}`,
         rate: s.ratePerSec,
+        // A derived dependency: a database, cache or broker that sends no
+        // telemetry of its own. Its own field rather than a status, because
+        // the ring is health's channel and we have no health verdict for
+        // something we only see through its callers.
+        ...(virtual ? { virtual: 1, kind: s.kind ?? "", tooltip: virtualTooltip(s, rpm) } : {}),
         // Only mesh/gateway nodes carry `transport`, and only when the user
         // asked to see them — an application node's data is unchanged.
         ...(s.role === "transport" ? { transport: 1 } : {}),

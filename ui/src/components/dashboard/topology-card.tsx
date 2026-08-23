@@ -19,6 +19,11 @@ import type { ServiceEdge, ServiceStats } from "@/lib/api-types";
 // Mesh proxies and gateways are dropped with no way to bring them back: at
 // overview scale a transport hop drawn as a dependency is pure
 // misinformation, and the full map — one click away — owns the toggle.
+//
+// Derived dependencies (databases, caches, brokers) are KEPT, because the
+// opposite is true of them: a transport hop is a relationship that does not
+// exist, while a database is one that does and that nothing else on this
+// dashboard would mention.
 export function TopologyCard({
   services,
   edges,
@@ -30,6 +35,9 @@ export function TopologyCard({
   const healthEnabled = useModuleEnabled("service-health");
   const { byService } = useServiceHealthStatus(time, false, healthEnabled);
   const app = splitInfrastructure(services, edges, false);
+  // Counted apart from applications: a database is not a service you deployed,
+  // and adding it to that number makes the number wrong.
+  const deps = app.services.filter((s) => s.role === "virtual").length;
 
   return (
     <Card className="overflow-hidden">
@@ -37,7 +45,9 @@ export function TopologyCard({
         <CardTitle>Topology</CardTitle>
         <div className="flex items-center gap-3">
           <span className="text-xs text-base-content/45">
-            {app.services.length} services · {app.edges.length} edges
+            {app.services.length - deps} services
+            {deps > 0 && ` · ${deps} ${deps === 1 ? "dependency" : "dependencies"}`} ·{" "}
+            {app.edges.length} edges
           </span>
           <Link href="/service-map" className="text-xs text-primary hover:underline">
             Open full map →

@@ -13,6 +13,7 @@ import {
   filterMap,
   hasActiveFilter,
   splitInfrastructure,
+  splitVirtual,
   type MapFilters,
 } from "@/lib/map-filter";
 import { ServiceMap, type ServiceMapHandle } from "./service-map";
@@ -27,6 +28,10 @@ export function ServiceMapScreen() {
   // hops, not dependencies. URL state, so a map with the mesh shown is still a
   // pasteable link.
   const showInfra = get("infra") === "true";
+  // Derived dependencies are ON by default — a database the map already knows
+  // about is the point of drawing it. So the URL carries the OPT-OUT, and a
+  // link with no `virtual` param shows the whole picture.
+  const showVirtual = get("virtual") !== "false";
   const { data, isLoading } = useServiceMapData(time, includeAux);
   const greenEnabled = useModuleEnabled("green");
   const healthEnabled = useModuleEnabled("service-health");
@@ -49,17 +54,33 @@ export function ServiceMapScreen() {
   // Infrastructure comes out first, so "filtered from N" counts applications
   // rather than including nodes the user never asked to see.
   const {
-    services,
-    edges,
+    services: afterInfra,
+    edges: edgesAfterInfra,
     hidden: hiddenInfra,
   } = useMemo(
     () => splitInfrastructure(all, allEdges, showInfra),
     [all, allEdges, showInfra],
   );
+  const {
+    services,
+    edges,
+    count: virtualCount,
+  } = useMemo(
+    () => splitVirtual(afterInfra, edgesAfterInfra, showVirtual),
+    [afterInfra, edgesAfterInfra, showVirtual],
+  );
   const shown = useMemo(
     () => filterMap(services, edges, filters, byService),
     [services, edges, filters, byService],
   );
+  // Applications and derived dependencies are counted apart: they are not the
+  // same kind of thing, and folding a database into "services" would silently
+  // inflate a number people compare against their own deployment count.
+  const shownApps = shown.services.filter((s) => s.role !== "virtual").length;
+  const shownVirtual = shown.services.length - shownApps;
+  // "filtered from N" has to compare like with like: N is the applications a
+  // cleared filter would show, not applications plus dependencies.
+  const totalApps = services.filter((s) => s.role !== "virtual").length;
   // Flow-derived edges carry no call volume by construction, so counting them
   // as calls overstates what the map actually observed.
   const callEdges = shown.edges.filter((e) => e.calls > 0).length;
@@ -102,10 +123,13 @@ export function ServiceMapScreen() {
         includeAux={includeAux}
         showInfra={showInfra}
         hasInfra={hiddenInfra > 0 || showInfra}
+        showVirtual={showVirtual}
+        hasVirtual={virtualCount > 0}
         onFilters={setFilters}
         onCarbon={(on) => setMany({ carbon: on ? "true" : undefined })}
         onIncludeAux={(on) => setMany({ includeAux: on ? "true" : undefined })}
         onShowInfra={(on) => setMany({ infra: on ? "true" : undefined })}
+        onShowVirtual={(on) => setMany({ virtual: on ? undefined : "false" })}
         onZoomIn={() => mapRef.current?.zoomBy(1.25)}
         onZoomOut={() => mapRef.current?.zoomBy(0.8)}
         onFit={() => mapRef.current?.fit()}
@@ -113,15 +137,24 @@ export function ServiceMapScreen() {
       />
 
       <p data-testid="map-count" className="text-xs text-base-content/55">
-        {shown.services.length} services · {callEdges} call edges
+        {shownApps} services · {callEdges} call edges
         {flowEdges > 0 && ` · ${flowEdges} network ${flowEdges === 1 ? "flow" : "flows"}`}
+        {shownVirtual > 0 && ` · ${shownVirtual} ${shownVirtual === 1 ? "dependency" : "dependencies"}`}
+        {!showVirtual &&
+          virtualCount > 0 &&
+          ` · ${virtualCount} ${virtualCount === 1 ? "dependency" : "dependencies"} hidden`}
         {hiddenInfra > 0 &&
           ` · ${hiddenInfra} mesh/gateway node${hiddenInfra === 1 ? "" : "s"} hidden`}
-        {hasActiveFilter(filters) && ` · filtered from ${services.length}`} · click
-        a node for its traces.
+        {hasActiveFilter(filters) && ` · filtered from ${totalApps}`} · click
+        a service for its traces.
       </p>
 
-      <MapLegend health={healthEnabled} carbon={carbon} infra={showInfra} />
+      <MapLegend
+        health={healthEnabled}
+        carbon={carbon}
+        infra={showInfra}
+        virtual={shownVirtual > 0}
+      />
 
       {shown.services.length === 0 ? (
         <EmptyState icon={MapIcon} title="No services match">

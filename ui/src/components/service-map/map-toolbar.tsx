@@ -10,8 +10,9 @@ import type { MapFilters } from "@/lib/map-filter";
 // state: it reads the current filters and reports changes upward.
 //
 // The status and group filters exist ONLY when the service-health module is on,
-// because both read the rollup that module produces. The mesh toggle appears
-// only when there IS a mesh — a checkbox that would change nothing is noise.
+// because both read the rollup that module produces. The mesh and dependency
+// toggles appear only when there IS a mesh or a dependency — a checkbox that
+// would change nothing is noise.
 export function MapToolbar({
   filters,
   groups,
@@ -21,10 +22,13 @@ export function MapToolbar({
   includeAux,
   showInfra,
   hasInfra,
+  showVirtual,
+  hasVirtual,
   onFilters,
   onCarbon,
   onIncludeAux,
   onShowInfra,
+  onShowVirtual,
   onZoomIn,
   onZoomOut,
   onFit,
@@ -38,10 +42,13 @@ export function MapToolbar({
   includeAux: boolean;
   showInfra: boolean;
   hasInfra: boolean;
+  showVirtual: boolean;
+  hasVirtual: boolean;
   onFilters: (next: MapFilters) => void;
   onCarbon: (on: boolean) => void;
   onIncludeAux: (on: boolean) => void;
   onShowInfra: (on: boolean) => void;
+  onShowVirtual: (on: boolean) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
@@ -106,6 +113,21 @@ export function MapToolbar({
         />
         Show auxiliary requests
       </label>
+
+      {hasVirtual && (
+        <label
+          className="flex cursor-pointer items-center gap-1.5 text-xs text-base-content/70"
+          title="Databases, caches and message brokers send no telemetry of their own. They are derived from the exit spans of the services calling them, so everything shown about them is measured at the caller."
+        >
+          <input
+            type="checkbox"
+            checked={showVirtual}
+            onChange={(e) => onShowVirtual(e.target.checked)}
+            className="accent-primary"
+          />
+          Databases &amp; queues
+        </label>
+      )}
 
       {hasInfra && (
         <label

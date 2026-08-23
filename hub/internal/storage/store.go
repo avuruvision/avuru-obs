@@ -74,6 +74,32 @@ type NetworkEdgeHealth struct {
 	FailedConnections uint64
 }
 
+// VirtualTarget is one caller→infrastructure dependency derived from a service's
+// EXIT spans: a database, cache or message broker that emits no telemetry of its
+// own and is therefore visible only through the spans of the services that call
+// it. Rows are grouped per (service, kind, system, peer, direction), so one
+// service talking to two databases yields two rows and two services sharing one
+// cache yield two rows pointing at the same target.
+//
+// Direction is "out" for a call the service made (Client/Producer spans) and
+// "in" for a message it was delivered (Consumer spans) — without the second
+// direction a broker is drawn as a dead end, with producers pointing into it and
+// nothing coming out.
+//
+// Count/ErrorCount/P50/P95 are measured on the CALLER's span, so they report
+// what the caller experienced, matching ServiceEdge's client-side rule.
+type VirtualTarget struct {
+	Service    string // the instrumented service at the near end
+	Kind       string // "database" | "cache" | "queue"
+	System     string // db.system.name / db.system / messaging.system
+	Peer       string // resolved address or logical name; "" when unknown
+	Direction  string // "out" (service → target) | "in" (target → service)
+	Count      uint64
+	ErrorCount uint64
+	P50        time.Duration
+	P95        time.Duration
+}
+
 // ZoneTraffic is the byte volume exchanged between two availability zones over
 // the window. Zones are node topology, not workload identity: the pair count is
 // bounded by how many zones a cluster spans, which is why this can be collected
@@ -724,6 +750,10 @@ type Store interface {
 	// NetworkEdges derives service→service edges from OBI network flow metrics
 	// (otel_metrics_sum). It reads the metrics tables, so callers must gate it
 	// on the infra-metrics module being active (the tables exist only then).
+	// VirtualTargets derives the infrastructure dependencies (databases, caches,
+	// message brokers) that appear only in their callers' exit spans. Core: it
+	// reads otel_traces, so it needs no module gate.
+	VirtualTargets(ctx context.Context, q ServiceQuery) ([]VirtualTarget, error)
 	NetworkEdges(ctx context.Context, q ServiceQuery) ([]ServiceEdge, error)
 	// NetworkEdgeHealth returns per-edge RTT p95 + failed-connection counts from
 	// OBI's TCP-stats metrics. Same infra-metrics gating as NetworkEdges.

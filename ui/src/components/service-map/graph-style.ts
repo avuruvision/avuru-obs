@@ -36,11 +36,15 @@ const scale = (compact: boolean) => ({
 //   width          call volume
 //   line color     plain / amber (network health) / red (trace errors)
 //
-// Two shapes sit outside that set and must not disturb it: a transport node
-// (mesh proxy / gateway, hidden unless the user asks for it) is drawn as a
-// diamond in the neutral tone, so the round primary-filled circle keeps meaning
+// Three treatments sit outside that set and must not disturb it: a transport
+// node (mesh proxy / gateway, hidden unless the user asks for it) is drawn as a
+// diamond in the neutral tone and a virtual target (database / cache / broker)
+// as a dashed hexagon, so the round primary-filled circle keeps meaning
 // "application"; and a flow-only edge is DOTTED, because dashed is already
 // spoken for by network health.
+//
+// Node shape carries WHAT A NODE IS. It is a separate channel from the six
+// above precisely so that adding a kind of node never costs the map a colour.
 //
 // carbon=false must leave the graph byte-identical to a non-green install.
 export function applyStyle(cy: Core, carbon = false, compact = false) {
@@ -94,7 +98,24 @@ export function applyStyle(cy: Core, carbon = false, compact = false) {
     // Transport (mesh sidecar / waypoint / ingress gateway). Shape and fill,
     // not the ring — the ring is health's channel and a proxy has health too.
     .selector("node[transport > 0]")
-    .style({ shape: "round-diamond", "background-color": c.neutral, "background-opacity": 0.85 });
+    .style({ shape: "round-diamond", "background-color": c.neutral, "background-opacity": 0.85 })
+    // Virtual target (database / cache / broker). Same rule as transport:
+    // SHAPE and fill, never the ring. A hexagon is distinguishable from both
+    // the circle and the diamond at overview scale, which a rounded square is
+    // not. The dashed border says "inferred" — this node was derived from its
+    // callers' spans, not observed sending anything. It sets no border COLOR:
+    // that leaves the neutral base ring (a virtual target has no health verdict
+    // to show) while still letting the module-off error ring above come
+    // through, so a database failing every call reads red on a health-less
+    // install.
+    .selector("node[virtual > 0]")
+    .style({
+      shape: "round-hexagon",
+      "background-color": c.neutral,
+      "background-opacity": 0.85,
+      "border-style": "dashed",
+      "border-width": 2,
+    });
 
   // Carbon halo (low→high gCO2e). Applied after the ring selectors so a node
   // can read status (ring) and carbon (halo) at once. Only bucketed nodes carry

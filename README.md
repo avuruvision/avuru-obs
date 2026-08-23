@@ -49,7 +49,10 @@ hub (Go binary: API + OpAMP config plane)   ◄── UI (static SPA, own pod)
 
 - **Zero-code**: OpenTelemetry eBPF Instrumentation (OBI) for traces + RED
   metrics, with the live service map derived from those traces; OTLP ingest
-  for apps you've already instrumented.
+  for apps you've already instrumented. The map includes the dependencies that
+  send no telemetry at all — the databases, caches and message brokers your
+  services call — derived from those same traces, so the thing your latency is
+  actually spent in is on the picture from the first five minutes.
 - **One store**: ClickHouse for traces, metrics, logs, profiles, and flows.
 - **Drop-in, and not only for OTLP**: point the exporters you already run at
   the gateway — OTLP, Jaeger, Zipkin, Prometheus remote-write or Loki push,

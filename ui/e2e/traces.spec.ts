@@ -43,7 +43,7 @@ test.describe("shell", () => {
   test("service map renders the seeded service graph", async ({ page }) => {
     await page.goto("/service-map");
     // Seeded data → not the empty state; the screen summarises the nodes.
-    await expect(page.getByText(/click a node for its traces/)).toBeVisible();
+    await expect(page.getByText(/click a service for its traces/)).toBeVisible();
   });
 });
 
@@ -286,7 +286,7 @@ test.describe("service map controls", () => {
     await expect(button).toBeVisible();
     await button.click();
     // The graph stays mounted and interactive after the re-layout.
-    await expect(page.getByText(/click a node for its traces/)).toBeVisible();
+    await expect(page.getByText(/click a service for its traces/)).toBeVisible();
   });
 });
 

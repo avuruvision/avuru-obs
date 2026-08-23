@@ -27,6 +27,10 @@ type serviceDTO struct {
 	// only when it is NOT the default: an application carries no role field, so
 	// a mesh-less install keeps a byte-identical wire shape.
 	Role string `json:"role,omitempty"`
+	// Kind narrows a virtual target (role "virtual") to what it actually is:
+	// "database", "cache" or "queue". Empty on every other node — an
+	// application is not a kind of anything, it is the default.
+	Kind string `json:"kind,omitempty"`
 }
 
 type servicesResponse struct {

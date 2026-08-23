@@ -11,6 +11,24 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **The database is on the map.** A service that spends most of its latency in
+  PostgreSQL used to be drawn as a lonely circle with no explanation, because
+  the map only drew what sends telemetry — and a database, cache or message
+  broker sends none. They are now first-class nodes, derived from the exit spans
+  of the services calling them: no new agent, no new table, nothing to turn on.
+  On a zero-code install the eBPF sensor reads the SQL and Redis wire protocols
+  in the kernel, so the database appears in the first five minutes with nothing
+  configured. Each edge carries call volume, error rate and the latency the
+  CALLER experienced, which is the number that answers "where is the time
+  going?" — and four services drawn against one cache is a blast radius that was
+  previously invisible. A broker is drawn from both ends, so a queue is never a
+  dead end. Databases, caches and brokers only: an unmatched HTTP call is usually
+  a third-party API, and admitting every one of them would make the map less
+  readable, not more — see the
+  [AEP](design/2026-08-23-virtual-targets.md).
+
 ## [0.7.0] — 2026-08-23
 
 **The clients and the labels.** v0.6 opened both ends of the pipe. What arrived

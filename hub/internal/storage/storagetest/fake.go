@@ -18,6 +18,7 @@ type Fake struct {
 	Labels        []storage.ServiceLabel
 	Edges         []storage.ServiceEdge
 	NetEdges      []storage.ServiceEdge
+	Virtual       []storage.VirtualTarget
 	NetEdgeHealth []storage.NetworkEdgeHealth
 	Zones         []storage.ZoneTraffic
 	Tags          []storage.TagKey
@@ -217,6 +218,11 @@ func (f *Fake) ServiceEdges(_ context.Context, q storage.ServiceQuery) ([]storag
 func (f *Fake) TagKeys(_ context.Context, q storage.ServiceQuery) ([]storage.TagKey, error) {
 	f.LastServiceQuery = q
 	return f.Tags, nil
+}
+
+func (f *Fake) VirtualTargets(_ context.Context, q storage.ServiceQuery) ([]storage.VirtualTarget, error) {
+	f.LastServiceQuery = q
+	return f.Virtual, nil
 }
 
 func (f *Fake) NetworkEdges(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceEdge, error) {
