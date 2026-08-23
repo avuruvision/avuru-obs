@@ -4,8 +4,8 @@ description: Avuru Obs — all-in-one observability on ClickHouse. Zero-code eBP
 type: application
 # Chart version (SemVer); appVersion tracks the hub/gateway image generation.
 # Both are stamped by `make version-set V=x.y.z` (RELEASING.md) — do not hand-edit.
-version: 0.7.0
-appVersion: "0.7.0"
+version: 0.8.0-SNAPSHOT
+appVersion: "0.8.0-SNAPSHOT"
 home: https://github.com/avuruvision/avuru-obs
 sources:
   - https://github.com/avuruvision/avuru-obs
@@ -36,10 +36,10 @@ annotations:
   # pinned in values.yaml and are not ours to sign.
   artifacthub.io/images: |
     - name: hub
-      image: ghcr.io/avuruvision/avuru-obs-hub:0.7.0
+      image: ghcr.io/avuruvision/avuru-obs-hub:0.8.0-SNAPSHOT
     - name: ui
-      image: ghcr.io/avuruvision/avuru-obs-ui:0.7.0
+      image: ghcr.io/avuruvision/avuru-obs-ui:0.8.0-SNAPSHOT
     - name: gateway
-      image: ghcr.io/avuruvision/avuru-obs-gateway:0.7.0
+      image: ghcr.io/avuruvision/avuru-obs-gateway:0.8.0-SNAPSHOT
     - name: tdp-estimator
-      image: ghcr.io/avuruvision/avuru-obs-tdp-estimator:0.7.0
+      image: ghcr.io/avuruvision/avuru-obs-tdp-estimator:0.8.0-SNAPSHOT
