@@ -187,8 +187,44 @@ jobs:
           path: dist/*.tgz
           if-no-files-found: error
 
+  # Client binaries. Built for the platforms an operator's laptop and a CI
+  # runner actually are, with the version stamped in so `avuruobs version`
+  # answers something meaningful. Static (CGO off) so the binary runs on any
+  # base image, including the scratch ones CI jobs like.
+  cli:
+    needs: meta
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - name: Build binaries
+        working-directory: clients/cli
+        env:
+          CGO_ENABLED: "0"
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            os="${target%/*}"; arch="${target#*/}"
+            ext=""; [ "$os" = "windows" ] && ext=".exe"
+            out="dist/avuruobs_${os}_${arch}${ext}"
+            GOOS="$os" GOARCH="$arch" go build \
+              -ldflags "-s -w -X main.Version=${VERSION}" \
+              -o "$out" ./cmd/avuruobs
+          done
+          ( cd dist && sha256sum * > checksums.txt )
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-binaries
+          path: clients/cli/dist/*
+          if-no-files-found: error
+
   release:
-    needs: [meta, images, chart]
+    needs: [meta, images, chart, cli]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -200,6 +236,10 @@ jobs:
           # files land directly under path (no per-artifact subdirectory).
           name: helm-chart
           path: artifacts/helm-chart
+      - uses: actions/download-artifact@v4
+        with:
+          name: cli-binaries
+          path: artifacts/cli
       - name: Extract changelog notes
         id: notes
         run: |
@@ -232,6 +272,7 @@ jobs:
             artifacts/helm-chart/*.tgz
             artifacts/installer/install.sh
             artifacts/installer/install.sh.sha256
+            artifacts/cli/*
       - name: Dry-run summary
         if: needs.meta.outputs.dry_run == 'true'
         run: echo "Dry run — built images and chart, skipped push and release for ${{ needs.meta.outputs.tag }}"

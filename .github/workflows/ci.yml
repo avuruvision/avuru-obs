@@ -46,6 +46,23 @@ jobs:
         working-directory: gateway/${{ matrix.module }}
         run: go build ./... && go vet ./... && go test ./...
 
+  # The client binaries under clients/ are separate Go modules with their own
+  # toolchains — same rationale as gateway-modules below: they must not weigh on
+  # the hub build, and a break in one is not a break in the platform.
+  clients:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        client: [cli]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - name: build + vet + test
+        working-directory: clients/${{ matrix.client }}
+        run: go build ./... && go vet ./... && go test ./...
+
   # The in-repo sensor modules (first-party additions to the DaemonSet, like
   # tdp-estimator) are separate Go modules the hub job never touches — same
   # rationale as gateway-modules above.

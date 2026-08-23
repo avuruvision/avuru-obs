@@ -61,6 +61,9 @@ GATEWAY_MODULES := sentryreceiver avuruingestauth tenantfromauth
 # Every in-repo sensor module (like the gateway modules) is its own Go
 # module — a module missing from this list is a module CI does not gate.
 SENSOR_MODULES := tdp-estimator
+# Client binaries under clients/ — separate modules with their own toolchains,
+# so they never weigh on the hub build.
+CLIENTS := cli
 
 check:
 	cd hub && go build ./... && go test -race ./...
@@ -71,6 +74,10 @@ check:
 	@for m in $(SENSOR_MODULES); do \
 		echo "== sensor/$$m"; \
 		( cd sensor/$$m && go build ./... && go vet ./... && go test ./... ) || exit 1; \
+	done
+	@for c in $(CLIENTS); do \
+		echo "== clients/$$c"; \
+		( cd clients/$$c && go build ./... && go vet ./... && go test ./... ) || exit 1; \
 	done
 	cd ui && npm run lint && npm run build
 
