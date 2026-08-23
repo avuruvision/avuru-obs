@@ -36,6 +36,12 @@ export interface ServiceStats {
   // returns a byte-identical service shape.
   wh?: number;
   gco2e?: number;
+  // "transport" when the hub classified this workload as infrastructure that
+  // carries other services' traffic — a mesh sidecar, waypoint or ztunnel
+  // proxy, an ingress/egress gateway. Absent for applications, so a cluster
+  // with no mesh returns the same shape it always did. The map hides transport
+  // by default: its edges are hops, not dependencies.
+  role?: string; // "transport"
 }
 
 export interface ServicesResponse {

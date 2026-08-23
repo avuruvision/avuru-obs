@@ -36,6 +36,12 @@ const scale = (compact: boolean) => ({
 //   width          call volume
 //   line color     plain / amber (network health) / red (trace errors)
 //
+// Two shapes sit outside that set and must not disturb it: a transport node
+// (mesh proxy / gateway, hidden unless the user asks for it) is drawn as a
+// diamond in the neutral tone, so the round primary-filled circle keeps meaning
+// "application"; and a flow-only edge is DOTTED, because dashed is already
+// spoken for by network health.
+//
 // carbon=false must leave the graph byte-identical to a non-green install.
 export function applyStyle(cy: Core, carbon = false, compact = false) {
   const c = themeColors();
@@ -84,7 +90,11 @@ export function applyStyle(cy: Core, carbon = false, compact = false) {
     // Module-off fallback ring (see graph-elements.ts). Only nodes on a
     // health-less install carry `errorRing`, so this is inert everywhere else.
     .selector("node[errorRing > 0]")
-    .style({ "border-color": c.error });
+    .style({ "border-color": c.error })
+    // Transport (mesh sidecar / waypoint / ingress gateway). Shape and fill,
+    // not the ring — the ring is health's channel and a proxy has health too.
+    .selector("node[transport > 0]")
+    .style({ shape: "round-diamond", "background-color": c.neutral, "background-opacity": 0.85 });
 
   // Carbon halo (low→high gCO2e). Applied after the ring selectors so a node
   // can read status (ring) and carbon (halo) at once. Only bucketed nodes carry
@@ -117,6 +127,11 @@ export function applyStyle(cy: Core, carbon = false, compact = false) {
       "transition-property": "opacity, width",
       "transition-duration": 120,
     })
+    // Flow-only: a connection the sensor observed with no traced call behind
+    // it. First, so an edge that is ALSO unhealthy or errored still gets the
+    // dashed amber / solid red it needs — urgency outranks provenance.
+    .selector("edge[flow > 0]")
+    .style({ "line-style": "dotted", opacity: 0.6 })
     // Network-health amber (high RTT or failed connections) — before the error
     // selector so trace-error red always wins when an edge is both.
     .selector("edge[health > 0]")
