@@ -2,7 +2,7 @@
 
 - **Date:** 2026-07-27
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Partially implemented — the CLI shipped 2026-08-23; the Grafana data source remains
 - **Note:** the **API-token seam** described here is narrowed and superseded by
   [2026-08-13 API tokens](2026-08-13-api-tokens.md), which ships tokens on their
   own. The Grafana data source and the CLI remain this AEP's, unbuilt.
@@ -113,11 +113,44 @@ weigh on the hub/ui build.
   (read-only, grant-scoped) and the `avuruobs` CLI, and a CI job can fail on a
   health predicate — all through the public Hub API.
 
+## What implementation changed
+
+**The CLI has no dependencies.** The AEP specified Cobra. A binary people
+`go install` and then hand an API token deserves a supply chain they can read in
+an afternoon, and the standard library covers flags, HTTP and column alignment.
+The cost is a hand-written subcommand switch in one file; the benefit is that
+`go install` pulls nothing but this repo.
+
+**The client is untyped on purpose.** Every call decodes into `map[string]any`
+and the command formats a few known columns. The alternative — mirrored DTOs —
+would make the CLI the reason a new API field is invisible; instead `-o json`
+passes the whole response through, so anything unmodelled is still reachable
+with `jq`.
+
+**Three exit codes, not two.** `0` nothing matched, `1` the command failed,
+`2` the predicate matched. A pipeline has to tell "the gate tripped" from "the
+gate could not run", and a single non-zero exit cannot. This also closes the
+dangerous case: a 401 returns no rows, and with two codes a `--fail-on` gate
+would read that as "nothing over threshold" and pass.
+
+For the same reason, a predicate naming a field no row carries is an **error**,
+not a pass. A gate silently watching a misspelled field is the worst outcome
+available.
+
+**`--fail-on` takes one comparison, not an expression language.** A gate needing
+boolean algebra is a gate whose failure is hard to read in a CI log at 3am; two
+invocations say the same thing legibly.
+
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] `auth_tokens` store + Bearer-token branch in the auth middleware
-- [ ] `GET/POST/DELETE /api/v1/tokens` (one-time secret) + Settings → Tokens UI
-- [ ] CLI (`clients/cli/`): auth, services/traces/logs/health/status, `--fail-on`
+- [x] AEP accepted
+- [x] `auth_tokens` store + Bearer-token branch in the auth middleware —
+      shipped separately in [2026-08-13 API tokens](2026-08-13-api-tokens.md)
+- [x] `GET/POST/DELETE /api/v1/tokens` (one-time secret) + Settings → Tokens UI
+      — same
+- [x] CLI (`clients/cli/`): `login`, `services`, `health`, `traces`, `logs`,
+      `status`, `-o table|json`, `--project`, `--fail-on`
+- [x] Release artifacts: static binaries for linux/darwin/windows on amd64 and
+      arm64, with checksums, attached to the GitHub release
 - [ ] Grafana data source (`clients/grafana-datasource/`): RED, traces, health
-- [ ] Release artifacts (CLI binaries, plugin zip); e2e; docs-align (EN/FR)
+- [ ] Plugin zip in the release; docs-align (EN/FR)

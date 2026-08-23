@@ -151,6 +151,16 @@ docker compose -f docker-compose.release.yaml up --wait   # then open http://loc
 
 Full setup, sizing, and configuration: [`deploy/helm/README.md`](deploy/helm/README.md).
 
+**From a terminal or a pipeline.** The Hub API is the contract; the web app is
+one client of it. [`avuruobs`](clients/cli/README.md) is another, and it can
+fail a deploy on a predicate:
+
+```bash
+go install github.com/avuru/avuru-obs/clients/cli/cmd/avuruobs@latest
+avuruobs login --url https://obs.example.com --token avurut_…
+avuruobs health --fail-on 'status!=healthy'   # exit 2 when a group is not healthy
+```
+
 ## Repository layout
 
 | Path | What | Stack |
@@ -160,6 +170,7 @@ Full setup, sizing, and configuration: [`deploy/helm/README.md`](deploy/helm/REA
 | [`gateway/`](gateway/) | Minimal OTel Collector distro (OCB manifest) | OCB / YAML |
 | [`sensor/`](sensor/README.md) | DaemonSet assembly (OBI + collector + profiler) | YAML |
 | [`deploy/`](deploy/helm/README.md) | Helm chart (flagship) + [docker-compose sandbox](deploy/compose/README.md) | Helm / compose |
+| [`clients/`](clients/cli/README.md) | Additional clients of the Hub API — `avuruobs` CLI | Go |
 | [`e2e/`](e2e/) | End-to-end tests (Go + Playwright) | Go / TS |
 | [`tools/`](tools/) | Dev tooling (e.g. OTLP fixture seeder) | Go |
 | [`agent_docs/`](agent_docs/README.md) | Topic docs for contributors (and AI agents) | — |

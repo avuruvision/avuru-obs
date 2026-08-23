@@ -33,6 +33,27 @@ When a release is cut, that block is renamed to the version with its date.
 - **`serviceGroups.tierOverrides`** — per-service operator tier, winning over
   both a declared tier and a matched group's tier. Corrects one service's
   criticality without moving it into a different group.
+- **`avuruobs`, a command-line client.** The Hub API was always meant to be the
+  contract and the web app one client of it; this is the second client, for the
+  places a browser cannot go. `avuruobs services`, `health`, `traces`, `logs` and
+  `status` read the same API the UI does, authenticated with a personal API
+  token that resolves to its owner's live permissions — so the CLI sees exactly
+  what that person sees, with no second authorization model to keep in sync.
+
+  The reason to have it is `--fail-on`: `avuruobs health --fail-on
+  'status!=healthy'` exits **2** when the predicate matches, **1** when the
+  command itself failed, and **0** when nothing matched. Those are three
+  different things and a deploy gate needs to tell them apart — with a single
+  non-zero exit, an expired token returns no rows and the gate reads "nothing
+  over threshold" as success. For the same reason, a predicate naming a field no
+  row carries is an error rather than a pass.
+
+  `-o json` prints the raw API response, so anything the CLI does not yet model
+  is still reachable with `jq`. Static binaries for Linux, macOS and Windows on
+  both architectures are attached to each release with checksums, and the binary
+  has **no third-party dependencies** — a tool you hand an API token should have
+  a supply chain you can read in an afternoon.
+
 - **Cross-zone traffic accounting.** Cloud providers bill data that crosses an
   availability-zone boundary, and the usual way to find out what is driving that
   line is a flow-log pipeline or a cost SaaS. The sensor already watches every
