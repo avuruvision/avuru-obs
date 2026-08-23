@@ -92,14 +92,25 @@ data:
     attributes:
       kubernetes:
         enable: true
-    {{- if and .Values.sensor.obi.network.enabled .Values.sensor.obi.network.stats }}
-      # Per-edge network health reads these two metrics by the k8s owner keys
-      # the service map joins on, so the attribute set is pinned here rather
-      # than left to OBI's defaults. This `select` belongs to the SAME
-      # `attributes` mapping as `kubernetes` above: OBI parses its config with
-      # strict YAML, where a second `attributes:` key at this level is a load
-      # error that stops the process, not a merge.
+    {{- if .Values.sensor.obi.network.enabled }}
+      # Per-metric attribute sets. `include` REPLACES OBI's defaults for the
+      # named metric, which is the point: left alone, flow bytes also carry
+      # direction and per-interface labels, and the TCP-stats metrics carry
+      # source and destination IP ADDRESSES — a series per address pair. Both
+      # are pinned to the k8s owner keys the service map joins on.
+      #
+      # This `select` belongs to the SAME `attributes` mapping as `kubernetes`
+      # above: OBI parses its config with strict YAML, where a second
+      # `attributes:` key at this level is a load error that stops the process,
+      # not a merge.
       select:
+        obi.network.flow.bytes:
+          include:
+            - k8s.src.owner.name
+            - k8s.src.namespace
+            - k8s.dst.owner.name
+            - k8s.dst.namespace
+        {{- if .Values.sensor.obi.network.stats }}
         obi.stat.tcp.rtt:
           include:
             - k8s.src.owner.name
@@ -108,6 +119,7 @@ data:
           include:
             - k8s.src.owner.name
             - k8s.dst.owner.name
+        {{- end }}
     {{- end }}
     routes:
       # heuristic keeps http.route cardinality bounded (ids -> wildcards);
@@ -132,17 +144,12 @@ data:
     # Kernel L4 network flows: service-map completeness for workloads OBI's L7
     # probes don't parse — WITHOUT uprobes (no app-cgroup cost). Exported as the
     # OTLP metric obi.network.flow.bytes -> otel_metrics_sum, aggregated by k8s
-    # workload identity to bound cardinality. `enable` is redundant with the
-    # feature list above and deprecated upstream, but it is the switch that has
-    # actually been exercised, so both are set until a cluster run says
-    # otherwise.
+    # workload identity (see attributes.select above) to bound cardinality.
+    # `enable` is redundant with the feature list above and deprecated upstream,
+    # but it is the switch that has actually been exercised, so both are set
+    # until a cluster run says otherwise.
     network:
       enable: true
-      allowed_attributes:
-        - k8s.src.owner.name
-        - k8s.src.namespace
-        - k8s.dst.owner.name
-        - k8s.dst.namespace
     {{- end }}
 {{- else }}
     # Placeholder: signal disabled. Managed by runtime collection control —

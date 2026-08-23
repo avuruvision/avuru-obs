@@ -328,6 +328,10 @@ grep -qE '^\s+- network$' <<<"$body" || fail "the network feature is not in OBI'
 grep -qE '^\s+- application$' <<<"$body" || fail "application feature lost when the network feature list is pinned"
 grep -q 'obi.stat.tcp.rtt:' <<<"$body" || fail "obi.stat.tcp.rtt attribute selection missing"
 grep -q 'obi.stat.tcp.failed.connections:' <<<"$body" || fail "obi.stat.tcp.failed.connections attribute selection missing"
+# Left to OBI's defaults, flow bytes carry direction + per-interface labels and
+# the stats metrics carry src/dst IP addresses — a series per address pair.
+grep -q 'obi.network.flow.bytes:' <<<"$body" || fail "flow-bytes attribute selection missing (cardinality unbounded)"
+grep -q 'allowed_attributes' <<<"$body" && fail "allowed_attributes is not an OBI v0.9.0 key — use attributes.select"
 # The selection has to live in the same `attributes` mapping as the kubernetes
 # decorator, not a second one.
 [ "$(grep -cE '^attributes:' <<<"$body")" = "1" ] || fail "attributes: is not a single root mapping"
@@ -341,6 +345,7 @@ body="$(obi_config "$out")"
 grep -q 'obi.stat.tcp.rtt' <<<"$body" && fail "stats config survived network.stats=false"
 grep -qE '^\s+- stats$' <<<"$body" && fail "stats feature survived network.stats=false"
 grep -qE '^network:' <<<"$body" || fail "network flow config missing"
+grep -q 'obi.network.flow.bytes:' <<<"$body" || fail "flow-bytes attribute selection lost with stats off"
 ok "flow bytes without TCP stats"
 
 echo "== service-map topology: ungated, because the map cannot be turned off"
