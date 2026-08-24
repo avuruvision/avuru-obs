@@ -442,7 +442,14 @@ test.describe("span detail panel (seeded data)", () => {
     await openSpanDetail(page);
     await page.getByText(LONG_VALUE).first().hover();
     await page.getByRole("button", { name: "Copy db.query.text" }).click();
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(LONG_VALUE);
+    // readText() needs the document focused and the async write settled, and
+    // neither is guaranteed the instant the click returns — a single read here
+    // is a flake waiting for a busy machine. Poll instead, now that this suite
+    // is a gate rather than something run by hand.
+    await page.bringToFront();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe(LONG_VALUE);
   });
 
   test("panel resizes by drag, persists, and resets on double-click", async ({ page }) => {
