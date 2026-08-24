@@ -28,6 +28,26 @@ When a release is cut, that block is renamed to the version with its date.
   a third-party API, and admitting every one of them would make the map less
   readable, not more — see the
   [AEP](design/2026-08-23-virtual-targets.md).
+- **Boundaries on the map.** Group the graph by namespace or by service group
+  and each one is drawn as a labelled container, so an estate of forty services
+  can be read the way you actually think about it instead of scanned as a
+  hairball. Namespaces come from the same resolution the health board's
+  auto-grouping uses, so a box on the map and a group on the board cannot
+  disagree about where a service lives; a service that declares neither is drawn
+  outside every box rather than swept into an invented one. Off by default and
+  held in the URL, like every other map control — see the
+  [AEP](design/2026-08-24-map-encoding.md).
+- The map's zoom controls now have a number to move: a live zoom percentage
+  beside them.
+
+### Changed
+
+- The map's first layout no longer lines disconnected parts of an estate up on
+  a diagonal. Its deterministic seeding placed them that way, which wasted most
+  of the canvas and stacked service names on top of each other — so the first
+  thing anyone did was press Re-layout. It now lays out the same way a
+  re-layout does, and unconnected services inside a boundary get room for their
+  labels.
 
 ## [0.7.0] — 2026-08-23
 

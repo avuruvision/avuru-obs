@@ -9,7 +9,13 @@ export function focusNeighbourhood(cy: Core, node: NodeSingular) {
   const edges = node.connectedEdges();
   const keep = edges.connectedNodes().union(node);
   cy.elements().removeClass(CLASSES);
-  cy.elements().difference(keep.union(edges)).addClass("faded");
+  // Boundary boxes are context, not neighbours: fading them makes the map look
+  // broken while you hover, and un-fading them would claim they are part of the
+  // neighbourhood. They simply stay as they are.
+  cy.elements()
+    .difference(keep.union(edges))
+    .difference(cy.nodes(":parent"))
+    .addClass("faded");
   edges.addClass("related");
   node.addClass("focus");
 }

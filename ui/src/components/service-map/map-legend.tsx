@@ -1,5 +1,7 @@
 "use client";
 
+import type { MapGrouping } from "./graph-elements";
+
 // What the map's channels mean. Dense single row: the map is the content, and
 // a legend that takes vertical space costs the thing it explains.
 //
@@ -10,11 +12,13 @@ export function MapLegend({
   carbon,
   infra,
   virtual,
+  grouping = "none",
 }: {
   health: boolean;
   carbon: boolean;
   infra: boolean;
   virtual: boolean;
+  grouping?: MapGrouping;
 }) {
   return (
     <div
@@ -39,6 +43,9 @@ export function MapLegend({
       <span>dotted = observed connection, no traced calls</span>
       {infra && <span>diamond = mesh or gateway</span>}
       {virtual && <span>dashed hexagon = database, cache or queue</span>}
+      {grouping !== "none" && (
+        <span>box = {grouping === "namespace" ? "namespace" : "service group"}</span>
+      )}
       {carbon && <span className="text-success/80">halo = gCO2e</span>}
       <span className="text-base-content/40">hover a node for its edges</span>
     </div>

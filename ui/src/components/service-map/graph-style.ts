@@ -117,6 +117,33 @@ export function applyStyle(cy: Core, carbon = false, compact = false) {
       "border-width": 2,
     });
 
+  // Boundary boxes (compound parents: namespace or health group). Drawn as a
+  // faint dashed container with its name at the top — deliberately quiet, since
+  // a boundary is context for the nodes, not a thing competing with them for
+  // attention. Sized by its children, so no width/height here.
+  withNodes
+    .selector(":parent")
+    .style({
+      shape: "round-rectangle",
+      "background-color": c.neutral,
+      "background-opacity": 0.12,
+      "border-color": c.neutral,
+      "border-width": 1,
+      "border-style": "dashed",
+      label: "data(label)",
+      color: c.text,
+      "font-size": s.fontSize + (compact ? 0 : 1),
+      "text-valign": "top",
+      "text-halign": "center",
+      "text-margin-y": compact ? -2 : -4,
+      "text-background-opacity": 0,
+      "text-opacity": 0.6,
+      padding: compact ? "8px" : "16px",
+      // A box must never eat a hover meant for the node inside it, and it has
+      // no traces to open — so it takes no pointer events at all.
+      events: "no",
+    });
+
   // Carbon halo (low→high gCO2e). Applied after the ring selectors so a node
   // can read status (ring) and carbon (halo) at once. Only bucketed nodes carry
   // the `carbon` attribute, so nodes without energy get no halo.

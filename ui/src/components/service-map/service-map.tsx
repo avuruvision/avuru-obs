@@ -8,7 +8,7 @@ import { cn } from "@/lib/cn";
 import type { ServiceEdge, ServiceStats } from "@/lib/api-types";
 import type { ServiceHealth } from "@/hooks/use-service-health-status";
 import { applyStyle } from "./graph-style";
-import { buildElements, nodeEnergyTooltip } from "./graph-elements";
+import { buildElements, nodeEnergyTooltip, type MapGrouping } from "./graph-elements";
 import { clearFocus, focusNeighbourhood } from "./graph-focus";
 
 let layoutRegistered = false;
@@ -25,20 +25,36 @@ const fitPadding = (compact: boolean) => (compact ? 26 : 60);
 
 // Label-aware fcose options: without nodeDimensionsIncludeLabels the simulation
 // ignores label width and stacks the names on top of each other. The initial
-// layout is deterministic (no animation, seeded positions); a re-layout
-// randomizes the seed to escape a tangled local minimum, animated so the
-// untangle reads as movement, not a flash.
+// layout lands instantly (no animation); a re-layout runs the same simulation
+// animated, so the untangle reads as movement rather than a flash.
 const layoutOptions = (animate: boolean, compact = false) =>
   ({
     name: "fcose",
     quality: "proof",
     animate,
-    randomize: animate,
+    // Randomize even on the first pass. fcose's deterministic mode seeds
+    // positions spectrally, and on an estate made of several disconnected
+    // components — which every real cluster is — that lines them up on a
+    // diagonal, wasting most of the canvas and stacking labels on each other.
+    // Determinism bought nothing here: no test asserts a position, and the
+    // first thing anyone did with the diagonal was press Re-layout.
+    randomize: true,
     padding: fitPadding(compact),
     nodeDimensionsIncludeLabels: true,
     nodeSeparation: compact ? 95 : 170,
     idealEdgeLength: compact ? 95 : 170,
     nodeRepulsion: compact ? 5200 : 9000,
+    // Nodes with no edges are TILED rather than simulated, and tiling does not
+    // honour nodeDimensionsIncludeLabels — so without generous padding a box
+    // full of unconnected services stacks their labels on top of each other.
+    // Horizontal padding is the larger of the two: service names are wide and
+    // a node's label sits under it, not beside it.
+    tilingPaddingHorizontal: compact ? 30 : 90,
+    tilingPaddingVertical: compact ? 14 : 34,
+    // Keep boundary boxes apart. fcose treats a compound as a single node for
+    // repulsion, and two dashed borders that touch read as one container.
+    gravityRangeCompound: 1,
+    gravityCompound: 0.6,
   }) as unknown as LayoutOptions;
 
 export interface ServiceMapHandle {
@@ -62,6 +78,8 @@ export function ServiceMap({
   carbon = false,
   compact = false,
   healthEnabled = false,
+  grouping = "none",
+  onZoomPercent,
 }: {
   services: ServiceStats[];
   edges: ServiceEdge[];
@@ -81,6 +99,16 @@ export function ServiceMap({
   // have returned no members yet, which would misread as "off". Drives the
   // module-off error-ring fallback in graph-elements.ts.
   healthEnabled?: boolean;
+  // Draw boundary boxes around namespaces or health groups. Default "none":
+  // an ungrouped map is what every existing caller expects, and the compact
+  // overview has no room for boxes.
+  grouping?: MapGrouping;
+  // Reports the current zoom as a whole percentage, and only when that
+  // percentage changes. Deliberately not the raw zoom: an animated layout emits
+  // `zoom` every frame, and pushing a float into React state each time would
+  // re-render the screen ~60 times a second to move a readout that can only
+  // show integers anyway. Optional — the graph works the same without it.
+  onZoomPercent?: (percent: number) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -109,7 +137,15 @@ export function ServiceMap({
     ensureLayout();
     const cy = cytoscape({
       container: ref.current,
-      elements: buildElements({ services, edges, health, windowMs, carbon, healthEnabled }),
+      elements: buildElements({
+        services,
+        edges,
+        health,
+        windowMs,
+        carbon,
+        healthEnabled,
+        grouping,
+      }),
       layout: layoutOptions(false, compact),
       minZoom: 0.3,
       maxZoom: 2.5,
@@ -149,6 +185,17 @@ export function ServiceMap({
     });
     cy.on("mouseout", "edge", hideTip);
     cy.on("pan zoom drag", hideTip);
+    if (onZoomPercent) {
+      let last = -1;
+      const report = () => {
+        const pct = Math.round(cy.zoom() * 100);
+        if (pct === last) return;
+        last = pct;
+        onZoomPercent(pct);
+      };
+      report();
+      cy.on("zoom", report);
+    }
 
     // Node hover drives the focus, and (under the carbon lens only) the energy
     // tooltip. Both live in one handler so they cannot fight over mouseover.
@@ -179,7 +226,18 @@ export function ServiceMap({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [services, edges, health, windowMs, router, carbon, compact, healthEnabled]);
+  }, [
+    services,
+    edges,
+    health,
+    windowMs,
+    router,
+    carbon,
+    compact,
+    healthEnabled,
+    grouping,
+    onZoomPercent,
+  ]);
 
   // Re-theme the graph when the user toggles light/dark.
   useEffect(() => {

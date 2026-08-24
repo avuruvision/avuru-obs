@@ -116,6 +116,11 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 	if a.modules.Enabled(modules.Green) {
 		a.stampServiceEnergy(r.Context(), store, q.Tenant, tr, resp.Services)
 	}
+	// Namespaces, so the map can draw a boundary around one. Best-effort: a
+	// label read that fails costs the boundaries, not the map.
+	if labels, lerr := store.ServiceLabels(r.Context(), q); lerr == nil {
+		stampServiceNamespaces(labels, resp.Services)
+	}
 	// Virtual targets go on LAST, after both stamps: they are neither workloads
 	// the topology classifier should re-label nor pods the energy read can find,
 	// and appending them here keeps both of those loops walking real services
@@ -124,6 +129,29 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 	resp.Edges = applyEdgeHealth(resp.Edges, health)
 	writeJSON(w, http.StatusOK, resp)
 	return nil
+}
+
+// stampServiceNamespaces copies each service's dominant namespace onto its map
+// node. k8s.namespace.name first, then service.namespace — the same order the
+// health module's auto-grouping uses, so a boundary on the map and a group on
+// the health board cannot disagree about where a service lives. A service that
+// declares neither keeps an empty namespace: the map then draws it outside every
+// boundary, which is the truth, rather than collecting unrelated services into
+// an invented bucket.
+func stampServiceNamespaces(labels []storage.ServiceLabel, services []serviceDTO) {
+	byService := make(map[string]storage.ServiceLabel, len(labels))
+	for _, l := range labels {
+		byService[l.Service] = l
+	}
+	for i := range services {
+		l := byService[services[i].Name]
+		switch {
+		case l.K8sNamespace != "":
+			services[i].Namespace = l.K8sNamespace
+		case l.ServiceNamespace != "":
+			services[i].Namespace = l.ServiceNamespace
+		}
+	}
 }
 
 // stampServiceRoles labels each map node with its topology role, leaving

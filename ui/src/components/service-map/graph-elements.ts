@@ -79,6 +79,25 @@ export function virtualTooltip(s: ServiceStats, rpm: number): string {
   return parts.join(" · ");
 }
 
+// How the map draws boundaries. "namespace" is where a workload lives;
+// "group" is what it belongs to on the health board. Two different questions,
+// so the user picks — and "none" stays the default, because a box around every
+// node is only clarifying once you asked for it.
+export type MapGrouping = "none" | "namespace" | "group";
+
+// Boundary ids are namespaced with a control character so a boundary can never
+// collide with a service.name — a collision would make a box and a service the
+// same graph node. Nothing renders the id; the label is a separate field.
+const BOUNDARY_PREFIX = "\u0000boundary\u0000";
+
+export function boundaryId(label: string): string {
+  return BOUNDARY_PREFIX + label;
+}
+
+export function isBoundaryId(id: string): boolean {
+  return id.startsWith(BOUNDARY_PREFIX);
+}
+
 export interface BuildOptions {
   services: ServiceStats[];
   edges: ServiceEdge[];
@@ -86,6 +105,7 @@ export interface BuildOptions {
   windowMs: number;
   carbon: boolean;
   healthEnabled: boolean;
+  grouping?: MapGrouping;
 }
 
 // Builds the cytoscape element list. Every derived string lives here so the
@@ -97,11 +117,37 @@ export function buildElements({
   windowMs,
   carbon,
   healthEnabled,
+  grouping = "none",
 }: BuildOptions): ElementDefinition[] {
   const windowMinutes = Math.max(windowMs / 60_000, 1 / 60);
   const names = new Set(services.map((s) => s.name));
   // Heaviest node in view anchors the relative carbon scale (green only).
   const maxGco2e = carbon ? Math.max(0, ...services.map((s) => s.gco2e ?? 0)) : 0;
+
+  // Which box a node belongs in, or nothing. A service that declares no
+  // namespace, and one the health rollup has not placed in a group, are drawn
+  // OUTSIDE every boundary — the honest answer, rather than sweeping them into
+  // an invented "other" that reads like a real place.
+  const boundaryOf = (s: ServiceStats): string | undefined => {
+    if (s.role === "virtual") return undefined; // derived; it lives nowhere
+    if (grouping === "namespace") return s.namespace || undefined;
+    if (grouping === "group") return health.get(s.name)?.group || undefined;
+    return undefined;
+  };
+  const boundaries = new Set<string>();
+  for (const s of services) {
+    const b = boundaryOf(s);
+    if (b) boundaries.add(b);
+  }
+  const parents: ElementDefinition[] = [...boundaries].sort().map((label) => ({
+    data: {
+      id: boundaryId(label),
+      label,
+      // The base node style sizes on `rate`; a compound parent is sized by its
+      // children instead, but the mapping still has to find the field.
+      rate: 0,
+    },
+  }));
 
   const nodes: ElementDefinition[] = services.map((s) => {
     const rpm = s.ratePerSec * 60;
@@ -126,6 +172,9 @@ export function buildElements({
         // the ring is health's channel and we have no health verdict for
         // something we only see through its callers.
         ...(virtual ? { virtual: 1, kind: s.kind ?? "", tooltip: virtualTooltip(s, rpm) } : {}),
+        // Compound membership. Absent when the map is ungrouped or the node
+        // has nothing to belong to, which cytoscape reads as "no parent".
+        ...(boundaryOf(s) ? { parent: boundaryId(boundaryOf(s) as string) } : {}),
         // Only mesh/gateway nodes carry `transport`, and only when the user
         // asked to see them — an application node's data is unchanged.
         ...(s.role === "transport" ? { transport: 1 } : {}),
@@ -158,5 +207,7 @@ export function buildElements({
       },
     }));
 
-  return [...nodes, ...links];
+  // Parents first: cytoscape resolves `parent` references within one batch,
+  // and listing the boxes ahead of their members keeps that obvious.
+  return [...parents, ...nodes, ...links];
 }

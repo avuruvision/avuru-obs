@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Map as MapIcon } from "lucide-react";
 import { useTimeRange } from "@/hooks/use-time-range";
 import { useURLState } from "@/hooks/use-url-state";
@@ -17,6 +17,7 @@ import {
   type MapFilters,
 } from "@/lib/map-filter";
 import { ServiceMap, type ServiceMapHandle } from "./service-map";
+import type { MapGrouping } from "./graph-elements";
 import { MapToolbar } from "./map-toolbar";
 import { MapLegend } from "./map-legend";
 
@@ -32,6 +33,9 @@ export function ServiceMapScreen() {
   // about is the point of drawing it. So the URL carries the OPT-OUT, and a
   // link with no `virtual` param shows the whole picture.
   const showVirtual = get("virtual") !== "false";
+  // Boundaries are URL state like every other map control, so a link that says
+  // "look at the storefront namespace" arrives grouped.
+  const grouping = (get("groupBy") ?? "none") as MapGrouping;
   const { data, isLoading } = useServiceMapData(time, includeAux);
   const greenEnabled = useModuleEnabled("green");
   const healthEnabled = useModuleEnabled("service-health");
@@ -39,6 +43,13 @@ export function ServiceMapScreen() {
   // default — the two screens must not disagree about a group's status.
   const { byService, groups } = useServiceHealthStatus(time, false, healthEnabled);
   const mapRef = useRef<ServiceMapHandle>(null);
+  // Whole percent, so a re-render only happens when the readout would actually
+  // change. Starts at 100 and is corrected as soon as the graph reports its own
+  // fit — the layout fits on first run, so the real opening value is rarely 100.
+  const [zoomPercent, setZoomPercent] = useState(100);
+  // Stable identity: this goes into the graph effect's dependencies, and a new
+  // function each render would tear down and rebuild cytoscape on every zoom.
+  const onZoomPercent = useCallback((pct: number) => setZoomPercent(pct), []);
 
   const filters: MapFilters = useMemo(
     () => ({
@@ -125,11 +136,14 @@ export function ServiceMapScreen() {
         hasInfra={hiddenInfra > 0 || showInfra}
         showVirtual={showVirtual}
         hasVirtual={virtualCount > 0}
+        grouping={grouping}
+        zoomPercent={zoomPercent}
         onFilters={setFilters}
         onCarbon={(on) => setMany({ carbon: on ? "true" : undefined })}
         onIncludeAux={(on) => setMany({ includeAux: on ? "true" : undefined })}
         onShowInfra={(on) => setMany({ infra: on ? "true" : undefined })}
         onShowVirtual={(on) => setMany({ virtual: on ? undefined : "false" })}
+        onGrouping={(next) => setMany({ groupBy: next === "none" ? undefined : next })}
         onZoomIn={() => mapRef.current?.zoomBy(1.25)}
         onZoomOut={() => mapRef.current?.zoomBy(0.8)}
         onFit={() => mapRef.current?.fit()}
@@ -154,6 +168,7 @@ export function ServiceMapScreen() {
         carbon={carbon}
         infra={showInfra}
         virtual={shownVirtual > 0}
+        grouping={grouping}
       />
 
       {shown.services.length === 0 ? (
@@ -170,6 +185,8 @@ export function ServiceMapScreen() {
           handleRef={mapRef}
           carbon={carbon}
           healthEnabled={healthEnabled}
+          grouping={grouping}
+          onZoomPercent={onZoomPercent}
         />
       )}
     </div>

@@ -61,6 +61,7 @@ only if the design needs to be pinned down before coding.
 | [2026-08-18](2026-08-18-inter-zone-traffic.md) | Inter-zone traffic accounting — bytes by zone pair from kernel flows | Draft |
 | [2026-08-23](2026-08-23-service-map-transport.md) | Transport workloads on the service map — stop drawing mesh hops as dependencies | Accepted |
 | [2026-08-23](2026-08-23-virtual-targets.md) | Virtual targets — databases, caches and brokers on the map | Accepted |
+| [2026-08-24](2026-08-24-map-encoding.md) | A map that carries more meaning — boundaries, edge volume, undetected peers | Accepted |
 
 ## Conventions
 

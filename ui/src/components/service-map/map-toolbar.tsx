@@ -4,6 +4,7 @@ import { Maximize2, Shuffle, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { HealthGroup } from "@/lib/api-types";
 import type { MapFilters } from "@/lib/map-filter";
+import type { MapGrouping } from "./graph-elements";
 
 // Filters + view controls. Every filter is URL state (a map URL must be
 // pasteable into Slack — agent_docs/ui_patterns.md), so this component owns no
@@ -24,11 +25,14 @@ export function MapToolbar({
   hasInfra,
   showVirtual,
   hasVirtual,
+  grouping,
+  zoomPercent,
   onFilters,
   onCarbon,
   onIncludeAux,
   onShowInfra,
   onShowVirtual,
+  onGrouping,
   onZoomIn,
   onZoomOut,
   onFit,
@@ -44,11 +48,15 @@ export function MapToolbar({
   hasInfra: boolean;
   showVirtual: boolean;
   hasVirtual: boolean;
+  grouping: MapGrouping;
+  /** Current zoom as a whole percentage (100 = actual size). */
+  zoomPercent: number;
   onFilters: (next: MapFilters) => void;
   onCarbon: (on: boolean) => void;
   onIncludeAux: (on: boolean) => void;
   onShowInfra: (on: boolean) => void;
   onShowVirtual: (on: boolean) => void;
+  onGrouping: (next: MapGrouping) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
@@ -144,7 +152,29 @@ export function MapToolbar({
         </label>
       )}
 
+      <label className="flex items-center gap-1.5 text-xs text-base-content/70">
+        Group by
+        <select
+          aria-label="Group nodes by"
+          value={grouping}
+          onChange={(e) => onGrouping(e.target.value as MapGrouping)}
+          className="h-7 rounded-lg border border-neutral bg-base-100 px-2 text-xs text-base-content"
+        >
+          <option value="none">Nothing</option>
+          <option value="namespace">Namespace</option>
+          {/* A service group only exists where the health module computes one. */}
+          {healthEnabled && <option value="group">Service group</option>}
+        </select>
+      </label>
+
       <div className="ml-auto flex items-center gap-1">
+        <span
+          data-testid="map-zoom"
+          className="mr-1 tabular-nums text-xs text-base-content/45"
+          title="Current zoom"
+        >
+          {zoomPercent}%
+        </span>
         <Button variant="ghost" size="icon" aria-label="Zoom in" onClick={onZoomIn}>
           <ZoomIn className="h-3.5 w-3.5" />
         </Button>
