@@ -121,10 +121,11 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 	if labels, lerr := store.ServiceLabels(r.Context(), q); lerr == nil {
 		stampServiceNamespaces(labels, resp.Services)
 	}
-	// Virtual targets go on LAST, after both stamps: they are neither workloads
-	// the topology classifier should re-label nor pods the energy read can find,
-	// and appending them here keeps both of those loops walking real services
-	// only.
+	// Virtual targets go on LAST, after every stamp above: they are neither
+	// workloads the topology classifier should re-label, nor pods the energy
+	// read can find, nor services with a namespace of their own — a derived
+	// dependency lives nowhere. Appending them here keeps all three loops
+	// walking real services only.
 	resp.Services, resp.Edges = appendVirtualTargets(resp.Services, resp.Edges, virtual, window)
 	resp.Edges = applyEdgeHealth(resp.Edges, health)
 	writeJSON(w, http.StatusOK, resp)
