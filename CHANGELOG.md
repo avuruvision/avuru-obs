@@ -11,6 +11,29 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-08-24
+
+**The map grows up.** The service map has been the product's front page since
+v0.1, and a graph of circles for just as long. It drew what *sends* telemetry —
+which left out the databases, caches and brokers most of your latency actually
+lives in, and threw away the edges pointing at workloads nobody has
+instrumented.
+
+v0.8 fixes both without collecting anything new. Every node and every edge added
+here comes from telemetry that was already arriving, derived in the database the
+way error tracking always has been: no new agent, no new table, nothing to
+switch on. On a zero-code install the eBPF sensor reads the SQL and Redis wire
+protocols in the kernel, so the database is on the map inside the wedge's five
+minutes.
+
+The rest of the release is about reading it: boundaries so an estate can be
+grouped the way you think about it, edge volume for when the question is which
+path carries the traffic, a legend that explains every channel in use, and a
+sidebar grouped by the question each screen answers instead of one ever-growing
+list. Two layout defects fell out of proving it on a real cluster, and one older
+one came with them — the browser suite covering these screens had never run as a
+gate, and three of its tests had quietly rotted. It runs on every change now.
+
 ### Added
 
 - **The database is on the map.** A service that spends most of its latency in
@@ -53,6 +76,11 @@ When a release is cut, that block is renamed to the version with its date.
   CI gate, and three of its specs had quietly rotted across two releases without
   anyone noticing. It now runs against a real authenticated hub, unattended, on
   every pull request.
+- **The clone-free quickstart was still running v0.2 images.** The README tells
+  you to download one compose file and run it; that file's image default was
+  pinned by hand in July and never moved, so the fastest path to trying Avuru
+  Obs has been evaluating a five-release-old build. It now follows the newest
+  release, stamped at release time so it cannot go stale again.
 - **The map was deleting the connections it could least afford to lose.** An
   edge whose far end never sent telemetry — an eBPF flow to a workload nobody
   has instrumented — was dropped outright, because a graph edge needs two nodes
@@ -1194,7 +1222,8 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
 
 <!--
 Release links:
-[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/avuruvision/avuru-obs/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/avuruvision/avuru-obs/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/avuruvision/avuru-obs/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/avuruvision/avuru-obs/compare/v0.4.0...v0.5.0
