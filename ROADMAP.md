@@ -146,29 +146,43 @@ The themes below shipped in v0.7.0; the full detail lives in
 | **Inter-zone traffic accounting** | Bytes per availability-zone pair from kernel flows, standalone from the per-edge feature so the cloud bill can be explained at zone-pair cardinality. Proven on a two-node cluster in CI — [AEP](design/2026-08-18-inter-zone-traffic.md) |
 | **A sensor config the sensor could load** | Turning on network flows had been rendering a config the eBPF tracer refuses to parse, so the container never started; two more keys in the same block did not exist at all, leaving TCP-stats collection inert and the documented cardinality bound unapplied. Rendered configs are now parsed in the chart's own tests |
 
-## v0.8 — the map grows up (directional)
+## v0.8 — the map grows up — SHIPPED (v0.8.0)
 
-The map is the product's front page and it has been a graph of circles since
-v0.1. v0.8 is mostly UI and in-database derivation — no new collection:
+The map has been the product's front page since v0.1, and a graph of circles for
+just as long. v0.8 taught it to say more — with **no new collection**: everything
+below is drawn from telemetry that was already arriving, or from a label the hub
+already queried for another screen.
 
-- **A map that carries more meaning:** namespace and group boundaries, edge
-  volume on the edge itself, distinct treatment for external and undetected
-  peers, and a legend that explains the encoding — without disturbing the
-  channels the map already uses (health, identity, rate, carbon, calls,
-  network).
-- **Virtual targets:** databases, caches and message brokers as first-class
-  nodes, derived from the exit spans already stored — the same
-  derived-in-database shape as error tracking, so no new agent and no new table.
-- **Navigation that grows with the product:** the four flat sections are
-  starting to strain; a layered structure that keeps the wedge's
-  first-five-minutes path short.
-- **A page for the map** on the docs site, which the in-app `docs ↗` link is
-  currently pointing past.
+| Theme | Shipped |
+|---|---|
+| **The dependencies that never report** | Databases, caches and message brokers as first-class nodes, derived from the exit spans of the services calling them — no new agent, no new table, nothing to switch on. A broker is drawn from both ends, so a queue is never a dead end. On a zero-code install the eBPF sensor reads the SQL and Redis wire protocols in the kernel, so the database is on the map inside the wedge's five minutes — [AEP](design/2026-08-23-virtual-targets.md) |
+| **A map that carries more meaning** | Namespace and service-group **boundaries**; **edge volume** on every edge, on demand; **undetected peers** — the far end of a connection nobody instrumented, which the renderer used to discard outright; a legend that explains every channel in use, and a zoom readout. The docs site gained the page the in-app `docs ↗` link had been pointing past. Two layout defects fell out of proving it on a real cluster: a first layout that lined disconnected components up on a diagonal, and tiled labels that stacked on each other — [AEP](design/2026-08-24-map-encoding.md) |
+| **Navigation that grows with the product** | The sidebar is grouped by the question each screen answers — Topology, Signals, Operations, Infrastructure — instead of one ever-growing "Observe" list. The wedge's first click is unchanged, and a layer whose every screen belongs to a module you don't run disappears rather than labelling a gap |
+| **The golden screens are gated** | The Playwright suite could only be run by hand, against a stack with authentication weakened — so it never ran, and three specs had rotted across two releases. It now runs against a real authenticated hub, unattended, on every pull request |
 
-## Beyond v0.7
+## v0.9 — the mesh and the kernel (directional)
 
+v0.8 stopped the map from *lying* about a meshed cluster. It does not yet tell
+the whole truth about one: with the proxies hidden, the false dependencies are
+gone but the real ones behind them are still missing. And the kernel sees more
+than we currently ask it for.
+
+- **Hop collapse:** recover the real `app → app` dependency across a proxy.
+  Needs per-trace ancestry — the naive pairing invents an N×M cross-product,
+  which is why v0.7 shipped the hiding and not the collapsing. See the
+  [AEP](design/2026-08-23-service-map-transport.md).
+- **Deeper kernel network monitoring:** L4/L7 detail the sensor can already
+  see — process-level topology, TLS detection, retransmits and drops — and
+  confirming the per-edge owner attribution of the TCP-stats metrics on a
+  running eBPF cluster, which [network health](design/2026-07-19-network-health.md)
+  still lists as unverified.
+- **Mesh-facing surfaces:** proxy load, latency and success rate, and
+  control-plane health, for the clusters where the mesh *is* the network.
 - **Endpoint checks:** health when there is no traffic. See the
   [draft AEP](design/2026-07-20-endpoint-checks.md).
+
+## Beyond v0.9
+
 - **Deeper profiling:** off-CPU and memory profiles as the upstream OTel eBPF
   profiler grows them.
 - **Storage re-evaluation:** ClickHouse stays behind `storage.Store`; GreptimeDB

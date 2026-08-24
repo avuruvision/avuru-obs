@@ -30,8 +30,8 @@ light up — no SDK, no sidecars, no YAML archaeology.
 
 </details>
 
-> **Status: v0.7.0 released** (2026-08-23); `main` is under active development
-> toward v0.8. See [CHANGELOG.md](CHANGELOG.md) for what shipped,
+> **Status: v0.8.0 released** (2026-08-24); `main` is under active development
+> toward v0.9. See [CHANGELOG.md](CHANGELOG.md) for what shipped,
 > [ROADMAP.md](ROADMAP.md) for where it's headed and
 > [`agent_docs/architecture.md`](agent_docs/architecture.md) for the living
 > architecture.
