@@ -2,6 +2,7 @@ import type { ElementDefinition } from "cytoscape";
 import type { ServiceEdge, ServiceStats } from "@/lib/api-types";
 import type { ServiceHealth } from "@/hooks/use-service-health-status";
 import { formatBytes, formatMs } from "@/lib/format";
+import { ROLE_PEER } from "@/lib/map-peers";
 
 // carbonBucket maps a node's gCO2e into the 3-step halo scale, relative to the
 // heaviest node in view so the lens is meaningful at any absolute scale.
@@ -56,6 +57,16 @@ function edgeFocusLabel(e: ServiceEdge, windowMinutes: number): string {
   if ((e.errorRate ?? 0) > 0) parts.push(`${(e.errorRate * 100).toFixed(1)}% err`);
   if (e.rttMs) parts.push(`RTT ${e.rttMs.toFixed(0)}ms`);
   return parts.join(" · ");
+}
+
+// The persistent edge label: volume only. The hover already answers "what is
+// this one edge", so the always-on label exists for the other question — which
+// of these paths carries the traffic — and anything beyond the number makes a
+// dense graph unreadable. A flow-derived edge shows bytes, because it has no
+// calls to count.
+function edgeVolumeLabel(e: ServiceEdge, windowMinutes: number): string {
+  if (isFlowOnly(e)) return e.bytes ? formatBytes(e.bytes) : "";
+  return formatRpm(e.calls / windowMinutes);
 }
 
 // A virtual target is named as a URI (`postgresql://orders-db`) so its node id
@@ -152,6 +163,9 @@ export function buildElements({
   const nodes: ElementDefinition[] = services.map((s) => {
     const rpm = s.ratePerSec * 60;
     const virtual = s.role === "virtual";
+    // A peer the renderer could not resolve to a service. It carries no
+    // metrics, so nothing about it is claimed — not even a zero.
+    const peer = s.role === ROLE_PEER;
     return {
       data: {
         id: s.name,
@@ -165,13 +179,21 @@ export function buildElements({
         // than faking a "down" status: "this service erred" is a weaker claim
         // than the hub's verdict.
         ...(!healthEnabled && s.errorRate > 0 ? { errorRing: 1 } : {}),
-        focusLabel: `${virtual ? virtualLabel(s.name) : s.name}\n${formatRpm(rpm)} · p95 ${formatMs(s.p95Ms)}`,
+        focusLabel: peer
+          ? `${s.name}\nno telemetry of its own`
+          : `${virtual ? virtualLabel(s.name) : s.name}\n${formatRpm(rpm)} · p95 ${formatMs(s.p95Ms)}`,
         rate: s.ratePerSec,
         // A derived dependency: a database, cache or broker that sends no
         // telemetry of its own. Its own field rather than a status, because
         // the ring is health's channel and we have no health verdict for
         // something we only see through its callers.
         ...(virtual ? { virtual: 1, kind: s.kind ?? "", tooltip: virtualTooltip(s, rpm) } : {}),
+        ...(peer
+          ? {
+              peer: 1,
+              tooltip: `${s.name} · seen in traffic, never heard from`,
+            }
+          : {}),
         // Compound membership. Absent when the map is ungrouped or the node
         // has nothing to belong to, which cytoscape reads as "no parent".
         ...(boundaryOf(s) ? { parent: boundaryId(boundaryOf(s) as string) } : {}),
@@ -203,6 +225,7 @@ export function buildElements({
         // already means network-unhealthy.
         flow: isFlowOnly(e) ? 1 : 0,
         focusLabel: edgeFocusLabel(e, windowMinutes),
+        volumeLabel: edgeVolumeLabel(e, windowMinutes),
         tooltip: edgeTooltip(e, windowMinutes),
       },
     }));

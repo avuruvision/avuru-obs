@@ -26,6 +26,7 @@ export function MapToolbar({
   showVirtual,
   hasVirtual,
   grouping,
+  edgeLabels,
   zoomPercent,
   onFilters,
   onCarbon,
@@ -33,6 +34,7 @@ export function MapToolbar({
   onShowInfra,
   onShowVirtual,
   onGrouping,
+  onEdgeLabels,
   onZoomIn,
   onZoomOut,
   onFit,
@@ -49,6 +51,7 @@ export function MapToolbar({
   showVirtual: boolean;
   hasVirtual: boolean;
   grouping: MapGrouping;
+  edgeLabels: boolean;
   /** Current zoom as a whole percentage (100 = actual size). */
   zoomPercent: number;
   onFilters: (next: MapFilters) => void;
@@ -57,6 +60,7 @@ export function MapToolbar({
   onShowInfra: (on: boolean) => void;
   onShowVirtual: (on: boolean) => void;
   onGrouping: (next: MapGrouping) => void;
+  onEdgeLabels: (on: boolean) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
@@ -151,6 +155,19 @@ export function MapToolbar({
           Show mesh &amp; gateways
         </label>
       )}
+
+      <label
+        className="flex cursor-pointer items-center gap-1.5 text-xs text-base-content/70"
+        title="Label every edge with its volume — requests per minute, or bytes for a connection with no traced calls behind it."
+      >
+        <input
+          type="checkbox"
+          checked={edgeLabels}
+          onChange={(e) => onEdgeLabels(e.target.checked)}
+          className="accent-primary"
+        />
+        Edge volume
+      </label>
 
       <label className="flex items-center gap-1.5 text-xs text-base-content/70">
         Group by

@@ -12,12 +12,14 @@ export function MapLegend({
   carbon,
   infra,
   virtual,
+  peers,
   grouping = "none",
 }: {
   health: boolean;
   carbon: boolean;
   infra: boolean;
   virtual: boolean;
+  peers: boolean;
   grouping?: MapGrouping;
 }) {
   return (
@@ -43,6 +45,7 @@ export function MapLegend({
       <span>dotted = observed connection, no traced calls</span>
       {infra && <span>diamond = mesh or gateway</span>}
       {virtual && <span>dashed hexagon = database, cache or queue</span>}
+      {peers && <span>hollow outline = seen in traffic, never heard from</span>}
       {grouping !== "none" && (
         <span>box = {grouping === "namespace" ? "namespace" : "service group"}</span>
       )}

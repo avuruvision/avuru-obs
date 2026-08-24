@@ -24,6 +24,11 @@ import type { ServiceEdge, ServiceStats } from "@/lib/api-types";
 // opposite is true of them: a transport hop is a relationship that does not
 // exist, while a database is one that does and that nothing else on this
 // dashboard would mention.
+//
+// Undetected peers are NOT synthesized here: a hollow node with no metrics
+// needs the legend to make sense of it, and the overview has no room for one.
+// Their edges drop, as they always have on this card, and the full map — one
+// click away — recovers both.
 export function TopologyCard({
   services,
   edges,

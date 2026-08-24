@@ -39,6 +39,21 @@ When a release is cut, that block is renamed to the version with its date.
   [AEP](design/2026-08-24-map-encoding.md).
 - The map's zoom controls now have a number to move: a live zoom percentage
   beside them.
+- **Every edge, labelled with its volume**, on demand. The hover has always
+  answered "what is this one edge"; the toggle answers the other question —
+  which of these paths carries the traffic — for the whole graph at once. A
+  connection with no traced calls behind it shows bytes, because it has no calls
+  to count.
+
+### Fixed
+
+- **The map was deleting the connections it could least afford to lose.** An
+  edge whose far end never sent telemetry — an eBPF flow to a workload nobody
+  has instrumented — was dropped outright, because a graph edge needs two nodes
+  and only one existed. Those endpoints are now drawn as **undetected peers**:
+  hollow outlines, counted apart from services, carrying no metrics because we
+  have none. It is usually the most interesting thing on the screen, since it is
+  the part of the estate nothing else can see.
 
 ### Changed
 

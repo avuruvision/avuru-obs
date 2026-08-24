@@ -47,7 +47,7 @@ const scale = (compact: boolean) => ({
 // above precisely so that adding a kind of node never costs the map a colour.
 //
 // carbon=false must leave the graph byte-identical to a non-green install.
-export function applyStyle(cy: Core, carbon = false, compact = false) {
+export function applyStyle(cy: Core, carbon = false, compact = false, edgeLabels = false) {
   const c = themeColors();
   const s = scale(compact);
 
@@ -115,6 +115,19 @@ export function applyStyle(cy: Core, carbon = false, compact = false) {
       "background-opacity": 0.85,
       "border-style": "dashed",
       "border-width": 2,
+    })
+    // A peer the renderer could not resolve to a service: something the sensor
+    // saw traffic to that never sent telemetry of its own. Drawn as an OUTLINE
+    // — hollow, because there is nothing inside it we know. It keeps the
+    // circle, since it probably is an ordinary workload; what it lacks is a
+    // voice, not a category.
+    .selector("node[peer > 0]")
+    .style({
+      "background-opacity": 0,
+      "border-color": c.neutral,
+      "border-style": "dashed",
+      "border-width": 2,
+      "text-opacity": 0.6,
     });
 
   // Boundary boxes (compound parents: namespace or health group). Drawn as a
@@ -162,7 +175,7 @@ export function applyStyle(cy: Core, carbon = false, compact = false) {
         .style(halo(c.error))
     : withNodes;
 
-  withCarbon
+  const withEdges = withCarbon
     .selector("edge")
     .style({
       width: s.edge,
@@ -185,7 +198,27 @@ export function applyStyle(cy: Core, carbon = false, compact = false) {
     .selector("edge[health > 0]")
     .style({ "line-color": c.warning, "target-arrow-color": c.warning, "line-style": "dashed" })
     .selector("edge[error > 0]")
-    .style({ "line-color": c.error, "target-arrow-color": c.error, "line-style": "solid" })
+    .style({ "line-color": c.error, "target-arrow-color": c.error, "line-style": "solid" });
+
+  // Always-on edge volume. Off by default: on a dense graph every label is a
+  // label too many, and the hover already answers the single-edge question.
+  // When asked for it shows volume ONLY — the focus label still owns latency
+  // and errors, so the two do not fight for the same line.
+  const withEdgeLabels = edgeLabels
+    ? withEdges.selector("edge").style({
+        label: "data(volumeLabel)",
+        "font-size": s.fontSize - 1,
+        color: c.text,
+        "text-opacity": 0.75,
+        "text-background-color": c.base100,
+        "text-background-opacity": 0.7,
+        "text-background-padding": "2px",
+        "text-background-shape": "roundrectangle",
+        "text-rotation": "autorotate",
+      })
+    : withEdges;
+
+  withEdgeLabels
     // ---- Hover focus ----
     // Everything outside the focused neighbourhood recedes.
     .selector(".faded")
