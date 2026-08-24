@@ -65,7 +65,7 @@ export const NAV_SECTIONS: NavSection[] = [
     // product's word for this view — it titles the Dashboard's map card.
     title: "Topology",
     items: [
-      { href: "/service-map", label: "Service Map", icon: MapIcon, docs: "getting-started/core-concepts" },
+      { href: "/service-map", label: "Service Map", icon: MapIcon, docs: "signals/service-map" },
       { href: "/services", label: "Services", icon: Boxes, docs: "signals/metrics" },
       { href: "/health", label: "Service Health", icon: Activity, module: "service-health", docs: "signals/service-health" },
     ],
