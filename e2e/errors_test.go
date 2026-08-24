@@ -11,7 +11,13 @@ import (
 	"time"
 )
 
-const sentryURL = "http://localhost:4319"
+// Env-configurable like every other endpoint in this suite (dropin_test.go's
+// hubURL/chURL/hotrodURL). It was the one hardcoded address left, which meant
+// the suite could not be pointed at a stack on remapped ports — so running it
+// beside another compose project sent the envelope to that project's gateway
+// instead of failing cleanly. That also makes it the one thing standing between
+// this suite and a CI gate on an isolated stack.
+var sentryURL = envOr("AVURUOBS_E2E_SENTRY_URL", "http://localhost:4319")
 
 type errorIssue struct {
 	Fingerprint string `json:"fingerprint"`
