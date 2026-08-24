@@ -44,6 +44,10 @@ export interface ServiceStats {
   role?: string; // "transport" | "virtual"
   // What a virtual target actually is. Only ever set beside role "virtual".
   kind?: string; // "database" | "cache" | "queue"
+  // Where the workload lives — k8s.namespace.name, or service.namespace for a
+  // pure-SDK app that declares one. Stamped by the service map only, and absent
+  // when the service declares neither, which the map draws as "no boundary".
+  namespace?: string;
 }
 
 export interface ServicesResponse {

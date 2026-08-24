@@ -27,6 +27,13 @@ type serviceDTO struct {
 	// only when it is NOT the default: an application carries no role field, so
 	// a mesh-less install keeps a byte-identical wire shape.
 	Role string `json:"role,omitempty"`
+	// Namespace is the workload's grouping namespace — k8s.namespace.name, or
+	// service.namespace for a pure-SDK app that declares one. Stamped by the
+	// service map only, so the map can draw a boundary around a namespace
+	// without every services read paying for the label query. Empty when the
+	// service declares neither, which the map draws as "no boundary" rather
+	// than inventing a bucket.
+	Namespace string `json:"namespace,omitempty"`
 	// Kind narrows a virtual target (role "virtual") to what it actually is:
 	// "database", "cache" or "queue". Empty on every other node — an
 	// application is not a kind of anything, it is the default.
