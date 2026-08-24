@@ -114,12 +114,13 @@ off), and the toolbar gains a zoom percentage beside the zoom controls, so
 ## Verification
 
 - **Unit (Go):** namespace resolution order and the empty case.
-- **Unit (TS):** peer synthesis — which endpoints become undetected nodes, and
-  that a fully-known graph gains none.
 - **E2E (Playwright):** the grouping select round-trips through the URL and the
   legend follows it; the zoom readout moves with the zoom controls; the edge
-  volume toggle; and, with a stubbed map, an unresolved endpoint appears as a
-  peer and is counted apart.
+  volume toggle; and, with a stubbed map response, an unresolved endpoint
+  appears as a peer, is counted apart from services, and does not resurrect a
+  hidden mesh proxy. Peer synthesis is view logic and the UI has no unit runner
+  — Playwright is this layer's safety net (`agent_docs/testing.md`), and a
+  stubbed response pins the input exactly.
 
 ## Roadmap
 

@@ -16,6 +16,7 @@ import {
   splitVirtual,
   type MapFilters,
 } from "@/lib/map-filter";
+import { ROLE_PEER, withUndetectedPeers } from "@/lib/map-peers";
 import { ServiceMap, type ServiceMapHandle } from "./service-map";
 import type { MapGrouping } from "./graph-elements";
 import { MapToolbar } from "./map-toolbar";
@@ -36,6 +37,7 @@ export function ServiceMapScreen() {
   // Boundaries are URL state like every other map control, so a link that says
   // "look at the storefront namespace" arrives grouped.
   const grouping = (get("groupBy") ?? "none") as MapGrouping;
+  const edgeLabels = get("edgeLabels") === "true";
   const { data, isLoading } = useServiceMapData(time, includeAux);
   const greenEnabled = useModuleEnabled("green");
   const healthEnabled = useModuleEnabled("service-health");
@@ -73,12 +75,19 @@ export function ServiceMapScreen() {
     [all, allEdges, showInfra],
   );
   const {
-    services,
+    services: afterVirtual,
     edges,
     count: virtualCount,
   } = useMemo(
     () => splitVirtual(afterInfra, edgesAfterInfra, showVirtual),
     [afterInfra, edgesAfterInfra, showVirtual],
+  );
+  // LAST of the three, and it has to be: the two splits above drop nodes AND
+  // the edges that touched them, so running peer synthesis before either would
+  // resurrect a hidden mesh proxy as an "undetected peer".
+  const services = useMemo(
+    () => withUndetectedPeers(afterVirtual, edges),
+    [afterVirtual, edges],
   );
   const shown = useMemo(
     () => filterMap(services, edges, filters, byService),
@@ -87,11 +96,16 @@ export function ServiceMapScreen() {
   // Applications and derived dependencies are counted apart: they are not the
   // same kind of thing, and folding a database into "services" would silently
   // inflate a number people compare against their own deployment count.
-  const shownApps = shown.services.filter((s) => s.role !== "virtual").length;
-  const shownVirtual = shown.services.length - shownApps;
+  const shownApps = shown.services.filter(
+    (s) => s.role !== "virtual" && s.role !== ROLE_PEER,
+  ).length;
+  const shownVirtual = shown.services.filter((s) => s.role === "virtual").length;
+  const shownPeers = shown.services.filter((s) => s.role === ROLE_PEER).length;
   // "filtered from N" has to compare like with like: N is the applications a
   // cleared filter would show, not applications plus dependencies.
-  const totalApps = services.filter((s) => s.role !== "virtual").length;
+  const totalApps = services.filter(
+    (s) => s.role !== "virtual" && s.role !== ROLE_PEER,
+  ).length;
   // Flow-derived edges carry no call volume by construction, so counting them
   // as calls overstates what the map actually observed.
   const callEdges = shown.edges.filter((e) => e.calls > 0).length;
@@ -137,6 +151,7 @@ export function ServiceMapScreen() {
         showVirtual={showVirtual}
         hasVirtual={virtualCount > 0}
         grouping={grouping}
+        edgeLabels={edgeLabels}
         zoomPercent={zoomPercent}
         onFilters={setFilters}
         onCarbon={(on) => setMany({ carbon: on ? "true" : undefined })}
@@ -144,6 +159,7 @@ export function ServiceMapScreen() {
         onShowInfra={(on) => setMany({ infra: on ? "true" : undefined })}
         onShowVirtual={(on) => setMany({ virtual: on ? undefined : "false" })}
         onGrouping={(next) => setMany({ groupBy: next === "none" ? undefined : next })}
+        onEdgeLabels={(on) => setMany({ edgeLabels: on ? "true" : undefined })}
         onZoomIn={() => mapRef.current?.zoomBy(1.25)}
         onZoomOut={() => mapRef.current?.zoomBy(0.8)}
         onFit={() => mapRef.current?.fit()}
@@ -154,6 +170,7 @@ export function ServiceMapScreen() {
         {shownApps} services · {callEdges} call edges
         {flowEdges > 0 && ` · ${flowEdges} network ${flowEdges === 1 ? "flow" : "flows"}`}
         {shownVirtual > 0 && ` · ${shownVirtual} ${shownVirtual === 1 ? "dependency" : "dependencies"}`}
+        {shownPeers > 0 && ` · ${shownPeers} undetected ${shownPeers === 1 ? "peer" : "peers"}`}
         {!showVirtual &&
           virtualCount > 0 &&
           ` · ${virtualCount} ${virtualCount === 1 ? "dependency" : "dependencies"} hidden`}
@@ -168,6 +185,7 @@ export function ServiceMapScreen() {
         carbon={carbon}
         infra={showInfra}
         virtual={shownVirtual > 0}
+        peers={shownPeers > 0}
         grouping={grouping}
       />
 
@@ -186,6 +204,7 @@ export function ServiceMapScreen() {
           carbon={carbon}
           healthEnabled={healthEnabled}
           grouping={grouping}
+          edgeLabels={edgeLabels}
           onZoomPercent={onZoomPercent}
         />
       )}

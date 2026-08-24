@@ -34,11 +34,16 @@ export function splitInfrastructure(
   const transport = services.filter((s) => s.role === "transport");
   if (show || transport.length === 0) return { services, edges, hidden: 0 };
 
-  const names = new Set(services.filter((s) => s.role !== "transport").map((s) => s.name));
+  // Drop exactly the edges that touch a node being HIDDEN — that edge IS the
+  // hop — and not every edge whose endpoint is unknown. The difference matters:
+  // an edge can legitimately point at something absent from the services list
+  // (a workload the sensor saw traffic to that never sent telemetry), and
+  // keeping it is what lets the renderer draw that peer instead of deleting the
+  // connection.
+  const removed = new Set(transport.map((s) => s.name));
   return {
     services: services.filter((s) => s.role !== "transport"),
-    // Every edge with a transport endpoint goes too — that edge IS the hop.
-    edges: edges.filter((e) => names.has(e.source) && names.has(e.target)),
+    edges: edges.filter((e) => !removed.has(e.source) && !removed.has(e.target)),
     hidden: transport.length,
   };
 }
@@ -61,12 +66,14 @@ export function splitVirtual(
   const count = services.filter((s) => s.role === "virtual").length;
   if (show || count === 0) return { services, edges, count };
 
-  const names = new Set(services.filter((s) => s.role !== "virtual").map((s) => s.name));
+  // Same rule as splitInfrastructure: drop the edges touching the nodes being
+  // hidden — a dangling edge draws to nothing — and leave the rest alone.
+  const removed = new Set(
+    services.filter((s) => s.role === "virtual").map((s) => s.name),
+  );
   return {
     services: services.filter((s) => s.role !== "virtual"),
-    // Every edge with a virtual endpoint goes too — a dangling edge draws to
-    // nothing.
-    edges: edges.filter((e) => names.has(e.source) && names.has(e.target)),
+    edges: edges.filter((e) => !removed.has(e.source) && !removed.has(e.target)),
     count,
   };
 }

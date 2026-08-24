@@ -79,6 +79,7 @@ export function ServiceMap({
   compact = false,
   healthEnabled = false,
   grouping = "none",
+  edgeLabels = false,
   onZoomPercent,
 }: {
   services: ServiceStats[];
@@ -103,6 +104,9 @@ export function ServiceMap({
   // an ungrouped map is what every existing caller expects, and the compact
   // overview has no room for boxes.
   grouping?: MapGrouping;
+  // Label every edge with its volume. Default off: the compact overview has no
+  // room for it, and on a dense graph it is a label too many.
+  edgeLabels?: boolean;
   // Reports the current zoom as a whole percentage, and only when that
   // percentage changes. Deliberately not the raw zoom: an animated layout emits
   // `zoom` every frame, and pushing a float into React state each time would
@@ -150,7 +154,7 @@ export function ServiceMap({
       minZoom: 0.3,
       maxZoom: 2.5,
     });
-    applyStyle(cy, carbon, compact);
+    applyStyle(cy, carbon, compact, edgeLabels);
     // Compact sits in a short card, so a wide estate hangs off the edges unless
     // it is fitted. Safe to call straight away: the initial layout runs with
     // animate:false, so positions are already final here.
@@ -236,20 +240,21 @@ export function ServiceMap({
     compact,
     healthEnabled,
     grouping,
+    edgeLabels,
     onZoomPercent,
   ]);
 
   // Re-theme the graph when the user toggles light/dark.
   useEffect(() => {
     const obs = new MutationObserver(() => {
-      if (cyRef.current) applyStyle(cyRef.current, carbon, compact);
+      if (cyRef.current) applyStyle(cyRef.current, carbon, compact, edgeLabels);
     });
     obs.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["data-theme"],
     });
     return () => obs.disconnect();
-  }, [carbon, compact]);
+  }, [carbon, compact, edgeLabels]);
 
   return (
     <div className="relative">
