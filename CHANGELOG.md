@@ -63,6 +63,15 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Changed
 
+- **The sidebar is grouped by the question each screen answers**, not by one
+  ever-growing "Observe" list: Topology (what is out there, and is it well),
+  Signals (what happened), Operations (what needs me), Infrastructure (what it
+  runs on, and what that costs). Nine of thirteen entries used to sit under a
+  single heading, which grew with every module and said nothing about how the
+  screens relate. The first-five-minutes path is unchanged — the service map is
+  still one click from the landing screen — and a layer whose every screen
+  belongs to a module you don't run disappears entirely rather than labelling a
+  gap.
 - The map's first layout no longer lines disconnected parts of an estate up on
   a diagonal. Its deterministic seeding placed them that way, which wasted most
   of the canvas and stacked service names on top of each other — so the first

@@ -36,6 +36,19 @@ export interface NavSection {
   items: NavItem[];
 }
 
+// Sections are LAYERS, each answering a different question, and they are
+// ordered the way an investigation runs: what is out there → what is it doing →
+// what needs me → what it runs on.
+//
+// Until v0.8 nine of the thirteen entries sat under one "Observe" heading,
+// which is a list, not a structure: it grew with every module and told the
+// reader nothing about how the screens relate. The wedge's first-five-minutes
+// path is unaffected — Service Map is still the first link under the landing
+// route, one click from anywhere.
+//
+// A section whose every entry belongs to an inactive module renders nothing at
+// all (see Sidebar), so this shape does not put empty headings on a minimal
+// install.
 export const NAV_SECTIONS: NavSection[] = [
   {
     title: "Overview",
@@ -44,24 +57,48 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, docs: "getting-started/core-concepts" }],
   },
   {
-    title: "Observe",
+    // "What is out there, and is it well?" — the inventory layer. The map
+    // leads it, because on a fresh install it is the first thing that fills in.
+    //
+    // NOT titled "Services": a section named exactly like one of its own
+    // entries is ambiguous to read and to click. "Topology" is already the
+    // product's word for this view — it titles the Dashboard's map card.
+    title: "Topology",
     items: [
-      { href: "/service-map", label: "Service Map", icon: MapIcon, docs: "getting-started/core-concepts" },
+      { href: "/service-map", label: "Service Map", icon: MapIcon, docs: "signals/service-map" },
       { href: "/services", label: "Services", icon: Boxes, docs: "signals/metrics" },
       { href: "/health", label: "Service Health", icon: Activity, module: "service-health", docs: "signals/service-health" },
+    ],
+  },
+  {
+    // "What happened?" — the raw signals, in the order you reach for them.
+    title: "Signals",
+    items: [
       { href: "/traces", label: "Traces", icon: ListTree, docs: "signals/traces" },
       { href: "/logs", label: "Logs", icon: ScrollText, module: "logs", docs: "signals/logs" },
       // RED is derived from traces, not from the metrics tables — core.
       { href: "/metrics", label: "Metrics", icon: Gauge, docs: "signals/metrics" },
       { href: "/profiling", label: "Profiling", icon: Flame, module: "profiling", docs: "signals/profiling" },
-      { href: "/errors", label: "Errors", icon: Bug, module: "error-tracking", docs: "signals/errors" },
-      { href: "/alerts", label: "Alerts", icon: BellRing, module: "alerting", docs: "signals/alerting" },
-      { href: "/green", label: "Green", icon: Leaf, module: "green", docs: "signals/green" },
     ],
   },
   {
+    // "What needs me?" — the two surfaces that exist to demand attention.
+    title: "Operations",
+    items: [
+      { href: "/errors", label: "Errors", icon: Bug, module: "error-tracking", docs: "signals/errors" },
+      { href: "/alerts", label: "Alerts", icon: BellRing, module: "alerting", docs: "signals/alerting" },
+    ],
+  },
+  {
+    // "What does it run on, and what does that cost?" Green sits here rather
+    // than beside the signals because energy and carbon are properties of the
+    // fleet, not another telemetry stream — and it is where a cost surface
+    // would join it.
     title: "Infrastructure",
-    items: [{ href: "/nodes", label: "Nodes", icon: Server, module: "infra-metrics", docs: "signals/metrics" }],
+    items: [
+      { href: "/nodes", label: "Nodes", icon: Server, module: "infra-metrics", docs: "signals/metrics" },
+      { href: "/green", label: "Green", icon: Leaf, module: "green", docs: "signals/green" },
+    ],
   },
   {
     title: "System",
