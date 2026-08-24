@@ -12,7 +12,7 @@ import { QualityBadge } from "./quality-badge";
 export function NodeEnergyTable({ nodes }: { nodes: GreenNodeEnergy[] }) {
   return (
     <div className="overflow-x-auto border-t border-neutral">
-      <table className="table-dense w-full text-sm">
+      <table data-testid="node-energy-table" className="table-dense w-full text-sm">
         <thead>
           <tr className="border-b border-neutral text-left">
             <th>Node</th>

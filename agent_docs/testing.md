@@ -19,6 +19,21 @@ Write or update tests **alongside** the implementation, not after.
 3. **E2E — Playwright (AI-maintained, SigNoz pattern)**
    - Specs live in `ui/e2e/`. Run against the compose stack with **seeded demo
      data** for determinism.
+   - **`make e2e-ui` is the only supported way to run them, and it is a CI
+     gate.** It pins the admin password, and `ui/e2e/global-setup.ts` signs in
+     once and hands every spec that session — so the suite runs against a real
+     auth-enabled hub. `auth.spec.ts` opts out with an empty `storageState`,
+     because its subject is the signed-out experience. Do not reach for an
+     anonymous-access override: that is what kept this suite out of CI, and
+     three specs silently rotted in the meantime.
+   - **Seeded data lives for ten minutes.** Fixtures are rebased to `now-5m`
+     and the UI's default range is 15m, so re-seed before a run rather than
+     debugging an "empty screen" that is really an expired window. Seeding
+     twice without truncating DOUBLES the data — MergeTree does not dedupe —
+     and shows up as failing counts in specs unrelated to your change.
+   - **Counts in specs are a contract with the fixtures.** Add a
+     `traces_*.json` and the service counts in `service-map*.spec.ts` move with
+     it.
    - Maintained via the `.claude/agents/` trio:
      - `playwright-test-planner` — derives E2E scenarios from a feature spec
      - `playwright-test-generator` — writes specs against the golden screens

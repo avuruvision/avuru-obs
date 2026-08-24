@@ -122,6 +122,12 @@ e2e-helm:
 
 # UI smoke (Playwright) against the seeded stack — Playwright hits the UI
 # origin (:3001), which serves the SPA and proxies /api to the hub.
+# Same pinned admin password as `make e2e`: ui/e2e/global-setup.ts signs in with
+# it once and hands every spec the session. Without it the hub generates a
+# password nobody knows, every spec bounces to /login, and the only way to run
+# the suite was an out-of-band anonymous-access override — which is exactly why
+# it went years without being a CI gate.
+e2e-ui: export AVURUOBS_AUTH_ADMIN_PASSWORD := e2e-admin-pw
 e2e-ui:
 	$(COMPOSE) down -v --remove-orphans
 	$(COMPOSE) up -d --build --wait clickhouse hub

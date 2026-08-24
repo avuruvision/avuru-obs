@@ -10,7 +10,7 @@ import type { RedSeries } from "@/lib/api-types";
 export function RedCard({ series }: { series: RedSeries }) {
   const pts = series.points;
   return (
-    <Card className="flex flex-col gap-3 p-4">
+    <Card className="flex flex-col gap-3 p-4" data-testid="red-card">
       <div className="flex items-center justify-between">
         <h3 className="truncate text-sm font-semibold text-primary">{series.service}</h3>
         <Link

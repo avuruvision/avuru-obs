@@ -30,6 +30,10 @@ async function signIn(page: Page): Promise<void> {
   await expect(page).not.toHaveURL(/\/login/);
 }
 
+// The one spec that must start SIGNED OUT: everything else in this suite opens
+// with the shared admin session from global-setup.
+test.use({ storageState: { cookies: [], origins: [] } });
+
 test.describe("auth", () => {
   test("redirects an anonymous visitor to /login, then signs in", async ({ page }) => {
     // Any protected page with no session hands off to the login screen.

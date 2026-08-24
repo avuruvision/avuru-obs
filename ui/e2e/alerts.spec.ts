@@ -10,7 +10,19 @@ test.describe("alerts board (seeded data)", () => {
 
     // The Firing card is present; the seeded rule fires on seed-checkout.
     await expect(page.getByRole("heading", { name: "Firing" })).toBeVisible();
-    await expect(page.getByText("service:seed-checkout").first()).toBeVisible();
+
+    // The evaluator ticks on its OWN clock (evalIntervalSec: 2 in
+    // deploy/compose/alerts.json), and the fixtures land moments before this
+    // suite starts — so on a cold run the first tick can fall after the page
+    // did. Retry with a reload rather than assume the board was already right:
+    // asserting once here is how this spec fails on a fresh stack and passes on
+    // a warm one, which is the worst kind of gate.
+    await expect(async () => {
+      await page.reload();
+      await expect(page.getByText("service:seed-checkout").first()).toBeVisible({
+        timeout: 2_000,
+      });
+    }).toPass({ timeout: 30_000 });
 
     // The read-only rule list shows the configured rule (exact — the name also
     // appears in the firing row as "· rule checkout-down").
