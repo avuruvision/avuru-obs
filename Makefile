@@ -18,6 +18,11 @@ version-set:
 	@perl -i -pe 's/^version: .*/version: $(V)/ && ($$done=1) if !$$done' deploy/helm/avuruobs/Chart.yaml
 	@perl -i -pe 's/^appVersion: .*/appVersion: "$(V)"/ && ($$done=1) if !$$done' deploy/helm/avuruobs/Chart.yaml
 	@perl -i -pe 's{(avuru-obs-(?:hub|ui|gateway|tdp-estimator)):\S+}{$$1:$(V)}g' deploy/helm/avuruobs/Chart.yaml
+	@# The clone-free eval compose runs RELEASED images, so its default has to be
+	@# the newest released minor — never the in-development one, because the
+	@# README tells readers to curl that file straight off main. Snapshots are
+	@# therefore skipped: a v0.9 tag does not exist until v0.9.0 ships.
+	@case "$(V)" in *SNAPSHOT*) : ;; *) perl -i -pe 's/AVURUOBS_VERSION:-v[0-9]+\.[0-9]+/AVURUOBS_VERSION:-v$(shell echo $(V) | cut -d. -f1-2)/g' deploy/compose/docker-compose.release.yaml ;; esac
 	@$(MAKE) --no-print-directory sync-hub-chart
 	@echo "version set to $(V) (VERSION, ui/package.json, Chart.yaml, hub chart copy)"
 

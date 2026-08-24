@@ -5,9 +5,13 @@
 #   docker compose -f docker-compose.release.yaml up --wait
 #   # then open http://localhost:3001
 #
-# The images are published by the release workflow, so pick a released tag:
-#   AVURUOBS_VERSION=v0.2.0 docker compose -f docker-compose.release.yaml up --wait
-# The default floats to the latest v0.2 patch once that line has shipped.
+# The images are published by the release workflow, so any released tag works:
+#   AVURUOBS_VERSION=vX.Y.Z docker compose -f docker-compose.release.yaml up --wait
+#
+# The DEFAULT is the moving tag of the newest released minor, so a reader who
+# copies the two lines above gets the current product. It is stamped by
+# `make version-set` at release time — it was pinned to v0.2 by hand and stayed
+# there for five releases, quietly handing every quickstart a July build.
 #
 # This is a laptop sandbox, not a deployment — Kubernetes is the real install
 # (deploy/helm/README.md). For a from-source dev loop use docker-compose.yaml.
@@ -38,7 +42,7 @@ services:
   # One-shot schema migrator (mirrors the k8s Helm post-install/post-upgrade
   # hook). gateway + hub wait for it to complete before starting.
   migrate:
-    image: ghcr.io/avuruvision/avuru-obs-hub:${AVURUOBS_VERSION:-v0.2}
+    image: ghcr.io/avuruvision/avuru-obs-hub:${AVURUOBS_VERSION:-v0.8}
     command: ["migrate"]
     environment:
       AVURUOBS_CLICKHOUSE_ADDR: clickhouse:9000
@@ -56,7 +60,7 @@ services:
     restart: "no"
 
   gateway:
-    image: ghcr.io/avuruvision/avuru-obs-gateway:${AVURUOBS_VERSION:-v0.2}
+    image: ghcr.io/avuruvision/avuru-obs-gateway:${AVURUOBS_VERSION:-v0.8}
     command: ["--config=/etc/avuru/config.yaml"]
     configs:
       - source: gateway-config
@@ -71,7 +75,7 @@ services:
     # No container healthcheck: the distro image is distroless (no shell).
 
   hub:
-    image: ghcr.io/avuruvision/avuru-obs-hub:${AVURUOBS_VERSION:-v0.2}
+    image: ghcr.io/avuruvision/avuru-obs-hub:${AVURUOBS_VERSION:-v0.8}
     environment:
       AVURUOBS_CLICKHOUSE_ADDR: clickhouse:9000
       AVURUOBS_CLICKHOUSE_USER: avuru
@@ -97,7 +101,7 @@ services:
   # Static UI (own nginx pod). Single-origin: serves the SPA at / and
   # reverse-proxies /api -> hub. Open http://localhost:3001.
   ui:
-    image: ghcr.io/avuruvision/avuru-obs-ui:${AVURUOBS_VERSION:-v0.2}
+    image: ghcr.io/avuruvision/avuru-obs-ui:${AVURUOBS_VERSION:-v0.8}
     ports:
       - "3001:80"
     depends_on:
