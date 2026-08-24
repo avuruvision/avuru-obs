@@ -84,24 +84,28 @@ test.describe("green dashboard (seeded data)", () => {
   test("sorts the per-service table by energy and by service", async ({ page }) => {
     await page.goto(GREEN_URL);
 
-    const services = page.locator("tbody tr td:first-child");
+    // Scoped to the per-service table: the coverage panel added a per-NODE
+    // table with an "Energy" column of its own, and an unscoped lookup matches
+    // both. Every locator here is relative to the table under test.
+    const table = page.getByTestId("service-energy-table");
+    const services = table.locator("tbody tr td:first-child");
     // Heaviest-first is the default ranking.
-    await expect(page.getByRole("columnheader", { name: "Energy" })).toHaveAttribute(
+    await expect(table.getByRole("columnheader", { name: "Energy" })).toHaveAttribute(
       "aria-sort",
       "descending",
     );
     await expect(services).toHaveText(["seed-payments", "seed-checkout"]);
 
-    await page.getByRole("button", { name: "Energy" }).click();
-    await expect(page.getByRole("columnheader", { name: "Energy" })).toHaveAttribute(
+    await table.getByRole("button", { name: "Energy" }).click();
+    await expect(table.getByRole("columnheader", { name: "Energy" })).toHaveAttribute(
       "aria-sort",
       "ascending",
     );
     await expect(services).toHaveText(["seed-checkout", "seed-payments"]);
 
     // A fresh text column starts ascending (mirrors ServicesTable).
-    await page.getByRole("button", { name: "Service" }).click();
-    await expect(page.getByRole("columnheader", { name: "Service" })).toHaveAttribute(
+    await table.getByRole("button", { name: "Service" }).click();
+    await expect(table.getByRole("columnheader", { name: "Service" })).toHaveAttribute(
       "aria-sort",
       "ascending",
     );
@@ -209,15 +213,53 @@ test.describe("green dashboard (stubbed states)", () => {
     await expect(exceeded.getByRole("img", { name: "carbon burn-down" })).toHaveCount(0);
   });
 
-  test("budget card notes the missing alerting module", async ({ page }) => {
-    await page.route(CAPABILITIES, (route) =>
-      route.fulfill({ json: { version: "test", modules: ["core", "green"] } }),
+  // A budget that will notify nobody has to SAY so, and the reason is
+  // per-budget: v0.6 moved this from "is the alerting module on" to a verdict
+  // the hub computes for each budget, because the module flag alone could only
+  // ever say "alerting is off" — a budget with no channel, or one pointing at a
+  // channel that no longer exists, looked perfectly wired.
+  //
+  // So the stub is the BUDGETS response, not capabilities: the module flag no
+  // longer drives this, and a capabilities stub tested nothing.
+  test("a budget that will notify nobody says why", async ({ page }) => {
+    const budget = (name: string, notifications: string) => ({
+      name,
+      group: name,
+      monthlyKgCO2e: 10,
+      usedKgCO2e: 2,
+      projectedKgCO2e: 4,
+      ratio: 0.2,
+      status: "ok",
+      burnDown: [],
+      notifications,
+    });
+    await page.route(BUDGETS, (route) =>
+      route.fulfill({
+        json: {
+          window: MOCK_WINDOW,
+          budgets: [
+            budget("module-off", "alerting-off"),
+            budget("no-channel", "no-channel"),
+            budget("stale-channel", "unknown-channel"),
+            budget("wired-up", "ok"),
+          ],
+        },
+      }),
     );
     await page.goto(GREEN_URL);
 
-    // The seeded payments-monthly budget renders status-only, with the hint.
-    await expect(page.getByRole("heading", { name: "payments-monthly" })).toBeVisible();
-    await expect(page.getByText(/Notifications require the alerting module/)).toBeVisible();
+    const card = (name: string) => page.locator("div.rounded-xl").filter({ hasText: name });
+
+    await expect(card("module-off")).toContainText(
+      "Notifications require the alerting module",
+    );
+    await expect(card("no-channel")).toContainText("No notification channel on this budget");
+    await expect(card("stale-channel")).toContainText(
+      "notification channel no longer exists",
+    );
+    // A budget that IS wired up says nothing — a reassurance on every card is
+    // noise that trains people to stop reading them.
+    await expect(card("wired-up")).not.toContainText("Notifications");
   });
 
   test("empty state teaches the RAPL prerequisites", async ({ page }) => {

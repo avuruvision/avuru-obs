@@ -26,6 +26,8 @@ ui/coverage/
 # Playwright artifacts
 ui/test-results/
 ui/playwright-report/
+# Session saved by ui/e2e/global-setup.ts. A live admin cookie — never commit it.
+ui/e2e/.auth/
 ui/blob-report/
 
 # ── Gateway / deploy ──────────────────────────────────────────

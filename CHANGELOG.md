@@ -47,6 +47,12 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Fixed
 
+- **The golden screens are now checked on every change.** The Playwright suite
+  covering the map, traces, logs, flame graphs and settings could only be run by
+  hand, against a stack started with authentication weakened — so it was never a
+  CI gate, and three of its specs had quietly rotted across two releases without
+  anyone noticing. It now runs against a real authenticated hub, unattended, on
+  every pull request.
 - **The map was deleting the connections it could least afford to lose.** An
   edge whose far end never sent telemetry — an eBPF flow to a workload nobody
   has instrumented — was dropped outright, because a graph edge needs two nodes

@@ -161,6 +161,51 @@ jobs:
       - name: helm install smoke (kind)
         run: make e2e-helm
 
+  # UI smoke (Playwright) against the seeded compose stack. `make e2e-ui` owns
+  # the lifecycle: build the images, seed deterministic OTLP fixtures, run the
+  # specs, tear down.
+  #
+  # This gate exists because its absence cost us: the specs are the ONLY
+  # automated check on the golden screens, and running them by hand meant a
+  # fixture change could silently age three of them out — which it did, twice,
+  # unnoticed across two releases. A test nobody runs is documentation with a
+  # worse failure mode.
+  #
+  # Chromium only. The specs assert product behaviour, not browser
+  # compatibility, and a second engine doubles the runtime to re-answer a
+  # question this suite was never asking.
+  e2e-ui:
+    runs-on: ubuntu-latest
+    # The compose stack builds hub, gateway and ui images from source before a
+    # single spec runs; 30 leaves room for a cold runner without inviting a
+    # timeout that teaches people to re-run rather than read.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: install ui deps
+        working-directory: ui
+        run: npm ci
+      - name: install browser
+        working-directory: ui
+        run: npx playwright install --with-deps chromium
+      - name: playwright smoke (compose)
+        run: make e2e-ui
+      - name: upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: ui/test-results/
+          retention-days: 7
+
   # Build each image and scan it for known OS/library CVEs. The UI carries a real
   # OS (nginx-alpine) and is where fixable base-image CVEs surface (Harbor flagged
   # OpenSSL/zlib/expat); hub and gateway are distroless and near-empty, scanned

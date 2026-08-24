@@ -40,7 +40,7 @@ export function ServiceEnergyTable({ services }: { services: GreenServiceEnergy[
   return (
     <Card className="overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="table-dense w-full text-sm">
+        <table data-testid="service-energy-table" className="table-dense w-full text-sm">
           <thead>
             <tr className="border-b border-neutral text-left">
               {COLUMNS.map((c) => (
