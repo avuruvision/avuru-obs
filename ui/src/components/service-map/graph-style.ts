@@ -36,12 +36,16 @@ const scale = (compact: boolean) => ({
 //   width          call volume
 //   line color     plain / amber (network health) / red (trace errors)
 //
-// Three treatments sit outside that set and must not disturb it: a transport
-// node (mesh proxy / gateway, hidden unless the user asks for it) is drawn as a
-// diamond in the neutral tone and a virtual target (database / cache / broker)
-// as a dashed hexagon, so the round primary-filled circle keeps meaning
-// "application"; and a flow-only edge is DOTTED, because dashed is already
-// spoken for by network health.
+// Four treatments sit outside that set and must not disturb it. Three are node
+// SHAPES, so that the round primary-filled circle keeps meaning "application":
+// a transport node (mesh proxy / gateway, hidden unless the user asks for it)
+// is a diamond in the neutral tone, a virtual target (database / cache /
+// broker) a dashed hexagon, and a peer the renderer could not resolve a hollow
+// outline. The fourth is on edges: a flow-only edge is DOTTED, because dashed
+// is already spoken for by network health.
+//
+// Boundary boxes (compound parents, below) are a fifth thing again — they are
+// containers, not nodes, and they take no pointer events.
 //
 // Node shape carries WHAT A NODE IS. It is a separate channel from the six
 // above precisely so that adding a kind of node never costs the map a colour.
