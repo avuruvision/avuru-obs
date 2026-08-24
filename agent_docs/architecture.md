@@ -49,6 +49,13 @@ with the hub (`/`→UI, `/api`→hub). The hub API is the client-agnostic contra
    hides them by default — otherwise every `app → proxy → app` hop renders as
    two application dependencies (`AVURUOBS_TOPOLOGY_CONFIG`,
    design/2026-08-23-service-map-transport.md).
+   A third source needs no new collection at all: **exit spans** naming a
+   database, cache or messaging system produce **virtual targets** — nodes for
+   the infrastructure that emits no telemetry of its own, derived in-database
+   like error tracking (`role: "virtual"`,
+   design/2026-08-23-virtual-targets.md). Anything an edge points at that is
+   still not a node is drawn by the UI as an **undetected peer** rather than
+   dropped (design/2026-08-24-map-encoding.md).
 
 ## Locked decisions and rationale
 

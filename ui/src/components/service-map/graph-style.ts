@@ -146,12 +146,16 @@ export function applyStyle(cy: Core, carbon = false, compact = false, edgeLabels
       label: "data(label)",
       color: c.text,
       "font-size": s.fontSize + (compact ? 0 : 1),
+      // Label INSIDE the box, not above it. Above collides with whatever the
+      // layout puts overhead — and with a second boundary directly above, the
+      // two names land on each other. The padding a compound already reserves
+      // around its children is empty space the label can live in.
       "text-valign": "top",
       "text-halign": "center",
-      "text-margin-y": compact ? -2 : -4,
+      "text-margin-y": compact ? 13 : 21,
       "text-background-opacity": 0,
       "text-opacity": 0.6,
-      padding: compact ? "8px" : "16px",
+      padding: compact ? "12px" : "22px",
       // A box must never eat a hover meant for the node inside it, and it has
       // no traces to open — so it takes no pointer events at all.
       events: "no",
