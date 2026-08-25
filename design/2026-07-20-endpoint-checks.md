@@ -162,9 +162,11 @@ failed probe.
 ## Roadmap
 
 - [x] AEP accepted
-- [ ] Check scheduler + config parsing on the `serviceGroups` surface
-- [ ] ClickHouse results table + span emission + aux-span classification
-- [ ] Health evaluation: check outcomes + `idle` for silent, check-less groups
-- [ ] `GET /api/v1/checks[/{id}/results]`
-- [ ] UI: check results panel on the `/health` board
+- [x] Check scheduler + config parsing on the `serviceGroups` surface
+- [x] ClickHouse results table + span emission + aux-span classification
+- [x] Health evaluation: check outcomes + `idle` for silent, check-less groups
+- [x] `GET /api/v1/checks[/{id}/results]`
+- [x] UI: check results panel on the `/health` board
+- [x] kind e2e: a real probe against the wedge demo, its result row and its
+      span asserted in ClickHouse
 - [ ] Follow-up AEP: scripted multi-step journeys, if demand appears
