@@ -13,12 +13,18 @@ import (
 
 // Fake implements storage.Store from canned data. Zero value is usable.
 type Fake struct {
-	PingErr      error
-	Services     []storage.ServiceStats
-	Labels       []storage.ServiceLabel
-	Edges        []storage.ServiceEdge
-	NetEdges     []storage.ServiceEdge
-	ControlPlane storage.MeshControlPlane
+	PingErr  error
+	Services []storage.ServiceStats
+	Labels   []storage.ServiceLabel
+	Edges    []storage.ServiceEdge
+	// Collapsed is what CollapsedEdges returns, and LastCollapseTransport
+	// records the classified transport set it was called with — the assertion
+	// that the handler resolves the mesh BEFORE it queries edges.
+	Collapsed             []storage.ServiceEdge
+	LastCollapseTransport []string
+	CollapseCalls         int
+	NetEdges              []storage.ServiceEdge
+	ControlPlane          storage.MeshControlPlane
 	// Endpoint-check results: per-check history for the results route, and the
 	// recent-states map the health evaluation's consecutive-failure rule reads.
 	CheckResultsByID map[string][]storage.CheckResult
@@ -219,6 +225,16 @@ func (f *Fake) ServiceLabels(_ context.Context, q storage.ServiceQuery) ([]stora
 func (f *Fake) ServiceEdges(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceEdge, error) {
 	f.LastServiceQuery = q
 	return f.Edges, nil
+}
+
+func (f *Fake) CollapsedEdges(_ context.Context, q storage.ServiceQuery, transport []string) ([]storage.ServiceEdge, error) {
+	f.LastServiceQuery = q
+	f.LastCollapseTransport = transport
+	f.CollapseCalls++
+	if len(transport) == 0 {
+		return nil, nil
+	}
+	return f.Collapsed, nil
 }
 
 func (f *Fake) RecordCheckResult(_ context.Context, r storage.CheckResult) error {

@@ -11,6 +11,7 @@ export function MapLegend({
   health,
   carbon,
   infra,
+  mesh,
   virtual,
   peers,
   grouping = "none",
@@ -18,6 +19,7 @@ export function MapLegend({
   health: boolean;
   carbon: boolean;
   infra: boolean;
+  mesh: boolean;
   virtual: boolean;
   peers: boolean;
   grouping?: MapGrouping;
@@ -44,6 +46,7 @@ export function MapLegend({
       <span className="text-error/80">red = errors</span>
       <span>dotted = observed connection, no traced calls</span>
       {infra && <span>diamond = mesh or gateway</span>}
+      {mesh && <span>&ldquo;via&rdquo; on hover = recovered across a mesh hop</span>}
       {virtual && <span>dashed hexagon = database, cache or queue</span>}
       {peers && <span>hollow outline = seen in traffic, never heard from</span>}
       {grouping !== "none" && (

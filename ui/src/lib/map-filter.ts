@@ -14,6 +14,47 @@ export function hasActiveFilter(f: MapFilters): boolean {
   return Boolean(f.q?.trim() || f.problemsOnly || f.group);
 }
 
+// Whether any part of this dependency's traffic went through the mesh.
+export function viaMesh(e: ServiceEdge): boolean {
+  return (e.viaTransport?.length ?? 0) > 0;
+}
+
+// Removes the mesh-carried traffic from an edge set, for the view that draws
+// the hops themselves.
+//
+// Subtracting rather than filtering matters for the pair that talks BOTH ways —
+// some calls through the mesh, some around it, which a mesh exclusion produces.
+// Dropping such an edge outright would erase a real direct dependency; keeping
+// it whole would draw its mesh half twice. What is left is exactly what was
+// observed directly, and an edge with nothing left disappears.
+export function withoutCollapsed(edges: ServiceEdge[]): ServiceEdge[] {
+  return edges.flatMap((e) => {
+    const meshCalls = e.collapsedCalls ?? 0;
+    // Untouched edges pass through byte-identical — including flow-derived
+    // ones, which legitimately carry zero calls and must not be swept up by a
+    // "nothing left" rule that was never about them.
+    if (meshCalls === 0) return [e];
+    const calls = Math.max(0, e.calls - meshCalls);
+    // No calls were observed directly: what is left is the mesh's hops, which
+    // the caller is about to draw. Unless the kernel also saw bytes on this
+    // pair — that observation is independent of any span and survives as the
+    // flow edge it always was.
+    if (calls === 0 && !e.bytes) return [];
+    const errorCount = Math.max(0, e.errorCount - (e.collapsedErrorCount ?? 0));
+    return [
+      {
+        ...e,
+        calls,
+        errorCount,
+        errorRate: calls > 0 ? errorCount / calls : 0,
+        viaTransport: undefined,
+        collapsedCalls: undefined,
+        collapsedErrorCount: undefined,
+      },
+    ];
+  });
+}
+
 // Splits the mesh out of the map.
 //
 // A service-mesh sidecar, waypoint or ingress gateway carries other services'
@@ -26,13 +67,24 @@ export function hasActiveFilter(f: MapFilters): boolean {
 // every edge, and the toolbar toggle brings them straight back with no refetch.
 // Kept beside filterMap for the same reason — this is what the user sees, and
 // it should be readable without knowing the graph library.
+//
+// It also owns the DOUBLE-COUNT RULE. A collapsed edge (`app → app`, recovered
+// by walking the trace across the proxy) and the two hops it was recovered from
+// describe the SAME requests. Drawing both would treble the apparent traffic,
+// so the toggle SWAPS representations rather than accumulating them: hops
+// hidden → collapsed edges shown; hops shown → collapsed edges hidden.
 export function splitInfrastructure(
   services: ServiceStats[],
   edges: ServiceEdge[],
   show: boolean,
 ): { services: ServiceStats[]; edges: ServiceEdge[]; hidden: number } {
   const transport = services.filter((s) => s.role === "transport");
-  if (show || transport.length === 0) return { services, edges, hidden: 0 };
+  if (show) {
+    // The mesh is on screen, so its hops are the truth being told — the
+    // recovered calls would be drawn a second time as `app → app`.
+    return { services, edges: withoutCollapsed(edges), hidden: 0 };
+  }
+  if (transport.length === 0) return { services, edges, hidden: 0 };
 
   // Drop exactly the edges that touch a node being HIDDEN — that edge IS the
   // hop — and not every edge whose endpoint is unknown. The difference matters:
