@@ -60,6 +60,17 @@ type ServiceEdge struct {
 	// edges, which have no span to measure.
 	P50 time.Duration
 	P95 time.Duration
+	// ViaTransport names the mesh proxies / gateways a COLLAPSED edge was
+	// recovered across (design/2026-08-25-transport-hop-collapse.md). Empty on
+	// every directly-observed edge, so an unmeshed map carries no trace of the
+	// feature at all.
+	ViaTransport []string
+	// How much of Count/ErrorCount came through the mesh rather than being
+	// observed directly. Equal to Count on a pure recovery; smaller on a pair
+	// that talks both ways (a mesh exclusion). A renderer that draws the hops
+	// themselves subtracts these, so the same request is never drawn twice.
+	CollapsedCount  uint64
+	CollapsedErrors uint64
 }
 
 // NetworkEdgeHealth is per-edge connection health from OBI's TCP-stats metrics
@@ -748,6 +759,12 @@ type Store interface {
 	// service-health module to auto-group unassigned services by namespace.
 	ServiceLabels(ctx context.Context, q ServiceQuery) ([]ServiceLabel, error)
 	ServiceEdges(ctx context.Context, q ServiceQuery) ([]ServiceEdge, error)
+	// CollapsedEdges recovers the app→app dependencies a service mesh hides,
+	// by walking each trace's parent chain across the transport spans named in
+	// `transport` (the classified proxy/gateway set, resolved by the caller).
+	// An empty set means no mesh and the call is free — implementations return
+	// without querying. Core: it reads otel_traces, like ServiceEdges.
+	CollapsedEdges(ctx context.Context, q ServiceQuery, transport []string) ([]ServiceEdge, error)
 	// TagKeys returns the business tags (avuru.tag.*) present on telemetry in
 	// the window with a bounded sample of each one's values, for filter
 	// discovery.

@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"sort"
 
 	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
@@ -68,6 +69,19 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	// Classify BEFORE querying the collapsed edges, not after building the
+	// response: the ancestry walk needs to know which workloads are proxies in
+	// order to step over them. One classifier for the whole response, so the
+	// nodes and the edges cannot disagree about what a proxy is.
+	cls := a.topologyClassifier()
+	transport := transportNames(cls, services)
+	// Recover the app→app dependencies the mesh hides. Free when `transport` is
+	// empty — an unmeshed install issues no query and returns the same bytes it
+	// did before this existed.
+	collapsed, err := store.CollapsedEdges(r.Context(), q, transport)
+	if err != nil {
+		return err
+	}
 	// Enrich with OBI network-flow edges so services that emit no application
 	// traces still appear. The otel_metrics_* tables exist only when the
 	// infra-metrics module is active; querying them otherwise would error, so
@@ -93,6 +107,7 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	edges = mergeEdges(edges, flowEdges)
+	edges = mergeCollapsed(edges, collapsed)
 	resp := serviceMapResponse{
 		Services: make([]serviceDTO, 0, len(services)),
 		Edges:    make([]serviceEdgeDTO, 0, len(edges)),
@@ -110,7 +125,7 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 	// relationship between services that never talk to each other. The hub
 	// reports the classification rather than acting on it: dropping the rows
 	// here would make the mesh unobservable, and the caller can then choose.
-	stampServiceRoles(a.topologyClassifier(), resp.Services)
+	stampServiceRoles(cls, resp.Services)
 	// Energy overlay (module green): per-service Wh/gCO2e as a map lens.
 	// Best-effort — the map renders even if the energy read fails.
 	if a.modules.Enabled(modules.Green) {
@@ -164,6 +179,63 @@ func stampServiceRoles(cls topology.Classifier, services []serviceDTO) {
 			services[i].Role = string(topology.RoleTransport)
 		}
 	}
+}
+
+// transportNames is the classified proxy/gateway set among the services on this
+// map, sorted so the query it feeds binds a stable argument. Passing names
+// (rather than the glob patterns) keeps the classification in exactly one
+// place: hub/internal/topology decides, SQL only matches.
+func transportNames(cls topology.Classifier, services []storage.ServiceStats) []string {
+	var out []string
+	for _, s := range services {
+		if cls.IsTransport(s.Name) {
+			out = append(out, s.Name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// mergeCollapsed folds mesh-recovered dependencies into the edge set.
+//
+// A pair can legitimately have both: some calls routed through the mesh and
+// some direct (an exclusion, a port the mesh does not capture). Those are the
+// same dependency, so the counts add and `viaTransport` is kept — saying "these
+// services do not talk" because part of the traffic took a proxy would be the
+// same class of error this feature exists to fix.
+//
+// Latency comes from whichever path carried more calls. Quantiles over two
+// populations cannot be merged after the fact, and the dominant path is the one
+// the number actually describes.
+func mergeCollapsed(edges, collapsed []storage.ServiceEdge) []storage.ServiceEdge {
+	if len(collapsed) == 0 {
+		return edges
+	}
+	type key struct{ src, dst string }
+	index := make(map[key]int, len(edges))
+	for i, e := range edges {
+		index[key{e.Source, e.Target}] = i
+	}
+	for _, c := range collapsed {
+		i, ok := index[key{c.Source, c.Target}]
+		if !ok {
+			edges = append(edges, c)
+			index[key{c.Source, c.Target}] = len(edges) - 1
+			continue
+		}
+		if c.Count > edges[i].Count {
+			edges[i].P50, edges[i].P95 = c.P50, c.P95
+		}
+		edges[i].Count += c.Count
+		edges[i].ErrorCount += c.ErrorCount
+		edges[i].CollapsedCount += c.CollapsedCount
+		edges[i].CollapsedErrors += c.CollapsedErrors
+		edges[i].ViaTransport = c.ViaTransport
+		// Provenance stays whatever the observed edge already was ("trace",
+		// "flow", "both"): the pair IS directly observed, and viaTransport is
+		// what records that some of it went the long way.
+	}
+	return edges
 }
 
 // applyEdgeHealth overlays OBI per-edge connection health (RTT p95, failed

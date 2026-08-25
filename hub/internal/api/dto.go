@@ -60,6 +60,15 @@ type serviceEdgeDTO struct {
 	// rather than "not measured".
 	P50Ms float64 `json:"p50Ms,omitempty"`
 	P95Ms float64 `json:"p95Ms,omitempty"`
+	// The mesh proxies / gateways this dependency was recovered across
+	// (design/2026-08-25-transport-hop-collapse.md). Absent on every directly
+	// observed edge, so an unmeshed map's JSON is unchanged.
+	ViaTransport []string `json:"viaTransport,omitempty"`
+	// The portion of Calls/ErrorCount that crossed a proxy. A client drawing
+	// the hops themselves subtracts these to get the directly-observed
+	// remainder, so no request is drawn twice.
+	CollapsedCalls      uint64 `json:"collapsedCalls,omitempty"`
+	CollapsedErrorCount uint64 `json:"collapsedErrorCount,omitempty"`
 }
 
 type serviceMapResponse struct {
@@ -175,15 +184,18 @@ func toServiceDTO(s storage.ServiceStats, window time.Duration) serviceDTO {
 
 func toServiceEdgeDTO(e storage.ServiceEdge) serviceEdgeDTO {
 	return serviceEdgeDTO{
-		Source:     e.Source,
-		Target:     e.Target,
-		Calls:      e.Count,
-		ErrorCount: e.ErrorCount,
-		ErrorRate:  ratio(e.ErrorCount, e.Count),
-		Bytes:      e.Bytes,
-		Provenance: e.Provenance,
-		P50Ms:      ms(e.P50),
-		P95Ms:      ms(e.P95),
+		Source:              e.Source,
+		Target:              e.Target,
+		Calls:               e.Count,
+		ErrorCount:          e.ErrorCount,
+		ErrorRate:           ratio(e.ErrorCount, e.Count),
+		Bytes:               e.Bytes,
+		Provenance:          e.Provenance,
+		P50Ms:               ms(e.P50),
+		P95Ms:               ms(e.P95),
+		ViaTransport:        e.ViaTransport,
+		CollapsedCalls:      e.CollapsedCount,
+		CollapsedErrorCount: e.CollapsedErrors,
 	}
 }
 
