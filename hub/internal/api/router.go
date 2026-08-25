@@ -351,6 +351,13 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("DELETE /api/v1/alerts/channels/{name}", a.securedAdmin(a.handleDeleteAlertChannel))
 		mux.Handle("POST /api/v1/alerts/channels/{name}/test", a.securedAdmin(a.handleTestAlertChannel))
 	}
+	if active.Enabled(modules.Mesh) {
+		// The proxies read core trace data; the control plane reads the metrics
+		// tables and says so itself when infra-metrics is off. One module gate,
+		// so the screen either exists whole or not at all.
+		mux.Handle("GET /api/v1/mesh/proxies", a.secured(auth.RoleViewer, a.handleMeshProxies))
+		mux.Handle("GET /api/v1/mesh/control-plane", a.secured(auth.RoleViewer, a.handleMeshControlPlane))
+	}
 	if active.Enabled(modules.Green) {
 		mux.Handle("GET /api/v1/green/summary", a.secured(auth.RoleViewer, a.handleGreenSummary))
 		mux.Handle("GET /api/v1/green/budgets", a.secured(auth.RoleViewer, a.handleGreenBudgets))

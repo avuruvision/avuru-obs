@@ -441,6 +441,48 @@ if render --set sensor.obi.network.interZone.enabled=maybe >/dev/null 2>&1; then
   fail "non-boolean interZone.enabled should fail schema validation"
 fi
 ok "infra-metrics guard fires; schema rejects a non-boolean"
+echo "== mesh: off by default, whole surface absent"
+out="$(render)"
+grep -q 'prometheus/mesh' <<<"$out" && fail "the mesh control-plane scrape rendered on a default install"
+grep -q ',mesh' <<<"$out" && fail "the mesh module is in AVURUOBS_MODULES by default"
+ok "no mesh module, no istiod scrape"
+
+echo "== mesh: the module alone adds the surface but no collection"
+out="$(render --set modules.mesh.enabled=true)"
+grep -q ',mesh' <<<"$out" || fail "modules.mesh.enabled did not reach AVURUOBS_MODULES"
+grep -q 'prometheus/mesh' <<<"$out" && fail "the scrape rendered without mesh.controlPlane.enabled"
+ok "module on, scrape still opt-in"
+
+echo "== mesh: the control-plane scrape lands in the GATEWAY, not the sensor"
+out="$(render --set modules.mesh.enabled=true --set mesh.controlPlane.enabled=true)"
+grep -q 'job_name: istiod' <<<"$out" || fail "istiod scrape job missing"
+grep -q 'pilot_total_xds_rejects' <<<"$out" || fail "the rejected-config metric is not in the keep list"
+# istiod is ONE Deployment: scraped per-node it would yield a copy of every
+# control-plane series per node, and any sum over them would be wrong by the
+# size of the cluster.
+# Counted rather than `grep -q`: on a body this size grep -q can exit non-zero
+# on a real match (it stops reading early and takes SIGPIPE), which would make
+# this assertion fail on correct output.
+gw_hits="$(awk '/^  name: .*-gateway$/,/^---$/' <<<"$out" | grep -c 'prometheus/mesh' || true)"
+[ "${gw_hits:-0}" -gt 0 ] || fail "the scrape is not in the gateway config"
+sensor_hits="$(awk '/^  name: .*-sensor-agent$/,/^---$/' <<<"$out" | grep -c 'istiod' || true)"
+[ "${sensor_hits:-0}" = "0" ] || fail "the istiod scrape rendered into the sensor DaemonSet — one series per node"
+pipe_hits="$(grep -cE 'receivers: \[otlp.*prometheus/mesh\]' <<<"$out" || true)"
+[ "${pipe_hits:-0}" -gt 0 ] || fail "prometheus/mesh is not wired into the metrics pipeline"
+ok "one scraper, in the single-writer collector"
+
+echo "== mesh: misconfiguration fails at template time rather than collecting nothing"
+if render --set mesh.controlPlane.enabled=true >/dev/null 2>&1; then
+  fail "controlPlane without modules.mesh should fail — otherwise it scrapes data no route can read"
+fi
+if render --set modules.mesh.enabled=true --set mesh.controlPlane.enabled=true --set modules.infraMetrics.enabled=false >/dev/null 2>&1; then
+  fail "controlPlane without infra-metrics should fail — the series would have nowhere to land"
+fi
+# A values file that reaches a query-only instance must not fail its install.
+render --set modules.mesh.enabled=true --set mesh.controlPlane.enabled=true --set gateway.enabled=false >/dev/null 2>&1 \
+  || fail "mesh values failed an install with no gateway to scrape from"
+ok "both guards fire; a gateway-less install is unaffected"
+
 echo "== business tags: nothing mapped by default"
 out="$(render)"
 grep -q 'avuru.tag.' <<<"$out" && fail "a business tag rendered with no tags.labels set"

@@ -28,6 +28,8 @@ export const queryKeys = {
     [p, "services", "list", { ...t, includeAux }] as const,
   serviceMap: (p: string, t: TimeParams, includeAux?: boolean) =>
     [p, "service-map", { ...t, includeAux }] as const,
+  meshProxies: (p: string, t: TimeParams) => [p, "mesh", "proxies", { ...t }] as const,
+  meshControlPlane: (p: string, t: TimeParams) => [p, "mesh", "control-plane", { ...t }] as const,
   traceOverview: (p: string, t: TimeParams, service?: string, includeAux?: boolean) =>
     [p, "traces", "overview", { ...t, service, includeAux }] as const,
   traces: (

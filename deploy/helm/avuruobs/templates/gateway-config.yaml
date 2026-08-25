@@ -1,4 +1,18 @@
 {{- /* Ingest path: off for a query-only instance that receives telemetry from elsewhere. */}}
+{{- /* Mesh control-plane guards. Scoped to gateway.enabled like the sensor's
+       own guards are scoped to sensor.enabled: values that render nothing must
+       never fail an install (a shared values file reaching a query-only
+       instance, say). Both cases below are silent no-ops otherwise — the
+       operator asked for a scrape and would get no data, no error and nothing
+       to search for. */}}
+{{- if and .Values.gateway.enabled .Values.mesh.controlPlane.enabled }}
+{{- if not .Values.modules.mesh.enabled }}
+{{- fail "mesh.controlPlane.enabled requires modules.mesh.enabled — the scrape would collect control-plane metrics that no API route or screen exists to read." }}
+{{- end }}
+{{- if not .Values.modules.infraMetrics.enabled }}
+{{- fail "mesh.controlPlane.enabled requires modules.infraMetrics.enabled — scraped control-plane series are stored in the otel_metrics_* tables owned by the infra-metrics module." }}
+{{- end }}
+{{- end }}
 {{- if .Values.gateway.enabled }}
 apiVersion: v1
 kind: ConfigMap
@@ -17,6 +31,7 @@ data:
     {{- $zipkin := include "avuruobs.zipkinEnabled" . }}
     {{- $promRW := include "avuruobs.promRWEnabled" . }}
     {{- $loki := include "avuruobs.lokiEnabled" . }}
+    {{- $meshCP := include "avuruobs.meshControlPlaneEnabled" . }}
     {{- $ingestAuth := include "avuruobs.ingestAuthEnabled" . }}
     {{- $ingestStamp := include "avuruobs.ingestTenantStamp" . }}
     receivers:
@@ -97,6 +112,29 @@ data:
         projects:
           {{- toYaml . | nindent 10 }}
         {{- end }}
+    {{- end }}
+    {{- if $meshCP }}
+    # Mesh control plane (design/2026-08-25-mesh-surfaces.md). Scraped HERE and
+    # not from the sensor DaemonSet: istiod is one Deployment, so a per-node
+    # scrape would multiply every control-plane series by the size of the
+    # cluster. The gateway is already a single-writer Deployment.
+    #
+    # The keep-list is not decoration — istiod exposes hundreds of series and
+    # this surface asks four questions. pilot_total_xds_rejects is the one
+    # nothing else can answer: a rejected push means the control plane and the
+    # data plane disagree, while the fleet keeps happily serving the last config
+    # it accepted.
+      prometheus/mesh:
+        config:
+          scrape_configs:
+            - job_name: istiod
+              scrape_interval: {{ .Values.mesh.controlPlane.scrapeInterval }}
+              static_configs:
+                - targets: [{{ .Values.mesh.controlPlane.endpoint | quote }}]
+              metric_relabel_configs:
+                - source_labels: [__name__]
+                  regex: {{ .Values.mesh.controlPlane.metrics.keep | quote }}
+                  action: keep
     {{- end }}
     processors:
     {{- if $ingestStamp }}
@@ -280,7 +318,7 @@ data:
     {{- end }}
     {{- if .Values.modules.infraMetrics.enabled }}
         metrics:
-          receivers: [otlp{{ if $promRW }}, prometheusremotewrite{{ end }}]
+          receivers: [otlp{{ if $promRW }}, prometheusremotewrite{{ end }}{{ if $meshCP }}, prometheus/mesh{{ end }}]
           processors: [{{ $tenantStage }}batch]
           exporters: [clickhouse{{ $fwdM }}]
     {{- end }}

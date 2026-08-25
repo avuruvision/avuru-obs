@@ -12,6 +12,7 @@ export type ModuleName =
   | "error-tracking"
   | "service-health"
   | "alerting"
+  | "mesh"
   | "green";
 
 export interface CapabilitiesResponse {
@@ -81,6 +82,36 @@ export interface ServiceEdge {
   // directly-observed remainder when the hops are being drawn themselves.
   collapsedCalls?: number;
   collapsedErrorCount?: number;
+}
+
+// One mesh proxy or gateway: its own RED, plus the call volume it carries.
+// callsIn/callsOut are separate on purpose — traffic arriving with none leaving
+// is a proxy failing to forward, which its own error rate need not show.
+export interface MeshProxy {
+  name: string;
+  ratePerSec: number;
+  errorRate: number;
+  p50Ms: number;
+  p95Ms: number;
+  callsIn: number;
+  callsOut: number;
+}
+
+export interface MeshProxiesResponse {
+  proxies: MeshProxy[];
+}
+
+// Control-plane health. `available` leads because every number after it is
+// meaningless without it: a control plane nobody scrapes reports zero rejected
+// configs, which reads as perfect health.
+export interface MeshControlPlane {
+  available: boolean;
+  reason?: string;
+  lastSeen?: string;
+  connectedProxies?: number;
+  pushes?: number;
+  rejectedConfigs?: number;
+  convergenceP95Ms?: number;
 }
 
 export interface ServiceMapResponse {

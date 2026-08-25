@@ -25,6 +25,19 @@ receivers:
   # Prometheus >= 3.8.0 with protobuf_message io.prometheus.write.v2.Request.
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusremotewritereceiver v0.154.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/lokireceiver v0.154.0
+  # Mesh control-plane scrape (design/2026-08-25-mesh-surfaces.md): istiod
+  # publishes Prometheus metrics on :15014, and this is the only place in the
+  # product that can scrape it CORRECTLY. The sensor's prometheus receiver runs
+  # in a DaemonSet against 127.0.0.1, which is right for the per-node energy
+  # sidecars and wrong for a single Deployment — every node would produce its
+  # own copy of every control-plane series. The gateway is already the
+  # single-writer half of the pipeline.
+  #
+  # This is the largest component in an otherwise deliberately minimal distro.
+  # The alternative, a dedicated single-replica scraper Deployment, trades that
+  # weight for another workload, ServiceAccount and failure mode; one receiver
+  # in a collector that already exists is the cheaper of the two.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.154.0
 
 processors:
   - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.154.0

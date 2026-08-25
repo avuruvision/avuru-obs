@@ -31,6 +31,29 @@ When a release is cut, that block is renamed to the version with its date.
   ztunnel → waypoint → ztunnel — see the
   [AEP](design/2026-08-25-transport-hop-collapse.md).
 
+- **The mesh gets a screen.** Two releases were spent teaching avuru-obs to see
+  *past* the mesh — v0.7 hid the proxies, v0.9 recovered the dependencies behind
+  them — which is right for a dependency graph and wrong as the last word. On a
+  cluster where the mesh *is* the network, a proxy dropping requests or a
+  control plane that stopped pushing configuration is the outage. Settings →
+  Mesh (behind `modules.mesh.enabled`, off by default) lists every proxy and
+  gateway with its own rate, success rate and latency, plus **the calls it
+  carried in and out as separate numbers** — traffic arriving with none leaving
+  is a proxy that has stopped forwarding, a failure its own error rate need not
+  show at all. The proxy half reads spans you are already sending; there is no
+  new collection behind it.
+  Beside it, **control-plane health**: connected proxies, push convergence, and
+  the configuration your proxies **refused**. That last one is the signal
+  nothing else can produce — a rejected push means the control plane and the
+  data plane disagree about what the mesh should be doing, while the fleet keeps
+  serving the last configuration it accepted, looking healthy at every other
+  layer. It needs a scrape (`mesh.controlPlane.enabled`), rendered into the
+  **gateway**, because istiod is a single Deployment and scraping it from the
+  sensor DaemonSet would produce one copy of every control-plane series per
+  node. With no scrape configured the screen says the control plane is not being
+  watched, rather than reporting a comfortable zero rejected configs — see the
+  [AEP](design/2026-08-25-mesh-surfaces.md).
+
 - **Retransmits on the map's edges.** A link can lose packets and still measure
   fast, which is precisely the fault RTT alone hides — and until now avuru-obs
   could not report it, because the eBPF sensor's pinned version had no such

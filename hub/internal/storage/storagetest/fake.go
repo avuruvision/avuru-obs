@@ -24,6 +24,7 @@ type Fake struct {
 	LastCollapseTransport []string
 	CollapseCalls         int
 	NetEdges              []storage.ServiceEdge
+	ControlPlane          storage.MeshControlPlane
 	Virtual               []storage.VirtualTarget
 	NetEdgeHealth         []storage.NetworkEdgeHealth
 	Zones                 []storage.ZoneTraffic
@@ -229,6 +230,11 @@ func (f *Fake) CollapsedEdges(_ context.Context, q storage.ServiceQuery, transpo
 		return nil, nil
 	}
 	return f.Collapsed, nil
+}
+
+func (f *Fake) MeshControlPlane(_ context.Context, q storage.ServiceQuery) (storage.MeshControlPlane, error) {
+	f.LastServiceQuery = q
+	return f.ControlPlane, nil
 }
 
 func (f *Fake) TagKeys(_ context.Context, q storage.ServiceQuery) ([]storage.TagKey, error) {

@@ -12,6 +12,7 @@ import {
   ScrollText,
   Server,
   Settings,
+  Waypoints,
   type LucideIcon,
 } from "lucide-react";
 import type { ModuleName } from "@/lib/api-types";
@@ -97,6 +98,11 @@ export const NAV_SECTIONS: NavSection[] = [
     title: "Infrastructure",
     items: [
       { href: "/nodes", label: "Nodes", icon: Server, module: "infra-metrics", docs: "signals/metrics" },
+      // The mesh sits here rather than under Topology: the map's subject is
+      // what your services depend on, and the mesh is what they run ON — the
+      // same reason Nodes and Green are neighbours. Hidden entirely without the
+      // module, which is most installs.
+      { href: "/mesh", label: "Mesh", icon: Waypoints, module: "mesh", docs: "signals/mesh" },
       { href: "/green", label: "Green", icon: Leaf, module: "green", docs: "signals/green" },
     ],
   },

@@ -13,6 +13,7 @@ const HELM_VALUE: Record<Exclude<ModuleName, "core">, string> = {
   "error-tracking": "modules.errorTracking.enabled",
   "service-health": "modules.serviceHealth.enabled",
   alerting: "modules.alerting.enabled",
+  mesh: "modules.mesh.enabled",
   green: "modules.green.enabled",
 };
 
@@ -23,6 +24,7 @@ const LABEL: Record<Exclude<ModuleName, "core">, string> = {
   "error-tracking": "Error tracking",
   "service-health": "Service health",
   alerting: "Alerting",
+  mesh: "Service mesh",
   green: "Energy & carbon",
 };
 
