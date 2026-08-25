@@ -11,6 +11,30 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-08-25
+
+**The mesh and the kernel.** v0.8 stopped the service map *lying* about a meshed
+cluster: mesh proxies and gateways were recognised as transport and hidden, so
+the `app → proxy → app` edges it had been drawing as dependencies went away.
+That fixed the false claim and left a different problem — with the proxies
+hidden, the real dependency behind them was gone too, and a fully meshed estate
+rendered as a set of disconnected circles.
+
+This release recovers it, by reading each trace's own ancestry rather than
+guessing from aggregates. It also stops treating the mesh as something to be
+filtered out: on the clusters this matters for, the mesh *is* the network, and it
+gets a screen where the proxies and the control plane programming them are the
+subject.
+
+Underneath, the eBPF sensor moves to an upstream version that finally exports the
+packet loss the kernel was always seeing — and the exercise of proving, on a real
+kernel rather than on synthetic rows, that the map's per-edge attribution works
+turned up a latent crash that had been taking the whole sensor down for anyone
+who enabled TCP stats.
+
+The last piece answers a question no amount of observed telemetry can: whether
+anything is serving when nobody is calling.
+
 ### Added
 
 - **The dependency behind the proxy.** On a meshed cluster every call is
