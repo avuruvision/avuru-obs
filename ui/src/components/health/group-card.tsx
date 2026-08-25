@@ -4,6 +4,7 @@ import { cn } from "@/lib/cn";
 import { statusDotClass, statusLabel, statusTone } from "@/lib/health-status";
 import type { HealthGroup } from "@/lib/api-types";
 import { MemberChip } from "./member-chip";
+import { GroupChecks } from "./group-checks";
 
 const COUNT_ORDER: { key: string; symbol: string; cls: string }[] = [
   { key: "healthy", symbol: "✓", cls: "text-success" },
@@ -76,6 +77,9 @@ export function GroupCard({
         ))}
         <span className="ml-auto tabular-nums">{group.ratePerSec.toFixed(1)}/s</span>
       </div>
+
+      {/* Renders nothing for a group that declares no checks. */}
+      <GroupChecks checks={group.checks ?? []} />
     </Card>
   );
 }

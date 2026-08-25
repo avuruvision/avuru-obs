@@ -1,0 +1,24 @@
+# Endpoint checks for the kind gate (design/2026-07-20-endpoint-checks.md).
+#
+# The check points at the wedge demo's frontend Service, which the gate already
+# deploys and drives traffic through. That makes this leg the AEP's own
+# verification: a real probe, against a real endpoint, recorded in ClickHouse,
+# with a span emitted to the gateway — none of which any unit or integration
+# test can prove on its own.
+#
+# The group selects the demo's own services, so its status is the one the check
+# moves. `interval: 15s` rather than the 60s default: the gate has minutes, not
+# hours, and the two-consecutive-failures rule needs two probes to have run.
+serviceGroups:
+  defaultTier: T2
+  groups:
+    - name: wedge
+      tier: T0
+      selector:
+        namespaces: [wedge-demo]
+      checks:
+        - id: wedge-frontend
+          url: http://frontend.wedge-demo.svc.cluster.local/
+          interval: 15s
+          expect:
+            status: 200

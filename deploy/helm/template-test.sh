@@ -441,6 +441,44 @@ if render --set sensor.obi.network.interZone.enabled=maybe >/dev/null 2>&1; then
   fail "non-boolean interZone.enabled should fail schema validation"
 fi
 ok "infra-metrics guard fires; schema rejects a non-boolean"
+echo "== endpoint checks: nothing rendered when none are declared"
+out="$(render)"
+grep -q 'AVURUOBS_GATEWAY_OTLP_ENDPOINT' <<<"$out" && fail "the check span endpoint rendered with no checks declared"
+ok "no checks, no span endpoint"
+
+echo "== endpoint checks: declared -> config, span endpoint, ingest key"
+CHECKS_VALUES="$(mktemp)"
+cat > "$CHECKS_VALUES" <<'YAML'
+serviceGroups:
+  groups:
+    - name: core
+      tier: T0
+      selector: { namespaces: [storefront] }
+      checks:
+        - id: core-login
+          url: https://app.example.com/api/health
+          interval: 60s
+          expect: { status: 200, maxLatency: 800ms }
+YAML
+out="$(render -f "$CHECKS_VALUES")"
+grep -q 'core-login' <<<"$out" || fail "the declared check did not reach the groups ConfigMap"
+grep -q 'AVURUOBS_GATEWAY_OTLP_ENDPOINT' <<<"$out" || fail "no span endpoint for the hub's own probe traffic"
+ok "check config, span endpoint"
+
+# Under enforce, the hub sending check spans is a sender like any other and
+# needs a key — otherwise the gateway rejects its own platform's traffic.
+out="$(render -f "$CHECKS_VALUES" --set auth.ingest.mode=enforce)"
+hub_block="$(awk '/^  name: .*-hub$/,/^---$/' <<<"$out")"
+key_hits="$(grep -c 'AVURUOBS_INGEST_KEY' <<<"$hub_block" || true)"
+[ "${key_hits:-0}" -gt 0 ] || fail "the hub has no ingest key in enforce mode — its check spans would be rejected"
+ok "enforce mode gives the hub a key for its own spans"
+
+# service-health owns checks: with the module off there is nothing to answer for.
+out="$(render -f "$CHECKS_VALUES" --set modules.serviceHealth.enabled=false)"
+grep -q 'AVURUOBS_GATEWAY_OTLP_ENDPOINT' <<<"$out" && fail "checks rendered without the service-health module that owns them"
+ok "no service-health, no checks"
+rm -f "$CHECKS_VALUES"
+
 echo "== mesh: off by default, whole surface absent"
 out="$(render)"
 grep -q 'prometheus/mesh' <<<"$out" && fail "the mesh control-plane scrape rendered on a default install"

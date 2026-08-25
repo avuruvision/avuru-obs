@@ -116,6 +116,34 @@ type VirtualTarget struct {
 	P95        time.Duration
 }
 
+// CheckResult is one endpoint probe's outcome, as stored.
+//
+// TraceID is the span the probe emitted for its own request — the join that
+// makes a check part of the product rather than a parallel health system: a
+// failing check clicks through to the trace explaining why. Empty when no
+// gateway endpoint is configured.
+type CheckResult struct {
+	CheckID   string
+	Group     string
+	At        time.Time
+	OK        bool
+	Status    int
+	LatencyMs float64
+	Error     string
+	TraceID   string
+	SpanID    string
+	// Tenant is set on write and implied by the query on read.
+	Tenant string
+}
+
+// CheckQuery selects one check's recent results.
+type CheckQuery struct {
+	Tenant  string
+	Tenants []string
+	CheckID string
+	Limit   int
+}
+
 // MeshControlPlane is the health of the service mesh's control plane over the
 // window: is it still programming the data plane, and is the data plane
 // accepting what it is told?
@@ -812,6 +840,20 @@ type Store interface {
 	// window. Reads the metrics tables (the scrape lands there), so the same
 	// infra-metrics gating as NetworkEdges applies on top of the mesh module.
 	MeshControlPlane(ctx context.Context, q ServiceQuery) (MeshControlPlane, error)
+	// RecordCheckResult appends one endpoint probe's outcome. Append-only: a
+	// check that flapped is a fact worth keeping, not state to overwrite.
+	//
+	// Takes the storage shape rather than the scheduler's: `checks` imports
+	// `health`, `health` imports `storage`, so a storage method typed on
+	// checks.Result would close an import cycle. cmd/hub adapts between them,
+	// which is where the two halves already meet.
+	RecordCheckResult(ctx context.Context, r CheckResult) error
+	// CheckResults returns one endpoint check's recent outcomes, newest first.
+	// Owned by the service-health module (migration 0020).
+	CheckResults(ctx context.Context, q CheckQuery) ([]CheckResult, error)
+	// LatestCheckStates returns up to perCheck recent results per check in the
+	// window — what the consecutive-failure rule needs, and no more.
+	LatestCheckStates(ctx context.Context, q ServiceQuery, perCheck int) (map[string][]CheckResult, error)
 	TraceOverview(ctx context.Context, q OverviewQuery) ([]OperationStats, error)
 	SearchTraces(ctx context.Context, q TraceQuery) (TracePage, error)
 	// GetTrace/FindSpanTrace/LogsForTrace (and the error-issue reads below)

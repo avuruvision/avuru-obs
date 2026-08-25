@@ -31,6 +31,30 @@ When a release is cut, that block is renamed to the version with its date.
   ztunnel → waypoint → ztunnel — see the
   [AEP](design/2026-08-25-transport-hop-collapse.md).
 
+- **Endpoint checks: health when nothing is calling.** avuru-obs has always
+  reported what *happened* — spans in, RED out, a map, group health. It was
+  silent on what *should* be happening, and the two look identical from the
+  outside: a group with no spans in the last fifteen minutes shows a flat line
+  whether it is idle or dead. Checks are scheduled HTTP probes declared
+  alongside your service-health groups, and they add the one signal observed
+  traffic cannot produce. A silent group whose probe passes now reads **healthy**
+  instead of idle; a silent group whose probe fails reads **down**.
+  Two consecutive failures move a group, never one — a single failed probe is a
+  rolling restart or a dropped packet, and a board that reacts to it is a board
+  people stop reading.
+  The design's hinge is that a check is not a side channel: it is synthetic
+  traffic. Each probe emits a span of its own, so it appears in RED, on the
+  service map and in the trace explorer like any other client — which is what
+  lets a failing check on the health board link straight to the trace of the
+  request that failed. The hub sends that span as an **OTLP client of the
+  gateway**, exactly as an instrumented application would, past the same
+  receiver and the same tenant stage; it never writes `otel_traces` itself.
+  Check spans are classified as auxiliary traffic by the mechanism that already
+  hides health-check spans, so your RED numbers do not move.
+  `GET /api/v1/checks` and `/api/v1/checks/{id}/results` expose them. Zero
+  checks declared means no scheduler, no rows and no behaviour change at all —
+  and that is a test, not a promise — [AEP](design/2026-07-20-endpoint-checks.md).
+
 - **The mesh gets a screen.** Two releases were spent teaching avuru-obs to see
   *past* the mesh — v0.7 hid the proxies, v0.9 recovered the dependencies behind
   them — which is right for a dependency graph and wrong as the last word. On a

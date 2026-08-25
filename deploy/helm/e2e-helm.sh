@@ -142,6 +142,7 @@ export WEDGE_T0_UNIX
 # side — this is the estimator's genuine "probe fails -> estimate" path
 # running in CI, not a synthetic stand-in.
 helm install avuruobs deploy/helm/avuruobs -n "$NS" --create-namespace \
+  -f deploy/helm/e2e-checks-values.yaml \
   --set hub.repository=avuru-obs-hub --set hub.tag=local \
   --set ui.repository=avuru-obs-ui --set ui.tag=local \
   --set gateway.image.repository=avuru-obs-gateway --set gateway.image.tag=local \
@@ -452,6 +453,59 @@ while :; do
   fi
   sleep 10
 done
+
+# ENDPOINT CHECKS: the AEP's own e2e — a real probe against a real endpoint.
+#
+# Everything below the scheduler is unit- and integration-tested; what none of
+# that can show is a hub actually reaching a Service in another namespace,
+# recording the result, and having the health board change its mind about a
+# group as a consequence. The check points at the wedge demo's frontend
+# (deploy/helm/e2e-checks-values.yaml).
+#
+# The assertion is deliberately on the RESULT ROW, not just on the group: a
+# passing group could be passing because of its traffic, and would prove
+# nothing about the probe.
+echo "==> CHECKS: polling ClickHouse for endpoint-check results"
+CHECK_SQL="SELECT count(), countIf(Ok = 1), countIf(TraceId != '') FROM otel.endpoint_check_result WHERE CheckId = 'wedge-frontend'"
+CHECK_DEADLINE=$(( $(date +%s) + 180 ))
+while :; do
+  check_counts=$(kubectl -n "$NS" exec avuruobs-clickhouse-0 -- \
+    clickhouse-client -u avuru --password avuru -q "$CHECK_SQL" 2>/dev/null || echo "")
+  total=$(awk '{print $1}' <<<"$check_counts")
+  passing=$(awk '{print $2}' <<<"$check_counts")
+  traced=$(awk '{print $3}' <<<"$check_counts")
+  if [ "${passing:-0}" -gt 0 ] 2>/dev/null; then
+    echo "    endpoint-check results: $total total, $passing passing, $traced carrying a trace id"
+    # The span is what makes a check part of the product rather than a
+    # parallel health system: without it, a failing check links nowhere.
+    if [ "${traced:-0}" -lt 1 ] 2>/dev/null; then
+      echo "CHECKS: results recorded but none carry a trace id — the hub's OTLP export to the gateway is not working"
+      kubectl -n "$NS" logs deploy/avuruobs-hub --tail=40 || true
+      exit 1
+    fi
+    break
+  fi
+  if [ "$(date +%s)" -ge "$CHECK_DEADLINE" ]; then
+    echo "CHECKS: no passing endpoint-check result within 180s (rows=${total:-?})"
+    kubectl -n "$NS" logs deploy/avuruobs-hub --tail=60 || true
+    kubectl -n wedge-demo get svc,pods || true
+    exit 1
+  fi
+  sleep 10
+done
+
+# The check's own span must reach otel_traces through the gateway — the hub as
+# an OTLP CLIENT, never as a writer. Asserting on the stored span is what proves
+# it took the front door.
+echo "==> CHECKS: asserting the probe's span landed via the gateway"
+SPAN_SQL="SELECT count() FROM otel.otel_traces WHERE SpanAttributes['avuru.check.id'] = 'wedge-frontend'"
+span_rows=$(kubectl -n "$NS" exec avuruobs-clickhouse-0 -- \
+  clickhouse-client -u avuru --password avuru -q "$SPAN_SQL" 2>/dev/null || echo 0)
+if [ "${span_rows:-0}" -lt 1 ] 2>/dev/null; then
+  echo "CHECKS: the probe emitted no span into otel_traces (rows=${span_rows:-?})"
+  exit 1
+fi
+echo "    check spans in otel_traces: $span_rows"
 
 # GREEN TDP ESTIMATION: kind nodes have no powercap, so the estimator's own
 # RAPL probe fails independently of Kepler's fake-cpu-meter — this is its

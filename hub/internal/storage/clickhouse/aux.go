@@ -49,6 +49,12 @@ const repTuple = `(ParentSpanId != '', Timestamp, SpanId)`
 // (Lettuce INFO/PING, `SELECT 1`, ...), and each parentless ping otherwise
 // lists as its own one-span "trace".
 //
+// The platform's OWN endpoint checks are in the same category and are matched
+// by the attribute they stamp rather than by their span name: a check is
+// synthetic traffic on purpose (that is what puts it on the map and in the
+// trace explorer), and it must not be counted as a user's request in RED. One
+// mechanism, reused — see design/2026-07-20-endpoint-checks.md.
+//
 // prefix qualifies the columns for joined queries (e.g. "server."); pass "" for
 // a single-table query.
 func auxExclusion(prefix string) string {
@@ -61,6 +67,7 @@ func auxExclusion(prefix string) string {
   OR positionCaseInsensitive(` + prefix + `SpanName, '/metrics') > 0
   OR positionCaseInsensitive(` + prefix + `SpanName, '/ping') > 0
   OR positionCaseInsensitive(` + prefix + `SpanAttributes['http.route'], '/actuator') > 0
+  OR ` + prefix + `SpanAttributes['avuru.check.id'] != ''
   OR (` + prefix + `SpanKind = 'Client'
       AND ` + prefix + `SpanAttributes['db.system'] != ''
       AND (upperUTF8(` + prefix + `SpanName) IN ('PING', 'INFO', 'HELLO', 'ISMASTER', 'SELECT 1')

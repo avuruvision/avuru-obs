@@ -361,6 +361,32 @@ serviceGroups:
     #  T0: { errorRateWarn: 0.005, errorRateCrit: 0.02, latencyP95ObjectiveMs: 300 }
     services: {}
     #  payments: { latencyP95ObjectiveMs: 800 }
+  # Endpoint checks: scheduled HTTP probes attached to a group
+  # (design/2026-07-20-endpoint-checks.md). They add the one signal that cannot
+  # be derived from observed traffic — what happens when there is NO traffic. A
+  # group with no spans in the window is either idle or dead, and only a probe
+  # tells the two apart at 3 a.m.
+  #
+  # Declared per group, below `groups`. Zero checks = no scheduler, no rows, no
+  # behaviour change. Two consecutive failures move a group, not one: a single
+  # failed probe is a restart or a dropped packet, and a board that reacts to
+  # one is a board people stop reading.
+  #
+  #  - name: core
+  #    tier: T0
+  #    selector: { namespaces: [storefront] }
+  #    checks:
+  #      - id: core-login
+  #        url: https://app.example.com/api/health
+  #        interval: 60s
+  #        expect: { status: 200, maxLatency: 800ms }
+  #
+  # Each probe emits a span of its own, so a check appears in RED, on the map
+  # and in the trace explorer like any other client — which is what lets a
+  # failing check link straight to the request that failed. There is no SSRF
+  # guard here, unlike alerting's webhooks: a check exists to probe YOUR OWN
+  # services, on exactly the private networks that guard blocks.
+  #
   # Force specific edges critical even when the target isn't T0 (rare).
   criticalEdges: []
   #  - { from: web, to: legacy-billing }

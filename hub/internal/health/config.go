@@ -8,7 +8,9 @@ package health
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
+	"time"
 )
 
 // Tier is a service's criticality class. T0 is the most critical; a dependency
@@ -33,11 +35,32 @@ type Selector struct {
 	Services   []string `json:"services,omitempty"`
 }
 
-// Group is a named set of services with a criticality tier.
+// Check is a scheduled HTTP probe attached to a group — the one signal
+// avuru-obs cannot derive from observed traffic: what happens when there is no
+// traffic. A group with no spans in the freshness window is either idle or
+// dead, and only a probe tells the two apart at 3 a.m.
+// See design/2026-07-20-endpoint-checks.md.
+type Check struct {
+	ID       string `json:"id"`
+	URL      string `json:"url"`
+	Interval string `json:"interval,omitempty"` // Go duration; defaults to DefaultCheckInterval
+	Expect   Expect `json:"expect,omitempty"`
+}
+
+// Expect is what a healthy response looks like. Both fields are optional: with
+// neither set, any 2xx inside the timeout passes.
+type Expect struct {
+	Status     int    `json:"status,omitempty"`
+	MaxLatency string `json:"maxLatency,omitempty"` // Go duration
+}
+
+// Group is a named set of services with a criticality tier, and optionally the
+// probes that answer for it when nothing is calling it.
 type Group struct {
 	Name     string   `json:"name"`
 	Tier     Tier     `json:"tier"`
 	Selector Selector `json:"selector"`
+	Checks   []Check  `json:"checks,omitempty"`
 }
 
 // Thresholds are the SLO-lite knobs for the per-service status rule. Zero
@@ -129,6 +152,9 @@ func (c Config) Validate() error {
 		return fmt.Errorf("invalid defaultTier %q (known: T0, T1, T2, T3)", c.DefaultTier)
 	}
 	seen := map[string]bool{}
+	// Check IDs are global, not per-group: they key the results table and the
+	// /checks/{id}/results route, so two groups cannot share one.
+	checkIDs := map[string]bool{}
 	for i, g := range c.Groups {
 		if strings.TrimSpace(g.Name) == "" {
 			return fmt.Errorf("group #%d has an empty name", i)
@@ -143,6 +169,11 @@ func (c Config) Validate() error {
 		if len(g.Selector.Namespaces) == 0 && len(g.Selector.Services) == 0 {
 			return fmt.Errorf("group %q has an empty selector (needs namespaces or services)", g.Name)
 		}
+		for j, ck := range g.Checks {
+			if err := ck.validate(g.Name, j, checkIDs); err != nil {
+				return err
+			}
+		}
 	}
 	for t := range c.Thresholds.Tiers {
 		if !knownTiers[t] {
@@ -155,6 +186,89 @@ func (c Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+// DefaultCheckInterval is how often a check runs when it does not say. Chosen
+// to be frequent enough that a dead group is noticed within a couple of
+// minutes, and slow enough that a probe is never mistaken for load.
+const DefaultCheckInterval = 60 * time.Second
+
+// DefaultCheckTimeout bounds a single probe. A check that hangs must fail, not
+// stall the scheduler behind it.
+const DefaultCheckTimeout = 10 * time.Second
+
+func (ck Check) validate(group string, index int, ids map[string]bool) error {
+	if strings.TrimSpace(ck.ID) == "" {
+		return fmt.Errorf("group %q check #%d has an empty id", group, index)
+	}
+	if ids[ck.ID] {
+		return fmt.Errorf("duplicate check id %q", ck.ID)
+	}
+	ids[ck.ID] = true
+	u, err := url.Parse(ck.URL)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return fmt.Errorf("check %q needs an absolute http(s) url, got %q", ck.ID, ck.URL)
+	}
+	if _, err := ck.IntervalOrDefault(); err != nil {
+		return fmt.Errorf("check %q has an invalid interval %q: %w", ck.ID, ck.Interval, err)
+	}
+	if _, err := ck.MaxLatencyOrZero(); err != nil {
+		return fmt.Errorf("check %q has an invalid expect.maxLatency %q: %w", ck.ID, ck.Expect.MaxLatency, err)
+	}
+	if s := ck.Expect.Status; s != 0 && (s < 100 || s > 599) {
+		return fmt.Errorf("check %q expects status %d, which is not an HTTP status", ck.ID, s)
+	}
+	return nil
+}
+
+// IntervalOrDefault parses the configured interval, falling back to
+// DefaultCheckInterval.
+func (ck Check) IntervalOrDefault() (time.Duration, error) {
+	if strings.TrimSpace(ck.Interval) == "" {
+		return DefaultCheckInterval, nil
+	}
+	d, err := time.ParseDuration(ck.Interval)
+	if err != nil {
+		return 0, err
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("interval must be positive")
+	}
+	return d, nil
+}
+
+// MaxLatencyOrZero parses expect.maxLatency; zero means "no latency
+// expectation", which is not the same as "must be instant".
+func (ck Check) MaxLatencyOrZero() (time.Duration, error) {
+	if strings.TrimSpace(ck.Expect.MaxLatency) == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(ck.Expect.MaxLatency)
+	if err != nil {
+		return 0, err
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("expect.maxLatency must be positive")
+	}
+	return d, nil
+}
+
+// AllChecks flattens every configured check with the group it answers for.
+func (c Config) AllChecks() []GroupCheck {
+	var out []GroupCheck
+	for _, g := range c.Groups {
+		for _, ck := range g.Checks {
+			out = append(out, GroupCheck{Group: g.Name, Tier: g.Tier, Check: ck})
+		}
+	}
+	return out
+}
+
+// GroupCheck is one check plus the group whose health it feeds.
+type GroupCheck struct {
+	Group string
+	Tier  Tier
+	Check Check
 }
 
 // normalize fills the global default thresholds where unset so ResolveThresholds

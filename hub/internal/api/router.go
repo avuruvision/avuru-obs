@@ -341,6 +341,13 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("POST /api/v1/service-groups", a.securedAdmin(a.handleCreateServiceGroup))
 		mux.Handle("PUT /api/v1/service-groups/{name}", a.securedAdmin(a.handleUpdateServiceGroup))
 		mux.Handle("DELETE /api/v1/service-groups/{name}", a.securedAdmin(a.handleDeleteServiceGroup))
+		// Endpoint checks (design/2026-07-20-endpoint-checks.md) live under
+		// service-health because that is what they answer for: a check is
+		// attached to a group and moves its status. Declared in the same
+		// hot-reloadable config, so the list route reads config and the
+		// results route reads the table the scheduler writes.
+		mux.Handle("GET /api/v1/checks", a.secured(auth.RoleViewer, a.handleChecks))
+		mux.Handle("GET /api/v1/checks/{id}/results", a.secured(auth.RoleViewer, a.handleCheckResults))
 	}
 	if active.Enabled(modules.Alerting) {
 		mux.Handle("GET /api/v1/alerts", a.secured(auth.RoleViewer, a.handleAlerts))

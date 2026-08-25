@@ -40,7 +40,11 @@ const maxCollapseDepth = 3
 // place. An EMPTY set means there is no mesh: the method returns without
 // querying, so an unmeshed install pays nothing.
 //
-// Reads otel_traces only — core, no module gate, same as ServiceEdges.
+// Reads otel_traces only — core, no module gate, same as ServiceEdges. It
+// inherits that method's cost caveat and multiplies it: each depth is another
+// self-join, so the ladder is up to five join sides at depth 3. Acceptable at
+// the volumes ServiceEdges is acceptable at, and bounded by the same eventual
+// answer — a materialized caller→callee rollup, which would serve both.
 func (s *Store) CollapsedEdges(ctx context.Context, q storage.ServiceQuery, transport []string) ([]storage.ServiceEdge, error) {
 	if len(transport) == 0 {
 		return nil, nil
