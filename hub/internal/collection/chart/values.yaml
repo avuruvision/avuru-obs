@@ -457,7 +457,7 @@ sensor:
     enabled: true
     image:
       repository: otel/ebpf-instrument
-      tag: "v0.9.0" # pre-1.0 — pin exact, never float (agent_docs/tech_stack.md)
+      tag: "v0.12.2" # pre-1.0 — pin exact, never float (agent_docs/tech_stack.md)
     # privileged=true is the reliable default across container runtimes and
     # kernels. Set false to run with the least-privilege capability set
     # (BPF/PERFMON/SYS_PTRACE/NET_RAW/CHECKPOINT_RESTORE/DAC_READ_SEARCH/
@@ -492,7 +492,17 @@ sensor:
       # obi.stat.tcp.rtt (RTT) and obi.stat.tcp.failed.connections (resets/
       # failures) — surfaced on the service-map edges. Only effective when
       # network.enabled, and on by default with it.
+      #
+      # The features are named individually in the rendered config, NOT through
+      # OBI's `stats` umbrella: that umbrella also carries stats_tcp_io, which
+      # fires on every send and receive. Nothing here turns that on.
       stats: true
+      # obi.stat.tcp.retransmits on the same edges: packet loss on the link,
+      # which RTT alone does not reveal. Requires `stats`, and rides it by
+      # default — it fires on retransmit, not per packet, so it costs about
+      # what the failed-connection counter does. Needs OBI >= v0.12 (the metric
+      # did not exist before, which is why network health shipped without it).
+      retransmits: true
       # Cross-zone traffic accounting (OBI `network_inter_zone` feature): bytes
       # exchanged BETWEEN availability zones, per zone pair. Unlike `stats`
       # above this is effective ON ITS OWN — it activates the same kernel flow

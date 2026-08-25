@@ -90,6 +90,25 @@ otel
 {{- join "," $mods -}}
 {{- end -}}
 
+{{/* True when OBI's TCP-stats metrics are actually collected.
+
+     They attach a tracepoint (sock/inet_sock_set_state), which the kernel only
+     exposes through debugfs or tracefs — neither of which is in a container
+     unless it is mounted in. Without it OBI does not degrade: it exits, taking
+     traces and network flows down with an optional signal, and the DaemonSet
+     crash-loops. So the mounts and this switch have to move together, which is
+     what this helper is for. */}}
+{{- define "avuruobs.obiStatsEnabled" -}}
+{{- if and .Values.sensor.enabled .Values.sensor.obi.enabled .Values.sensor.obi.network.enabled .Values.sensor.obi.network.stats -}}true{{- end -}}
+{{- end -}}
+
+{{/* True when anything in the sensor pod needs the kernel tracing filesystems:
+     the eBPF profiler, or OBI's tracepoint-based TCP stats. The volumes are
+     declared once for the pod, so this has to be the union. */}}
+{{- define "avuruobs.needsKernelTracefs" -}}
+{{- if or (include "avuruobs.collectProfiles" .) (include "avuruobs.obiStatsEnabled" .) -}}true{{- end -}}
+{{- end -}}
+
 {{/* Module env block shared by the hub Deployment and the migrate Job. */}}
 {{- define "avuruobs.modulesEnv" -}}
 - name: AVURUOBS_MODULES

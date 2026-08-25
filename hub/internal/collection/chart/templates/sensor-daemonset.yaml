@@ -163,6 +163,19 @@ spec:
             - name: cgroup
               mountPath: /sys/fs/cgroup
               readOnly: true
+            {{- if include "avuruobs.obiStatsEnabled" . }}
+            {{- /* TCP stats attach the sock/inet_sock_set_state tracepoint,
+                   which cilium/ebpf resolves through the kernel's tracing
+                   filesystem. Without these mounts OBI does not skip the
+                   feature — it exits with "neither debugfs nor tracefs are
+                   mounted", so an optional signal takes zero-code traces and
+                   network flows down with it and the DaemonSet crash-loops.
+                   Same failure shape as the RAPL-less node in v0.4. */}}
+            - name: kernel-debug
+              mountPath: /sys/kernel/debug
+            - name: kernel-tracing
+              mountPath: /sys/kernel/tracing
+            {{- end }}
           resources:
             {{- toYaml .Values.sensor.obi.resources | nindent 12 }}
         {{- end }}
@@ -405,6 +418,10 @@ spec:
         - name: profiler-config
           configMap:
             name: {{ include "avuruobs.fullname" . }}-sensor-profiler
+        {{- end }}
+        {{- if include "avuruobs.needsKernelTracefs" . }}
+        {{- /* Shared by the profiler and by OBI's TCP stats — declared once for
+               the pod, because a duplicate volume name is a rejected manifest. */}}
         - name: kernel-debug
           hostPath:
             path: /sys/kernel/debug

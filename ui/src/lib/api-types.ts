@@ -67,6 +67,7 @@ export interface ServiceEdge {
   provenance?: string; // "trace" | "flow" | "both"
   rttMs?: number; // OBI TCP RTT p95 (network-health edges)
   failedConnections?: number; // OBI failed/reset TCP connections
+  retransmits?: number; // OBI TCP retransmits — packet loss on the link
   // Client-side latency for this call path — what the CALLER experienced
   // (network + queueing + callee work). Absent on flow-derived edges, which
   // have no span to measure: treat absent as "not measured", never as 0.

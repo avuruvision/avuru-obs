@@ -12,10 +12,17 @@ function carbonBucket(gco2e: number, max: number): 0 | 1 | 2 {
   return r < 1 / 3 ? 0 : r < 2 / 3 ? 1 : 2;
 }
 
-// An edge is network-unhealthy when RTT p95 is high or any connections failed.
+// An edge is network-unhealthy when RTT p95 is high, connections failed, or the
+// kernel had to retransmit. Retransmits earn their own place in this test
+// rather than riding latency: a link can lose packets and still measure fast,
+// and a fast link that keeps re-sending is exactly the fault RTT hides.
 const RTT_UNHEALTHY_MS = 100;
 function edgeUnhealthy(e: ServiceEdge): boolean {
-  return (e.rttMs ?? 0) > RTT_UNHEALTHY_MS || (e.failedConnections ?? 0) > 0;
+  return (
+    (e.rttMs ?? 0) > RTT_UNHEALTHY_MS ||
+    (e.failedConnections ?? 0) > 0 ||
+    (e.retransmits ?? 0) > 0
+  );
 }
 
 function formatRpm(v: number): string {
@@ -53,6 +60,7 @@ function edgeTooltip(e: ServiceEdge, windowMinutes: number): string {
   if ((e.errorRate ?? 0) > 0) parts.push(`${(e.errorRate * 100).toFixed(1)}% errors`);
   if (e.rttMs) parts.push(`RTT p95 ${e.rttMs.toFixed(0)}ms`);
   if (e.failedConnections) parts.push(`${e.failedConnections} failed conns`);
+  if (e.retransmits) parts.push(`${e.retransmits} retransmits`);
   if (e.bytes) parts.push(formatBytes(e.bytes));
   const via = viaLabel(e);
   if (via) parts.push(via);

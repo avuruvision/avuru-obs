@@ -364,6 +364,7 @@
               "properties": {
                 "enabled": { "type": "boolean" },
                 "stats": { "type": "boolean" },
+                "retransmits": { "type": "boolean" },
                 "interZone": {
                   "type": "object",
                   "properties": {
