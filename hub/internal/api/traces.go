@@ -167,7 +167,7 @@ func stampServiceRoles(cls topology.Classifier, services []serviceDTO) {
 }
 
 // applyEdgeHealth overlays OBI per-edge connection health (RTT p95, failed
-// connections) onto the map edges by (source, target). A health pair with no
+// connections, retransmits) onto the map edges by (source, target). A health pair with no
 // trace/flow edge is appended as a flow edge — TCP stats and flow bytes come
 // from the same OBI network feature, so this is rare but kept for completeness.
 func applyEdgeHealth(edges []serviceEdgeDTO, health []storage.NetworkEdgeHealth) []serviceEdgeDTO {
@@ -183,11 +183,12 @@ func applyEdgeHealth(edges []serviceEdgeDTO, health []storage.NetworkEdgeHealth)
 		if i, ok := index[key{h.Source, h.Target}]; ok {
 			edges[i].RTTMs = h.RTTMs
 			edges[i].FailedConnections = h.FailedConnections
+			edges[i].Retransmits = h.Retransmits
 			continue
 		}
 		edges = append(edges, serviceEdgeDTO{
 			Source: h.Source, Target: h.Target, Provenance: "flow",
-			RTTMs: h.RTTMs, FailedConnections: h.FailedConnections,
+			RTTMs: h.RTTMs, FailedConnections: h.FailedConnections, Retransmits: h.Retransmits,
 		})
 	}
 	return edges

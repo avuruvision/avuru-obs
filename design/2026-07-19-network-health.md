@@ -172,7 +172,16 @@ cytoscape edge data.
   underscored equivalence of `attributes.select` keys were confirmed correct.
   **Per-edge attribution to `k8s.src.owner.name`/`k8s.dst.owner.name` remains
   unconfirmed on a running sensor** — that still needs the kind/eBPF run.
-- **No retransmissions** (OBI gap).
+- ~~**No retransmissions** (OBI gap).~~ — **closed in v0.9.** OBI grew
+  `stats_tcp_retransmits` / `obi.stat.tcp.retransmits` at v0.12, and the chart's
+  pin moved with it. The metric carries the same k8s owner attributes as the
+  other two, so it joins the edge on the same key and appears in the same
+  tooltip. It also joined the edge-health test: a link can lose packets and
+  still measure fast, which is exactly the fault RTT alone hides. The fourth
+  member of OBI's `stats` umbrella, `stats_tcp_io`, is deliberately NOT
+  rendered — it fires on every send and receive, and the chart now names each
+  stats feature individually so the version bump could not switch it on behind
+  an install's back.
 - **Failed-connection count is a cumulative-counter `sum()` approximation** for
   edge weighting, the same caveat as `NetworkEdges` byte sums; a per-series delta
   rollup is future work if an exact rate is needed.
@@ -208,7 +217,23 @@ cytoscape edge data.
       shipped `stats.enable` key was inert and the duplicate `attributes:` block
       stopped the sensor from starting; both fixed, rendered configs now parsed
       in `template-test.sh`
-- [ ] **Confirm per-edge attribution (k8s owner keys on the stats metrics) in a
-      kind/eBPF env** (blocks prod use)
+- [x] **Confirm per-edge attribution (k8s owner keys on the stats metrics) in a
+      kind/eBPF env** — v0.9. `deploy/helm/e2e-helm.sh` now installs with
+      `sensor.obi.network.enabled=true` and asserts that `obi.network.flow.bytes`
+      and `obi.stat.tcp.rtt` land carrying `k8s.src.owner.name` /
+      `k8s.dst.owner.name`, non-empty and different from each other — a series
+      labelled with one owner or none would pass a row count while attributing
+      nothing. Source-confirmed too: `statsKubeAttributes`
+      (`pkg/export/attributes/attr_defs.go`) defaults both keys to true on every
+      stats metric when kube metadata is on
+- [x] Retransmits: `obi.stat.tcp.retransmits` on the edge, once OBI had it (v0.9)
+- [x] **The stats feature could never have run in a container** — v0.9. The
+      first real-kernel run of this feature, which is what the confirmation
+      above amounts to, found OBI exiting on boot with "neither debugfs nor
+      tracefs are mounted": the TCP-stats tracepoint needs the kernel tracing
+      filesystem, and the sensor pod mounted it only for the profiler. An
+      optional metric was taking traces and flows down with it. That is the
+      third distinct way this feature has been wrong while looking right on
+      paper, and the reason the caveat above was worth keeping open
 - [ ] Docs (service-map page, network-health config) via docs-align
-- [ ] Later: per-reason failure breakdown, edge-health alerting (feeds the alerting module), retransmissions if OBI adds them
+- [ ] Later: per-reason failure breakdown, edge-health alerting (feeds the alerting module), `stats_tcp_io` byte counters if a use case justifies the event volume

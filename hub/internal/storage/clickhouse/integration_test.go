@@ -1246,7 +1246,7 @@ func insertHistogram(t *testing.T, s *Store, ts time.Time, metric string, res, a
 }
 
 // TestNetworkEdgeHealthIntegration exercises the RTT-p95-from-histogram SQL and
-// the failed-connection sum against real ClickHouse.
+// the two per-edge counter sums against real ClickHouse.
 func TestNetworkEdgeHealthIntegration(t *testing.T) {
 	store := startClickHouse(t)
 	ctx := context.Background()
@@ -1265,6 +1265,10 @@ func TestNetworkEdgeHealthIntegration(t *testing.T) {
 	// Failed connections: cumulative counter 3 + 4 = 7.
 	insertSum(t, store, base.Add(1*time.Minute), "obi.stat.tcp.failed.connections", nil, edge, 3)
 	insertSum(t, store, base.Add(2*time.Minute), "obi.stat.tcp.failed.connections", nil, edge, 4)
+	// Retransmits, the counter OBI only grew at v0.12: same shape, read by the
+	// same helper, so this row also proves the second read is not a copy of the
+	// first that forgot to change the metric name.
+	insertSum(t, store, base.Add(1*time.Minute), "obi.stat.tcp.retransmits", nil, edge, 11)
 
 	tr := storage.TimeRange{Start: base, End: base.Add(6 * time.Minute)}
 	health, err := store.NetworkEdgeHealth(ctx, storage.ServiceQuery{Tenant: "default", Range: tr})
@@ -1283,6 +1287,33 @@ func TestNetworkEdgeHealthIntegration(t *testing.T) {
 	}
 	if h.FailedConnections != 7 {
 		t.Errorf("failed connections = %d, want 7", h.FailedConnections)
+	}
+	if h.Retransmits != 11 {
+		t.Errorf("retransmits = %d, want 11", h.Retransmits)
+	}
+}
+
+// An older sensor does not emit obi.stat.tcp.retransmits at all. That has to
+// read as "nothing to say", not as an error and not as a claim that the link is
+// clean — the edge still reports the RTT and failures it does have.
+func TestNetworkEdgeHealthWithoutRetransmitMetric(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+	base := time.Now().UTC().Truncate(time.Minute).Add(-10 * time.Minute)
+
+	edge := map[string]string{"k8s.src.owner.name": "cart", "k8s.dst.owner.name": "payments"}
+	insertSum(t, store, base.Add(time.Minute), "obi.stat.tcp.failed.connections", nil, edge, 2)
+
+	tr := storage.TimeRange{Start: base, End: base.Add(6 * time.Minute)}
+	health, err := store.NetworkEdgeHealth(ctx, storage.ServiceQuery{Tenant: "default", Range: tr})
+	if err != nil {
+		t.Fatalf("NetworkEdgeHealth with no retransmit series: %v", err)
+	}
+	if len(health) != 1 || health[0].FailedConnections != 2 {
+		t.Fatalf("want the failure count regardless, got %+v", health)
+	}
+	if health[0].Retransmits != 0 {
+		t.Errorf("retransmits = %d, want 0", health[0].Retransmits)
 	}
 }
 

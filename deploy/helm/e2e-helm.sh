@@ -60,7 +60,7 @@ echo "==> pre-pulling wedge demo + sensor images (pull time is not the product's
 # Keep in sync with deploy/demo/wedge/wedge.yaml and values.yaml sensor pins.
 DEMO_IMGS=(nginx:1.29-alpine busybox:1.37)
 SENSOR_IMGS=(
-  otel/ebpf-instrument:v0.9.0
+  otel/ebpf-instrument:v0.12.2
   otel/opentelemetry-collector-contrib:0.154.0
   otel/opentelemetry-collector-ebpf-profiler:0.155.0
 )
@@ -166,9 +166,16 @@ helm install avuruobs deploy/helm/avuruobs -n "$NS" --create-namespace \
   --set gateway.forward.otlp.enabled=true \
   --set gateway.forward.otlp.endpoint=forward-sink:4317 \
   --set gateway.forward.otlp.insecure=true \
+  --set sensor.obi.network.enabled=true \
   --set sensor.obi.network.interZone.enabled=true \
   --set 'tags.labels.team=team' \
   --set "gateway.forward.otlp.signals={traces}"
+# sensor.obi.network.enabled turns on the per-edge kernel flows AND their TCP
+# stats — and with them hostNetwork on the sensor pod. It rides this install
+# rather than a second one deliberately: every other gate below, the <5-min
+# wedge assertion first, then runs UNCHANGED against a sensor in that mode,
+# which is the only way to find out whether it costs anything.
+#
 # The last block above is WIDER INGEST riding the SAME install (born-off in
 # the chart; this leg opts in, like green): all four compat receivers plus
 # otlp/forward dual-write pointed at the forward-sink fixture below. The TTV
@@ -399,6 +406,48 @@ while :; do
     kubectl get nodes -L topology.kubernetes.io/zone || true
     kubectl -n zone-demo get pods -o wide || true
     kubectl -n "$NS" logs ds/avuruobs-sensor -c obi --tail=40 || true
+    exit 1
+  fi
+  sleep 10
+done
+
+# PER-EDGE ATTRIBUTION: the confirmation design/2026-07-19-network-health.md has
+# carried as an open, prod-blocking caveat since v0.2.
+#
+# The flow and TCP-stats queries join on Attributes['k8s.src.owner.name'] and
+# ['k8s.dst.owner.name'], and every layer below ClickHouse is unit- and
+# integration-tested against synthetic rows carrying those keys. What no test
+# could answer is whether a REAL OBI, watching a REAL kernel, resolves a flow to
+# the right two workloads and labels it with those exact keys — the source says
+# it should (statsKubeAttributes defaults them to true when kube metadata is
+# on), but the two previous times we reasoned about this config from the
+# outside, we were wrong. So the gate asserts the attributes are present,
+# non-empty and DIFFERENT from each other on both metric families: a series
+# labelled with a single owner, or with none, would satisfy a naive row count
+# while attributing nothing.
+echo "==> NETWORK: polling ClickHouse for per-edge flow + TCP-stats attribution"
+OWNER_PRED="Attributes['k8s.src.owner.name'] != '' AND Attributes['k8s.dst.owner.name'] != '' AND Attributes['k8s.src.owner.name'] != Attributes['k8s.dst.owner.name']"
+FLOW_SQL="SELECT countIf(MetricName = 'obi.network.flow.bytes' AND $OWNER_PRED) FROM otel.otel_metrics_sum WHERE MetricName = 'obi.network.flow.bytes'"
+RTT_SQL="SELECT countIf($OWNER_PRED) FROM otel.otel_metrics_histogram WHERE MetricName = 'obi.stat.tcp.rtt'"
+EDGE_DEADLINE=$(( $(date +%s) + 300 ))
+while :; do
+  flow_edges=$(kubectl -n "$NS" exec avuruobs-clickhouse-0 -- \
+    clickhouse-client -u avuru --password avuru -q "$FLOW_SQL" 2>/dev/null || echo "")
+  rtt_edges=$(kubectl -n "$NS" exec avuruobs-clickhouse-0 -- \
+    clickhouse-client -u avuru --password avuru -q "$RTT_SQL" 2>/dev/null || echo "")
+  if [ "${flow_edges:-0}" -gt 0 ] 2>/dev/null && [ "${rtt_edges:-0}" -gt 0 ] 2>/dev/null; then
+    echo "    per-edge owner-attributed series: flows=$flow_edges rtt=$rtt_edges"
+    kubectl -n "$NS" exec avuruobs-clickhouse-0 -- clickhouse-client -u avuru --password avuru \
+      -q "SELECT Attributes['k8s.src.owner.name'], Attributes['k8s.dst.owner.name'], toUInt64(sum(Value)) FROM otel.otel_metrics_sum WHERE MetricName = 'obi.network.flow.bytes' AND $OWNER_PRED GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 10" 2>/dev/null || true
+    break
+  fi
+  if [ "$(date +%s)" -ge "$EDGE_DEADLINE" ]; then
+    echo "NETWORK: no owner-attributed per-edge series within 300s (flows=${flow_edges:-?} rtt=${rtt_edges:-?})"
+    echo "  This is the caveat network-health has carried since v0.2 — if the rows exist but"
+    echo "  carry no k8s owner keys, the service map's edge join is attributing nothing."
+    kubectl -n "$NS" exec avuruobs-clickhouse-0 -- clickhouse-client -u avuru --password avuru \
+      -q "SELECT MetricName, count(), any(Attributes) FROM otel.otel_metrics_sum WHERE MetricName LIKE 'obi.%' GROUP BY MetricName" 2>/dev/null || true
+    kubectl -n "$NS" logs ds/avuruobs-sensor -c obi --tail=60 || true
     exit 1
   fi
   sleep 10

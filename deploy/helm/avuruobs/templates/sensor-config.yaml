@@ -88,7 +88,7 @@ data:
         {{- if eq $mode "optIn" }}
         # optIn: uprobes attach only to deliberately-labeled workloads —
         # each entry ANDs its namespace with the opt-in label (glob values,
-        # full-string match in OBI v0.9.0).
+        # full-string match in OBI v0.12.2).
         {{- end }}
         {{- range .Values.sensor.obi.discovery.namespaces }}
         - k8s_namespace: {{ . | quote }}
@@ -147,6 +147,12 @@ data:
           include:
             - k8s.src.owner.name
             - k8s.dst.owner.name
+        {{- if .Values.sensor.obi.network.retransmits }}
+        obi.stat.tcp.retransmits:
+          include:
+            - k8s.src.owner.name
+            - k8s.dst.owner.name
+        {{- end }}
         {{- end }}
     {{- end }}
     routes:
@@ -155,7 +161,7 @@ data:
       unmatched: heuristic
     {{- if or .Values.sensor.obi.network.enabled .Values.sensor.obi.network.interZone.enabled }}
     # Which metric families OBI exports, by the names in its own feature mapper
-    # (v0.9.0 pkg/export/feature.go). Naming any feature REPLACES the default
+    # (v0.12.2 pkg/export/feature.go). Naming any feature REPLACES the default
     # list, which is ["application"] — hence application is repeated here so
     # turning flows on does not silently turn OBI's application metrics off.
     metrics:
@@ -165,11 +171,26 @@ data:
         - network
         {{- end }}
         {{- if and .Values.sensor.obi.network.enabled .Values.sensor.obi.network.stats }}
-        # TCP stats: obi.stat.tcp.rtt (RTT histogram) and
-        # obi.stat.tcp.failed.connections (resets/failures). This list is the
-        # ONLY switch for them — the stats config section has no `enable` key,
-        # so nothing else turns them on.
-        - stats
+        # TCP stats, named ONE BY ONE rather than through the `stats` umbrella.
+        #
+        # `stats` is a composite, and at OBI v0.12 it grew a fourth member:
+        # stats_tcp_io fires on every tcp_sendmsg and tcp_cleanup_rbuf — far
+        # higher event volume than the others, which fire on close, failure or
+        # retransmit. Upstream's own comment says to enable the low-frequency
+        # ones individually if overhead matters. Naming them here means the
+        # version bump could not silently switch on a per-syscall metric on
+        # every install that already had stats on.
+        #
+        # This list is also the ONLY switch for these metrics: the `stats`
+        # config section has no `enable` key.
+        - stats_tcp_rtt
+        - stats_tcp_failed_connections
+        {{- if .Values.sensor.obi.network.retransmits }}
+        # obi.stat.tcp.retransmits — a link losing packets, which RTT alone
+        # cannot tell you about. Added at OBI v0.12; before that it did not
+        # exist, which is why network health shipped without it.
+        - stats_tcp_retransmits
+        {{- end }}
         {{- end }}
         {{- if .Values.sensor.obi.network.interZone.enabled }}
         # Cross-zone byte counters: obi.network.inter.zone.bytes, carrying
@@ -187,9 +208,10 @@ data:
     # probes don't parse — WITHOUT uprobes (no app-cgroup cost). Exported as the
     # OTLP metric obi.network.flow.bytes -> otel_metrics_sum, aggregated by k8s
     # workload identity (see attributes.select above) to bound cardinality.
-    # `enable` is redundant with the feature list above and deprecated upstream,
-    # but it is the switch that has actually been exercised, so both are set
-    # until a cluster run says otherwise.
+    # `enable` is redundant with the `network` feature above, and marked
+    # Deprecated at v0.12.2 (pkg/obi/network_cfg.go, "TODO OBI 3.0: remove").
+    # Kept until then because it is the switch a running cluster has actually
+    # exercised, and removing it buys nothing before the tag that drops it.
     network:
       enable: true
     {{- end }}

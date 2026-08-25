@@ -63,7 +63,7 @@ type ServiceEdge struct {
 }
 
 // NetworkEdgeHealth is per-edge connection health from OBI's TCP-stats metrics
-// (obi.stat.tcp.rtt histogram + obi.stat.tcp.failed.connections counter), keyed
+// (obi.stat.tcp.rtt histogram + the failed-connection and retransmit counters), keyed
 // by the same k8s owner endpoints as the flow edges. RTTMs is the p95 over the
 // window; FailedConnections is the summed failure count. Reads the
 // otel_metrics_* tables, so callers must gate on the infra-metrics module.
@@ -72,6 +72,11 @@ type NetworkEdgeHealth struct {
 	Target            string
 	RTTMs             float64
 	FailedConnections uint64
+	// Retransmits is packet loss on the link — a signal RTT alone does not
+	// carry: a path can retransmit heavily and still look fast. Needs OBI
+	// >= v0.12, where obi.stat.tcp.retransmits first exists; on an older
+	// sensor it is simply 0 everywhere.
+	Retransmits uint64
 }
 
 // VirtualTarget is one caller→infrastructure dependency derived from a service's

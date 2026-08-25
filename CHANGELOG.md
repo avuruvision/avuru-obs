@@ -11,6 +11,63 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **Retransmits on the map's edges.** A link can lose packets and still measure
+  fast, which is precisely the fault RTT alone hides — and until now avuru-obs
+  could not report it, because the eBPF sensor's pinned version had no such
+  metric. It does now: the edge tooltip carries retransmits beside RTT p95 and
+  failed connections, and an edge that is retransmitting is styled unhealthy on
+  its own account rather than waiting for latency to notice. Behind
+  `sensor.obi.network.retransmits`, on by default with the TCP stats it belongs
+  to. This closes the "No retransmissions (OBI gap)" limitation the
+  [network-health AEP](design/2026-07-19-network-health.md) has carried since
+  v0.2.
+
+### Changed
+
+- **The eBPF sensor moves to OBI v0.12.2** (from v0.9.0). Every configuration
+  key the chart renders was re-verified against that tag's source before the
+  pin moved — this project has twice shipped an OBI key that was silently inert
+  or that stopped the sensor booting, and neither failure was visible from a
+  rendered template.
+- **TCP-stats metric families are now named one by one** rather than through
+  OBI's `stats` umbrella. At v0.12 that umbrella grew a fourth member,
+  `stats_tcp_io`, which fires on every `tcp_sendmsg` and `tcp_cleanup_rbuf` —
+  upstream's own comment recommends enabling the low-frequency metrics
+  individually if overhead matters. Naming them explicitly means the version
+  bump could not switch a per-syscall metric on behind the back of every
+  install that already had stats enabled. `stats_tcp_io` is not rendered at all,
+  and the chart's tests fail if it ever is.
+
+### Fixed
+
+- **Turning on TCP stats crash-looped the whole eBPF sensor.** OBI's TCP-stats
+  metrics attach the `sock/inet_sock_set_state` tracepoint, which the kernel
+  exposes only through debugfs or tracefs — neither of which exists inside a
+  container unless it is mounted in. OBI does not skip a feature it cannot
+  start: it exits. So `sensor.obi.network.enabled` — which turns stats on by
+  default — took zero-code traces and network flows down with an optional
+  metric, and the DaemonSet restarted forever. The same shape as the RAPL-less
+  node that crash-looped the sensor in v0.4, and latent since the stats feature
+  shipped in v0.2: nothing had ever run it on a real kernel, which is exactly
+  what the "unverified in an eBPF environment" caveat meant. The chart now
+  mounts the kernel tracing filesystems into the OBI container alongside the
+  switch that needs them — declared once for the pod, since the profiler wants
+  the same paths — and a chart test fails if the mount and the switch are ever
+  separated again.
+- **Per-edge network attribution is now proven on a real kernel, not assumed.**
+  The service map joins flow and TCP-stats metrics on
+  `k8s.src.owner.name` / `k8s.dst.owner.name`, and every layer below ClickHouse
+  was tested against synthetic rows carrying those keys — while nothing checked
+  that a real OBI watching a real kernel produces them. The network-health AEP
+  has listed that as blocking production use since v0.2. The kind gate now
+  installs with kernel flows on and asserts both metric families arrive with
+  those attributes present, non-empty and different from each other, so a
+  series labelled with one owner or none can no longer pass as attribution.
+  Turning flows on also puts the sensor on `hostNetwork`, and every other gate
+  — the under-five-minutes wedge assertion first — runs unchanged against it.
+
 ## [0.8.0] — 2026-08-24
 
 **The map grows up.** The service map has been the product's front page since

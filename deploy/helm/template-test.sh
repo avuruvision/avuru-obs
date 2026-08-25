@@ -329,17 +329,27 @@ echo "== OBI network stats: enabled with the network feature (+ infra-metrics)"
 out="$(render --set sensor.obi.network.enabled=true)"
 assert_obi_config_valid "$out" "network.enabled"
 body="$(obi_config "$out")"
-grep -qE '^\s+- stats$' <<<"$body" || fail "the stats feature is not in OBI's metric feature list"
+grep -qE '^\s+- stats_tcp_rtt$' <<<"$body" || fail "the RTT feature is not in OBI's metric feature list"
 grep -qE '^\s+- network$' <<<"$body" || fail "the network feature is not in OBI's metric feature list"
 # Naming any feature replaces OBI's default list, so dropping this line would
 # silently turn OBI's application metrics off the moment flows are enabled.
 grep -qE '^\s+- application$' <<<"$body" || fail "application feature lost when the network feature list is pinned"
 grep -q 'obi.stat.tcp.rtt:' <<<"$body" || fail "obi.stat.tcp.rtt attribute selection missing"
 grep -q 'obi.stat.tcp.failed.connections:' <<<"$body" || fail "obi.stat.tcp.failed.connections attribute selection missing"
+grep -q 'obi.stat.tcp.retransmits:' <<<"$body" || fail "obi.stat.tcp.retransmits attribute selection missing"
+# The features are named ONE BY ONE. OBI's `stats` umbrella also carries
+# stats_tcp_io, which fires on every send and receive — naming the umbrella
+# would have switched a per-syscall metric on for every install that already
+# had stats enabled, the moment the pin moved to v0.12.
+grep -qE '^\s+- stats$' <<<"$body" && fail "the stats umbrella renders — it drags in the per-syscall stats_tcp_io"
+grep -qE '^\s+- stats_tcp_io$' <<<"$body" && fail "stats_tcp_io must never be rendered: per-syscall event volume"
+for feat in stats_tcp_rtt stats_tcp_failed_connections stats_tcp_retransmits; do
+  grep -qE "^\\s+- $feat\$" <<<"$body" || fail "$feat missing from the metric feature list"
+done
 # Left to OBI's defaults, flow bytes carry direction + per-interface labels and
 # the stats metrics carry src/dst IP addresses — a series per address pair.
 grep -q 'obi.network.flow.bytes:' <<<"$body" || fail "flow-bytes attribute selection missing (cardinality unbounded)"
-grep -q 'allowed_attributes' <<<"$body" && fail "allowed_attributes is not an OBI v0.9.0 key — use attributes.select"
+grep -q 'allowed_attributes' <<<"$body" && fail "allowed_attributes is not an OBI key — use attributes.select"
 # The selection has to live in the same `attributes` mapping as the kubernetes
 # decorator, not a second one.
 [ "$(grep -cE '^attributes:' <<<"$body")" = "1" ] || fail "attributes: is not a single root mapping"
@@ -351,10 +361,51 @@ out="$(render --set sensor.obi.network.enabled=true --set sensor.obi.network.sta
 assert_obi_config_valid "$out" "network.stats=false"
 body="$(obi_config "$out")"
 grep -q 'obi.stat.tcp.rtt' <<<"$body" && fail "stats config survived network.stats=false"
-grep -qE '^\s+- stats$' <<<"$body" && fail "stats feature survived network.stats=false"
+grep -qE '^\s+- stats_tcp' <<<"$body" && fail "a stats feature survived network.stats=false"
 grep -qE '^network:' <<<"$body" || fail "network flow config missing"
 grep -q 'obi.network.flow.bytes:' <<<"$body" || fail "flow-bytes attribute selection lost with stats off"
 ok "flow bytes without TCP stats"
+
+# The failure this assertion prevents was found by running the stats feature on a
+# real kernel for the first time: OBI attaches the sock/inet_sock_set_state
+# tracepoint, cilium/ebpf resolves it through debugfs or tracefs, and inside a
+# container neither is present unless mounted. OBI does not skip the feature —
+# it EXITS, so an optional metric took zero-code traces and network flows down
+# with it and the DaemonSet crash-looped. Same shape as the RAPL-less node in
+# v0.4: the mount and the switch must move together, and nothing but a render
+# assertion keeps them together.
+echo "== OBI stats: the tracing filesystems are mounted with the feature"
+out="$(render --set sensor.enabled=true --set sensor.obi.network.enabled=true)"
+obi_mounts="$(awk '/^            - name: kernel-(debug|tracing)$/{c++} END{print c+0}' <<<"$out")"
+[ "$obi_mounts" -ge 2 ] || fail "TCP stats render without the kernel tracing mounts — OBI will exit on boot"
+kd_vols="$(awk '/^        - name: kernel-debug$/{c++} END{print c+0}' <<<"$out")"
+[ "$kd_vols" = "1" ] || fail "kernel-debug declared $kd_vols times, want exactly 1"
+ok "stats bring debugfs + tracefs with them"
+
+echo "== OBI stats off: no host tracing mount is taken"
+out="$(render --set sensor.enabled=true --set sensor.obi.network.enabled=true --set sensor.obi.network.stats=false)"
+kd_vols="$(awk '/^        - name: kernel-debug$/{c++} END{print c+0}' <<<"$out")"
+[ "$kd_vols" = "0" ] || fail "kernel-debug mounted with stats off — a host mount nothing needs"
+ok "no stats, no host tracing mount"
+
+# Profiler and OBI both want these paths; a pod may declare a volume once.
+echo "== OBI stats + profiler: one volume, two consumers"
+out="$(render --set sensor.enabled=true --set sensor.profiler.enabled=true --set sensor.obi.network.enabled=true)"
+kd_vols="$(awk '/^        - name: kernel-debug$/{c++} END{print c+0}' <<<"$out")"
+kd_mounts="$(awk '/^            - name: kernel-debug$/{c++} END{print c+0}' <<<"$out")"
+[ "$kd_vols" = "1" ] || fail "kernel-debug declared $kd_vols times with both consumers on — a duplicate volume name is a rejected manifest"
+[ "$kd_mounts" = "2" ] || fail "kernel-debug mounted $kd_mounts times, want both the profiler and OBI"
+ok "one declaration, mounted into both containers"
+
+echo "== OBI retransmits: rides stats, and can be dropped on its own"
+out="$(render --set sensor.obi.network.enabled=true --set sensor.obi.network.retransmits=false)"
+assert_obi_config_valid "$out" "retransmits=false"
+body="$(obi_config "$out")"
+grep -qE '^\s+- stats_tcp_retransmits$' <<<"$body" && fail "retransmit feature survived retransmits=false"
+grep -q 'obi.stat.tcp.retransmits:' <<<"$body" && fail "retransmit attribute selection survived retransmits=false"
+# The rest of the stats surface is untouched: this switch is about one metric.
+grep -qE '^\s+- stats_tcp_rtt$' <<<"$body" || fail "RTT feature lost with retransmits off"
+ok "retransmits are a switch of their own"
 
 echo "== inter-zone accounting: off by default, standalone when on"
 out="$(render)"
@@ -377,7 +428,7 @@ echo "== inter-zone accounting: composes with per-edge flows"
 out="$(render --set sensor.obi.network.interZone.enabled=true --set sensor.obi.network.enabled=true)"
 assert_obi_config_valid "$out" "interZone + network"
 body="$(obi_config "$out")"
-for feat in application network stats network_inter_zone; do
+for feat in application network stats_tcp_rtt stats_tcp_failed_connections network_inter_zone; do
   grep -qE "^\\s+- $feat\$" <<<"$body" || fail "$feat missing when both network flags are on"
 done
 ok "both flags on: one feature list, one valid document"

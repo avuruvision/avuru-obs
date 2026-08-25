@@ -40,7 +40,7 @@ export function MapLegend({
       )}
       <span>size = rate</span>
       <span>width = calls</span>
-      <span className="text-warning/80">amber dashed = network health</span>
+      <span className="text-warning/80">amber dashed = network health (RTT, failures, retransmits)</span>
       <span className="text-error/80">red = errors</span>
       <span>dotted = observed connection, no traced calls</span>
       {infra && <span>diamond = mesh or gateway</span>}
