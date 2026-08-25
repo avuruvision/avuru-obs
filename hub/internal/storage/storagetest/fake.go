@@ -13,33 +13,39 @@ import (
 
 // Fake implements storage.Store from canned data. Zero value is usable.
 type Fake struct {
-	PingErr       error
-	Services      []storage.ServiceStats
-	Labels        []storage.ServiceLabel
-	Edges         []storage.ServiceEdge
-	NetEdges      []storage.ServiceEdge
-	Virtual       []storage.VirtualTarget
-	NetEdgeHealth []storage.NetworkEdgeHealth
-	Zones         []storage.ZoneTraffic
-	Tags          []storage.TagKey
-	Ops           []storage.OperationStats
-	Page          storage.TracePage
-	Traces        map[string]storage.Trace
-	SpanTraces    map[string]string // spanId -> traceId
-	Heat          storage.Heatmap
-	LogPage       storage.LogPage
-	TraceLogs     map[string][]storage.LogRecord
-	Stats         storage.SystemStats
-	StatsErr      error
-	Nodes         []storage.NodeStat
-	Pods          []storage.PodStat
-	Agents        []storage.AgentNode
-	Tenants       []string
-	TenantsErr    error
-	RED           []storage.REDSeries
-	Written       []storage.ProfileSample
-	Profiled      []storage.ProfiledService
-	Flame         storage.FlameNode
+	PingErr  error
+	Services []storage.ServiceStats
+	Labels   []storage.ServiceLabel
+	Edges    []storage.ServiceEdge
+	// Collapsed is what CollapsedEdges returns, and LastCollapseTransport
+	// records the classified transport set it was called with — the assertion
+	// that the handler resolves the mesh BEFORE it queries edges.
+	Collapsed             []storage.ServiceEdge
+	LastCollapseTransport []string
+	CollapseCalls         int
+	NetEdges              []storage.ServiceEdge
+	Virtual               []storage.VirtualTarget
+	NetEdgeHealth         []storage.NetworkEdgeHealth
+	Zones                 []storage.ZoneTraffic
+	Tags                  []storage.TagKey
+	Ops                   []storage.OperationStats
+	Page                  storage.TracePage
+	Traces                map[string]storage.Trace
+	SpanTraces            map[string]string // spanId -> traceId
+	Heat                  storage.Heatmap
+	LogPage               storage.LogPage
+	TraceLogs             map[string][]storage.LogRecord
+	Stats                 storage.SystemStats
+	StatsErr              error
+	Nodes                 []storage.NodeStat
+	Pods                  []storage.PodStat
+	Agents                []storage.AgentNode
+	Tenants               []string
+	TenantsErr            error
+	RED                   []storage.REDSeries
+	Written               []storage.ProfileSample
+	Profiled              []storage.ProfiledService
+	Flame                 storage.FlameNode
 
 	ServiceEnergies    []storage.ServiceEnergy
 	NodeEnergies       []storage.NodeEnergy
@@ -213,6 +219,16 @@ func (f *Fake) ServiceLabels(_ context.Context, q storage.ServiceQuery) ([]stora
 func (f *Fake) ServiceEdges(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceEdge, error) {
 	f.LastServiceQuery = q
 	return f.Edges, nil
+}
+
+func (f *Fake) CollapsedEdges(_ context.Context, q storage.ServiceQuery, transport []string) ([]storage.ServiceEdge, error) {
+	f.LastServiceQuery = q
+	f.LastCollapseTransport = transport
+	f.CollapseCalls++
+	if len(transport) == 0 {
+		return nil, nil
+	}
+	return f.Collapsed, nil
 }
 
 func (f *Fake) TagKeys(_ context.Context, q storage.ServiceQuery) ([]storage.TagKey, error) {

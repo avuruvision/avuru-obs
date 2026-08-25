@@ -142,8 +142,9 @@ positive is a config edit rather than a release.
 - [x] `role` on the service-map response
 - [x] UI: hide by default, toggle, flow/call split in the count line
 - [x] Chart: ungated ConfigMap + values schema
-- [ ] Collapse the hop: derive `app → app` across a transport span using
+- [x] Collapse the hop: derive `app → app` across a transport span using
       per-trace ancestry, so a meshed cluster regains its real dependencies
-      instead of only losing its false ones
+      instead of only losing its false ones — shipped in v0.9,
+      [AEP](2026-08-25-transport-hop-collapse.md)
 - [ ] Classify from Kubernetes labels rather than names, once the pipeline
       carries them
