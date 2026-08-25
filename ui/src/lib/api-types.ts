@@ -74,6 +74,14 @@ export interface ServiceEdge {
   // have no span to measure: treat absent as "not measured", never as 0.
   p50Ms?: number;
   p95Ms?: number;
+  // The mesh proxies / gateways this dependency was recovered across. Present
+  // only on edges the hub reconstructed by walking a trace's parent chain over
+  // the transport hops — see design/2026-08-25-transport-hop-collapse.md.
+  viaTransport?: string[];
+  // How much of `calls` / `errorCount` crossed a proxy. Subtract to get the
+  // directly-observed remainder when the hops are being drawn themselves.
+  collapsedCalls?: number;
+  collapsedErrorCount?: number;
 }
 
 // One mesh proxy or gateway: its own RED, plus the call volume it carries.

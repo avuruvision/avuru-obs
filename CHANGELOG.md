@@ -13,6 +13,24 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **The dependency behind the proxy.** On a meshed cluster every call is
+  intercepted, so the map received `app → proxy → app` — two edges, neither of
+  them a dependency. v0.8 stopped drawing those; the real edge underneath them
+  went with them, leaving a cluster of disconnected circles. The hub now walks
+  each trace's own parent chain across the transport spans and reports the
+  `app → app` dependency that actually happened, named with the proxy it was
+  recovered across. Per-trace ancestry is what makes this safe: pairing a
+  proxy's inbound edges with its outbound ones in aggregate invents an N×M
+  cross-product of calls nobody made, which is why v0.7 shipped the hiding and
+  not the collapsing. Here every server span has exactly one parent, so a call
+  contributes exactly one edge. The **Show mesh & gateways** toggle now swaps
+  representations rather than stacking them — hops or dependency, never both, so
+  the same request is never counted twice. A cluster with no mesh issues no
+  extra query and gets byte-identical JSON. Up to three chained proxies are
+  followed, which covers a sidecar mesh and Istio ambient's
+  ztunnel → waypoint → ztunnel — see the
+  [AEP](design/2026-08-25-transport-hop-collapse.md).
+
 - **The mesh gets a screen.** Two releases were spent teaching avuru-obs to see
   *past* the mesh — v0.7 hid the proxies, v0.9 recovered the dependencies behind
   them — which is right for a dependency graph and wrong as the last word. On a

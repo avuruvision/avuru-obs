@@ -42,6 +42,15 @@ function isFlowOnly(e: ServiceEdge): boolean {
   return e.calls === 0;
 }
 
+// The proxies a dependency was recovered across, for the hover. Named rather
+// than counted: "via istio-proxy" tells the reader why they cannot see the hop,
+// where "1 hop" would just raise the question.
+function viaLabel(e: ServiceEdge): string | undefined {
+  const via = e.viaTransport;
+  if (!via?.length) return undefined;
+  return `via ${via.join(", ")}`;
+}
+
 // edgeTooltip is the hover text for an edge: call volume, this path's latency,
 // plus any network health OBI measured for the connection.
 function edgeTooltip(e: ServiceEdge, windowMinutes: number): string {
@@ -53,6 +62,8 @@ function edgeTooltip(e: ServiceEdge, windowMinutes: number): string {
   if (e.failedConnections) parts.push(`${e.failedConnections} failed conns`);
   if (e.retransmits) parts.push(`${e.retransmits} retransmits`);
   if (e.bytes) parts.push(formatBytes(e.bytes));
+  const via = viaLabel(e);
+  if (via) parts.push(via);
   return parts.join(" · ");
 }
 
@@ -64,6 +75,8 @@ function edgeFocusLabel(e: ServiceEdge, windowMinutes: number): string {
   if (e.p95Ms !== undefined) parts.push(`p95 ${formatMs(e.p95Ms)}`);
   if ((e.errorRate ?? 0) > 0) parts.push(`${(e.errorRate * 100).toFixed(1)}% err`);
   if (e.rttMs) parts.push(`RTT ${e.rttMs.toFixed(0)}ms`);
+  const via = viaLabel(e);
+  if (via) parts.push(via);
   return parts.join(" · ");
 }
 

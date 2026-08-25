@@ -14,6 +14,7 @@ import {
   hasActiveFilter,
   splitInfrastructure,
   splitVirtual,
+  viaMesh,
   type MapFilters,
 } from "@/lib/map-filter";
 import { ROLE_PEER, withUndetectedPeers } from "@/lib/map-peers";
@@ -110,6 +111,11 @@ export function ServiceMapScreen() {
   // as calls overstates what the map actually observed.
   const callEdges = shown.edges.filter((e) => e.calls > 0).length;
   const flowEdges = shown.edges.length - callEdges;
+  // Dependencies that exist only because the hub walked a trace across a mesh
+  // proxy. Counted apart because they are the answer to "why does my meshed
+  // cluster finally have edges" — and because a reader who trusts a map should
+  // be told which edges were reconstructed rather than observed head-on.
+  const meshEdges = shown.edges.filter((e) => viaMesh(e)).length;
 
   const setFilters = (next: MapFilters) =>
     setMany({
@@ -168,6 +174,7 @@ export function ServiceMapScreen() {
 
       <p data-testid="map-count" className="text-xs text-base-content/55">
         {shownApps} services · {callEdges} call edges
+        {meshEdges > 0 && ` · ${meshEdges} through the mesh`}
         {flowEdges > 0 && ` · ${flowEdges} network ${flowEdges === 1 ? "flow" : "flows"}`}
         {shownVirtual > 0 && ` · ${shownVirtual} ${shownVirtual === 1 ? "dependency" : "dependencies"}`}
         {shownPeers > 0 && ` · ${shownPeers} undetected ${shownPeers === 1 ? "peer" : "peers"}`}
@@ -184,6 +191,7 @@ export function ServiceMapScreen() {
         health={healthEnabled}
         carbon={carbon}
         infra={showInfra}
+        mesh={meshEdges > 0}
         virtual={shownVirtual > 0}
         peers={shownPeers > 0}
         grouping={grouping}

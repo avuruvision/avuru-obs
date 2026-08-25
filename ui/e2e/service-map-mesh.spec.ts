@@ -37,6 +37,36 @@ const MESH_MAP = {
   ],
 };
 
+// The same cluster once the hub walks the traces across the proxy: the two hops
+// are still reported, and so is the dependency underneath them. Drawing all
+// three at once would count the same twelve calls twice, which is the rule the
+// second test here exists to hold.
+const COLLAPSED_MAP = {
+  services: MESH_MAP.services,
+  edges: [
+    // The hops, unchanged — the hub still reports them.
+    MESH_MAP.edges[0],
+    MESH_MAP.edges[1],
+    // The pair's own edge, now carrying the twelve calls the walk recovered on
+    // top of the bytes the kernel already saw. This is what the hub's merge
+    // produces: one edge per pair, with the mesh-carried portion marked.
+    {
+      source: "auth-service",
+      target: "checkout",
+      calls: 12,
+      errorCount: 1,
+      errorRate: 1 / 12,
+      bytes: 40960,
+      provenance: "flow",
+      p50Ms: 6,
+      p95Ms: 11,
+      viaTransport: ["global-waypoint.istio-waypoint"],
+      collapsedCalls: 12,
+      collapsedErrorCount: 1,
+    },
+  ],
+};
+
 test.describe("service map with a mesh", () => {
   test.beforeEach(async ({ page }) => {
     await page.route("**/api/v1/service-map*", (route) => route.fulfill({ json: MESH_MAP }));
@@ -77,5 +107,31 @@ test.describe("service map with a mesh", () => {
 
     await expect(page.getByTestId("map-count")).toContainText("2 services · 0 call edges");
     await expect(page.getByRole("checkbox", { name: "Show mesh & gateways" })).toHaveCount(0);
+  });
+
+  test("draws the dependency recovered across the hop, and names the proxy", async ({ page }) => {
+    await page.route("**/api/v1/service-map*", (route) => route.fulfill({ json: COLLAPSED_MAP }));
+    await page.goto("/service-map");
+
+    // Before this feature a meshed cluster showed two services and NO edges —
+    // honest about the hops, silent about the dependency they carried.
+    const count = page.getByTestId("map-count");
+    await expect(count).toContainText("2 services · 1 call edge");
+    await expect(count).toContainText("1 through the mesh");
+    await expect(page.getByTestId("map-legend")).toContainText("recovered across a mesh hop");
+  });
+
+  test("swaps the recovered edge for the hops rather than drawing both", async ({ page }) => {
+    await page.route("**/api/v1/service-map*", (route) => route.fulfill({ json: COLLAPSED_MAP }));
+    await page.goto("/service-map?infra=true");
+
+    // The twelve calls are the SAME twelve, whichever way they are drawn: two
+    // hops here, one dependency without the toggle — never three edges.
+    const count = page.getByTestId("map-count");
+    await expect(count).toContainText("3 services · 2 call edges");
+    await expect(count).not.toContainText("through the mesh");
+    // The kernel's own observation of that pair is not a span and does not go
+    // with the calls: it was true before the mesh existed and stays true here.
+    await expect(count).toContainText("1 network flow");
   });
 });
