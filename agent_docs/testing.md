@@ -56,6 +56,7 @@ Write or update tests **alongside** the implementation, not after.
 | Go integration | `cd hub && make test-int` |
 | UI lint+build guard | `cd ui && npm run lint && npm run build` |
 | E2E API (Go: drop-in promise, seeded determinism) | `make e2e` (owns the compose lifecycle) |
+| ↳ against a stack on other ports | every endpoint is env-configurable: `AVURUOBS_E2E_HUB_URL`, `_CH_URL`, `_HOTROD_URL`, `_OTLP_ENFORCE`, `_SENTRY_URL` |
 | E2E UI (Playwright smoke, specs in `ui/e2e/`) | `make e2e-ui` (compose lifecycle + seeded data) |
 | E2E Helm (kind install smoke: traces + correlated logs) | `make e2e-helm` (owns the kind lifecycle) |
 | Everything CI runs | `make check` |

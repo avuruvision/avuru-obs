@@ -11,7 +11,7 @@ From the repo root:
 ```bash
 # 1. Start the release sandbox on collision-free ports, isolated from any
 #    other compose project on the machine (never omit -p).
-AVURUOBS_VERSION=v0.2.0 docker compose -p avuru-shots \
+AVURUOBS_VERSION=v0.8.0 docker compose -p avuru-shots \
   -f deploy/compose/docker-compose.release.yaml \
   -f tools/screenshots/compose.screenshots.yaml up --wait
 

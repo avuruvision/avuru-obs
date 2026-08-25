@@ -42,6 +42,9 @@ export interface ServiceStats {
   // spans. Absent for applications, so a cluster with neither returns the shape
   // it always did.
   role?: string; // "transport" | "virtual"
+  // NOTE: the map renderer also synthesizes role "peer" client-side for an edge
+  // endpoint it could not resolve to a service (lib/map-peers.ts). The hub never
+  // sends it — it is a statement about what the RENDERER could not resolve.
   // What a virtual target actually is. Only ever set beside role "virtual".
   kind?: string; // "database" | "cache" | "queue"
   // Where the workload lives — k8s.namespace.name, or service.namespace for a
