@@ -18,6 +18,7 @@ type Fake struct {
 	Labels        []storage.ServiceLabel
 	Edges         []storage.ServiceEdge
 	NetEdges      []storage.ServiceEdge
+	ControlPlane  storage.MeshControlPlane
 	Virtual       []storage.VirtualTarget
 	NetEdgeHealth []storage.NetworkEdgeHealth
 	Zones         []storage.ZoneTraffic
@@ -213,6 +214,11 @@ func (f *Fake) ServiceLabels(_ context.Context, q storage.ServiceQuery) ([]stora
 func (f *Fake) ServiceEdges(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceEdge, error) {
 	f.LastServiceQuery = q
 	return f.Edges, nil
+}
+
+func (f *Fake) MeshControlPlane(_ context.Context, q storage.ServiceQuery) (storage.MeshControlPlane, error) {
+	f.LastServiceQuery = q
+	return f.ControlPlane, nil
 }
 
 func (f *Fake) TagKeys(_ context.Context, q storage.ServiceQuery) ([]storage.TagKey, error) {

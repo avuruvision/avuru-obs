@@ -86,6 +86,7 @@ otel
 {{- if .Values.modules.errorTracking.enabled -}}{{- $mods = append $mods "error-tracking" -}}{{- end -}}
 {{- if .Values.modules.serviceHealth.enabled -}}{{- $mods = append $mods "service-health" -}}{{- end -}}
 {{- if .Values.modules.alerting.enabled -}}{{- $mods = append $mods "alerting" -}}{{- end -}}
+{{- if .Values.modules.mesh.enabled -}}{{- $mods = append $mods "mesh" -}}{{- end -}}
 {{- if .Values.modules.green.enabled -}}{{- $mods = append $mods "green" -}}{{- end -}}
 {{- join "," $mods -}}
 {{- end -}}
@@ -107,6 +108,14 @@ otel
      declared once for the pod, so this has to be the union. */}}
 {{- define "avuruobs.needsKernelTracefs" -}}
 {{- if or (include "avuruobs.collectProfiles" .) (include "avuruobs.obiStatsEnabled" .) -}}true{{- end -}}
+{{- end -}}
+
+{{/* True when the gateway should scrape the mesh control plane. Requires the
+     mesh module (it owns the surface), infra-metrics (the series land in
+     otel_metrics_*, which only that module creates) and the gateway itself —
+     a query-only install has no collector to scrape from. */}}
+{{- define "avuruobs.meshControlPlaneEnabled" -}}
+{{- if and .Values.gateway.enabled .Values.modules.mesh.enabled .Values.modules.infraMetrics.enabled .Values.mesh.controlPlane.enabled -}}true{{- end -}}
 {{- end -}}
 
 {{/* Module env block shared by the hub Deployment and the migrate Job. */}}

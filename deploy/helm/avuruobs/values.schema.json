@@ -168,13 +168,38 @@
           "properties": { "enabled": { "type": "boolean" } },
           "required": ["enabled"]
         },
+        "mesh": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } },
+          "required": ["enabled"]
+        },
         "green": {
           "type": "object",
           "properties": { "enabled": { "type": "boolean" } },
           "required": ["enabled"]
         }
       },
-      "required": ["logs", "infraMetrics", "profiling", "errorTracking", "serviceHealth", "alerting", "green"]
+      "required": ["logs", "infraMetrics", "profiling", "errorTracking", "serviceHealth", "alerting", "mesh", "green"]
+    },
+    "mesh": {
+      "type": "object",
+      "properties": {
+        "controlPlane": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "endpoint": { "type": "string", "minLength": 1 },
+            "scrapeInterval": { "type": "string", "minLength": 1 },
+            "metrics": {
+              "type": "object",
+              "properties": { "keep": { "type": "string", "minLength": 1 } },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     },
     "green": {
       "type": "object",

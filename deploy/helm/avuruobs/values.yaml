@@ -219,8 +219,37 @@ modules:
   # upgrade. REQUIRES modules.infraMetrics (the pod→workload join reads the
   # kubeletstats attributes) — a chart guard enforces it. Collect energy by ALSO
   # setting sensor.green.enabled; see the green: and sensor.green: blocks below.
+  # Mesh: the service mesh's own surface — proxy load/latency/success rate from
+  # spans you already send, plus control-plane health from an istiod scrape
+  # (see the mesh: block below). Born OFF: most installs run no mesh, and a
+  # module that lights up a nav entry for infrastructure you do not have is
+  # exactly what the grouped navigation set out to stop. The control-plane half
+  # additionally REQUIRES modules.infraMetrics (the scraped series live in the
+  # otel_metrics_* tables) — a chart guard enforces it.
+  mesh:
+    enabled: false
   green:
     enabled: false
+
+# Mesh control plane. Rendered into the GATEWAY's collector config, not the
+# sensor's: istiod is a single Deployment, and the sensor is a DaemonSet, so
+# scraping it from there would produce one copy of every control-plane series
+# per node. Only effective with modules.mesh.enabled + modules.infraMetrics.
+mesh:
+  controlPlane:
+    enabled: false
+    # istiod's Prometheus port. 15014 is the `http-monitoring` port on the
+    # istiod Service; change the host for a revisioned or renamed control plane
+    # (e.g. istiod-1-20.istio-system.svc.cluster.local:15014).
+    endpoint: istiod.istio-system.svc.cluster.local:15014
+    scrapeInterval: 30s
+    metrics:
+      # istiod exposes hundreds of series; this surface asks four questions.
+      # pilot_xds = proxies connected, pilot_xds_pushes = pushes attempted,
+      # pilot_proxy_convergence_time = how long config takes to arrive,
+      # pilot_total_xds_rejects = config the proxies REFUSED — the one signal
+      # nothing else in the product can produce.
+      keep: "pilot_xds|pilot_xds_pushes|pilot_proxy_convergence_time.*|pilot_total_xds_rejects"
 
 # Alerting rules and channels. Rendered to a ConfigMap the hub reads (mounted at
 # AVURUOBS_ALERTS_CONFIG) when modules.alerting.enabled. No rules = nothing

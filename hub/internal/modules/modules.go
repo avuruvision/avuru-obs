@@ -31,6 +31,15 @@ const (
 	// It owns the alert_state/alert_history tables (0008) and is the hub's only
 	// module that makes an outbound call. Inert until rules are configured.
 	Alerting Name = "alerting"
+	// Mesh surfaces the service mesh itself: proxy RED (derived from the same
+	// spans the map already stores, filtered by the topology classifier rather
+	// than by a query) and control-plane health from an istiod scrape. It owns
+	// no schema. Born OFF — most installs run no mesh, and a module that lights
+	// up a nav entry for infrastructure you do not have is what the v0.8
+	// navigation work set out to stop. The control-plane half additionally
+	// requires infra-metrics, since the scrape lands in otel_metrics_*.
+	// See design/2026-08-25-mesh-surfaces.md.
+	Mesh Name = "mesh"
 	// Green derives per-service energy (Wh) and carbon (gCO2e) from Kepler
 	// metrics at query time. It owns no schema/migration (it reads the existing
 	// otel_metrics_* tables) but requires infra-metrics: the pod→workload join
@@ -39,7 +48,7 @@ const (
 )
 
 // All lists every known module in registry (display) order.
-var All = []Name{Core, Logs, InfraMetrics, Profiling, ErrorTracking, ServiceHealth, Alerting, Green}
+var All = []Name{Core, Logs, InfraMetrics, Profiling, ErrorTracking, ServiceHealth, Alerting, Mesh, Green}
 
 // Set is a resolved active-module set; Core is always present.
 type Set map[Name]bool

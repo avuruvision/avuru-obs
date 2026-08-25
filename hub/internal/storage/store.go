@@ -105,6 +105,30 @@ type VirtualTarget struct {
 	P95        time.Duration
 }
 
+// MeshControlPlane is the health of the service mesh's control plane over the
+// window: is it still programming the data plane, and is the data plane
+// accepting what it is told?
+//
+// Available is the load-bearing field. A control plane nobody scrapes reports
+// zero rejected configs, which reads as perfect health — so absence is stated
+// rather than rendered as zeros, the same way the green module reports "no
+// RAPL" instead of 0 W. Every number below is meaningless unless Available.
+type MeshControlPlane struct {
+	Available bool
+	LastSeen  time.Time
+	// ConnectedProxies is the latest value in the window, not a sum: it is a
+	// gauge, and summing scrapes would multiply it by the scrape count.
+	ConnectedProxies uint64
+	// Pushes attempted, and configuration the proxies REFUSED. The second is
+	// the signal nothing else carries: a rejected push means the control plane
+	// and the data plane disagree, and the fleet keeps serving the last config
+	// it accepted — indistinguishable from health at every other layer.
+	Pushes          uint64
+	RejectedConfigs uint64
+	// ConvergenceP95Ms is how long a config change takes to reach the proxies.
+	ConvergenceP95Ms float64
+}
+
 // ZoneTraffic is the byte volume exchanged between two availability zones over
 // the window. Zones are node topology, not workload identity: the pair count is
 // bounded by how many zones a cluster spans, which is why this can be collected
@@ -767,6 +791,10 @@ type Store interface {
 	// window, from the sensor's inter-zone counters. Same infra-metrics gating
 	// as NetworkEdges, and the same cumulative-counter caveat.
 	ZoneTraffic(ctx context.Context, q ServiceQuery) ([]ZoneTraffic, error)
+	// MeshControlPlane summarises the service mesh's control plane over the
+	// window. Reads the metrics tables (the scrape lands there), so the same
+	// infra-metrics gating as NetworkEdges applies on top of the mesh module.
+	MeshControlPlane(ctx context.Context, q ServiceQuery) (MeshControlPlane, error)
 	TraceOverview(ctx context.Context, q OverviewQuery) ([]OperationStats, error)
 	SearchTraces(ctx context.Context, q TraceQuery) (TracePage, error)
 	// GetTrace/FindSpanTrace/LogsForTrace (and the error-issue reads below)
