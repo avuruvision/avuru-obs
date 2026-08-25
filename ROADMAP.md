@@ -160,29 +160,39 @@ already queried for another screen.
 | **Navigation that grows with the product** | The sidebar is grouped by the question each screen answers — Topology, Signals, Operations, Infrastructure — instead of one ever-growing "Observe" list. The wedge's first click is unchanged, and a layer whose every screen belongs to a module you don't run disappears rather than labelling a gap |
 | **The golden screens are gated** | The Playwright suite could only be run by hand, against a stack with authentication weakened — so it never ran, and three specs had rotted across two releases. It now runs against a real authenticated hub, unattended, on every pull request |
 
-## v0.9 — the mesh and the kernel (directional)
+## v0.9 — the mesh and the kernel — SHIPPED (v0.9.0)
 
-v0.8 stopped the map from *lying* about a meshed cluster. It does not yet tell
-the whole truth about one: with the proxies hidden, the false dependencies are
-gone but the real ones behind them are still missing. And the kernel sees more
-than we currently ask it for.
+v0.8 stopped the map *lying* about a meshed cluster. It did not yet tell the
+whole truth about one: with the proxies hidden, the false dependencies were
+gone and the real ones behind them were still missing. And the kernel had been
+giving us less than it could — partly because we were pinned to an upstream
+that could not yet give more.
 
-- **Hop collapse:** recover the real `app → app` dependency across a proxy.
-  Needs per-trace ancestry — the naive pairing invents an N×M cross-product,
-  which is why v0.7 shipped the hiding and not the collapsing. See the
-  [AEP](design/2026-08-23-service-map-transport.md).
-- **Deeper kernel network monitoring:** L4/L7 detail the sensor can already
-  see — process-level topology, TLS detection, retransmits and drops — and
-  confirming the per-edge owner attribution of the TCP-stats metrics on a
-  running eBPF cluster, which [network health](design/2026-07-19-network-health.md)
-  still lists as unverified.
-- **Mesh-facing surfaces:** proxy load, latency and success rate, and
-  control-plane health, for the clusters where the mesh *is* the network.
-- **Endpoint checks:** health when there is no traffic. See the
-  [draft AEP](design/2026-07-20-endpoint-checks.md).
+> **As a platform team we can read a meshed cluster: the dependencies our
+> services actually have, the fabric that carries them, the link-level faults
+> the kernel sees — and whether anything is serving at all when nobody is
+> calling.**
 
-## Beyond v0.9
+| Theme | Shipped |
+|---|---|
+| **The dependency behind the proxy** | The release-defining item: the hub walks each trace's own parent chain across up to three consecutive transport spans and reports the `app → app` dependency underneath. Per-trace ancestry is what makes it safe — pairing a proxy's inbound edges with its outbound ones in aggregate invents an N×M cross-product of calls nobody made, which is why v0.7 shipped the hiding and not the collapsing. The **Show mesh & gateways** toggle now swaps representations rather than stacking them, so the same request is never drawn twice — [AEP](design/2026-08-25-transport-hop-collapse.md) |
+| **The kernel, upgraded** | The eBPF sensor moves to **OBI v0.12.2**, every rendered config key re-verified against that tag's source first. **Retransmits** join RTT and failed connections on the map's edges — a link can lose packets and still measure fast, which is the fault RTT alone hides — closing the "OBI gap" [network health](design/2026-07-19-network-health.md) carried since v0.2. TCP-stats features are named one by one so the bump could not switch the per-syscall `stats_tcp_io` on behind an install's back |
+| **Per-edge attribution, proven** | The service map's flow and TCP-stats joins depend on `k8s.src.owner.name` / `k8s.dst.owner.name`, and nothing had ever checked a real OBI on a real kernel produces them — the AEP listed it as blocking production use since v0.2. The kind gate now installs with kernel flows on and asserts it. Running that found why the caveat was worth keeping: TCP stats attach a tracepoint needing debugfs, the sensor mounted neither, and OBI **exits** rather than skipping a feature it cannot start — so an optional metric had been taking zero-code traces and network flows down with it for anyone who enabled it |
+| **Mesh-facing surfaces** | A screen for the fabric itself: every proxy's rate, success rate and latency, with the calls it carried **in and out counted apart** — traffic arriving with none leaving is a proxy that stopped forwarding, a failure its own error rate need not show. Plus **control-plane health**, including the configuration your proxies *refused*: a rejected push means control plane and data plane disagree while the fleet keeps serving what it last accepted. Scraped from the gateway, because istiod is one Deployment and a DaemonSet would multiply every series by node count — [AEP](design/2026-08-25-mesh-surfaces.md) |
+| **Endpoint checks** | Health when nothing is calling. A group with no spans is either idle or dead, and only a probe tells the two apart at 3 a.m. Two consecutive failures move a group, never one. Each probe emits a span of its own — a check is synthetic traffic, not a side channel — so a failing check links straight to the trace of the request that failed, with the hub sending it as an OTLP *client* of the gateway and never writing `otel_traces` itself — [AEP](design/2026-07-20-endpoint-checks.md) |
 
+## Beyond v0.9 (directional)
+
+- **Classify transport from Kubernetes labels** rather than workload names, once
+  the pipeline carries them. Names are a heuristic with an escape hatch; labels
+  are the real signal.
+- **Costs, and the incident.** Usage / allocation / overprovisioning per node
+  beside the green module — one story about waste — and root-cause summaries
+  with a provider switch that is *disabled* by default.
+- **Non-Istio control planes.** The proxy half of the mesh screen already works
+  anywhere; the control-plane half is Istio-shaped and says so.
+- **Scripted multi-step check journeys**, if demand appears — v0.9 ships
+  single-request checks deliberately.
 - **Deeper profiling:** off-CPU and memory profiles as the upstream OTel eBPF
   profiler grows them.
 - **Storage re-evaluation:** ClickHouse stays behind `storage.Store`; GreptimeDB
