@@ -50,6 +50,9 @@ type GroupHealth struct {
 	ErrorRate   float64
 	P95Ms       float64
 	Members     []Member
+	// Checks is the standing of the endpoint probes declared for this group,
+	// empty when it declares none. See ApplyChecks for how they move Status.
+	Checks []CheckState
 }
 
 // Report is the whole tenant's group health for a window. Warnings carry

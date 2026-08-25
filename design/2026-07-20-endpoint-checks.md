@@ -1,8 +1,8 @@
 # AEP: Endpoint checks — health when there is no traffic
 
-- **Date:** 2026-07-20
+- **Date:** 2026-07-20 (accepted 2026-08-25)
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted
 
 > **History.** Drafted 2026-07-16 as "Service groups and endpoint checks" (never
 > merged; it lived on the `design/aep-service-groups` branch). The groups half
@@ -60,6 +60,15 @@ the service map and traces in one product.
   checks serve humans.
 - **Multi-step browser journeys** (login → navigate → assert DOM). Single-request
   checks only; scripted journeys are a later, larger question.
+- **An SSRF guard on check targets.** The alerting module blocks private,
+  loopback and link-local addresses on its webhooks, and copying that here would
+  block the entire feature: a check exists to probe *your own* services, which
+  live on exactly those networks. The two are not the same risk. A webhook URL
+  is a delivery address pointed outward; a check URL is admin-authored
+  configuration in the same ConfigMap that already decides what the platform
+  collects. Whoever can write a check can already write the collection config.
+  Checks do carry a hard timeout, refuse redirects to a different host, and are
+  never populated from user input.
 
 ## Solution
 
@@ -83,6 +92,39 @@ other client — which the existing aux-span filter
 (`hub/internal/storage/clickhouse/aux.go`) already knows how to hide from
 user-facing RED when asked. One mechanism, reused, rather than a parallel health
 system.
+
+### The span-emission seam
+
+A check emitting a span is the hinge of this design, and it puts the Hub in a
+place the architecture is explicit about keeping it out of:
+`agent_docs/architecture.md` locks **"the hub is never in the telemetry
+byte-path"**.
+
+That rule is about *relaying other people's telemetry*, and this does not break
+it — but only if the mechanism is stated rather than assumed. The Hub becomes an
+OTLP **client of the gateway**: it exports its own spans the way any
+instrumented application does, over the same endpoint, through the same
+receiver, past the same tenant stage. It never writes `otel_traces` itself,
+even though it holds a ClickHouse connection and could.
+
+That distinction is the whole safeguard. A direct insert would look simpler and
+would quietly bypass ingest-key enforcement, per-project routing and every
+transformation the pipeline applies — producing rows no sender could have
+produced. Going through the front door means a check's span is subject to
+exactly what a customer's span is subject to, including being rejected when the
+key is wrong.
+
+Consequences the implementation must carry:
+
+- With `auth.ingest.mode=enforce`, the Hub carries an ingest key of its own,
+  wired by the chart the way the sensor's key already is.
+- With no gateway endpoint configured, checks still run and still record their
+  results; only the span is skipped. The scheduler must not fail because an
+  exporter is unset.
+- Check spans are auxiliary traffic by construction, and the existing aux-span
+  classification (`hub/internal/storage/clickhouse/aux.go`) is what keeps them
+  out of user-facing RED — one mechanism, reused, exactly as the passive
+  health-check spans already are.
 
 API: `GET /api/v1/checks` / `GET /api/v1/checks/{id}/results`; check outcomes
 feed the group evaluation in `hub/internal/health` (a failing check on a T0
@@ -119,7 +161,7 @@ failed probe.
 
 ## Roadmap
 
-- [ ] AEP accepted
+- [x] AEP accepted
 - [ ] Check scheduler + config parsing on the `serviceGroups` surface
 - [ ] ClickHouse results table + span emission + aux-span classification
 - [ ] Health evaluation: check outcomes + `idle` for silent, check-less groups

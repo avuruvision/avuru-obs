@@ -22,6 +22,7 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/alerting"
 	"github.com/avuru/avuru-obs/hub/internal/api"
 	"github.com/avuru/avuru-obs/hub/internal/auth"
+	"github.com/avuru/avuru-obs/hub/internal/checks"
 	"github.com/avuru/avuru-obs/hub/internal/collection"
 	"github.com/avuru/avuru-obs/hub/internal/health"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
@@ -342,6 +343,29 @@ func run() error {
 	// started only when the module is active.
 	if active.Enabled(modules.Alerting) {
 		go runAlertingEvaluator(ctx, provider, gate, groupsResolver, alertsConfig, greenConfig, notifier, splitCSV(envOr("AVURUOBS_PROJECTS", "")), active)
+	}
+
+	// Endpoint checks: the one signal that cannot be derived from observed
+	// traffic — what happens when there is NO traffic. Started only with the
+	// service-health module (checks attach to its groups and move their status)
+	// and only when at least one is declared, so an install that wants none
+	// runs no goroutine, writes no rows and behaves exactly as before.
+	//
+	// The emitter makes the hub an OTLP client of the gateway so a probe's own
+	// request appears in RED, on the map and in traces like any other client's;
+	// nil when no gateway is reachable, and checks still run and record.
+	if active.Enabled(modules.ServiceHealth) && len(groupsConfig().AllChecks()) > 0 {
+		emitter := checks.NewOTLPEmitter(
+			envOr("AVURUOBS_GATEWAY_OTLP_ENDPOINT", ""),
+			envOr("AVURUOBS_INGEST_KEY", ""),
+			envOr("AVURUOBS_CHECKS_SERVICE_NAME", "avuru-obs-checks"),
+			slog.Default(),
+		)
+		// One check, one probe — the declaration is global config, not
+		// per-project, so running it once per tenant would multiply real HTTP
+		// requests against someone's endpoint by the number of projects. The
+		// results land under the default tenant, where the config lives.
+		go runEndpointChecks(ctx, provider, gate, groupsConfig, emitter, storage.DefaultTenant)
 	}
 
 	srv := &http.Server{

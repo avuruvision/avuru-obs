@@ -49,6 +49,7 @@ var Ordered = []string{
 	"0017_oidc_group_mapping.sql",
 	"0018_auth_tokens.sql",
 	"0019_project_retention.sql",
+	"0020_endpoint_checks.sql",
 }
 
 // ByModule tags each migration with the module(s) whose schema it owns; the
@@ -98,6 +99,10 @@ var ByModule = map[string][]modules.Name{
 	// RetentionDays on project — the projects table is core (0012), so is its
 	// column. The trimmer that enforces it skips tables whose module is off.
 	"0019_project_retention.sql": {modules.Core},
+	// Checks attach to service-health groups and feed their status, so that
+	// module owns the table: an install without it never creates the table and
+	// never starts the scheduler.
+	"0020_endpoint_checks.sql": {modules.ServiceHealth},
 }
 
 // Expected returns, in apply order, the versions that should exist on an

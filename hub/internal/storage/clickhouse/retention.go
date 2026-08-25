@@ -37,6 +37,7 @@ var trimTables = []trimTable{
 	{"profiling_samples", "Timestamp"},
 	{"error_events", "Timestamp"},
 	{"alert_history", "FiredAt"},
+	{"endpoint_check_result", "Timestamp"},
 }
 
 // TrimTenant deletes tenant rows older than cutoff and returns the tables it

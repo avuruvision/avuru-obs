@@ -76,6 +76,30 @@ spec:
                   key: seed-keys
             {{- end }}
             {{- end }}
+            {{- if include "avuruobs.checksEnabled" . }}
+            {{- /* Endpoint checks emit a span for the probe's own request, so
+                   the hub becomes an OTLP CLIENT of the gateway — like any
+                   instrumented app, past the same receiver and the same tenant
+                   stage. It never writes otel_traces itself; see
+                   design/2026-07-20-endpoint-checks.md. Unset (no gateway in
+                   this release) means checks still run and still record — only
+                   the span is skipped. */}}
+            {{- if .Values.gateway.enabled }}
+            - name: AVURUOBS_GATEWAY_OTLP_ENDPOINT
+              value: http://{{ include "avuruobs.fullname" . }}-gateway:4318
+            {{- end }}
+            {{- if and (include "avuruobs.ingestAuthEnabled" .) .Values.auth.ingest.provisionSensorKey }}
+            {{- /* In enforce mode a sender needs a key, and the hub sending
+                   check spans is a sender. It reuses the chart-provisioned
+                   sensor key rather than minting a second one: same trust
+                   boundary, same rotation. */}}
+            - name: AVURUOBS_INGEST_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "avuruobs.ingestSecretName" . }}
+                  key: sensor-key
+            {{- end }}
+            {{- end }}
             - name: AVURUOBS_AUTH_ENABLED
               value: {{ .Values.auth.enabled | quote }}
             {{- /* Always emitted (like AVURUOBS_AUTH_ENABLED above), and

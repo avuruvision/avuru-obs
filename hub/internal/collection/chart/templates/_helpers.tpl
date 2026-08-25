@@ -118,6 +118,18 @@ otel
 {{- if and .Values.gateway.enabled .Values.modules.mesh.enabled .Values.modules.infraMetrics.enabled .Values.mesh.controlPlane.enabled -}}true{{- end -}}
 {{- end -}}
 
+{{/* True when at least one endpoint check is declared AND service-health runs.
+     Checks attach to that module's groups and move their status, so without it
+     there is nothing for a probe to answer for. Nothing is rendered for an
+     install that declares none — no env, no span endpoint, no key. */}}
+{{- define "avuruobs.checksEnabled" -}}
+{{- if .Values.modules.serviceHealth.enabled -}}
+{{- range .Values.serviceGroups.groups -}}
+{{- if .checks -}}true{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
 {{/* Module env block shared by the hub Deployment and the migrate Job. */}}
 {{- define "avuruobs.modulesEnv" -}}
 - name: AVURUOBS_MODULES

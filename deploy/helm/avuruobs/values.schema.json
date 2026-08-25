@@ -6,52 +6,106 @@
     "image": {
       "type": "object",
       "properties": {
-        "registry": { "type": "string" },
-        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
-        "pullSecrets": { "type": "array" }
+        "registry": {
+          "type": "string"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        },
+        "pullSecrets": {
+          "type": "array"
+        }
       }
     },
     "hub": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" },
+        "enabled": {
+          "type": "boolean"
+        },
         "external": {
           "type": "object",
           "properties": {
-            "url": { "type": "string" }
+            "url": {
+              "type": "string"
+            }
           }
         },
-        "repository": { "type": "string", "minLength": 1 },
-        "tag": { "type": "string" },
-        "replicas": { "type": "integer", "minimum": 1 },
-        "autoMigrate": { "type": "boolean" }
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tag": {
+          "type": "string"
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "autoMigrate": {
+          "type": "boolean"
+        }
       }
     },
     "ui": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" },
-        "repository": { "type": "string", "minLength": 1 },
-        "tag": { "type": "string" },
-        "replicas": { "type": "integer", "minimum": 1 }
+        "enabled": {
+          "type": "boolean"
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tag": {
+          "type": "string"
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
     "gateway": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" },
-        "replicas": { "type": "integer", "minimum": 1 },
-        "tenant": { "type": "string" },
+        "enabled": {
+          "type": "boolean"
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "tenant": {
+          "type": "string"
+        },
         "tenantByNamespace": {
           "type": "object",
-          "additionalProperties": { "type": "string", "minLength": 1 }
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
         },
         "sentry": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "allowedOrigins": { "type": "array", "items": { "type": "string" } },
-            "projects": { "type": "object" }
+            "enabled": {
+              "type": "boolean"
+            },
+            "allowedOrigins": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "projects": {
+              "type": "object"
+            }
           }
         },
         "receivers": {
@@ -59,19 +113,35 @@
           "properties": {
             "jaeger": {
               "type": "object",
-              "properties": { "enabled": { "type": "boolean" } }
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                }
+              }
             },
             "zipkin": {
               "type": "object",
-              "properties": { "enabled": { "type": "boolean" } }
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                }
+              }
             },
             "prometheusRemoteWrite": {
               "type": "object",
-              "properties": { "enabled": { "type": "boolean" } }
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                }
+              }
             },
             "loki": {
               "type": "object",
-              "properties": { "enabled": { "type": "boolean" } }
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                }
+              }
             }
           }
         },
@@ -81,49 +151,115 @@
             "otlp": {
               "type": "object",
               "properties": {
-                "enabled": { "type": "boolean" },
-                "endpoint": { "type": "string" },
-                "protocol": { "type": "string", "enum": ["grpc", "http"] },
-                "insecure": { "type": "boolean" },
-                "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "endpoint": {
+                  "type": "string"
+                },
+                "protocol": {
+                  "type": "string",
+                  "enum": [
+                    "grpc",
+                    "http"
+                  ]
+                },
+                "insecure": {
+                  "type": "boolean"
+                },
+                "headers": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
                 "signals": {
                   "type": "array",
-                  "items": { "type": "string", "enum": ["traces", "logs", "metrics"] }
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "traces",
+                      "logs",
+                      "metrics"
+                    ]
+                  }
                 }
               }
             },
             "kafka": {
               "type": "object",
               "properties": {
-                "enabled": { "type": "boolean" },
-                "brokers": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "brokers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
                 "topics": {
                   "type": "object",
                   "properties": {
-                    "traces": { "type": "string", "minLength": 1 },
-                    "logs": { "type": "string", "minLength": 1 },
-                    "metrics": { "type": "string", "minLength": 1 }
+                    "traces": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "logs": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "metrics": {
+                      "type": "string",
+                      "minLength": 1
+                    }
                   }
                 },
-                "encoding": { "type": "string", "minLength": 1 },
+                "encoding": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "tls": {
                   "type": "object",
                   "properties": {
-                    "enabled": { "type": "boolean" },
-                    "insecureSkipVerify": { "type": "boolean" }
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "insecureSkipVerify": {
+                      "type": "boolean"
+                    }
                   }
                 },
                 "sasl": {
                   "type": "object",
                   "properties": {
-                    "enabled": { "type": "boolean" },
-                    "mechanism": { "type": "string", "enum": ["PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"] },
-                    "existingSecret": { "type": "string" }
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "mechanism": {
+                      "type": "string",
+                      "enum": [
+                        "PLAIN",
+                        "SCRAM-SHA-256",
+                        "SCRAM-SHA-512"
+                      ]
+                    },
+                    "existingSecret": {
+                      "type": "string"
+                    }
                   }
                 },
                 "signals": {
                   "type": "array",
-                  "items": { "type": "string", "enum": ["traces", "logs", "metrics"] }
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "traces",
+                      "logs",
+                      "metrics"
+                    ]
+                  }
                 }
               }
             }
@@ -133,53 +269,113 @@
     },
     "projects": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "modules": {
       "type": "object",
       "properties": {
         "logs": {
           "type": "object",
-          "properties": { "enabled": { "type": "boolean" } },
-          "required": ["enabled"]
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
         },
         "infraMetrics": {
           "type": "object",
-          "properties": { "enabled": { "type": "boolean" } },
-          "required": ["enabled"]
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
         },
         "profiling": {
           "type": "object",
-          "properties": { "enabled": { "type": "boolean" } },
-          "required": ["enabled"]
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
         },
         "errorTracking": {
           "type": "object",
-          "properties": { "enabled": { "type": "boolean" } },
-          "required": ["enabled"]
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
         },
         "serviceHealth": {
           "type": "object",
-          "properties": { "enabled": { "type": "boolean" } },
-          "required": ["enabled"]
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
         },
         "alerting": {
           "type": "object",
-          "properties": { "enabled": { "type": "boolean" } },
-          "required": ["enabled"]
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
         },
         "mesh": {
           "type": "object",
-          "properties": { "enabled": { "type": "boolean" } },
-          "required": ["enabled"]
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
         },
         "green": {
           "type": "object",
-          "properties": { "enabled": { "type": "boolean" } },
-          "required": ["enabled"]
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
         }
       },
-      "required": ["logs", "infraMetrics", "profiling", "errorTracking", "serviceHealth", "alerting", "mesh", "green"]
+      "required": [
+        "logs",
+        "infraMetrics",
+        "profiling",
+        "errorTracking",
+        "serviceHealth",
+        "alerting",
+        "mesh",
+        "green"
+      ]
     },
     "mesh": {
       "type": "object",
@@ -187,12 +383,25 @@
         "controlPlane": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "endpoint": { "type": "string", "minLength": 1 },
-            "scrapeInterval": { "type": "string", "minLength": 1 },
+            "enabled": {
+              "type": "boolean"
+            },
+            "endpoint": {
+              "type": "string",
+              "minLength": 1
+            },
+            "scrapeInterval": {
+              "type": "string",
+              "minLength": 1
+            },
             "metrics": {
               "type": "object",
-              "properties": { "keep": { "type": "string", "minLength": 1 } },
+              "properties": {
+                "keep": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
               "additionalProperties": false
             }
           },
@@ -204,16 +413,42 @@
     "green": {
       "type": "object",
       "properties": {
-        "region": { "type": "string" },
-        "gridIntensity": { "type": "number", "minimum": 0 },
-        "pue": { "type": "number", "minimum": 0 },
+        "region": {
+          "type": "string"
+        },
+        "gridIntensity": {
+          "type": "number",
+          "minimum": 0
+        },
+        "pue": {
+          "type": "number",
+          "minimum": 0
+        },
         "metrics": {
           "type": "object",
           "properties": {
-            "podEnergy": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-            "nodeEnergy": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-            "podNameAttr": { "type": "string", "minLength": 1 },
-            "podNamespaceAttr": { "type": "string", "minLength": 1 }
+            "podEnergy": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "nodeEnergy": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "podNameAttr": {
+              "type": "string",
+              "minLength": 1
+            },
+            "podNamespaceAttr": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
         "budgets": {
@@ -221,35 +456,84 @@
           "items": {
             "type": "object",
             "properties": {
-              "name": { "type": "string", "minLength": 1 },
-              "group": { "type": "string", "minLength": 1 },
-              "monthlyKgCO2e": { "type": "number", "exclusiveMinimum": 0 },
-              "warnRatio": { "type": "number" },
-              "channel": { "type": "string" }
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "group": {
+                "type": "string",
+                "minLength": 1
+              },
+              "monthlyKgCO2e": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "warnRatio": {
+                "type": "number"
+              },
+              "channel": {
+                "type": "string"
+              }
             },
-            "required": ["name", "group", "monthlyKgCO2e"]
+            "required": [
+              "name",
+              "group",
+              "monthlyKgCO2e"
+            ]
           }
         },
-        "budgetCheckIntervalSec": { "type": "integer", "minimum": 0 }
+        "budgetCheckIntervalSec": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "alerting": {
       "type": "object",
       "properties": {
-        "evalIntervalSec": { "type": "integer", "minimum": 1 },
-        "windowMinutes": { "type": "integer", "minimum": 1 },
-        "webhookAllow": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "evalIntervalSec": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "windowMinutes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "webhookAllow": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
         "channels": {
           "type": "array",
           "items": {
             "type": "object",
             "properties": {
-              "name": { "type": "string", "minLength": 1 },
-              "type": { "type": "string", "enum": ["webhook"] },
-              "url": { "type": "string", "minLength": 1 },
-              "secret": { "type": "string" }
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "webhook"
+                ]
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1
+              },
+              "secret": {
+                "type": "string"
+              }
             },
-            "required": ["name", "type", "url"]
+            "required": [
+              "name",
+              "type",
+              "url"
+            ]
           }
         },
         "rules": {
@@ -257,20 +541,62 @@
           "items": {
             "type": "object",
             "properties": {
-              "name": { "type": "string", "minLength": 1 },
-              "when": { "type": "string", "enum": ["down", "degraded", "not-healthy"] },
-              "for": { "type": "string" },
-              "channel": { "type": "string", "minLength": 1 },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "when": {
+                "type": "string",
+                "enum": [
+                  "down",
+                  "degraded",
+                  "not-healthy"
+                ]
+              },
+              "for": {
+                "type": "string"
+              },
+              "channel": {
+                "type": "string",
+                "minLength": 1
+              },
               "selector": {
                 "type": "object",
                 "properties": {
-                  "groups": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-                  "services": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-                  "tiers": { "type": "array", "items": { "type": "string", "enum": ["T0", "T1", "T2", "T3"] } }
+                  "groups": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "services": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "tiers": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "T0",
+                        "T1",
+                        "T2",
+                        "T3"
+                      ]
+                    }
+                  }
                 }
               }
             },
-            "required": ["name", "when", "channel"]
+            "required": [
+              "name",
+              "when",
+              "channel"
+            ]
           }
         }
       }
@@ -279,9 +605,23 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "transport": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-        "applications": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-        "disableDefaults": { "type": "boolean" }
+        "transport": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "applications": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "disableDefaults": {
+          "type": "boolean"
+        }
       }
     },
     "tags": {
@@ -290,43 +630,136 @@
       "properties": {
         "labels": {
           "type": "object",
-          "additionalProperties": { "type": "string", "minLength": 1 },
-          "propertyNames": { "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]*$" }
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "propertyNames": {
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]*$"
+          }
         }
       }
     },
     "serviceGroups": {
       "type": "object",
       "properties": {
-        "defaultTier": { "type": "string", "enum": ["T0", "T1", "T2", "T3"] },
+        "defaultTier": {
+          "type": "string",
+          "enum": [
+            "T0",
+            "T1",
+            "T2",
+            "T3"
+          ]
+        },
         "groups": {
           "type": "array",
           "items": {
             "type": "object",
             "properties": {
-              "name": { "type": "string", "minLength": 1 },
-              "tier": { "type": "string", "enum": ["T0", "T1", "T2", "T3"] },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "tier": {
+                "type": "string",
+                "enum": [
+                  "T0",
+                  "T1",
+                  "T2",
+                  "T3"
+                ]
+              },
               "selector": {
                 "type": "object",
                 "properties": {
-                  "namespaces": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-                  "services": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+                  "namespaces": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "services": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "url": {
+                      "type": "string",
+                      "pattern": "^https?://"
+                    },
+                    "interval": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "expect": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "integer",
+                          "minimum": 100,
+                          "maximum": 599
+                        },
+                        "maxLatency": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "url"
+                  ],
+                  "additionalProperties": false
                 }
               }
             },
-            "required": ["name", "tier"]
+            "required": [
+              "name",
+              "tier"
+            ]
           }
         },
         "tierOverrides": {
           "type": "object",
-          "additionalProperties": { "type": "string", "enum": ["T0", "T1", "T2", "T3"] }
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "T0",
+              "T1",
+              "T2",
+              "T3"
+            ]
+          }
         },
         "thresholds": {
           "type": "object",
           "properties": {
-            "defaults": { "type": "object" },
-            "tiers": { "type": "object" },
-            "services": { "type": "object" }
+            "defaults": {
+              "type": "object"
+            },
+            "tiers": {
+              "type": "object"
+            },
+            "services": {
+              "type": "object"
+            }
           }
         },
         "criticalEdges": {
@@ -334,10 +767,19 @@
           "items": {
             "type": "object",
             "properties": {
-              "from": { "type": "string", "minLength": 1 },
-              "to": { "type": "string", "minLength": 1 }
+              "from": {
+                "type": "string",
+                "minLength": 1
+              },
+              "to": {
+                "type": "string",
+                "minLength": 1
+              }
             },
-            "required": ["from", "to"]
+            "required": [
+              "from",
+              "to"
+            ]
           }
         }
       }
@@ -345,55 +787,113 @@
     "sensor": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" },
-        "nodeSelector": { "type": "object" },
-        "tolerations": { "type": "array" },
+        "enabled": {
+          "type": "boolean"
+        },
+        "nodeSelector": {
+          "type": "object"
+        },
+        "tolerations": {
+          "type": "array"
+        },
         "priorityClass": {
           "type": "object",
           "properties": {
-            "create": { "type": "boolean" },
-            "name": { "type": "string" },
-            "value": { "type": "integer" }
+            "create": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "value": {
+              "type": "integer"
+            }
           }
         },
         "collection": {
           "type": "object",
           "properties": {
-            "excludeNamespaces": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-            "optOutLabel": { "type": "string" },
-            "nodeOptOutLabel": { "type": "string" }
+            "excludeNamespaces": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "optOutLabel": {
+              "type": "string"
+            },
+            "nodeOptOutLabel": {
+              "type": "string"
+            }
           }
         },
         "obi": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "privileged": { "type": "boolean" },
+            "enabled": {
+              "type": "boolean"
+            },
+            "privileged": {
+              "type": "boolean"
+            },
             "discovery": {
               "type": "object",
               "properties": {
-                "mode": { "type": "string", "enum": ["optOut", "optIn"] },
-                "namespaces": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-                "excludeNamespaces": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+                "mode": {
+                  "type": "string",
+                  "enum": [
+                    "optOut",
+                    "optIn"
+                  ]
+                },
+                "namespaces": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "excludeNamespaces": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
               }
             },
             "image": {
               "type": "object",
               "properties": {
-                "repository": { "type": "string", "minLength": 1 },
-                "tag": { "type": "string", "minLength": 1 }
+                "repository": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "tag": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             },
             "network": {
               "type": "object",
               "properties": {
-                "enabled": { "type": "boolean" },
-                "stats": { "type": "boolean" },
-                "retransmits": { "type": "boolean" },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "stats": {
+                  "type": "boolean"
+                },
+                "retransmits": {
+                  "type": "boolean"
+                },
                 "interZone": {
                   "type": "object",
                   "properties": {
-                    "enabled": { "type": "boolean" }
+                    "enabled": {
+                      "type": "boolean"
+                    }
                   },
                   "additionalProperties": false
                 }
@@ -404,22 +904,44 @@
         "green": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
-            "scrapeInterval": { "type": "string", "minLength": 2 },
-            "privileged": { "type": "boolean" },
-            "fakeCpuMeter": { "type": "boolean" },
+            "enabled": {
+              "type": "boolean"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "scrapeInterval": {
+              "type": "string",
+              "minLength": 2
+            },
+            "privileged": {
+              "type": "boolean"
+            },
+            "fakeCpuMeter": {
+              "type": "boolean"
+            },
             "image": {
               "type": "object",
               "properties": {
-                "repository": { "type": "string", "minLength": 1 },
-                "tag": { "type": "string", "minLength": 1 }
+                "repository": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "tag": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             },
             "metrics": {
               "type": "object",
               "properties": {
-                "keep": { "type": "string", "minLength": 1 }
+                "keep": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             }
           }
@@ -427,13 +949,24 @@
         "profiler": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "samplesPerSecond": { "type": "integer", "minimum": 1 },
+            "enabled": {
+              "type": "boolean"
+            },
+            "samplesPerSecond": {
+              "type": "integer",
+              "minimum": 1
+            },
             "image": {
               "type": "object",
               "properties": {
-                "repository": { "type": "string", "minLength": 1 },
-                "tag": { "type": "string", "minLength": 1 }
+                "repository": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "tag": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             }
           }
@@ -441,25 +974,40 @@
         "agent": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
+            "enabled": {
+              "type": "boolean"
+            },
             "image": {
               "type": "object",
               "properties": {
-                "repository": { "type": "string", "minLength": 1 },
-                "tag": { "type": "string", "minLength": 1 }
+                "repository": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "tag": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             },
             "logs": {
               "type": "object",
               "properties": {
-                "enabled": { "type": "boolean" }
+                "enabled": {
+                  "type": "boolean"
+                }
               }
             },
             "kubeletstats": {
               "type": "object",
               "properties": {
-                "enabled": { "type": "boolean" },
-                "interval": { "type": "string", "minLength": 2 }
+                "enabled": {
+                  "type": "boolean"
+                },
+                "interval": {
+                  "type": "string",
+                  "minLength": 2
+                }
               }
             }
           }
@@ -471,11 +1019,19 @@
       "properties": {
         "runtimeControl": {
           "type": "object",
-          "properties": { "enabled": { "type": "boolean" } },
-          "required": ["enabled"]
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
         }
       },
-      "required": ["runtimeControl"]
+      "required": [
+        "runtimeControl"
+      ]
     },
     "clickhouse": {
       "type": "object",
@@ -483,20 +1039,39 @@
         "external": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "address": { "type": "string" },
-            "database": { "type": "string" },
-            "username": { "type": "string" },
-            "existingSecret": { "type": "string" }
+            "enabled": {
+              "type": "boolean"
+            },
+            "address": {
+              "type": "string"
+            },
+            "database": {
+              "type": "string"
+            },
+            "username": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            }
           },
-          "required": ["enabled"]
+          "required": [
+            "enabled"
+          ]
         },
         "persistence": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "storageClassName": { "type": "string" },
-            "size": { "type": "string", "minLength": 1 }
+            "enabled": {
+              "type": "boolean"
+            },
+            "storageClassName": {
+              "type": "string"
+            },
+            "size": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         }
       }
@@ -504,70 +1079,188 @@
     "migrate": {
       "type": "object",
       "properties": {
-        "clickhouseWaitSeconds": { "type": "integer", "minimum": 1 }
+        "clickhouseWaitSeconds": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
     "retention": {
       "type": "object",
       "properties": {
-        "traces": { "type": "integer", "minimum": 0 },
-        "logs": { "type": "integer", "minimum": 0 },
-        "metrics": { "type": "integer", "minimum": 0 },
-        "profiles": { "type": "integer", "minimum": 0 },
-        "errors": { "type": "integer", "minimum": 0 }
+        "traces": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "logs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "metrics": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "profiles": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "errors": {
+          "type": "integer",
+          "minimum": 0
+        }
       },
-      "required": ["traces", "logs", "metrics", "profiles", "errors"]
+      "required": [
+        "traces",
+        "logs",
+        "metrics",
+        "profiles",
+        "errors"
+      ]
     },
     "ingress": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" },
-        "className": { "type": "string" },
-        "host": { "type": "string" },
-        "sentryHost": { "type": "string" }
+        "enabled": {
+          "type": "boolean"
+        },
+        "className": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "sentryHost": {
+          "type": "string"
+        }
       }
     },
     "auth": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" },
-        "adminPassword": { "type": "string" },
-        "existingSecret": { "type": "string" },
-        "sessionTTLHours": { "type": "integer", "minimum": 1 },
-        "trustedOrigins": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-        "originCheck": { "type": "string", "enum": ["enforce", "log", "off"] },
+        "enabled": {
+          "type": "boolean"
+        },
+        "adminPassword": {
+          "type": "string"
+        },
+        "existingSecret": {
+          "type": "string"
+        },
+        "sessionTTLHours": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "trustedOrigins": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "originCheck": {
+          "type": "string",
+          "enum": [
+            "enforce",
+            "log",
+            "off"
+          ]
+        },
         "anonymous": {
           "type": "object",
           "properties": {
-            "role": { "type": "string", "enum": ["", "admin", "editor", "viewer"] },
-            "projects": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+            "role": {
+              "type": "string",
+              "enum": [
+                "",
+                "admin",
+                "editor",
+                "viewer"
+              ]
+            },
+            "projects": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
           }
         },
         "oidc": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "issuer": { "type": "string" },
-            "clientId": { "type": "string" },
-            "clientSecret": { "type": "string" },
-            "existingSecret": { "type": "string" },
-            "groupsClaim": { "type": "string", "minLength": 1 },
+            "enabled": {
+              "type": "boolean"
+            },
+            "issuer": {
+              "type": "string"
+            },
+            "clientId": {
+              "type": "string"
+            },
+            "clientSecret": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "groupsClaim": {
+              "type": "string",
+              "minLength": 1
+            },
             "mapping": {
               "type": "array",
               "items": {
                 "type": "object",
                 "properties": {
-                  "group": { "type": "string", "minLength": 1 },
-                  "role": { "type": "string", "enum": ["admin", "editor", "viewer"] },
-                  "projects": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+                  "group": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "admin",
+                      "editor",
+                      "viewer"
+                    ]
+                  },
+                  "projects": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
                 },
-                "required": ["group", "role"]
+                "required": [
+                  "group",
+                  "role"
+                ]
               }
             },
-            "defaultRole": { "type": "string", "enum": ["", "admin", "editor", "viewer"] },
-            "defaultProjects": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-            "forceSSO": { "type": "boolean" },
-            "publicUrl": { "type": "string" }
+            "defaultRole": {
+              "type": "string",
+              "enum": [
+                "",
+                "admin",
+                "editor",
+                "viewer"
+              ]
+            },
+            "defaultProjects": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "forceSSO": {
+              "type": "boolean"
+            },
+            "publicUrl": {
+              "type": "string"
+            }
           }
         }
       }

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -52,6 +53,9 @@ type healthGroupDTO struct {
 	ErrorRate   float64           `json:"errorRate"`
 	P95Ms       float64           `json:"p95Ms"`
 	Members     []healthMemberDTO `json:"members"`
+	// Endpoint probes answering for this group, absent when it declares none —
+	// so a install with no checks serializes exactly as it did before.
+	Checks []health.CheckState `json:"checks,omitempty"`
 }
 
 type healthGroupsResponse struct {
@@ -142,7 +146,21 @@ func (a *API) buildHealthReport(r *http.Request) (health.Report, storage.TimeRan
 	if err != nil {
 		return health.Report{}, tr, err
 	}
-	report := health.Rollup(a.groupsConfig(r.Context()), tr.End.Sub(tr.Start), stats, labels, edges)
+	cfg := a.groupsConfig(r.Context())
+	report := health.Rollup(cfg, tr.End.Sub(tr.Start), stats, labels, edges)
+
+	// Fold in the probes. Best-effort and gated on there being any: a check
+	// read that fails must cost the check column, not the health board — and an
+	// install declaring no checks must not pay for a query it cannot use.
+	if len(cfg.AllChecks()) > 0 {
+		// Three per check is what the two-in-a-row rule needs, plus one to see
+		// the run it broke.
+		if states, cerr := store.LatestCheckStates(r.Context(), q, 3); cerr == nil {
+			report = health.ApplyChecks(report, cfg, states)
+		} else {
+			slog.Warn("endpoint check states unavailable; health reported from traffic alone", "error", cerr)
+		}
+	}
 	return report, tr, nil
 }
 

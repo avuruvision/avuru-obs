@@ -622,6 +622,26 @@ export interface HealthGroup {
   errorRate: number;
   p95Ms: number;
   members: HealthMember[];
+  // Endpoint probes answering for this group. Absent when it declares none, so
+  // an install with no checks is untouched by the feature.
+  checks?: HealthCheckState[];
+}
+
+// One check's standing. `ok` is the last probe; `failing` is the status-bearing
+// field — a check can have failed once without the group moving, which is the
+// two-in-a-row rule keeping a restart from lighting up the board.
+export interface HealthCheckState {
+  id: string;
+  ok: boolean;
+  failing: boolean;
+  consecutiveFailures: number;
+  latencyMs?: number;
+  status?: number;
+  error?: string;
+  lastRun?: string;
+  // The probe's own span: click through from "failing" to the request that
+  // failed. Absent when no gateway endpoint is configured.
+  traceId?: string;
 }
 
 export interface HealthGroupsResponse {
