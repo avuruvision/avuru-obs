@@ -181,7 +181,7 @@ that could not yet give more.
 | **Mesh-facing surfaces** | A screen for the fabric itself: every proxy's rate, success rate and latency, with the calls it carried **in and out counted apart** — traffic arriving with none leaving is a proxy that stopped forwarding, a failure its own error rate need not show. Plus **control-plane health**, including the configuration your proxies *refused*: a rejected push means control plane and data plane disagree while the fleet keeps serving what it last accepted. Scraped from the gateway, because istiod is one Deployment and a DaemonSet would multiply every series by node count — [AEP](design/2026-08-25-mesh-surfaces.md) |
 | **Endpoint checks** | Health when nothing is calling. A group with no spans is either idle or dead, and only a probe tells the two apart at 3 a.m. Two consecutive failures move a group, never one. Each probe emits a span of its own — a check is synthetic traffic, not a side channel — so a failing check links straight to the trace of the request that failed, with the hub sending it as an OTLP *client* of the gateway and never writing `otel_traces` itself — [AEP](design/2026-07-20-endpoint-checks.md) |
 
-## v0.10 — what it costs (directional)
+## v0.10 — what it costs — on trunk
 
 Every release so far has answered *what is happening*. v0.9 finished that
 story for a meshed cluster: what depends on what, what carries it, and what the
@@ -192,33 +192,26 @@ platform team gets from someone who will never open a service map.
 > that is buying nothing at all — in the same screens, from the same
 > collection, with nothing leaving the cluster to find out.**
 
-The green module already measures the energy a workload *draws*. The number
-next to it is the capacity nobody drew on: reserved and idle. Same waste, two
-units — watts and whatever your finance team calls money.
+| Theme | Landed |
+|---|---|
+| **The capacity nobody drew on** | The release-defining item: every workload's reserved CPU and memory against what it actually used, ranked by the gap — and a workload that declares **no** request called out as its own state rather than shown as a zero, because the scheduler cannot place it deliberately and the kubelet evicts it first. Idle is measured against the **peak**, never the mean: a request cannot be cut below what a workload reached without risking eviction the next time it gets there. Prices are chart values; there is no pricing API, because it would be the first outbound call in a product whose promise is that nothing leaves the cluster. No new workload either — the collector already in the sensor carries both the cluster-object receiver and the leader-election Lease that keeps exactly one node reporting, so a cluster fact read from a DaemonSet cannot multiply by the size of the fleet — [AEP](design/2026-08-26-cost-and-waste.md) |
+| **A gateway you named anything at all** | Transport classification could only read names, and its built-in list is deliberately narrow because a false positive erases a real service from the map — so a gateway called `public-edge` had its hops drawn as dependencies until somebody noticed. The sensor now carries the labels a mesh writes on its own data plane. Labels only ever **promote**: a sidecar is a container inside the application's pod wearing the application's labels, so there is nothing to read and absence proves nothing. Names remain the answer there, and the operator's `applications` list still beats both — [AEP](design/2026-08-26-transport-from-labels.md) |
+| **Why the control plane is silent** | "Not observed" covered three problems with three different fixes: nothing is scraping, the target is not answering, or it answered with metrics this product cannot read. They are told apart now, from Prometheus's scrape report — which bypasses the metric keep-list, so it was already in the tables. The third state is the one worth naming: the control-plane view is **Istio-shaped**, and an operator running a different mesh learns that from the screen instead of an empty card, with the proxy half explicitly unaffected — [AEP](design/2026-08-26-control-plane-diagnosis.md) |
+| **Settings is administration** | A read-only account — the shared demo above all — was offered the group editor, Storage and Status: an editor whose every control was already hidden from it, and two tabs whose only endpoint refused it and rendered "couldn't reach the hub". The same gate restored administration on installs running *without* authentication, where it had been refusing what the hub allows |
 
-- **Waste, per workload.** Reserved versus used CPU and memory, ranked by the
-  gap, because the gap is the list you act on. The collection is one config
-  block on a receiver already running: kubelet stats can report
-  request- and limit-utilization per container once it is given
-  `k8s_api_config` and a `nodes/pods` read — no new receiver, no new workload,
-  no new table, and it stays in the DaemonSet, so none of it is a
-  single-writer problem. Prices are chart values, never a pricing API: this
-  product makes no outbound call and this is not where it starts. With no rates
-  configured the surface stays unit-less and honest — "2.4 cores reserved, 0.3
-  used" is already the finding.
-- **Transport classified from Kubernetes labels** rather than workload names,
-  closing the last open item on the
-  [transport AEP](design/2026-08-23-service-map-transport.md). Names are a
-  heuristic with an escape hatch; labels are what the mesh actually writes.
-  Names stay as the fallback, so an unlabelled cluster keeps the behaviour it
-  has today.
-- **Non-Istio control planes.** The proxy half of the mesh screen already works
-  anywhere a proxy is classified; the control-plane half is Istio-shaped and
-  says so. An unrecognised control plane should say *that*, rather than render
-  an empty Istio card.
+**Reading a second control plane** was on this list and is not in it. Linkerd's
+destination controller publishes no counterpart to *configuration the proxies
+refused* — the most valuable number on the card — so it is not a mapping table
+but a design question that needs someone running one to answer. The product
+states the limitation instead; the AEP records what is missing.
 
 ## Beyond v0.10
 
+- **Read a second control plane**, once someone running one can say which of its
+  signals answer the four questions the Istio card answers — and which of them
+  simply have no answer there.
+- **Cost joined to green:** the same reserved-and-idle capacity in Wh and
+  gCO2e, on an install running both. One story about waste, in two units.
 - **The incident.** Root-cause summaries, with a provider switch that is
   **disabled by default**. Deliberately not in v0.10: it would be the first
   outbound network call in a product whose whole promise is that nothing leaves
