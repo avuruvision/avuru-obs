@@ -74,26 +74,26 @@ jobs:
       # Explicit ref: on workflow_dispatch the default checkout is the branch
       # HEAD, which by then carries the next -SNAPSHOT — the dispatch fallback
       # must build the tag's content, not main's.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.meta.outputs.tag }}
       # arm64 is not optional: the sensor's eBPF stack and the gateway run on
       # arm64 nodes, and an amd64-only image strands those clusters. QEMU is the
       # baseline that needs no Dockerfile change; if build time becomes painful,
       # cross-compile instead (--platform=$BUILDPLATFORM + GOARCH=$TARGETARCH).
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
       - uses: sigstore/cosign-installer@v3
       - name: Log in to registry
         if: needs.meta.outputs.dry_run != 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push ${{ matrix.component }}
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         env:
           # No *.dockerbuild build-record artifacts: the release job downloads
           # run artifacts and must only ever see the helm chart (v0.1.0 cut
@@ -138,10 +138,10 @@ jobs:
       packages: write # push the chart to GHCR as an OCI artifact
       id-token: write # cosign keyless signing
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.meta.outputs.tag }}
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - uses: sigstore/cosign-installer@v3
       # cosign resolves registry credentials from the Docker credential store;
       # `helm registry login` below writes helm's own config, which cosign never
@@ -149,7 +149,7 @@ jobs:
       # rejects it (this failed the v0.2.0 cut).
       - name: Log in to registry
         if: needs.meta.outputs.dry_run != 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -181,7 +181,7 @@ jobs:
           digest="$(awk '/^Digest: /{print $2}' push.log)"
           test -n "$digest" || { echo "helm push printed no digest"; exit 1; }
           cosign sign --yes "${CHART_NS}/avuruobs@${digest}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: helm-chart
           path: dist/*.tgz
@@ -195,10 +195,10 @@ jobs:
     needs: meta
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.meta.outputs.tag }}
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.27"
       - name: Build binaries
@@ -217,7 +217,7 @@ jobs:
               -o "$out" ./cmd/avuruobs
           done
           ( cd dist && sha256sum * > checksums.txt )
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cli-binaries
           path: clients/cli/dist/*
@@ -231,13 +231,13 @@ jobs:
     needs: meta
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.meta.outputs.tag }}
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.27"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - name: Build frontend
@@ -267,7 +267,7 @@ jobs:
           cp -r dist/* package/avuru-obs-datasource/
           ( cd package && zip -qr "../avuru-obs-datasource-${VERSION}.zip" avuru-obs-datasource )
           sha256sum "avuru-obs-datasource-${VERSION}.zip" > "avuru-obs-datasource-${VERSION}.zip.sha256"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: grafana-plugin
           path: |
@@ -279,20 +279,20 @@ jobs:
     needs: [meta, images, chart, cli, grafana-plugin]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.meta.outputs.tag }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           # Only the chart — never "all artifacts": with a single name the
           # files land directly under path (no per-artifact subdirectory).
           name: helm-chart
           path: artifacts/helm-chart
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: cli-binaries
           path: artifacts/cli
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: grafana-plugin
           path: artifacts/grafana-plugin
@@ -318,7 +318,7 @@ jobs:
           sha256sum deploy/install.sh | sed 's# .*/# #' > artifacts/installer/install.sh.sha256
       - name: Create GitHub Release
         if: needs.meta.outputs.dry_run != 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
           name: ${{ needs.meta.outputs.tag }}

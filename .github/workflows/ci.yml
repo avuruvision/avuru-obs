@@ -11,15 +11,18 @@ jobs:
   hub:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.27"
       - name: build + test
         working-directory: hub
         run: go build ./... && go test -race ./...
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v8   # v8 targets golangci-lint v2 (matches hub/.golangci.yml `version: "2"`)
+        # v9 only changes the action's own runtime to node24; its
+        # golangci-lint support is unchanged from v8 (>= v2.1.0), so the
+        # pin below and hub/.golangci.yml `version: "2"` both still hold.
+        uses: golangci/golangci-lint-action@v9
         with:
           working-directory: hub
           # Pinned: `latest` resolves the version via the GitHub API at run
@@ -38,8 +41,8 @@ jobs:
       matrix:
         module: [sentryreceiver, avuruingestauth, tenantfromauth]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.27"
       - name: build + vet + test
@@ -55,8 +58,8 @@ jobs:
       matrix:
         client: [cli, grafana-datasource]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.27"
       - name: build + vet + test
@@ -69,8 +72,8 @@ jobs:
   grafana-plugin:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - name: build the plugin frontend
@@ -95,8 +98,8 @@ jobs:
       matrix:
         module: [tdp-estimator]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.27"
       - name: build + vet + test
@@ -106,8 +109,8 @@ jobs:
   ui:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - name: lint + static-export build
@@ -120,8 +123,8 @@ jobs:
   helm:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
       # deploy/helm/template-test.sh: lints the chart against the default,
       # staging and prod overlays and makes 40+ renders with assertions on what
       # actually comes out — a strict superset of `helm lint` + `helm template
@@ -150,12 +153,12 @@ jobs:
     # teaches people to re-run it rather than read it.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.27"
-      - uses: azure/setup-helm@v4
-      - uses: helm/kind-action@v1.12.0
+      - uses: azure/setup-helm@v5
+      - uses: helm/kind-action@v1.14.0
         with:
           install_only: true
       - name: helm install smoke (kind)
@@ -181,11 +184,11 @@ jobs:
     # timeout that teaches people to re-run rather than read.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.27"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
@@ -200,7 +203,7 @@ jobs:
         run: make e2e-ui
       - name: upload traces on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-traces
           path: ui/test-results/
@@ -222,12 +225,12 @@ jobs:
           - { component: gateway, dockerfile: gateway/Dockerfile }
           - { component: tdp-estimator, dockerfile: sensor/tdp-estimator/Dockerfile }
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
       # Single-arch load: package CVE scanning is arch-independent, so QEMU/arm64
       # would only cost build time here.
       - name: build ${{ matrix.component }} image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.dockerfile }}
