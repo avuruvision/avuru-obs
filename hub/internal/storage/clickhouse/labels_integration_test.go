@@ -111,3 +111,42 @@ func TestServiceLabelsDeclaredMetadata(t *testing.T) {
 		}
 	}
 }
+
+// Transport evidence: a service whose spans carried any avuru.transport.* label
+// is reported as evidenced, one whose spans did not is not — and it takes only
+// ONE such span, because a proxy is transport from its first.
+func TestListServicesReportsTransportEvidence(t *testing.T) {
+	s := startClickHouse(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	insertLabelSpans(t, s, now, []labelSpan{
+		// A gateway matching no built-in pattern, labelled by the mesh. Two
+		// spans, only one carrying the label — `any` over the window, not
+		// `all`: a service whose newest spans predate the label is not
+		// suddenly an application.
+		{service: "public-edge", spanID: "e000000000000001", resAttrs: map[string]string{
+			"avuru.transport.gateway": "edge",
+		}},
+		{service: "public-edge", spanID: "e000000000000002"},
+		// An ordinary application: no such label anywhere.
+		{service: "checkout", spanID: "e000000000000003"},
+	})
+
+	services, err := s.ListServices(context.Background(), storage.ServiceQuery{
+		Tenant: "default",
+		Range:  storage.TimeRange{Start: now.Add(-time.Hour), End: now.Add(time.Minute)},
+	})
+	if err != nil {
+		t.Fatalf("ListServices: %v", err)
+	}
+	got := map[string]bool{}
+	for _, svc := range services {
+		got[svc.Name] = svc.TransportEvidence
+	}
+	if !got["public-edge"] {
+		t.Error("a service with a mesh label on one of its spans was not reported as evidenced")
+	}
+	if got["checkout"] {
+		t.Error("an application with no such label was reported as evidenced")
+	}
+}

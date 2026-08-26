@@ -27,6 +27,20 @@ When a release is cut, that block is renamed to the version with its date.
   Collection is one receiver in the sensor already running, behind a
   leader-election Lease so exactly one node reports cluster-scoped objects.
   Born OFF — [AEP](design/2026-08-26-cost-and-waste.md)
+- **The map recognises a gateway nobody named after a gateway.** Transport
+  classification could only read workload *names*, and its built-in list is
+  deliberately narrow because a false positive erases a real service from the
+  map. That left the opposite failure wide open: a gateway an operator called
+  `public-edge` had its hops drawn as application dependencies until somebody
+  noticed and edited a ConfigMap. The sensor now carries the labels a mesh
+  writes on its own data plane — Gateway API, Istio gateways and waypoints,
+  istiod, Linkerd control-plane components — and the map believes them.
+  Strictly additive: labels are **positive evidence only**, because in the
+  sidecar model the proxy is a container inside the application's pod and wears
+  the application's labels, so there is nothing to read and absence proves
+  nothing. An install with none of these labels classifies exactly as before,
+  and the operator's `applications` override still beats everything —
+  [AEP](design/2026-08-26-transport-from-labels.md)
 
 ### Fixed
 

@@ -118,12 +118,34 @@ data:
     attributes:
       kubernetes:
         enable: true
-        {{- if .Values.tags.labels }}
-        # Business tags on TRACES. Unlike the metric feature list below, this
-        # map MERGES into the tracer's defaults rather than replacing them, so
-        # the built-in service.name/namespace/version resolution from the
-        # app.kubernetes.io/* labels is untouched.
+        # This map MERGES into the tracer's defaults rather than replacing
+        # them (unlike the metric feature list below), so the built-in
+        # service.name/namespace/version resolution from the app.kubernetes.io/*
+        # labels is untouched by anything added here.
         resource_labels:
+          {{- /* Transport evidence (design/2026-08-26-transport-from-labels.md):
+                 the labels a mesh writes on its own data plane, carried so the
+                 map can recognise a gateway nobody named after a gateway.
+                 Matched on PRESENCE — the value is the gateway's or component's
+                 name and is not read.
+
+                 Curated and unconditional: an operator should not have to know
+                 their gateway is mis-drawn in order to fix it. TRACES ONLY —
+                 the classifier reads otel_traces, and putting these through the
+                 agent's k8sattributes would spend metric cardinality on a
+                 question only the trace tables are asked.
+
+                 NOT here, deliberately: service.istio.io/canonical-name and
+                 security.istio.io/tlsMode. They mark a MESHED APPLICATION, not
+                 a proxy — every sidecar-injected workload in the cluster wears
+                 them, so classifying on them would empty the map. */}}
+          avuru.transport.gateway: ["gateway.networking.k8s.io/gateway-name"]
+          avuru.transport.istio_gateway: ["istio.io/gateway-name"]
+          avuru.transport.istio_component: ["operator.istio.io/component"]
+          avuru.transport.linkerd_component: ["linkerd.io/control-plane-component"]
+          avuru.transport.linkerd_extension: ["linkerd.io/extension"]
+        {{- if .Values.tags.labels }}
+          # Business tags on TRACES, mapped by the operator.
           {{- range $key, $label := .Values.tags.labels }}
           avuru.tag.{{ $key }}: [{{ $label | quote }}]
           {{- end }}

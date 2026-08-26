@@ -92,3 +92,66 @@ func TestSegmentMatchingIsPerSegment(t *testing.T) {
 		t.Errorf("partial segment must not match: got %q", got)
 	}
 }
+
+// Label evidence is the mesh's own word about its own workload, and it has to
+// beat a name list that was never going to guess "public-edge".
+func TestEvidencePromotesAnUnrecognisedName(t *testing.T) {
+	c := New(Default())
+	if c.IsTransport("public-edge") {
+		t.Fatal("precondition: public-edge should match no built-in pattern")
+	}
+	withEv := c.WithEvidence([]string{"public-edge"})
+	if !withEv.IsTransport("public-edge") {
+		t.Error("a workload the mesh labelled as its own data plane is still drawn as an application")
+	}
+	if withEv.Role("public-edge") != RoleTransport {
+		t.Error("Role disagrees with IsTransport")
+	}
+}
+
+// The operator's explicit list is an override, and an override a signal can
+// defeat is not an override.
+func TestApplicationsBeatEvidence(t *testing.T) {
+	c := New(Config{Applications: []string{"payments-gateway"}}).
+		WithEvidence([]string{"payments-gateway"})
+	if c.IsTransport("payments-gateway") {
+		t.Error("label evidence overrode the operator's applications list")
+	}
+}
+
+// Absence of a label is not evidence of absence: a sidecar is a container
+// inside the application's pod and wears the application's labels, so there is
+// nothing to read. Evidence must never demote.
+func TestEvidenceNeverDemotes(t *testing.T) {
+	// istio-proxy is a built-in, and no label will ever name it.
+	c := New(Default()).WithEvidence([]string{"public-edge"})
+	if !c.IsTransport("istio-proxy") {
+		t.Error("a sidecar fell off the transport list because no label mentioned it")
+	}
+}
+
+// An install where nothing is labelled must classify exactly as it did before
+// this existed — the rider is strictly additive or it is a regression.
+func TestEmptyEvidenceChangesNothing(t *testing.T) {
+	base := New(Default())
+	for _, name := range []string{
+		"istio-proxy", "ztunnel", "global-waypoint.istio-waypoint",
+		"checkout", "payments", "gateway-service", "api-proxy-cache",
+	} {
+		if got, want := base.WithEvidence(nil).IsTransport(name), base.IsTransport(name); got != want {
+			t.Errorf("%s: with empty evidence = %v, want %v", name, got, want)
+		}
+		if got, want := base.WithEvidence([]string{}).IsTransport(name), base.IsTransport(name); got != want {
+			t.Errorf("%s: with zero-length evidence = %v, want %v", name, got, want)
+		}
+	}
+}
+
+// Evidence arrives from telemetry, where a name's case is whatever the cluster
+// wrote — the classifier is case-insensitive everywhere else and must be here.
+func TestEvidenceIsCaseInsensitive(t *testing.T) {
+	c := New(Default()).WithEvidence([]string{"Public-Edge"})
+	if !c.IsTransport("public-edge") {
+		t.Error("evidence did not match a differently-cased name")
+	}
+}

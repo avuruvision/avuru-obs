@@ -80,7 +80,7 @@ func (a *API) handleMeshProxies(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	cls := a.topologyClassifier()
+	cls := a.topologyClassifier().WithEvidence(labelledTransport(services))
 	in := map[string]uint64{}
 	out := map[string]uint64{}
 	for _, e := range edges {

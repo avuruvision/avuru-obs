@@ -146,5 +146,9 @@ positive is a config edit rather than a release.
       per-trace ancestry, so a meshed cluster regains its real dependencies
       instead of only losing its false ones — shipped in v0.9,
       [AEP](2026-08-25-transport-hop-collapse.md)
-- [ ] Classify from Kubernetes labels rather than names, once the pipeline
-      carries them
+- [x] Classify from Kubernetes labels rather than names, once the pipeline
+      carries them — the pipeline carries them now, and the answer is narrower
+      than this line assumed: labels are decisive for STANDALONE proxies and
+      silent for sidecars, whose pod wears the application's labels. So they
+      are positive evidence ADDED to the names, never a replacement for them.
+      [AEP](2026-08-26-transport-from-labels.md)
