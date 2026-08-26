@@ -93,6 +93,16 @@ export function TraceList({
           <span className="text-base-content/40">—</span>
         )}
       </td>
+      {/* Server-side 4xx. Its own column for the same reason it is its own
+          class: a trace whose only span was refused is not a failing trace,
+          and it is not a clean one either. */}
+      <td className="text-right">
+        {(t.refusedCount ?? 0) > 0 ? (
+          <Badge tone="warning">{t.refusedCount}</Badge>
+        ) : (
+          <span className="text-base-content/40">—</span>
+        )}
+      </td>
     </tr>
   );
 
@@ -107,6 +117,7 @@ export function TraceList({
             <th className="text-right">Duration</th>
             <th className="text-right">Spans</th>
             <th className="text-right">Errors</th>
+            <th className="text-right">Refused</th>
           </tr>
         </thead>
         <tbody>
@@ -119,7 +130,7 @@ export function TraceList({
                       onClick={() => toggle(g.service)}
                       className="cursor-pointer border-b border-neutral/40 bg-base-300/40 hover:bg-base-300/60"
                     >
-                      <td colSpan={6} className="py-1.5 text-xs">
+                      <td colSpan={7} className="py-1.5 text-xs">
                         <span className="inline-flex items-center gap-2">
                           {isCollapsed ? (
                             <ChevronRight className="h-3.5 w-3.5 text-base-content/50" />

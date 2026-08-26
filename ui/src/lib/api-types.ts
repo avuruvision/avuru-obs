@@ -134,6 +134,9 @@ export interface OperationStats {
   count: number;
   errorCount: number;
   errorRate: number;
+  /** Server-side 4xx: requests this operation turned away, never folded into errors. */
+  refusedCount?: number;
+  refusedRate?: number;
   p50Ms: number;
   p95Ms: number;
   p99Ms: number;
@@ -151,7 +154,11 @@ export interface TraceSummary {
   durationMs: number;
   spanCount: number;
   errorCount: number;
+  /** Server-side 4xx spans, counted apart from errors (see span-status.ts). */
+  refusedCount?: number;
   statusCode: string;
+  /** The representative span's HTTP status code; absent when it carries none. */
+  httpStatus?: number;
 }
 
 export interface TracesResponse {

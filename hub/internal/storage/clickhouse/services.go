@@ -193,6 +193,7 @@ SELECT
     SpanName,
     count()                                         AS reqs,
     countIf(` + errorSpanExpr("") + `)              AS errors,
+    countIf(` + refusedSpanExpr("") + `)            AS refused,
     quantiles(0.5, 0.95, 0.99)(toFloat64(Duration)) AS qs
 FROM otel_traces
 WHERE Tenant IN (?)
@@ -222,7 +223,7 @@ ORDER BY ServiceName ASC, reqs DESC`
 			op    storage.OperationStats
 			quant []float64
 		)
-		if err := rows.Scan(&op.Service, &op.Operation, &op.Count, &op.ErrorCount, &quant); err != nil {
+		if err := rows.Scan(&op.Service, &op.Operation, &op.Count, &op.ErrorCount, &op.RefusedCount, &quant); err != nil {
 			return nil, fmt.Errorf("scanning overview row: %w", err)
 		}
 		op.P50, op.P95, op.P99 = nsQuantiles(quant)

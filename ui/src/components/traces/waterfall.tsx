@@ -25,6 +25,7 @@ const gridStyle = {
 
 const STATUS_DOT = {
   ok: "bg-success",
+  refused: "bg-warning",
   error: "bg-error",
   unset: "bg-base-content/25",
 } as const;

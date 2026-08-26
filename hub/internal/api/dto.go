@@ -82,9 +82,13 @@ type operationDTO struct {
 	Count      uint64  `json:"count"`
 	ErrorCount uint64  `json:"errorCount"`
 	ErrorRate  float64 `json:"errorRate"`
-	P50Ms      float64 `json:"p50Ms"`
-	P95Ms      float64 `json:"p95Ms"`
-	P99Ms      float64 `json:"p99Ms"`
+	// Server-side 4xx. omitempty on both, so an operation that refuses
+	// nothing serialises exactly as it did before.
+	RefusedCount uint64  `json:"refusedCount,omitempty"`
+	RefusedRate  float64 `json:"refusedRate,omitempty"`
+	P50Ms        float64 `json:"p50Ms"`
+	P95Ms        float64 `json:"p95Ms"`
+	P99Ms        float64 `json:"p99Ms"`
 }
 
 type overviewResponse struct {
@@ -99,7 +103,14 @@ type traceSummaryDTO struct {
 	DurationMs    float64   `json:"durationMs"`
 	SpanCount     uint64    `json:"spanCount"`
 	ErrorCount    uint64    `json:"errorCount"`
-	StatusCode    string    `json:"statusCode"`
+	// Server-side 4xx spans, counted apart from errors — a request the server
+	// turned away is neither a failure of the service nor a success. omitempty
+	// so a trace with none keeps the wire shape it had before.
+	RefusedCount uint64 `json:"refusedCount,omitempty"`
+	StatusCode   string `json:"statusCode"`
+	// The representative span's HTTP status code, absent when it carries none,
+	// so the list can show "403" where it used to say "OK".
+	HTTPStatus uint16 `json:"httpStatus,omitempty"`
 }
 
 type tracesResponse struct {
@@ -201,14 +212,16 @@ func toServiceEdgeDTO(e storage.ServiceEdge) serviceEdgeDTO {
 
 func toOperationDTO(o storage.OperationStats) operationDTO {
 	return operationDTO{
-		Service:    o.Service,
-		Operation:  o.Operation,
-		Count:      o.Count,
-		ErrorCount: o.ErrorCount,
-		ErrorRate:  ratio(o.ErrorCount, o.Count),
-		P50Ms:      ms(o.P50),
-		P95Ms:      ms(o.P95),
-		P99Ms:      ms(o.P99),
+		Service:      o.Service,
+		Operation:    o.Operation,
+		Count:        o.Count,
+		ErrorCount:   o.ErrorCount,
+		ErrorRate:    ratio(o.ErrorCount, o.Count),
+		RefusedCount: o.RefusedCount,
+		RefusedRate:  ratio(o.RefusedCount, o.Count),
+		P50Ms:        ms(o.P50),
+		P95Ms:        ms(o.P95),
+		P99Ms:        ms(o.P99),
 	}
 }
 
@@ -221,7 +234,9 @@ func toTraceSummaryDTO(t storage.TraceSummary) traceSummaryDTO {
 		DurationMs:    ms(t.Duration),
 		SpanCount:     t.SpanCount,
 		ErrorCount:    t.ErrorCount,
+		RefusedCount:  t.RefusedCount,
 		StatusCode:    t.StatusCode,
+		HTTPStatus:    t.HTTPStatus,
 	}
 }
 

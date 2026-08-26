@@ -8,8 +8,14 @@
 //	Ok          any         any          ok      (developer-set, final per spec)
 //	Unset/''    any         >= 500       error   (5xx errs on SERVER and CLIENT)
 //	Unset/''    Client      400..499     error   (CLIENT 4xx is an error)
-//	Unset/''    not Client  400..499     ok      (SERVER 4xx is NOT an error)
+//	Unset/''    not Client  400..499     refused (the server said no)
 //	Unset/''    any         < 400/none   ok      (3xx is never an error)
+//
+// "refused" is a server 4xx: not an error, because the fault is the caller's
+// and counting it would flood the error rate with auth challenges and crawler
+// 404s — but not a success either, and calling it "ok" hides the request a WAF
+// blocked. It is its own class, styled amber, and isSpanError stays false for
+// it so no aggregate built on errors moves.
 //
 // gRPC status codes are display-only (instrumentations set span status
 // correctly for gRPC; the error mapping is per-code). KEEP IN SYNC with
@@ -18,7 +24,7 @@
 import type { Span } from "@/lib/api-types";
 
 export interface SpanStatus {
-  kind: "ok" | "error" | "unset"; // effective classification ("unset" = ok with no signal)
+  kind: "ok" | "refused" | "error" | "unset"; // effective classification ("unset" = ok with no signal)
   httpStatus?: number; // display code; new semconv key wins over the pre-1.21 one
   grpcStatus?: number;
   label: string; // badge text: "500" | "307" | "gRPC 4" | "ERR" | "OK"
@@ -44,12 +50,23 @@ export function spanStatus(span: StatusInput): SpanStatus {
   const isError =
     span.statusCode === "Error" ||
     (span.statusCode !== "Ok" && (h >= 500 || (span.kind === "Client" && h >= 400)));
+  // Mutually exclusive with isError by construction: an explicit Error, a 5xx
+  // and a CLIENT 4xx are all claimed above, and an explicit Ok is final.
+  const isRefused =
+    !isError &&
+    span.statusCode !== "Ok" &&
+    span.statusCode !== "Error" &&
+    span.kind !== "Client" &&
+    h >= 400 &&
+    h <= 499;
 
   const kind: SpanStatus["kind"] = isError
     ? "error"
-    : span.statusCode === "Ok" || httpStatus !== undefined || grpcStatus !== undefined
-      ? "ok"
-      : "unset";
+    : isRefused
+      ? "refused"
+      : span.statusCode === "Ok" || httpStatus !== undefined || grpcStatus !== undefined
+        ? "ok"
+        : "unset";
   const label =
     httpStatus !== undefined
       ? String(httpStatus)
@@ -64,3 +81,12 @@ export function spanStatus(span: StatusInput): SpanStatus {
 export function isSpanError(span: StatusInput): boolean {
   return spanStatus(span).kind === "error";
 }
+
+// Badge/dot tone per class. Amber for refused: it is the same "look at this,
+// it is not a failure" register the map already uses for network trouble.
+export const STATUS_TONE = {
+  ok: "success",
+  refused: "warning",
+  error: "error",
+  unset: "neutral",
+} as const;

@@ -274,9 +274,13 @@ type OperationStats struct {
 	Operation  string
 	Count      uint64
 	ErrorCount uint64
-	P50        time.Duration
-	P95        time.Duration
-	P99        time.Duration
+	// RefusedCount is server-side 4xx, counted apart from errors so an
+	// operation that turns most callers away is visible without moving the
+	// error rate alerts fire on.
+	RefusedCount uint64
+	P50          time.Duration
+	P95          time.Duration
+	P99          time.Duration
 }
 
 // TraceCursor is a keyset-pagination cursor. It carries both the timestamp and
@@ -315,7 +319,15 @@ type TraceSummary struct {
 	Duration      time.Duration
 	SpanCount     uint64
 	ErrorCount    uint64
-	StatusCode    string
+	// RefusedCount is the trace's server-side 4xx spans — requests a server
+	// turned away. Counted apart from ErrorCount, never folded into it; see
+	// refusedSpanExpr.
+	RefusedCount uint64
+	StatusCode   string
+	// HTTPStatus is the representative span's HTTP status code, 0 when it
+	// carries none. The list shows the code itself rather than the word "OK",
+	// which a 403 is not.
+	HTTPStatus uint16
 }
 
 // TracePage is a page of summaries plus the cursor for the next page (nil at

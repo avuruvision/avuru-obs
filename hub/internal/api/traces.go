@@ -367,8 +367,8 @@ func (a *API) handleSearchTraces(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	status := r.URL.Query().Get("status")
-	if status != "" && status != "ok" && status != "error" {
-		return badRequest("invalid status: must be ok or error")
+	if status != "" && status != "ok" && status != "error" && status != "refused" {
+		return badRequest("invalid status: must be ok, refused or error")
 	}
 	order := r.URL.Query().Get("order")
 	switch order {

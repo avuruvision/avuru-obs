@@ -65,6 +65,7 @@ export function OverviewTable({
             <th>Operation</th>
             <th className="text-right">Requests</th>
             <th className="text-right">Errors</th>
+            <th className="text-right">Refused</th>
             <th className="text-right">p50</th>
             <th className="text-right">p95</th>
             <th className="text-right">p99</th>
@@ -104,7 +105,7 @@ function GroupRows({
     <>
       {showHeader && (
         <tr className="border-b border-neutral/40 bg-base-300/40">
-          <td colSpan={7} className="py-1.5 text-xs">
+          <td colSpan={8} className="py-1.5 text-xs">
             <span className="font-semibold text-base-content/80">
               {group.service}
             </span>
@@ -137,6 +138,16 @@ function GroupRows({
             <td className="text-right">
               {op.errorCount > 0 ? (
                 <Badge tone="error">{formatPercent(op.errorRate)}</Badge>
+              ) : (
+                <span className="text-base-content/40">—</span>
+              )}
+            </td>
+            {/* Server-side 4xx, amber and its own column. An operation that
+                turns most of its callers away reads at a glance here, without
+                any of it reaching the error rate alerting fires on. */}
+            <td className="text-right">
+              {(op.refusedCount ?? 0) > 0 ? (
+                <Badge tone="warning">{formatPercent(op.refusedRate ?? 0)}</Badge>
               ) : (
                 <span className="text-base-content/40">—</span>
               )}

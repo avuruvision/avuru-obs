@@ -16,6 +16,11 @@ import (
 // counts, service stats, overview, heatmap, RED and service-map edges —
 // while Ok-status, 3xx and server-side 4xx spans must not. One fixture per
 // row of the rule table in status.go.
+//
+// A server-side 4xx is REFUSED: its own class, counted beside errors and
+// excluded from them (refusedSpanExpr). The assertions below pin both halves
+// of that — it must appear under the refused filter, and it must stay out of
+// every error aggregate.
 func TestEffectiveStatusIntegration(t *testing.T) {
 	store := startClickHouse(t)
 	ctx := context.Background()
@@ -104,13 +109,54 @@ func TestEffectiveStatusIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SearchTraces ok: %v", err)
 		}
-		want := map[string]bool{"bbbb2222": true, "dddd4444": true, "eeee5555": true, "ffff6666": true}
+		// eeee5555 (server 404) is deliberately absent: it is refused, and
+		// "ok" means neither errored nor refused.
+		want := map[string]bool{"bbbb2222": true, "dddd4444": true, "ffff6666": true}
 		if len(page.Traces) != len(want) {
 			t.Fatalf("ok filter got %d traces, want %d: %+v", len(page.Traces), len(want), page.Traces)
 		}
 		for _, got := range page.Traces {
 			if !want[got.TraceID] {
 				t.Errorf("ok filter returned unexpected trace %s", got.TraceID)
+			}
+		}
+	})
+
+	t.Run("SearchTracesRefusedFilter", func(t *testing.T) {
+		page, err := store.SearchTraces(ctx, storage.TraceQuery{Tenant: "default", Range: tr, Status: "refused"})
+		if err != nil {
+			t.Fatalf("SearchTraces refused: %v", err)
+		}
+		// Only the server-side 4xx. The CLIENT 4xx traces (dddd4444, abcd7777)
+		// are errors, not refusals — the two classes never overlap.
+		if len(page.Traces) != 1 || page.Traces[0].TraceID != "eeee5555" {
+			t.Fatalf("refused filter got %+v, want just eeee5555", page.Traces)
+		}
+	})
+
+	t.Run("TraceRefusedCountsAndHTTPStatus", func(t *testing.T) {
+		page, err := store.SearchTraces(ctx, storage.TraceQuery{Tenant: "default", Range: tr})
+		if err != nil {
+			t.Fatalf("SearchTraces: %v", err)
+		}
+		wantRefused := map[string]uint64{
+			"aaaa1111": 0, "bbbb2222": 0, "cccc3333": 0,
+			"dddd4444": 0, "eeee5555": 1, "ffff6666": 0, "abcd7777": 0,
+		}
+		// The representative span's own code, which is what the list shows in
+		// place of the word "OK". aaaa1111 carries no http attribute at all,
+		// and bbbb2222's 500 is on a span the developer marked Ok — the code
+		// is reported either way, because it is a fact, not a verdict.
+		wantStatus := map[string]uint16{
+			"aaaa1111": 0, "bbbb2222": 500, "cccc3333": 500,
+			"dddd4444": 0, "eeee5555": 404, "ffff6666": 307, "abcd7777": 404,
+		}
+		for _, got := range page.Traces {
+			if got.RefusedCount != wantRefused[got.TraceID] {
+				t.Errorf("trace %s RefusedCount = %d, want %d", got.TraceID, got.RefusedCount, wantRefused[got.TraceID])
+			}
+			if got.HTTPStatus != wantStatus[got.TraceID] {
+				t.Errorf("trace %s HTTPStatus = %d, want %d", got.TraceID, got.HTTPStatus, wantStatus[got.TraceID])
 			}
 		}
 	})

@@ -80,6 +80,27 @@ export function TraceRail({
             const isSel = t.traceId === selectedTraceId;
             const isCmp = t.traceId === compareId;
             const isError = t.errorCount > 0;
+            const isRefused = !isError && (t.refusedCount ?? 0) > 0;
+            // What the chip says. "OK" beside a span the server answered 403
+            // was the list contradicting the span detail one panel over, so a
+            // status code — when the representative span carries one — is
+            // preferred to any word. "ERR" survives for the trace whose root
+            // answered fine and whose failure is somewhere underneath: there
+            // the trace-level verdict is the news, not the root's 200.
+            const chip = isError
+              ? t.httpStatus && t.httpStatus >= 500
+                ? String(t.httpStatus)
+                : "ERR"
+              : t.httpStatus
+                ? String(t.httpStatus)
+                : isRefused
+                  ? "4xx"
+                  : "OK";
+            const chipTone = isError
+              ? "text-error"
+              : isRefused
+                ? "text-warning"
+                : "text-success";
             return (
               <div
                 key={t.traceId}
@@ -94,15 +115,18 @@ export function TraceRail({
                   <span
                     className={cn(
                       "shrink-0 font-mono text-[10px]",
-                      isError ? "text-error" : "text-success",
+                      chipTone,
                     )}
                   >
-                    {isError ? "ERR" : "OK"}
+                    {chip}
                   </span>
                 </div>
                 <div className="mt-1 h-1 w-full overflow-hidden rounded bg-base-300">
                   <div
-                    className={cn("h-full rounded", isError ? "bg-error" : "bg-primary")}
+                    className={cn(
+                      "h-full rounded",
+                      isError ? "bg-error" : isRefused ? "bg-warning" : "bg-primary",
+                    )}
                     style={{ width: `${Math.max((t.durationMs / maxDur) * 100, 2)}%` }}
                   />
                 </div>
