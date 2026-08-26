@@ -74,6 +74,14 @@ updates:
       # ships TS 7 support; the UI is on the newest version it does support.
       - dependency-name: "typescript"
         versions: [">=7.0.0"]
+      # eslint 10 removed the legacy context.getFilename() API that
+      # eslint-config-next's bundled eslint-plugin-react still calls, so
+      # `npm run lint` dies on the first rule it loads
+      # ("Error while loading rule 'react/display-name'"). Nothing in this
+      # repo can fix that; it lifts when eslint-config-next ships a
+      # compatible eslint-plugin-react.
+      - dependency-name: "eslint"
+        versions: [">=10.0.0"]
 
   - package-ecosystem: github-actions
     directory: /
