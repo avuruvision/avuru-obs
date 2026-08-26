@@ -55,6 +55,9 @@ function SidebarAuth({ collapsed }: { collapsed: boolean }) {
     // identity — don't leave it stuck on a project only THIS identity could
     // reach (see project-context.tsx's ProjectProvider self-heal effect).
     clearStoredProject();
+    // A full document load is the point here: router.push() would keep the
+    // signed-out identity's React tree and query cache alive on the login page.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign("/login");
   };
 

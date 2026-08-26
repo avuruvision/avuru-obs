@@ -34,6 +34,9 @@ export class ApiError extends Error {
 // started navigating — callers must then stop, since the response is unusable.
 function redirectedOn401(res: Response): boolean {
   if (res.status === 401 && !window.location.pathname.startsWith("/login")) {
+    // As in sidebar.tsx: an expired session must drop all client state rather
+    // than soft-navigate with it intact.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign(
       "/login?next=" +
         encodeURIComponent(window.location.pathname + window.location.search),
