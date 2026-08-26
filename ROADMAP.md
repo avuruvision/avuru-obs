@@ -181,16 +181,48 @@ that could not yet give more.
 | **Mesh-facing surfaces** | A screen for the fabric itself: every proxy's rate, success rate and latency, with the calls it carried **in and out counted apart** — traffic arriving with none leaving is a proxy that stopped forwarding, a failure its own error rate need not show. Plus **control-plane health**, including the configuration your proxies *refused*: a rejected push means control plane and data plane disagree while the fleet keeps serving what it last accepted. Scraped from the gateway, because istiod is one Deployment and a DaemonSet would multiply every series by node count — [AEP](design/2026-08-25-mesh-surfaces.md) |
 | **Endpoint checks** | Health when nothing is calling. A group with no spans is either idle or dead, and only a probe tells the two apart at 3 a.m. Two consecutive failures move a group, never one. Each probe emits a span of its own — a check is synthetic traffic, not a side channel — so a failing check links straight to the trace of the request that failed, with the hub sending it as an OTLP *client* of the gateway and never writing `otel_traces` itself — [AEP](design/2026-07-20-endpoint-checks.md) |
 
-## Beyond v0.9 (directional)
+## v0.10 — what it costs (directional)
 
-- **Classify transport from Kubernetes labels** rather than workload names, once
-  the pipeline carries them. Names are a heuristic with an escape hatch; labels
-  are the real signal.
-- **Costs, and the incident.** Usage / allocation / overprovisioning per node
-  beside the green module — one story about waste — and root-cause summaries
-  with a provider switch that is *disabled* by default.
+Every release so far has answered *what is happening*. v0.9 finished that
+story for a meshed cluster: what depends on what, what carries it, and what the
+kernel sees breaking underneath. v0.10 answers a different question — the one a
+platform team gets from someone who will never open a service map.
+
+> **As a platform team we can say what this cluster is costing, and how much of
+> that is buying nothing at all — in the same screens, from the same
+> collection, with nothing leaving the cluster to find out.**
+
+The green module already measures the energy a workload *draws*. The number
+next to it is the capacity nobody drew on: reserved and idle. Same waste, two
+units — watts and whatever your finance team calls money.
+
+- **Waste, per workload.** Reserved versus used CPU and memory, ranked by the
+  gap, because the gap is the list you act on. The collection is one config
+  block on a receiver already running: kubelet stats can report
+  request- and limit-utilization per container once it is given
+  `k8s_api_config` and a `nodes/pods` read — no new receiver, no new workload,
+  no new table, and it stays in the DaemonSet, so none of it is a
+  single-writer problem. Prices are chart values, never a pricing API: this
+  product makes no outbound call and this is not where it starts. With no rates
+  configured the surface stays unit-less and honest — "2.4 cores reserved, 0.3
+  used" is already the finding.
+- **Transport classified from Kubernetes labels** rather than workload names,
+  closing the last open item on the
+  [transport AEP](design/2026-08-23-service-map-transport.md). Names are a
+  heuristic with an escape hatch; labels are what the mesh actually writes.
+  Names stay as the fallback, so an unlabelled cluster keeps the behaviour it
+  has today.
 - **Non-Istio control planes.** The proxy half of the mesh screen already works
-  anywhere; the control-plane half is Istio-shaped and says so.
+  anywhere a proxy is classified; the control-plane half is Istio-shaped and
+  says so. An unrecognised control plane should say *that*, rather than render
+  an empty Istio card.
+
+## Beyond v0.10
+
+- **The incident.** Root-cause summaries, with a provider switch that is
+  **disabled by default**. Deliberately not in v0.10: it would be the first
+  outbound network call in a product whose whole promise is that nothing leaves
+  the cluster, and that is a release-level decision, not a corner of one.
 - **Scripted multi-step check journeys**, if demand appears — v0.9 ships
   single-request checks deliberately.
 - **Deeper profiling:** off-CPU and memory profiles as the upstream OTel eBPF
