@@ -559,6 +559,18 @@ grep -q 'k8s_cluster' <<<"$out" && fail "the receiver rendered with sensor.agent
 grep -q 'coordination.k8s.io' <<<"$out" && fail "the Lease was granted with no receiver to elect for"
 ok "module and collection are separable, like green"
 
+echo "== cost: rates are the operator's to declare, and absent means absent"
+out="$(render --set modules.cost.enabled=true)"
+grep -q 'AVURUOBS_COST_' <<<"$out" && fail "a cost rate reached the hub with none configured — unpriced must stay unpriced"
+# `helm --set x=0.0331` yields a STRING (only integers are coerced), so the
+# schema takes both forms; an operator setting a rate the obvious way must not
+# be told their values are invalid.
+out="$(render --set modules.cost.enabled=true --set cost.rates.cpuCoreHour=0.0331 --set cost.rates.memGiBHour=0.004 --set cost.rates.currency=EUR)"
+grep -q 'AVURUOBS_COST_CPU_CORE_HOUR' <<<"$out" || fail "the cpu rate did not reach the hub"
+grep -q 'AVURUOBS_COST_MEM_GIB_HOUR' <<<"$out" || fail "the memory rate did not reach the hub"
+grep -q 'AVURUOBS_COST_CURRENCY' <<<"$out" || fail "the currency did not reach the hub"
+ok "unset stays unset; a decimal rate is accepted"
+
 echo "== cost: an install that could only render blanks fails at template time"
 if render --set modules.cost.enabled=true --set modules.infraMetrics.enabled=false >/dev/null 2>&1; then
   fail "cost without infra-metrics should fail — reserved has nothing to be compared against"

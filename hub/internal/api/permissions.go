@@ -73,6 +73,7 @@ var areaLabels = map[string]string{
 	"infra":          "Nodes & pods",
 	"errors":         "Error tracking",
 	"green":          "Energy & carbon",
+	"cost":           "Cost & waste",
 	"alerts":         "Alerting",
 	"projects":       "Projects",
 	"collection":     "Collection",

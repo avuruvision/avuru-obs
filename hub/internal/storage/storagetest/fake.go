@@ -58,6 +58,11 @@ type Fake struct {
 	NodeCoverageResult storage.NodeCoverage
 	GreenErr           error
 
+	WorkloadCostRows []storage.WorkloadCost
+	NodeCostRows     []storage.NodeCost
+	CostErr          error
+	LastCostQuery    storage.CostQuery
+
 	Issues       []storage.ErrorIssue
 	Issue        storage.ErrorIssue
 	IssueErr     error
@@ -365,6 +370,24 @@ func (f *Fake) NodeCoverage(_ context.Context, q storage.GreenQuery) (storage.No
 		return storage.NodeCoverage{}, f.GreenErr
 	}
 	return f.NodeCoverageResult, nil
+}
+
+// Cost (module cost).
+
+func (f *Fake) WorkloadCosts(_ context.Context, q storage.CostQuery) ([]storage.WorkloadCost, error) {
+	f.LastCostQuery = q
+	if f.CostErr != nil {
+		return nil, f.CostErr
+	}
+	return f.WorkloadCostRows, nil
+}
+
+func (f *Fake) NodeCosts(_ context.Context, q storage.CostQuery) ([]storage.NodeCost, error) {
+	f.LastCostQuery = q
+	if f.CostErr != nil {
+		return nil, f.CostErr
+	}
+	return f.NodeCostRows, nil
 }
 
 func (f *Fake) LoadAlertStates(_ context.Context, tenant string) ([]storage.AlertState, error) {

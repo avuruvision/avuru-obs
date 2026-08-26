@@ -721,6 +721,57 @@ type AuthToken struct {
 	CreatedAt  time.Time
 }
 
+// CostQuery filters the cost module's reads. Reserved capacity is a
+// cluster-object fact and usage is a time series, so both halves are read over
+// the same window and the same tenant set — a mismatch there would report a
+// workload as reserving nothing simply because its objects landed in another
+// project.
+type CostQuery struct {
+	Tenant  string
+	Tenants []string // resolved tenant set; empty means []string{Tenant}
+	Range   TimeRange
+	Limit   int // workloads only: max rows (<=0 → backend default)
+}
+
+// WorkloadCost is one workload's reserved capacity against what it used.
+//
+// Reserved is averaged over the window rather than sampled once: a workload
+// that scaled from 2 replicas to 10 reserved more for part of the window, and
+// the last sample would report only the end state.
+//
+// Used carries a peak as well as a mean, because they answer different
+// questions and only one of them bounds a right-sizing decision. A request
+// cannot be cut below the peak without risking eviction; the mean says how
+// much of the time the peak was not happening.
+//
+// ReservedCPUCores == 0 with a non-zero used is NOT missing data: it is a
+// workload that declared no request at all — unschedulable by accident,
+// first to be evicted, invisible to every quota. The API reports it as such.
+type WorkloadCost struct {
+	Workload         string
+	Namespace        string
+	ReservedCPUCores float64
+	ReservedMemBytes float64
+	UsedCPUCoresPeak float64
+	UsedCPUCoresMean float64
+	UsedMemBytesPeak float64
+	UsedMemBytesMean float64
+	Pods             uint64
+}
+
+// NodeCost is one node's allocatable capacity, how much of it is spoken for by
+// requests, and how much is actually being used. "89% requested, 12% used" is
+// one sentence about two very different problems.
+type NodeCost struct {
+	Node                string
+	AllocatableCPUCores float64
+	AllocatableMemBytes float64
+	RequestedCPUCores   float64
+	RequestedMemBytes   float64
+	UsedCPUCores        float64
+	UsedMemBytes        float64
+}
+
 // GreenQuery filters ServiceEnergy / NodeEnergy (module green). Metric names
 // and attribute keys come from the green module's config — the backend must
 // not hardcode Kepler naming (an AEP verify item; operators can rename
@@ -894,6 +945,9 @@ type Store interface {
 	ServiceEnergy(ctx context.Context, q GreenQuery) ([]ServiceEnergy, error)
 	NodeEnergy(ctx context.Context, q GreenQuery) ([]NodeEnergy, error)
 	NodeCoverage(ctx context.Context, q GreenQuery) (NodeCoverage, error)
+	// Cost (module cost).
+	WorkloadCosts(ctx context.Context, q CostQuery) ([]WorkloadCost, error)
+	NodeCosts(ctx context.Context, q CostQuery) ([]NodeCost, error)
 	// Alerting (module alerting).
 	LoadAlertStates(ctx context.Context, tenant string) ([]AlertState, error)
 	SaveAlertStates(ctx context.Context, states []AlertState) error

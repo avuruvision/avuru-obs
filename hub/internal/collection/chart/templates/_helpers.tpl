@@ -264,6 +264,26 @@ http://{{ include "avuruobs.fullname" . }}-hub:80/internal/v1/ingest-keys/valida
 {{- end }}
 {{- end -}}
 
+{{/* Cost rates on the hub. Rendered only with the module, and only for rates
+     the operator actually set: an unset rate must stay unset all the way to
+     the API, which reports "not priced" rather than free. */}}
+{{- define "avuruobs.costEnv" -}}
+{{- if .Values.modules.cost.enabled }}
+{{- if .Values.cost.rates.cpuCoreHour }}
+- name: AVURUOBS_COST_CPU_CORE_HOUR
+  value: {{ .Values.cost.rates.cpuCoreHour | quote }}
+{{- end }}
+{{- if .Values.cost.rates.memGiBHour }}
+- name: AVURUOBS_COST_MEM_GIB_HOUR
+  value: {{ .Values.cost.rates.memGiBHour | quote }}
+{{- end }}
+{{- if .Values.cost.rates.currency }}
+- name: AVURUOBS_COST_CURRENCY
+  value: {{ .Values.cost.rates.currency | quote }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
 {{- define "avuruobs.greenVolume" -}}
 {{- if .Values.modules.green.enabled }}
 - name: green-config

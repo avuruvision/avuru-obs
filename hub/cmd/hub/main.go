@@ -324,6 +324,7 @@ func run() error {
 		DemoEmail:                       demoEmail,
 		DemoPassword:                    demoPassword,
 		GreenConfig:                     greenConfig,
+		CostRates:                       costRates(),
 		Topology:                        topologyConfig,
 		OIDC:                            oidcProvider,
 		OIDCSettings:                    oidcSettings,
@@ -589,6 +590,33 @@ func schemaAutoMigrate() bool {
 		slog.Error("unrecognized AVURUOBS_SCHEMA_AUTOMIGRATE value, self-heal remains enabled", "value", v)
 	}
 	return true
+}
+
+// costRates reads the chart-declared prices for reserved capacity. Unset (the
+// default) leaves every rate at zero, which the API reports as "not priced"
+// rather than as free — there is no pricing service to ask, deliberately.
+func costRates() api.CostRates {
+	return api.CostRates{
+		CPUCoreHour: envFloatOr("AVURUOBS_COST_CPU_CORE_HOUR", 0),
+		MemGiBHour:  envFloatOr("AVURUOBS_COST_MEM_GIB_HOUR", 0),
+		Currency:    envOr("AVURUOBS_COST_CURRENCY", ""),
+	}
+}
+
+// envFloatOr reads a float env var, falling back on anything unparseable. A
+// mistyped rate must not stop the hub booting: it reports as unpriced, which
+// is visible on the screen, rather than as a crash loop nobody can read.
+func envFloatOr(key string, def float64) float64 {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil || f < 0 {
+		slog.Warn("ignoring unusable cost rate", "key", key, "value", v)
+		return def
+	}
+	return f
 }
 
 func envOr(key, def string) string {

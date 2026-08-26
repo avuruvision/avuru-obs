@@ -92,6 +92,10 @@ type Config struct {
 	// (hot-reloaded, like GroupsConfig). nil → green.Default(). Unread until
 	// the green read path lands; declared now so the cmd/hub wiring is stable.
 	GreenConfig func() green.Config
+	// CostRates prices reserved capacity (module cost). Zero-valued means the
+	// operator declared none, and the API says so rather than reporting a
+	// currency it invented — there is no pricing service to ask, by design.
+	CostRates CostRates
 	// OIDC returns the current OIDC provider or nil (hot-reloaded; nil until
 	// discovery succeeds / when OIDC unconfigured).
 	OIDC func() *auth.OIDCProvider
@@ -369,6 +373,10 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("GET /api/v1/green/summary", a.secured(auth.RoleViewer, a.handleGreenSummary))
 		mux.Handle("GET /api/v1/green/budgets", a.secured(auth.RoleViewer, a.handleGreenBudgets))
 		mux.Handle("GET /api/v1/green/report", a.secured(auth.RoleViewer, a.handleGreenReport))
+	}
+	if active.Enabled(modules.Cost) {
+		mux.Handle("GET /api/v1/cost/workloads", a.secured(auth.RoleViewer, a.handleCostWorkloads))
+		mux.Handle("GET /api/v1/cost/nodes", a.secured(auth.RoleViewer, a.handleCostNodes))
 	}
 }
 
