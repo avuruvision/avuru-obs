@@ -127,7 +127,7 @@ data:
       prometheus/mesh:
         config:
           scrape_configs:
-            - job_name: istiod
+            - job_name: {{ .Values.mesh.controlPlane.jobName | quote }}
               scrape_interval: {{ .Values.mesh.controlPlane.scrapeInterval }}
               static_configs:
                 - targets: [{{ .Values.mesh.controlPlane.endpoint | quote }}]

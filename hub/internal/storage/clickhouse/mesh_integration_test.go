@@ -72,3 +72,79 @@ func TestMeshControlPlaneAbsent(t *testing.T) {
 		t.Errorf("reported available with nothing scraped: %+v", cp)
 	}
 }
+
+// The state that did not exist before: the scrape ran, the target answered, and
+// nothing this product reads came back. Indistinguishable from "nobody is
+// scraping" until now, and a completely different problem.
+func TestControlPlaneAnsweredButUnrecognised(t *testing.T) {
+	s := startClickHouse(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	// `up = 1` for the scrape job, and not one pilot_* series. Prometheus's
+	// scrape-report series bypass metric_relabel_configs, which is why they are
+	// here at all when the keep-list dropped everything else.
+	insertGauge(t, s, now.Add(-time.Minute), "up",
+		map[string]string{"service.name": "istiod"}, 1)
+
+	cp, err := s.MeshControlPlane(context.Background(), storage.ServiceQuery{
+		Tenant:        "default",
+		Range:         storage.TimeRange{Start: now.Add(-time.Hour), End: now.Add(time.Minute)},
+		MeshScrapeJob: "istiod",
+	})
+	if err != nil {
+		t.Fatalf("MeshControlPlane: %v", err)
+	}
+	if cp.Available {
+		t.Fatal("an unrecognised control plane reported available")
+	}
+	if cp.State != storage.MeshControlPlaneUnrecognised {
+		t.Errorf("state = %q, want unrecognised", cp.State)
+	}
+}
+
+// Scraped and not answering: the endpoint is wrong or the control plane is
+// down. Also invisible before — it looked exactly like nothing being
+// configured.
+func TestControlPlaneScrapedButUnreachable(t *testing.T) {
+	s := startClickHouse(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	insertGauge(t, s, now.Add(-2*time.Minute), "up",
+		map[string]string{"service.name": "istiod"}, 1)
+	// The latest sample is what counts: a target that answered and then stopped
+	// is unreachable now, not healthy because it once was.
+	insertGauge(t, s, now.Add(-time.Minute), "up",
+		map[string]string{"service.name": "istiod"}, 0)
+
+	cp, err := s.MeshControlPlane(context.Background(), storage.ServiceQuery{
+		Tenant:        "default",
+		Range:         storage.TimeRange{Start: now.Add(-time.Hour), End: now.Add(time.Minute)},
+		MeshScrapeJob: "istiod",
+	})
+	if err != nil {
+		t.Fatalf("MeshControlPlane: %v", err)
+	}
+	if cp.State != storage.MeshControlPlaneUnreachable {
+		t.Errorf("state = %q, want unreachable", cp.State)
+	}
+}
+
+// No scrape at all stays "unconfigured" — and a scrape under a DIFFERENT job
+// name must not be mistaken for this one, which is why the job travels as a
+// value rather than being assumed.
+func TestControlPlaneUnconfiguredIgnoresOtherJobs(t *testing.T) {
+	s := startClickHouse(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	insertGauge(t, s, now.Add(-time.Minute), "up",
+		map[string]string{"service.name": "some-other-scrape"}, 1)
+
+	cp, err := s.MeshControlPlane(context.Background(), storage.ServiceQuery{
+		Tenant:        "default",
+		Range:         storage.TimeRange{Start: now.Add(-time.Hour), End: now.Add(time.Minute)},
+		MeshScrapeJob: "istiod",
+	})
+	if err != nil {
+		t.Fatalf("MeshControlPlane: %v", err)
+	}
+	if cp.State != storage.MeshControlPlaneUnconfigured {
+		t.Errorf("state = %q, want unconfigured — another job's `up` was read as ours", cp.State)
+	}
+}

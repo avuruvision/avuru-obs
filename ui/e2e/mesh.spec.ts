@@ -51,8 +51,56 @@ test.describe("mesh screen", () => {
     await expect(table).toContainText("global-waypoint.istio-waypoint");
 
     // Rejected configuration is the signal nothing else in the product carries.
+    // The healthy card names which control plane the numbers describe.
     await expect(page.getByTestId("mesh-control-plane")).toContainText("Rejected configs");
     await expect(page.getByTestId("mesh-control-plane")).toContainText("3");
+  });
+
+  // Three silences, three fixes. They used to render one sentence, which sent
+  // an operator to check a scrape that was working perfectly.
+  for (const { state, heading, reason } of [
+    {
+      state: "unreachable",
+      heading: "Control plane not answering",
+      reason: "check mesh.controlPlane.endpoint",
+    },
+    {
+      state: "unrecognised",
+      heading: "Control plane not recognised",
+      reason: "The control-plane view is Istio-shaped",
+    },
+  ]) {
+    test(`names the fix for a ${state} control plane`, async ({ page }) => {
+      await page.route("**/api/v1/mesh/proxies*", (r) => r.fulfill({ json: PROXIES }));
+      await page.route("**/api/v1/mesh/control-plane*", (r) =>
+        r.fulfill({ json: { available: false, state, reason } }),
+      );
+      await page.goto("/mesh");
+
+      const card = page.getByTestId("mesh-control-plane");
+      await expect(card).toContainText(heading);
+      await expect(card).toContainText(reason);
+      // Never a grid of zeros: that is the reassuring lie this card exists to
+      // prevent.
+      await expect(card).not.toContainText("Rejected configs");
+    });
+  }
+
+  // An unrecognised control plane does not mean an unusable screen: the proxy
+  // table comes from your own traces.
+  test("says the proxies are still measured when the control plane is not read", async ({
+    page,
+  }) => {
+    await page.route("**/api/v1/mesh/proxies*", (r) => r.fulfill({ json: PROXIES }));
+    await page.route("**/api/v1/mesh/control-plane*", (r) =>
+      r.fulfill({ json: { available: false, state: "unrecognised", reason: "…" } }),
+    );
+    await page.goto("/mesh");
+
+    await expect(page.getByTestId("mesh-proxies")).toContainText("global-waypoint.istio-waypoint");
+    await expect(page.getByTestId("mesh-control-plane")).toContainText(
+      "The proxies above are still measured",
+    );
   });
 
   test("states that the control plane is unwatched instead of reporting zeros", async ({

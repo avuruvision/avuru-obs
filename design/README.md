@@ -66,6 +66,7 @@ only if the design needs to be pinned down before coding.
 | [2026-08-25](2026-08-25-mesh-surfaces.md) | Mesh-facing surfaces — proxy RED and control-plane health | Accepted |
 | [2026-08-26](2026-08-26-cost-and-waste.md) | Cost and waste — reserved versus used | Accepted |
 | [2026-08-26](2026-08-26-transport-from-labels.md) | Transport classified from Kubernetes labels | Accepted |
+| [2026-08-26](2026-08-26-control-plane-diagnosis.md) | Why the control plane is silent — three states, not one | Accepted |
 
 ## Conventions
 

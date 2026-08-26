@@ -325,6 +325,7 @@ func run() error {
 		DemoPassword:                    demoPassword,
 		GreenConfig:                     greenConfig,
 		CostRates:                       costRates(),
+		MeshScrapeJob:                   envOr("AVURUOBS_MESH_SCRAPE_JOB", ""),
 		Topology:                        topologyConfig,
 		OIDC:                            oidcProvider,
 		OIDCSettings:                    oidcSettings,

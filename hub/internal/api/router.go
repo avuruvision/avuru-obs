@@ -96,6 +96,11 @@ type Config struct {
 	// operator declared none, and the API says so rather than reporting a
 	// currency it invented — there is no pricing service to ask, by design.
 	CostRates CostRates
+	// MeshScrapeJob is the Prometheus job name the gateway's control-plane
+	// scrape runs under (chart: mesh.controlPlane.jobName). The hub looks the
+	// scrape-report series up by it, so the value travels rather than being
+	// spelled the same way in two places.
+	MeshScrapeJob string
 	// OIDC returns the current OIDC provider or nil (hot-reloaded; nil until
 	// discovery succeeds / when OIDC unconfigured).
 	OIDC func() *auth.OIDCProvider

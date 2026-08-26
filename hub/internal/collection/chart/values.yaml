@@ -245,6 +245,15 @@ modules:
 # sensor's: istiod is a single Deployment, and the sensor is a DaemonSet, so
 # scraping it from there would produce one copy of every control-plane series
 # per node. Only effective with modules.mesh.enabled + modules.infraMetrics.
+#
+# ISTIO-SHAPED, deliberately. The four questions this answers — proxies
+# connected, pushes attempted, configuration REFUSED, convergence latency — are
+# istiod's pilot_* metrics, and other control planes do not publish the same
+# four facts (Linkerd's destination controller has no "configuration the
+# proxies refused" at all). Point this at a non-Istio control plane and the
+# screen will say it reached something it could not read, rather than render an
+# empty card. The PROXY half of the mesh screen works anywhere a proxy is
+# classified.
 mesh:
   controlPlane:
     enabled: false
@@ -252,6 +261,11 @@ mesh:
     # istiod Service; change the host for a revisioned or renamed control plane
     # (e.g. istiod-1-20.istio-system.svc.cluster.local:15014).
     endpoint: istiod.istio-system.svc.cluster.local:15014
+    # The Prometheus job name. It is ALSO what the hub looks the scrape-report
+    # series up by, to tell "nobody is scraping" from "the target is not
+    # answering" from "it answered with metrics we cannot read" — so it is one
+    # value reaching both, never the same string typed in two places.
+    jobName: istiod
     scrapeInterval: 30s
     metrics:
       # istiod exposes hundreds of series; this surface asks four questions.
