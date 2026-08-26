@@ -113,10 +113,14 @@ volume). A cap that bites is a bug in the naming rule, not a busy cluster.
 
 ### Rendering
 
-- **Shape**, not the ring: a virtual target is a hexagon in the neutral tone.
-  The ring stays health's channel, and the round primary-filled circle keeps
+- **Shape**, not the ring: a virtual target is a barrel in the neutral tone.
+  The ring stays health's channel, and the primary-filled hexagon keeps
   meaning "application". This is the same rule the v0.7 transport diamond
   follows.
+  > Amended 2026-08-26 (v0.11): shipped in v0.8 as a hexagon against circular
+  > application nodes. The application shape became a hexagon, so this one moved
+  > to a portrait barrel — the closest cytoscape gets to the cylinder that reads
+  > as a datastore. The rule above is unchanged; only the glyph it assigns is.
 - The six existing channels — ring/health, fill/identity, size/rate,
   halo/carbon, width/calls, line colour/network+errors — are untouched.
 - A toolbar toggle hides them, URL state like every other map filter, and the

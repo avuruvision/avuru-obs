@@ -11,6 +11,17 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Changed
+
+- **The service map's node shapes now say what a node is at a glance.** An
+  application is a hexagon rather than a circle, and the database, cache or
+  broker it depends on is a portrait barrel rather than a hexagon — the two
+  swapped, so the shape a reader meets most often is the distinctive one and the
+  datastore gets the glyph that has always meant datastore. Mesh proxies keep
+  the diamond, undetected peers stay hollow, and health keeps the ring: shape
+  still carries *what a node is* and nothing else, so no colour was spent on
+  this.
+
 ## [0.10.0] — 2026-08-26
 
 **What it costs.** Every release so far answered *what is happening*. v0.9

@@ -12,7 +12,7 @@ import { test, expect } from "@playwright/test";
 // SDK output looks like when nobody set server.address.
 //
 // Honest limitation, as everywhere on this screen: cytoscape draws to a canvas,
-// so the hexagon itself cannot be asserted from the DOM. What is held here is
+// so the barrel itself cannot be asserted from the DOM. What is held here is
 // the contract around it — the count line, the legend, the toggle, and the URL.
 test.describe("service map dependencies (seeded data)", () => {
   test("counts derived dependencies apart from services", async ({ page }) => {
@@ -29,7 +29,7 @@ test.describe("service map dependencies (seeded data)", () => {
   test("explains the shape in the legend", async ({ page }) => {
     await page.goto("/service-map");
     await expect(page.getByTestId("map-legend")).toContainText(
-      "dashed hexagon = database, cache or queue",
+      "dashed barrel = database, cache or queue",
     );
   });
 
@@ -50,7 +50,7 @@ test.describe("service map dependencies (seeded data)", () => {
     const count = page.getByTestId("map-count");
     await expect(count).toContainText(/8 services · 1 call edges/);
     await expect(count).toContainText(/5 dependencies hidden/);
-    await expect(page.getByTestId("map-legend")).not.toContainText("dashed hexagon");
+    await expect(page.getByTestId("map-legend")).not.toContainText("dashed barrel");
 
     // The opt-out is the URL, not component state.
     await page.reload();

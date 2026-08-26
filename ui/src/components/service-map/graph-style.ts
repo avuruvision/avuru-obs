@@ -20,6 +20,10 @@ export function themeColors() {
 // Compact mode (the Dashboard's band 2) is the SAME graph at overview scale.
 const scale = (compact: boolean) => ({
   node: compact ? "mapData(rate, 0, 10, 14, 40)" : "mapData(rate, 0, 10, 22, 64)",
+  // A barrel drawn square is just a rounded box. Narrowing it to ~0.7 of the
+  // node width — height untouched, so size still means rate — is what gives it
+  // the portrait proportions a datastore glyph is read by.
+  barrelWidth: compact ? "mapData(rate, 0, 10, 10, 28)" : "mapData(rate, 0, 10, 15, 45)",
   fontSize: compact ? 9 : 11,
   labelMargin: compact ? 3 : 5,
   edge: compact ? "mapData(calls, 0, 50, 0.8, 3.2)" : "mapData(calls, 0, 50, 1.2, 5)",
@@ -37,10 +41,10 @@ const scale = (compact: boolean) => ({
 //   line color     plain / amber (network health) / red (trace errors)
 //
 // Four treatments sit outside that set and must not disturb it. Three are node
-// SHAPES, so that the round primary-filled circle keeps meaning "application":
+// SHAPES, so that the primary-filled hexagon keeps meaning "application":
 // a transport node (mesh proxy / gateway, hidden unless the user asks for it)
 // is a diamond in the neutral tone, a virtual target (database / cache /
-// broker) a dashed hexagon, and a peer the renderer could not resolve a hollow
+// broker) a dashed barrel, and a peer the renderer could not resolve a hollow
 // outline. The fourth is on edges: a flow-only edge is DOTTED, because dashed
 // is already spoken for by network health.
 //
@@ -61,6 +65,12 @@ export function applyStyle(cy: Core, carbon = false, compact = false, edgeLabels
     .selector("node")
     .style({
       "background-color": c.primary,
+      // Application: the unmarked default. Every other node kind overrides
+      // this below, so a hexagon is what a node IS until something more
+      // specific is known about it. Explicit rather than inherited —
+      // cytoscape's own default is an ellipse, and a shape this load-bearing
+      // should not be a library default nobody wrote down.
+      shape: "round-hexagon",
       label: "data(label)",
       color: c.text,
       "font-size": s.fontSize,
@@ -104,17 +114,21 @@ export function applyStyle(cy: Core, carbon = false, compact = false, edgeLabels
     .selector("node[transport > 0]")
     .style({ shape: "round-diamond", "background-color": c.neutral, "background-opacity": 0.85 })
     // Virtual target (database / cache / broker). Same rule as transport:
-    // SHAPE and fill, never the ring. A hexagon is distinguishable from both
-    // the circle and the diamond at overview scale, which a rounded square is
-    // not. The dashed border says "inferred" — this node was derived from its
-    // callers' spans, not observed sending anything. It sets no border COLOR:
+    // SHAPE and fill, never the ring. A barrel drawn PORTRAIT is the nearest
+    // thing in cytoscape's shape set to the cylinder that means "datastore"
+    // everywhere — it bows its sides but has no elliptical cap, so it is a
+    // gesture at the glyph rather than the glyph. What it does do is stay
+    // distinguishable from both the hexagon and the diamond at overview scale,
+    // which a rounded square is not. The dashed border says "inferred" — this
+    // node was derived from its callers' spans, not observed sending anything. It sets no border COLOR:
     // that leaves the neutral base ring (a virtual target has no health verdict
     // to show) while still letting the module-off error ring above come
     // through, so a database failing every call reads red on a health-less
     // install.
     .selector("node[virtual > 0]")
     .style({
-      shape: "round-hexagon",
+      shape: "barrel",
+      width: s.barrelWidth,
       "background-color": c.neutral,
       "background-opacity": 0.85,
       "border-style": "dashed",
@@ -123,7 +137,7 @@ export function applyStyle(cy: Core, carbon = false, compact = false, edgeLabels
     // A peer the renderer could not resolve to a service: something the sensor
     // saw traffic to that never sent telemetry of its own. Drawn as an OUTLINE
     // — hollow, because there is nothing inside it we know. It keeps the
-    // circle, since it probably is an ordinary workload; what it lacks is a
+    // hexagon, since it probably is an ordinary workload; what it lacks is a
     // voice, not a category.
     .selector("node[peer > 0]")
     .style({
