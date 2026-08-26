@@ -45,10 +45,18 @@ const (
 	// otel_metrics_* tables) but requires infra-metrics: the pod→workload join
 	// reads the kubeletstats attributes. See design/2026-07-22-green-carbon.md.
 	Green Name = "green"
+	// Cost reports what each workload RESERVED against what it used — the
+	// capacity an install is paying for and not drawing on. It owns no schema
+	// (the cluster-object gauges land in the existing otel_metrics_* tables)
+	// but requires infra-metrics: reserved is only half the sentence, and the
+	// used half is that module's kubeletstats series. Born OFF — collecting it
+	// starts watching cluster-scoped objects and takes a Lease, neither of
+	// which an install had before. See design/2026-08-26-cost-and-waste.md.
+	Cost Name = "cost"
 )
 
 // All lists every known module in registry (display) order.
-var All = []Name{Core, Logs, InfraMetrics, Profiling, ErrorTracking, ServiceHealth, Alerting, Mesh, Green}
+var All = []Name{Core, Logs, InfraMetrics, Profiling, ErrorTracking, ServiceHealth, Alerting, Mesh, Green, Cost}
 
 // Set is a resolved active-module set; Core is always present.
 type Set map[Name]bool
@@ -101,9 +109,12 @@ func Parse(v string) (Set, error) {
 		}
 		s[m] = true
 	}
-	// Green's hard dependency (see the Green const doc) must fail the deploy loudly.
-	if s[Green] && !s[InfraMetrics] {
-		return nil, fmt.Errorf("module %q requires %q — add it to AVURUOBS_MODULES", Green, InfraMetrics)
+	// Green's and Cost's hard dependency (see the const docs) must fail the
+	// deploy loudly, in the same direction the chart's guards fail it.
+	for _, m := range []Name{Green, Cost} {
+		if s[m] && !s[InfraMetrics] {
+			return nil, fmt.Errorf("module %q requires %q — add it to AVURUOBS_MODULES", m, InfraMetrics)
+		}
 	}
 	return s, nil
 }

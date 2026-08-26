@@ -13,8 +13,8 @@ func TestParse(t *testing.T) {
 		want    []string
 		wantErr bool
 	}{
-		{"empty means all", "", []string{"core", "logs", "infra-metrics", "profiling", "error-tracking", "service-health", "alerting", "mesh", "green"}, false},
-		{"whitespace means all", "  ", []string{"core", "logs", "infra-metrics", "profiling", "error-tracking", "service-health", "alerting", "mesh", "green"}, false},
+		{"empty means all", "", []string{"core", "logs", "infra-metrics", "profiling", "error-tracking", "service-health", "alerting", "mesh", "green", "cost"}, false},
+		{"whitespace means all", "  ", []string{"core", "logs", "infra-metrics", "profiling", "error-tracking", "service-health", "alerting", "mesh", "green", "cost"}, false},
 		{"explicit subset", "core,logs", []string{"core", "logs"}, false},
 		{"core is forced on", "logs", []string{"core", "logs"}, false},
 		{"spaces and blanks tolerated", " logs , profiling ,", []string{"core", "logs", "profiling"}, false},
@@ -23,6 +23,8 @@ func TestParse(t *testing.T) {
 		{"green with infra-metrics", "green,infra-metrics", []string{"core", "infra-metrics", "green"}, false},
 		{"green without infra-metrics fails loudly", "green", nil, true},
 		{"green needs infra-metrics even with others", "logs,green", nil, true},
+		{"cost with infra-metrics", "cost,infra-metrics", []string{"core", "infra-metrics", "cost"}, false},
+		{"cost without infra-metrics fails loudly", "cost", nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

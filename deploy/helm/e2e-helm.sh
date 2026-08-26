@@ -169,6 +169,8 @@ helm install avuruobs deploy/helm/avuruobs -n "$NS" --create-namespace \
   --set gateway.forward.otlp.insecure=true \
   --set sensor.obi.network.enabled=true \
   --set sensor.obi.network.interZone.enabled=true \
+  --set modules.cost.enabled=true \
+  --set sensor.agent.cluster.interval=15s \
   --set 'tags.labels.team=team' \
   --set "gateway.forward.otlp.signals={traces}"
 # sensor.obi.network.enabled turns on the per-edge kernel flows AND their TCP
@@ -449,6 +451,54 @@ while :; do
     kubectl -n "$NS" exec avuruobs-clickhouse-0 -- clickhouse-client -u avuru --password avuru \
       -q "SELECT MetricName, count(), any(Attributes) FROM otel.otel_metrics_sum WHERE MetricName LIKE 'obi.%' GROUP BY MetricName" 2>/dev/null || true
     kubectl -n "$NS" logs ds/avuruobs-sensor -c obi --tail=60 || true
+    exit 1
+  fi
+  sleep 10
+done
+
+# COST: reserved capacity, reported ONCE.
+#
+# The receiver that reads container requests and node allocatable is
+# cluster-scoped, and it runs inside a DaemonSet. Every layer below ClickHouse
+# is tested against synthetic rows, and none of it can answer the only question
+# that matters here: does exactly one node report these objects? The kind
+# cluster runs more than one node, so leader election is actually under test.
+#
+# The assertion is therefore about DUPLICATION, not about a value. Group the
+# series by object identity and timestamp: the largest group must be exactly 1.
+# A regression in leader election shows up as 2 — where a value assertion would
+# simply read a number twice as large as the truth and pass.
+echo "==> COST: polling ClickHouse for cluster-object series, reported once"
+REQ_SQL="SELECT count() FROM otel.otel_metrics_gauge WHERE MetricName = 'k8s.container.cpu_request'"
+ALLOC_SQL="SELECT count() FROM otel.otel_metrics_gauge WHERE MetricName = 'k8s.node.allocatable_cpu'"
+DUP_SQL="SELECT max(c) FROM (SELECT count() AS c FROM otel.otel_metrics_gauge WHERE MetricName = 'k8s.container.cpu_request' GROUP BY ResourceAttributes['container.id'], TimeUnix)"
+COST_DEADLINE=$(( $(date +%s) + 300 ))
+while :; do
+  req_rows=$(kubectl -n "$NS" exec avuruobs-clickhouse-0 -- \
+    clickhouse-client -u avuru --password avuru -q "$REQ_SQL" 2>/dev/null || echo "")
+  alloc_rows=$(kubectl -n "$NS" exec avuruobs-clickhouse-0 -- \
+    clickhouse-client -u avuru --password avuru -q "$ALLOC_SQL" 2>/dev/null || echo "")
+  if [ "${req_rows:-0}" -gt 0 ] 2>/dev/null && [ "${alloc_rows:-0}" -gt 0 ] 2>/dev/null; then
+    dup=$(kubectl -n "$NS" exec avuruobs-clickhouse-0 -- \
+      clickhouse-client -u avuru --password avuru -q "$DUP_SQL" 2>/dev/null || echo "")
+    echo "    cluster-object series: requests=$req_rows allocatable=$alloc_rows max-per-series=${dup:-?}"
+    if [ "${dup:-0}" != "1" ]; then
+      echo "COST: a cluster-object series was reported ${dup} times for one timestamp."
+      echo "  Leader election is not holding: every node is running k8s_cluster, so every"
+      echo "  reserved-capacity number downstream is multiplied by the size of the fleet."
+      kubectl -n "$NS" get lease | head || true
+      kubectl -n "$NS" logs ds/avuruobs-sensor -c otel-agent --tail=60 || true
+      exit 1
+    fi
+    kubectl -n "$NS" exec avuruobs-clickhouse-0 -- clickhouse-client -u avuru --password avuru \
+      -q "SELECT ResourceAttributes['k8s.deployment.name'], sum(Value) FROM otel.otel_metrics_gauge WHERE MetricName = 'k8s.container.cpu_request' GROUP BY 1 ORDER BY 2 DESC LIMIT 5" 2>/dev/null || true
+    break
+  fi
+  if [ "$(date +%s)" -ge "$COST_DEADLINE" ]; then
+    echo "COST: no cluster-object series within 300s (requests=${req_rows:-?} allocatable=${alloc_rows:-?})"
+    echo "  Either the receiver did not start, or no node won the Lease, or RBAC refused it."
+    kubectl -n "$NS" get lease || true
+    kubectl -n "$NS" logs ds/avuruobs-sensor -c otel-agent --tail=80 || true
     exit 1
   fi
   sleep 10

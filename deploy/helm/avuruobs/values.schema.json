@@ -364,6 +364,17 @@
           "required": [
             "enabled"
           ]
+        },
+        "cost": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
         }
       },
       "required": [
@@ -374,7 +385,8 @@
         "serviceHealth",
         "alerting",
         "mesh",
-        "green"
+        "green",
+        "cost"
       ]
     },
     "mesh": {
@@ -409,6 +421,43 @@
         }
       },
       "additionalProperties": false
+    },
+    "cost": {
+      "type": "object",
+      "properties": {
+        "rates": {
+          "type": "object",
+          "properties": {
+            "cpuCoreHour": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?$"
+                }
+              ]
+            },
+            "memGiBHour": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?$"
+                }
+              ]
+            },
+            "currency": {
+              "type": "string"
+            }
+          }
+        }
+      }
     },
     "green": {
       "type": "object",
@@ -1007,6 +1056,21 @@
                 "interval": {
                   "type": "string",
                   "minLength": 2
+                }
+              }
+            },
+            "cluster": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "interval": {
+                  "type": "string",
+                  "minLength": 2
+                },
+                "leaseName": {
+                  "type": "string"
                 }
               }
             }

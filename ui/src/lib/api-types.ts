@@ -13,7 +13,8 @@ export type ModuleName =
   | "service-health"
   | "alerting"
   | "mesh"
-  | "green";
+  | "green"
+  | "cost";
 
 export interface CapabilitiesResponse {
   version: string;
@@ -743,6 +744,51 @@ export interface AlertChannelInput {
   type: "webhook";
   url: string;
   secret?: string;
+}
+
+// Cost & waste (module cost). Mirrors hub/internal/api/cost.go.
+export interface WorkloadCost {
+  workload: string;
+  namespace: string;
+  pods: number;
+  // No declared request at all — a different problem from a small one, so the
+  // hub says which it is rather than leaving the client to read a zero.
+  requestsNothing: boolean;
+  reservedCpuCores: number;
+  reservedMemBytes: number;
+  usedCpuCoresPeak: number;
+  usedCpuCoresMean: number;
+  usedMemBytesPeak: number;
+  usedMemBytesMean: number;
+  // Reserved minus the PEAK: what could be given back without risking
+  // eviction. Never negative.
+  idleCpuCores: number;
+  idleMemBytes: number;
+  // Present only when the install declared both rates (see `priced`).
+  reservedCostPerHour?: number;
+  idleCostPerHour?: number;
+}
+
+export interface CostWorkloadsResponse {
+  // False when the install declared no rates. Every money field is then
+  // absent, and rendering a zero in their place would read as "free".
+  priced: boolean;
+  currency?: string;
+  workloads: WorkloadCost[];
+}
+
+export interface NodeCost {
+  node: string;
+  allocatableCpuCores: number;
+  allocatableMemBytes: number;
+  requestedCpuCores: number;
+  requestedMemBytes: number;
+  usedCpuCores: number;
+  usedMemBytes: number;
+}
+
+export interface CostNodesResponse {
+  nodes: NodeCost[];
 }
 
 // Auth (Plan A: local only; "oidc" joins in Plan B). /api/v1/auth/config is

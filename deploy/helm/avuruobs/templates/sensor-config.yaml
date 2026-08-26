@@ -27,6 +27,14 @@
 {{- if and .Values.modules.green.enabled (not .Values.modules.infraMetrics.enabled) }}
 {{- fail "modules.green.enabled requires modules.infraMetrics.enabled — per-service energy attribution joins Kepler pods to workloads via the kubeletstats attributes stored in the otel_metrics_* tables owned by the infra-metrics module." }}
 {{- end }}
+{{- /* Cost's hard dependency, mirroring the hub's modules.Parse: reserved is
+       only half the sentence, and the used half is the kubeletstats series the
+       infra-metrics module owns. Fire on the MODULE flag, like the green guard
+       above, so an install that would render a screen of blanks fails at
+       template time instead. */}}
+{{- if and .Values.modules.cost.enabled (not .Values.modules.infraMetrics.enabled) }}
+{{- fail "modules.cost.enabled requires modules.infraMetrics.enabled — reserved capacity is only meaningful against what was used, and the usage series live in the otel_metrics_* tables owned by the infra-metrics module." }}
+{{- end }}
 {{- /* Collecting energy needs the otel-agent: the Kepler exporter is scraped by
        a prometheus receiver that lives in the agent container. Gated by
        sensor.enabled so values that render nothing (sensor off) never fail an
@@ -222,7 +230,7 @@ data:
 {{- end }}
 {{- /* The agent needs >=1 active pipeline or the collector crash-loops. A
        module gates its own collection (see avuruobs.collect* helpers). */}}
-{{- $agentActive := and .Values.sensor.enabled .Values.sensor.agent.enabled (or (include "avuruobs.collectLogs" .) (include "avuruobs.collectInfraMetrics" .) (include "avuruobs.collectGreen" .)) }}
+{{- $agentActive := and .Values.sensor.enabled .Values.sensor.agent.enabled (or (include "avuruobs.collectLogs" .) (include "avuruobs.collectInfraMetrics" .) (include "avuruobs.collectGreen" .) (include "avuruobs.collectCost" .)) }}
 {{- if or $agentActive (include "avuruobs.collectionPlaceholders" .) }}
 ---
 apiVersion: v1
@@ -276,6 +284,23 @@ data:
         insecure_skip_verify: true
         collection_interval: {{ .Values.sensor.agent.kubeletstats.interval }}
         metric_groups: [node, pod]
+    {{- end }}
+    {{- if include "avuruobs.collectCost" . }}
+      # Cluster-scoped objects: container requests/limits and node allocatable —
+      # what was RESERVED, against the kubeletstats usage above. The container
+      # request/limit metrics are on by default; allocatable is not, and
+      # allocatable_types_to_report is what turns it on.
+      #
+      # k8s_leader_elector is the load-bearing line. This receiver reports facts
+      # about the CLUSTER from a collector that runs on every node, so without
+      # election every series would be emitted once per node and every number
+      # downstream would be multiplied by the size of the fleet. The extension
+      # holds a Lease and starts the receiver on its holder only.
+      k8s_cluster:
+        auth_type: serviceAccount
+        collection_interval: {{ .Values.sensor.agent.cluster.interval }}
+        allocatable_types_to_report: [cpu, memory]
+        k8s_leader_elector: k8s_leader_elector
     {{- end }}
     {{- if include "avuruobs.collectGreen" . }}
       # Scrapes the same-pod Kepler exporter over loopback (Kepler binds
@@ -471,8 +496,17 @@ data:
       # filelog offset checkpoints survive agent restarts (no re-ingestion).
       file_storage:
         directory: /var/lib/otel-agent
+    {{- if include "avuruobs.collectCost" . }}
+      # Elects one node to run k8s_cluster (above). Renders only with that
+      # receiver and never without it — a receiver naming an absent extension
+      # is a collector that refuses to start.
+      k8s_leader_elector:
+        auth_type: serviceAccount
+        lease_name: {{ include "avuruobs.costLeaseName" . }}
+        lease_namespace: {{ .Release.Namespace }}
+    {{- end }}
     service:
-      extensions: [health_check, file_storage]
+      extensions: [health_check, file_storage{{ if include "avuruobs.collectCost" . }}, k8s_leader_elector{{ end }}]
       pipelines:
     {{- $collectionFilter := or .Values.sensor.collection.excludeNamespaces .Values.sensor.collection.optOutLabel }}
     {{- if include "avuruobs.collectLogs" . }}
@@ -487,6 +521,17 @@ data:
           # metrics via k8s.pod.uid, for the pods panel.
           receivers: [kubeletstats]
           processors: [memory_limiter, k8sattributes{{ if $collectionFilter }}, filter/collection{{ end }}, batch]
+          exporters: [otlphttp]
+    {{- end }}
+    {{- if include "avuruobs.collectCost" . }}
+        metrics/cluster:
+          # Its OWN pipeline, like green's: these are cluster-object gauges, not
+          # node stats, and k8sattributes has nothing to add to a series whose
+          # resource attributes the API server already filled in. The collection
+          # guardrails still apply — an excluded namespace must not reappear
+          # here just because a different receiver found it.
+          receivers: [k8s_cluster]
+          processors: [memory_limiter{{ if $collectionFilter }}, filter/collection{{ end }}, batch]
           exporters: [otlphttp]
     {{- end }}
     {{- if include "avuruobs.collectGreen" . }}

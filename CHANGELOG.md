@@ -11,6 +11,23 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **Cost & waste: what you reserved against what you used.** A new `cost`
+  module ranks workloads by the CPU and memory they reserved and did not draw
+  on — the capacity a cluster is sized and billed for while nothing runs in it.
+  A workload that declared **no request at all** is called out as its own state
+  rather than shown as a zero: the scheduler cannot size a node for it and the
+  kubelet evicts it first. Nodes gain the matching view, because a node that is
+  fully *requested* takes no more pods however little it is *using*.
+  Idle capacity is measured against the **peak**, never the mean — a request
+  cannot be cut below the peak without risking eviction. Rates are chart values
+  (`cost.rates`); with none set the screens report cores and bytes and say so,
+  because there is no pricing API behind this and there never will be.
+  Collection is one receiver in the sensor already running, behind a
+  leader-election Lease so exactly one node reports cluster-scoped objects.
+  Born OFF — [AEP](design/2026-08-26-cost-and-waste.md)
+
 ### Fixed
 
 - **Settings stops offering a read-only account the install's configuration.**

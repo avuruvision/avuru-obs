@@ -54,6 +54,7 @@ spec:
                    an empty include piped through nindent would leave a stray
                    indented blank line in default renders. */}}
             {{- with include "avuruobs.greenEnv" . }}{{ . | nindent 12 }}{{- end }}
+            {{- with include "avuruobs.costEnv" . }}{{ . | nindent 12 }}{{- end }}
             {{- if .Values.projects }}
             - name: AVURUOBS_PROJECTS
               value: {{ join "," .Values.projects | quote }}

@@ -521,6 +521,62 @@ render --set modules.mesh.enabled=true --set mesh.controlPlane.enabled=true --se
   || fail "mesh values failed an install with no gateway to scrape from"
 ok "both guards fire; a gateway-less install is unaffected"
 
+echo "== cost: off by default, nothing watched, nothing granted"
+out="$(render)"
+grep -q 'k8s_cluster' <<<"$out" && fail "the cluster-object receiver rendered on a default install"
+grep -q 'k8s_leader_elector' <<<"$out" && fail "the leader-election extension rendered on a default install"
+grep -q 'coordination.k8s.io' <<<"$out" && fail "Lease permissions granted to an install that does not run the cost module"
+grep -q ',cost' <<<"$out" && fail "the cost module is in AVURUOBS_MODULES by default"
+ok "no cost module, no cluster reads, no Lease"
+
+echo "== cost: the receiver and its leader election never travel apart"
+# The v0.9 sensor crash was a switch and its prerequisite rendering separately.
+# A k8s_cluster naming an extension that is not registered is a collector that
+# refuses to start, and one WITHOUT election is every series times node count —
+# so the pair is asserted, not the parts.
+out="$(render --set modules.cost.enabled=true)"
+grep -q ',cost' <<<"$out" || fail "modules.cost.enabled did not reach AVURUOBS_MODULES"
+agent="$(awk '/^  name: .*-sensor-agent$/,/^---$/' <<<"$out")"
+recv_hits="$(grep -c 'k8s_cluster:' <<<"$agent" || true)"
+[ "${recv_hits:-0}" -gt 0 ] || fail "the cluster-object receiver is missing"
+elect_hits="$(grep -c 'k8s_leader_elector:' <<<"$agent" || true)"
+# Twice: the receiver's reference, and the extension's own definition.
+[ "${elect_hits:-0}" -ge 2 ] || fail "k8s_cluster rendered without the leader-election extension beside it"
+reg_hits="$(grep -c 'extensions: \[health_check, file_storage, k8s_leader_elector\]' <<<"$agent" || true)"
+[ "${reg_hits:-0}" -gt 0 ] || fail "the elector is defined but never registered in service.extensions"
+alloc_hits="$(grep -c 'allocatable_types_to_report: \[cpu, memory\]' <<<"$agent" || true)"
+[ "${alloc_hits:-0}" -gt 0 ] || fail "node allocatable is off — it is not a default-on metric"
+pipe_hits="$(grep -c 'metrics/cluster:' <<<"$agent" || true)"
+[ "${pipe_hits:-0}" -gt 0 ] || fail "the cluster receiver is not wired into a pipeline"
+lease_hits="$(grep -c 'coordination.k8s.io' <<<"$out" || true)"
+[ "${lease_hits:-0}" -gt 0 ] || fail "the Lease the election runs on is not granted"
+ok "receiver, elector, registration, Lease — all four or none"
+
+echo "== cost: the sensor sub-flag drops collection without dropping the module"
+out="$(render --set modules.cost.enabled=true --set sensor.agent.cluster.enabled=false)"
+grep -q ',cost' <<<"$out" || fail "the module left AVURUOBS_MODULES when only collection was switched off"
+grep -q 'k8s_cluster' <<<"$out" && fail "the receiver rendered with sensor.agent.cluster.enabled=false"
+grep -q 'coordination.k8s.io' <<<"$out" && fail "the Lease was granted with no receiver to elect for"
+ok "module and collection are separable, like green"
+
+echo "== cost: rates are the operator's to declare, and absent means absent"
+out="$(render --set modules.cost.enabled=true)"
+grep -q 'AVURUOBS_COST_' <<<"$out" && fail "a cost rate reached the hub with none configured — unpriced must stay unpriced"
+# `helm --set x=0.0331` yields a STRING (only integers are coerced), so the
+# schema takes both forms; an operator setting a rate the obvious way must not
+# be told their values are invalid.
+out="$(render --set modules.cost.enabled=true --set cost.rates.cpuCoreHour=0.0331 --set cost.rates.memGiBHour=0.004 --set cost.rates.currency=EUR)"
+grep -q 'AVURUOBS_COST_CPU_CORE_HOUR' <<<"$out" || fail "the cpu rate did not reach the hub"
+grep -q 'AVURUOBS_COST_MEM_GIB_HOUR' <<<"$out" || fail "the memory rate did not reach the hub"
+grep -q 'AVURUOBS_COST_CURRENCY' <<<"$out" || fail "the currency did not reach the hub"
+ok "unset stays unset; a decimal rate is accepted"
+
+echo "== cost: an install that could only render blanks fails at template time"
+if render --set modules.cost.enabled=true --set modules.infraMetrics.enabled=false >/dev/null 2>&1; then
+  fail "cost without infra-metrics should fail — reserved has nothing to be compared against"
+fi
+ok "the guard fires"
+
 echo "== business tags: nothing mapped by default"
 out="$(render)"
 grep -q 'avuru.tag.' <<<"$out" && fail "a business tag rendered with no tags.labels set"
