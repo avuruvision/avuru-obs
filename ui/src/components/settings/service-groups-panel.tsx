@@ -20,8 +20,13 @@ import { ServiceGroupForm } from "./service-group-form";
 // here — the hub lets the config win a name collision, so offering an edit
 // would promise a change that never takes effect. Everything else is authored
 // here and applies to the next health read; no redeploy.
+//
+// The write gate is canAdminister, not isAdmin: the hub's securedAdmin
+// serves EVERY caller on an install running without authentication, so
+// isAdmin — which has no grant to read there — hid the whole editor from
+// the installs the hub was already letting through.
 export function ServiceGroupsPanel() {
-  const { isAdmin } = useAuth();
+  const { canAdminister } = useAuth();
   const { data, isLoading } = useServiceGroups();
   const create = useCreateServiceGroup();
   const update = useUpdateServiceGroup();
@@ -38,7 +43,7 @@ export function ServiceGroupsPanel() {
     <Card className="overflow-hidden">
       <CardHeader>
         <CardTitle>Service groups</CardTitle>
-        {isAdmin && !adding && (
+        {canAdminister && !adding && (
           <Button
             variant="secondary"
             size="sm"
@@ -79,7 +84,7 @@ export function ServiceGroupsPanel() {
                     overridden by config
                   </Badge>
                 )}
-                {isAdmin && g.editable && (
+                {canAdminister && g.editable && (
                   <span className="ml-auto flex items-center gap-1">
                     <Button
                       variant="ghost"

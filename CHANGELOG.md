@@ -26,6 +26,12 @@ When a release is cut, that block is renamed to the version with its date.
   admin": the latter is also true on an install running without authentication,
   and would have hidden the configuration screens from exactly the installs
   where anyone may use them.
+- **Administration works again on an install running without authentication.**
+  The same "not an admin" test gated every write control in Settings — new
+  project, ingest keys, the collection overlay, the group editor — while the
+  hub's `securedAdmin` serves *every* caller when authentication is off. The
+  UI was refusing what the hub allows, so on an auth-less install none of that
+  configuration could be reached from the product at all.
 
 ## [0.9.0] — 2026-08-25
 

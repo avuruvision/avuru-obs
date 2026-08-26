@@ -39,14 +39,16 @@ function sourceBadge(source: Project["source"]) {
 // ProjectSettingsCard renders the active project (editable for db projects,
 // read-only for default/config), an admin-only "New project" form, and a delete
 // affordance for db projects. Admin gate mirrors the hub's securedAdmin (403);
-// this is defense in depth on the UI side.
+// this is defense in depth on the UI side. It reads canAdminister rather than
+// isAdmin because securedAdmin serves every caller when authentication is off, and
+// isAdmin is false there — the gate would have refused what the hub allows.
 export function ProjectSettingsCard() {
-  const { isAdmin } = useAuth();
+  const { canAdminister } = useAuth();
   const { project } = useProject();
   const { data } = useProjects();
   const current: Project =
     data?.projects.find((p) => p.id === project) ?? { id: project, source: "default" };
-  const editable = !!current.editable && isAdmin;
+  const editable = !!current.editable && canAdminister;
 
   return (
     <div className="flex flex-col gap-4">
@@ -87,7 +89,7 @@ export function ProjectSettingsCard() {
         />
       )}
 
-      {isAdmin && <NewProjectCard />}
+      {canAdminister && <NewProjectCard />}
 
       {editable && <DangerZone project={current} />}
     </div>
@@ -272,11 +274,11 @@ function ProjectMembersCard({ project, all }: { project: Project; all: Project[]
 // install's, and the hub refuses a longer one (the shared table TTL would drop
 // the rows first regardless).
 export function ProjectRetentionSection({ maxDays }: { maxDays: number }) {
-  const { isAdmin } = useAuth();
+  const { canAdminister } = useAuth();
   const { project } = useProject();
   const { data } = useProjects();
   const current = data?.projects.find((p) => p.id === project);
-  const editable = !!current?.editable && isAdmin;
+  const editable = !!current?.editable && canAdminister;
 
   if (!current || !editable) {
     return (

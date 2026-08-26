@@ -142,17 +142,19 @@ test.describe("service groups", () => {
     await expect(page.getByTestId("service-group-form")).toBeVisible();
   });
 
-  // Reads follow the health authorization, writes are admin-only — the panel
-  // must not offer controls the hub would answer 403 to.
-  test("a viewer sees the groups but cannot change them", async ({ page }) => {
+  // Reads used to follow the health authorization while writes were
+  // admin-only, so a viewer was shown a panel with every control hidden — a
+  // group editor defined by what it would not let them do. Groups is
+  // administration now, like Users: not offered at all. settings-viewer.spec.ts
+  // owns the rule across the whole screen; this holds the editor's own half.
+  test("a viewer is not offered the group editor", async ({ page }) => {
     await stubIdentity(page, "viewer");
     await stubGroups(page, [DB_GROUP]);
 
     await page.goto("/settings?tab=groups");
-    await expect(page.getByTestId("service-groups-list").getByText("payments", { exact: true })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Groups" })).toHaveCount(0);
+    await expect(page.getByTestId("service-groups-list")).toHaveCount(0);
     await expect(page.getByTestId("add-service-group")).toHaveCount(0);
-    await expect(page.getByTestId("edit-service-group-payments")).toHaveCount(0);
-    await expect(page.getByTestId("delete-service-group-payments")).toHaveCount(0);
   });
 
   // The lanes are only as useful as the grouping behind them, so the board

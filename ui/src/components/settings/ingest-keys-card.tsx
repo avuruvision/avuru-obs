@@ -31,13 +31,14 @@ function fmtDate(iso: string): string {
 // create (raw secret shown once), and revoke. Admin-only — mirrors the hub's
 // securedAdmin (403); this UI gate is defense in depth. Keys authenticate a
 // project's telemetry at the gateway and, in enforce mode, stamp the project as
-// the authoritative tenant.
+// the authoritative tenant. canAdminister, not isAdmin: with authentication off
+// securedAdmin serves everyone, and isAdmin has no grant to read.
 export function IngestKeysCard() {
-  const { isAdmin } = useAuth();
+  const { canAdminister } = useAuth();
   const { project } = useProject();
-  const { data, isLoading } = useIngestKeys(project, isAdmin);
+  const { data, isLoading } = useIngestKeys(project, canAdminister);
 
-  if (!isAdmin) return null;
+  if (!canAdminister) return null;
 
   const keys = data?.keys ?? [];
 
