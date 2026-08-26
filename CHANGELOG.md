@@ -11,6 +11,22 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **Refused: a third answer to "did it work?"** A server that replies 4xx has
+  neither failed nor succeeded, and the product only had those two words for
+  it — so a WAF blocking a request, or an authorization layer turning one away,
+  was reported as `OK`. Server-side 4xx is now its own class: an amber badge on
+  the span, a **Refused** column beside Errors in both the operations overview
+  and the trace table, and a `Refused (4xx)` option in the trace search's status
+  filter (`?status=refused` on `GET /api/v1/traces`).
+
+  It is deliberately kept **out of the error rate**. RED, the service map's
+  health ring and alerting are unchanged, because folding 4xx into errors would
+  put every auth challenge and every crawler 404 into the number people page on.
+  A client-side 4xx is still an error, as the HTTP semantic conventions have it —
+  there the caller is the one that failed.
+
 ### Changed
 
 - **The service map's node shapes now say what a node is at a glance.** An
@@ -21,6 +37,12 @@ When a release is cut, that block is renamed to the version with its date.
   the diamond, undetected peers stay hollow, and health keeps the ring: shape
   still carries *what a node is* and nothing else, so no colour was spent on
   this.
+
+- **The trace list shows the status code instead of the word "OK".** A row whose
+  span answered 403 now reads `403`, amber, rather than claiming the request was
+  fine — the list used to contradict the span detail one panel over. `ERR`
+  survives for the trace that answered cleanly at the root and failed somewhere
+  underneath, where the trace-level verdict is the news.
 
 ## [0.10.0] — 2026-08-26
 

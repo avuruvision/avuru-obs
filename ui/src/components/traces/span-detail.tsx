@@ -9,7 +9,7 @@ import { formatTime, utcTooltip } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { serviceColor } from "@/lib/trace";
 import { spanComponent, spanPeer } from "@/lib/component";
-import { spanStatus } from "@/lib/span-status";
+import { STATUS_TONE, spanStatus } from "@/lib/span-status";
 import type { Span, SpanEvent } from "@/lib/api-types";
 import { CLEAR_WORKSPACE_PARAMS } from "./workspace-params";
 
@@ -131,7 +131,7 @@ export function SpanDetail({ span }: { span: Span }) {
     <div className="flex flex-col gap-3 border-b border-neutral/40 bg-base-100/60 px-4 py-3">
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <Badge
-          tone={status.kind === "error" ? "error" : status.kind === "ok" ? "success" : "neutral"}
+          tone={STATUS_TONE[status.kind]}
           title={`OTel status: ${span.statusCode}`}
         >
           {status.label}

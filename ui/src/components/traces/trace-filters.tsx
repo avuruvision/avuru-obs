@@ -136,7 +136,8 @@ export function TraceFilterPanel({
             options={[
               { value: "", label: "All" },
               { value: "ok", label: "OK" },
-              { value: "error", label: "Error" },
+              { value: "refused", label: "Refused (4xx)" },
+              { value: "error", label: "Error (5xx)" },
             ]}
           />
         </Field>

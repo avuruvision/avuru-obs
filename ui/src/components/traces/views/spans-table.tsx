@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 import { formatMs } from "@/lib/format";
 import { childrenByParent, selfTimeMs, serviceColor } from "@/lib/trace";
 import { kindIcon, spanComponent, spanPeer, type SpanComponent } from "@/lib/component";
-import { spanStatus } from "@/lib/span-status";
+import { STATUS_TONE, spanStatus } from "@/lib/span-status";
 import type { Span, TraceResponse } from "@/lib/api-types";
 
 type SortKey = "service" | "operation" | "component" | "start" | "duration" | "self";
@@ -168,7 +168,7 @@ export function SpansTable({
               </td>
               <td>
                 <Badge
-                  tone={isError ? "error" : status.kind === "ok" ? "success" : "neutral"}
+                  tone={STATUS_TONE[status.kind]}
                   title={`OTel status: ${span.statusCode}`}
                 >
                   {status.label}

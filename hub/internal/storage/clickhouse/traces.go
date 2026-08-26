@@ -47,8 +47,11 @@ SELECT
   argMin(SpanAttributes['db.system'], ` + repTuple + `)    AS RepDbSystem,
   argMin(SpanAttributes['db.operation'], ` + repTuple + `) AS RepDbOp,
   argMin(` + errorSpanExpr("") + `, ` + repTuple + `)      AS RepIsError,
+  argMin(` + refusedSpanExpr("") + `, ` + repTuple + `)    AS RepIsRefused,
+  argMin(` + httpStatusExpr("") + `, ` + repTuple + `)     AS RepHttpStatus,
   count()                                                  AS SpanCount,
-  countIf(` + errorSpanExpr("") + `)                       AS ErrorCount
+  countIf(` + errorSpanExpr("") + `)                       AS ErrorCount,
+  countIf(` + refusedSpanExpr("") + `)                     AS RefusedCount
 FROM otel_traces
 WHERE Tenant IN (?) AND Timestamp >= ? AND Timestamp < ?
 GROUP BY TraceId
@@ -79,8 +82,14 @@ HAVING 1 = 1`
 		case "error":
 			inner += ` AND countIf(ServiceName = ? AND ` + errorSpanExpr("") + `) > 0`
 			args = append(args, q.Service)
+		case "refused":
+			inner += ` AND countIf(ServiceName = ? AND ` + refusedSpanExpr("") + `) > 0`
+			args = append(args, q.Service)
 		case "ok":
-			inner += ` AND countIf(ServiceName = ? AND ` + errorSpanExpr("") + `) = 0`
+			// Neither errored nor refused. Once refusal has a class of its own,
+			// leaving it inside "ok" would hide exactly what the filter exists
+			// to separate.
+			inner += ` AND countIf(ServiceName = ? AND (` + errorSpanExpr("") + ` OR ` + refusedSpanExpr("") + `)) = 0`
 			args = append(args, q.Service)
 		}
 	} else {
@@ -91,8 +100,10 @@ HAVING 1 = 1`
 		switch q.Status {
 		case "error":
 			inner += ` AND RepIsError = 1`
+		case "refused":
+			inner += ` AND RepIsRefused = 1`
 		case "ok":
-			inner += ` AND RepIsError = 0`
+			inner += ` AND RepIsError = 0 AND RepIsRefused = 0`
 		}
 		if q.MinDuration > 0 {
 			inner += ` AND RepDuration >= ?`
@@ -113,7 +124,7 @@ HAVING 1 = 1`
 	// RepDuration for slowest), so it must live here — post-aggregation — not
 	// in the inner HAVING.
 	query := `
-SELECT TraceId, StartTime, RootService, RootOperation, RepDuration, RepStatusCode, SpanCount, ErrorCount
+SELECT TraceId, StartTime, RootService, RootOperation, RepDuration, RepStatusCode, RepHttpStatus, SpanCount, ErrorCount, RefusedCount
 FROM (` + inner + `
 )
 WHERE 1 = 1`
@@ -157,7 +168,8 @@ LIMIT ?`
 			t   storage.TraceSummary
 			dur uint64
 		)
-		if err := rows.Scan(&t.TraceID, &t.StartTime, &t.RootService, &t.RootOperation, &dur, &t.StatusCode, &t.SpanCount, &t.ErrorCount); err != nil {
+		if err := rows.Scan(&t.TraceID, &t.StartTime, &t.RootService, &t.RootOperation, &dur, &t.StatusCode,
+			&t.HTTPStatus, &t.SpanCount, &t.ErrorCount, &t.RefusedCount); err != nil {
 			return storage.TracePage{}, fmt.Errorf("scanning trace row: %w", err)
 		}
 		t.Duration = time.Duration(dur)
