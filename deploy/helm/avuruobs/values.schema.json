@@ -402,6 +402,10 @@
               "type": "string",
               "minLength": 1
             },
+            "jobName": {
+              "type": "string",
+              "minLength": 1
+            },
             "scrapeInterval": {
               "type": "string",
               "minLength": 1

@@ -107,6 +107,14 @@ export interface MeshProxiesResponse {
 // configs, which reads as perfect health.
 export interface MeshControlPlane {
   available: boolean;
+  // Why it is silent, when it is. "unconfigured" (nothing is scraping),
+  // "unreachable" (scraped, no answer), "unrecognised" (answered, nothing we
+  // read came back) or "ok". A plain string, not a union: a hub predating this
+  // sends none at all, and a future state must not break the build.
+  state?: string;
+  // The control plane whose metrics were recognised ("istio"). Absent when
+  // nothing was — including when something answered and was not understood.
+  kind?: string;
   reason?: string;
   lastSeen?: string;
   connectedProxies?: number;

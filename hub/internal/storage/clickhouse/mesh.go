@@ -23,6 +23,17 @@ const (
 	meshPushesMetric           = "pilot_xds_pushes"             // counter: pushes attempted
 )
 
+// meshKindIstio names the one control plane whose metrics are understood.
+// Reported rather than assumed, so the screen can say which one it read — and
+// so an operator running something else learns it from the product.
+const meshKindIstio = "istio"
+
+// defaultMeshScrapeJob mirrors the chart's mesh.controlPlane.jobName default.
+// The value travels from the chart; this is the fallback for a hub that was
+// never told, which would otherwise look up the empty job and report
+// "unconfigured" on a perfectly configured install.
+const defaultMeshScrapeJob = "istiod"
+
 // MeshControlPlane summarises whether the mesh's control plane is still
 // programming the data plane over the window.
 //
@@ -35,7 +46,7 @@ const (
 // Reads the otel_metrics_* tables; callers must gate on infra-metrics.
 func (s *Store) MeshControlPlane(ctx context.Context, q storage.ServiceQuery) (storage.MeshControlPlane, error) {
 	tenants := tenantsOrDefault(q.Tenants, q.Tenant)
-	var out storage.MeshControlPlane
+	out := storage.MeshControlPlane{State: storage.MeshControlPlaneUnconfigured}
 
 	// Connected proxies is a gauge: the last value in the window is the answer,
 	// not a sum over scrapes (which would multiply by however often we scraped).
@@ -122,5 +133,70 @@ WHERE length(bounds) > 0 AND arraySum(buckets) > 0`
 		out.ConvergenceP95Ms = p95
 		out.Available = true
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	if out.Available {
+		out.State = storage.MeshControlPlaneOK
+		out.Kind = meshKindIstio
+		return out, nil
+	}
+
+	// Nothing recognised. The scrape-report series says whether that is because
+	// nobody is scraping, because the target did not answer, or because it
+	// answered with something we cannot read — three problems with three
+	// different fixes, which "not available" could never tell apart.
+	state, err := s.meshScrapeState(ctx, tenants, q)
+	if err != nil {
+		return out, err
+	}
+	out.State = state
+	return out, nil
+}
+
+// meshScrapeState reads Prometheus's synthetic `up` series for the
+// control-plane scrape job.
+//
+// It exists because those series BYPASS metric_relabel_configs by design: the
+// keep-list that drops everything but pilot_* cannot drop them, so they are
+// already in the tables on every install that switched the scrape on. The
+// receiver maps the Prometheus `job` label to service.name (verified in the
+// receiver's CreateResource at the pinned collector tag) — hence the job name
+// being one configured value that reaches both the scrape config and this
+// query.
+//
+// Matched on ResourceAttributes['service.name'], not the ServiceName column:
+// the receiver definitively sets the ATTRIBUTE, while filling that column is
+// the exporter's business and nothing else in the product reads it on the
+// metrics tables. Reading what we know is set beats reading what we assume is.
+func (s *Store) meshScrapeState(
+	ctx context.Context, tenants []string, q storage.ServiceQuery,
+) (storage.MeshControlPlaneState, error) {
+	job := q.MeshScrapeJob
+	if job == "" {
+		job = defaultMeshScrapeJob
+	}
+	const upQuery = `
+SELECT argMax(Value, TimeUnix) AS latest, count() AS rows
+FROM otel_metrics_gauge
+WHERE Tenant IN (?) AND MetricName = 'up'
+  AND ResourceAttributes['service.name'] = ?
+  AND TimeUnix >= ? AND TimeUnix < ?`
+	var (
+		latest float64
+		points uint64
+	)
+	if err := s.conn.QueryRow(ctx, upQuery, tenants, job, q.Range.Start, q.Range.End).
+		Scan(&latest, &points); err != nil {
+		return storage.MeshControlPlaneUnconfigured, fmt.Errorf("mesh scrape state: %w", err)
+	}
+	switch {
+	case points == 0:
+		return storage.MeshControlPlaneUnconfigured, nil
+	case latest == 0:
+		return storage.MeshControlPlaneUnreachable, nil
+	default:
+		// Scraped, answered, and nothing we know how to read came back.
+		return storage.MeshControlPlaneUnrecognised, nil
+	}
 }

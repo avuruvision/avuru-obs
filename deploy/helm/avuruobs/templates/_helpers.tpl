@@ -264,6 +264,18 @@ http://{{ include "avuruobs.fullname" . }}-hub:80/internal/v1/ingest-keys/valida
 {{- end }}
 {{- end -}}
 
+{{/* The control-plane scrape's job name, on the hub. It has to be the SAME
+     string the gateway's scrape_config uses, because that is what the receiver
+     writes into service.name and what the hub looks the scrape-report series up
+     by — so it travels as one value rather than being typed twice. Rendered
+     only with the mesh module, which owns the surface. */}}
+{{- define "avuruobs.meshEnv" -}}
+{{- if .Values.modules.mesh.enabled }}
+- name: AVURUOBS_MESH_SCRAPE_JOB
+  value: {{ .Values.mesh.controlPlane.jobName | quote }}
+{{- end }}
+{{- end -}}
+
 {{/* Cost rates on the hub. Rendered only with the module, and only for rates
      the operator actually set: an unset rate must stay unset all the way to
      the API, which reports "not priced" rather than free. */}}

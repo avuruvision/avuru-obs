@@ -42,6 +42,19 @@ When a release is cut, that block is renamed to the version with its date.
   and the operator's `applications` override still beats everything —
   [AEP](design/2026-08-26-transport-from-labels.md)
 
+### Changed
+
+- **A silent control plane now says why.** The mesh screen had two states —
+  observed or not — and "not" covered three different problems with three
+  different fixes: nothing is scraping it, the scrape target is not answering,
+  or it answered with metrics this product cannot read. They are told apart
+  now, from a signal already in the tables (Prometheus's scrape report bypasses
+  the metric keep-list, so it was there all along). The third state is the one
+  worth naming: the control-plane view is **Istio-shaped**, and an operator
+  running a different mesh learns that from the screen instead of from an empty
+  card — with the proxy table, which comes from their own traces, explicitly
+  unaffected — [AEP](design/2026-08-26-control-plane-diagnosis.md)
+
 ### Fixed
 
 - **Settings stops offering a read-only account the install's configuration.**

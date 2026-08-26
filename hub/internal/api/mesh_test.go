@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -144,4 +145,61 @@ func jsonHasKey(t *testing.T, body, key string) bool {
 	}
 	_, ok := m[key]
 	return ok
+}
+
+// Three silences, three fixes. Before this they were one state and one
+// sentence, which sent an operator to check a scrape that was working.
+func TestControlPlaneSilenceNamesItsOwnFix(t *testing.T) {
+	for _, tc := range []struct {
+		state storage.MeshControlPlaneState
+		want  string
+	}{
+		{storage.MeshControlPlaneUnconfigured, "set mesh.controlPlane.enabled"},
+		{storage.MeshControlPlaneUnreachable, "not answering"},
+		{storage.MeshControlPlaneUnrecognised, "Istio-shaped"},
+	} {
+		t.Run(string(tc.state), func(t *testing.T) {
+			fake := &storagetest.Fake{ControlPlane: storage.MeshControlPlane{State: tc.state}}
+			rec := meshGet(t, fake, Config{Modules: modules.AllSet()}, "/api/v1/mesh/control-plane")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status %d", rec.Code)
+			}
+			var resp meshControlPlaneResponse
+			if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if resp.Available {
+				t.Error("a silent control plane reported available")
+			}
+			if resp.State != string(tc.state) {
+				t.Errorf("state = %q, want %q", resp.State, tc.state)
+			}
+			if !strings.Contains(resp.Reason, tc.want) {
+				t.Errorf("reason %q does not mention %q — the fix is the point", resp.Reason, tc.want)
+			}
+			if resp.Kind != "" {
+				t.Errorf("kind = %q on a control plane nothing recognised", resp.Kind)
+			}
+		})
+	}
+}
+
+// A recognised control plane names itself, so an operator running something
+// else can see which one the numbers describe.
+func TestRecognisedControlPlaneNamesItself(t *testing.T) {
+	fake := &storagetest.Fake{ControlPlane: storage.MeshControlPlane{
+		Available: true, State: storage.MeshControlPlaneOK, Kind: "istio",
+		ConnectedProxies: 12, RejectedConfigs: 3,
+	}}
+	rec := meshGet(t, fake, Config{Modules: modules.AllSet()}, "/api/v1/mesh/control-plane")
+	var resp meshControlPlaneResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !resp.Available || resp.State != "ok" {
+		t.Fatalf("available=%v state=%q, want available/ok", resp.Available, resp.State)
+	}
+	if resp.Kind != "istio" {
+		t.Errorf("kind = %q, want istio", resp.Kind)
+	}
 }

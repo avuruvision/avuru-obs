@@ -130,19 +130,35 @@ function ControlPlaneCard({
 }) {
   if (loading) return null;
   if (!data?.available) {
+    // Three silences, three fixes. "Not observed" used to cover all of them,
+    // which sent an operator to check a scrape that was working perfectly —
+    // and told the one running a different mesh nothing at all.
+    const heading =
+      data?.state === "unreachable"
+        ? "Control plane not answering"
+        : data?.state === "unrecognised"
+          ? "Control plane not recognised"
+          : "Control plane not observed";
     return (
       <Card data-testid="mesh-control-plane" className="border-warning/40 p-4">
         <div className="flex items-start gap-3">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
           <div>
-            <h2 className="text-sm font-medium">Control plane not observed</h2>
+            <h2 className="text-sm font-medium">{heading}</h2>
             <p className="mt-1 text-xs text-base-content/70">
-              {data?.reason ??
-                "No control-plane metrics in this window."}{" "}
-              Until it is scraped, nothing here can tell you whether your proxies
+              {data?.reason ?? "No control-plane metrics in this window."}{" "}
+              Until it is read, nothing here can tell you whether your proxies
               are still being programmed — a mesh keeps serving its last accepted
               configuration long after the control plane stops pushing.
             </p>
+            {/* The proxy table above is unaffected, and saying so stops this
+                card reading as "the whole screen is broken". */}
+            {data?.state === "unrecognised" && (
+              <p className="mt-2 text-xs text-base-content/50">
+                The proxies above are still measured — they come from your own
+                traces, not from the control plane.
+              </p>
+            )}
           </div>
         </div>
       </Card>
@@ -160,7 +176,12 @@ function ControlPlaneCard({
         ) : (
           <CheckCircle2 className="h-4 w-4 text-success" />
         )}
-        <h2 className="text-sm font-medium">Control plane</h2>
+        <h2 className="text-sm font-medium">
+          Control plane
+          {data.kind && (
+            <span className="ml-1.5 font-normal text-base-content/50">{data.kind}</span>
+          )}
+        </h2>
         {data.lastSeen && (
           <span className="text-xs text-base-content/50">
             last seen {formatAgo(data.lastSeen)}

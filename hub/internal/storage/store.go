@@ -26,6 +26,12 @@ type ServiceQuery struct {
 	Tenants    []string // resolved tenant set; empty means []string{Tenant}
 	Range      TimeRange
 	ExcludeAux bool // drop health-check/metrics/control-plane traffic
+	// MeshScrapeJob is the Prometheus job name the control-plane scrape runs
+	// under (chart: mesh.controlPlane.jobName). Read only by
+	// MeshControlPlane, which looks up the scrape-report series by it. Empty
+	// falls back to the chart's default, so a hub that was never told does not
+	// report a configured control plane as unconfigured.
+	MeshScrapeJob string
 }
 
 // ServiceStats aggregates RED metrics for one service over entry spans.
@@ -155,6 +161,28 @@ type CheckQuery struct {
 	Limit   int
 }
 
+// MeshControlPlaneState distinguishes the three ways a control plane can be
+// silent. Before this they were one state, and the three fixes are not the
+// same: switch the scrape on, fix the endpoint, or accept that this is not a
+// control plane the product can read.
+type MeshControlPlaneState string
+
+const (
+	// MeshControlPlaneUnconfigured: nothing is scraping — not even a failed
+	// scrape landed.
+	MeshControlPlaneUnconfigured MeshControlPlaneState = "unconfigured"
+	// MeshControlPlaneUnreachable: the scrape ran and the target did not
+	// answer. A wrong endpoint and a dead control plane look the same from
+	// here, and both are the operator's to tell apart.
+	MeshControlPlaneUnreachable MeshControlPlaneState = "unreachable"
+	// MeshControlPlaneUnrecognised: the target answered, and nothing this
+	// product knows how to read came back. The control-plane surface is
+	// Istio-shaped, and this is the state that says so.
+	MeshControlPlaneUnrecognised MeshControlPlaneState = "unrecognised"
+	// MeshControlPlaneOK: recognised metrics arrived in the window.
+	MeshControlPlaneOK MeshControlPlaneState = "ok"
+)
+
 // MeshControlPlane is the health of the service mesh's control plane over the
 // window: is it still programming the data plane, and is the data plane
 // accepting what it is told?
@@ -164,8 +192,18 @@ type CheckQuery struct {
 // rather than rendered as zeros, the same way the green module reports "no
 // RAPL" instead of 0 W. Every number below is meaningless unless Available.
 type MeshControlPlane struct {
+	// Available is a shorthand for State == MeshControlPlaneOK, kept because
+	// every existing reader means exactly that by it.
 	Available bool
-	LastSeen  time.Time
+	// State says WHY a control plane is silent, which "not available" never
+	// could — and each answer has a different fix (see the AEP,
+	// design/2026-08-26-control-plane-diagnosis.md).
+	State MeshControlPlaneState
+	// Kind names the control plane whose metrics were recognised, empty
+	// otherwise. Exactly one is implemented; it is reported rather than assumed
+	// so the screen can say which one it read.
+	Kind     string
+	LastSeen time.Time
 	// ConnectedProxies is the latest value in the window, not a sum: it is a
 	// gauge, and summing scrapes would multiply it by the scrape count.
 	ConnectedProxies uint64

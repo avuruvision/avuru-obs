@@ -493,7 +493,7 @@ ok "module on, scrape still opt-in"
 
 echo "== mesh: the control-plane scrape lands in the GATEWAY, not the sensor"
 out="$(render --set modules.mesh.enabled=true --set mesh.controlPlane.enabled=true)"
-grep -q 'job_name: istiod' <<<"$out" || fail "istiod scrape job missing"
+grep -q 'job_name: "istiod"' <<<"$out" || fail "istiod scrape job missing"
 grep -q 'pilot_total_xds_rejects' <<<"$out" || fail "the rejected-config metric is not in the keep list"
 # istiod is ONE Deployment: scraped per-node it would yield a copy of every
 # control-plane series per node, and any sum over them would be wrong by the
@@ -508,6 +508,20 @@ sensor_hits="$(awk '/^  name: .*-sensor-agent$/,/^---$/' <<<"$out" | grep -c 'is
 pipe_hits="$(grep -cE 'receivers: \[otlp.*prometheus/mesh\]' <<<"$out" || true)"
 [ "${pipe_hits:-0}" -gt 0 ] || fail "prometheus/mesh is not wired into the metrics pipeline"
 ok "one scraper, in the single-writer collector"
+
+echo "== mesh: the scrape job name is ONE value, reaching the scrape and the hub"
+# The hub looks the scrape-report series up by job name to tell "nobody is
+# scraping" from "the target is not answering" from "it answered with metrics we
+# cannot read". Typed in two places, those two would drift and the hub would
+# report a perfectly configured control plane as unconfigured.
+out="$(render --set modules.mesh.enabled=true --set mesh.controlPlane.enabled=true --set mesh.controlPlane.jobName=pilot)"
+job_hits="$(grep -c 'job_name: "pilot"' <<<"$out" || true)"
+[ "${job_hits:-0}" -gt 0 ] || fail "the configured job name did not reach the scrape config"
+env_hits="$(grep -c 'AVURUOBS_MESH_SCRAPE_JOB' <<<"$out" || true)"
+[ "${env_hits:-0}" -gt 0 ] || fail "the job name did not reach the hub"
+val_hits="$(grep -A1 'AVURUOBS_MESH_SCRAPE_JOB' <<<"$out" | grep -c '"pilot"' || true)"
+[ "${val_hits:-0}" -gt 0 ] || fail "the hub was told a different job name than the gateway scrapes under"
+ok "one value, both ends"
 
 echo "== mesh: misconfiguration fails at template time rather than collecting nothing"
 if render --set mesh.controlPlane.enabled=true >/dev/null 2>&1; then
