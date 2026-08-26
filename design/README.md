@@ -64,7 +64,8 @@ only if the design needs to be pinned down before coding.
 | [2026-08-24](2026-08-24-map-encoding.md) | A map that carries more meaning — boundaries, edge volume, undetected peers | Accepted |
 | [2026-08-25](2026-08-25-transport-hop-collapse.md) | Hop collapse — the dependency behind the proxy, from per-trace ancestry | Accepted |
 | [2026-08-25](2026-08-25-mesh-surfaces.md) | Mesh-facing surfaces — proxy RED and control-plane health | Accepted |
-| [2026-08-26](2026-08-26-cost-and-waste.md) | Cost and waste — reserved versus used | Draft |
+| [2026-08-26](2026-08-26-cost-and-waste.md) | Cost and waste — reserved versus used | Accepted |
+| [2026-08-26](2026-08-26-transport-from-labels.md) | Transport classified from Kubernetes labels | Accepted |
 
 ## Conventions
 

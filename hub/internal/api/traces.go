@@ -73,7 +73,7 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 	// response: the ancestry walk needs to know which workloads are proxies in
 	// order to step over them. One classifier for the whole response, so the
 	// nodes and the edges cannot disagree about what a proxy is.
-	cls := a.topologyClassifier()
+	cls := a.topologyClassifier().WithEvidence(labelledTransport(services))
 	transport := transportNames(cls, services)
 	// Recover the app→app dependencies the mesh hides. Free when `transport` is
 	// empty — an unmeshed install issues no query and returns the same bytes it
@@ -179,6 +179,23 @@ func stampServiceRoles(cls topology.Classifier, services []serviceDTO) {
 			services[i].Role = string(topology.RoleTransport)
 		}
 	}
+}
+
+// labelledTransport is the subset of `services` the MESH identified, via the
+// labels it writes on its own data plane and the sensor carries on their spans
+// (design/2026-08-26-transport-from-labels.md).
+//
+// Derived from the ListServices rows rather than a query of its own, so the
+// evidence describes exactly the services on the map — the two cannot end up
+// disagreeing about which window they read.
+func labelledTransport(services []storage.ServiceStats) []string {
+	var out []string
+	for _, s := range services {
+		if s.TransportEvidence {
+			out = append(out, s.Name)
+		}
+	}
+	return out
 }
 
 // transportNames is the classified proxy/gateway set among the services on this

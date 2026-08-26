@@ -36,6 +36,17 @@ type ServiceStats struct {
 	P50        time.Duration
 	P95        time.Duration
 	P99        time.Duration
+	// TransportEvidence: at least one of this service's spans carried a
+	// Kubernetes label that a mesh writes on its own data plane
+	// (design/2026-08-26-transport-from-labels.md). It rides this struct rather
+	// than a query of its own so the evidence can never describe a different
+	// set of services than the map draws.
+	//
+	// POSITIVE ONLY. False means "no such label was seen", which is also what a
+	// sidecar looks like — the proxy is a container inside the application's
+	// pod and wears the application's labels, so there is nothing to read. It
+	// must never be taken as evidence that a workload is an application.
+	TransportEvidence bool
 }
 
 // ServiceEdge is a service→service edge on the topology map. It can be derived

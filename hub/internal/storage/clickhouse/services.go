@@ -10,13 +10,28 @@ import (
 
 // ListServices aggregates RED stats per service over entry spans
 // (SpanKind Server/Consumer — the request-handling side).
+// transportEvidenceExpr reports whether ANY of this service's spans carried a
+// label the sensor maps under avuru.transport.* — the labels a mesh writes on
+// its own data plane (design/2026-08-26-transport-from-labels.md).
+//
+// mapContains over the resource-attribute map rather than a list of named keys:
+// the curated set lives in the chart, and a hub that hardcoded the same list
+// would silently stop agreeing with it the first time one of them changed.
+// `any` over the window, not `all` — a proxy is transport from its first span,
+// and a service whose newest spans arrived before an upgrade added the label is
+// not suddenly an application.
+const transportEvidenceExpr = `maxIf(1, arrayExists(
+        k -> startsWith(k, 'avuru.transport.'),
+        mapKeys(ResourceAttributes))) = 1`
+
 func (s *Store) ListServices(ctx context.Context, q storage.ServiceQuery) ([]storage.ServiceStats, error) {
 	query := `
 SELECT
     ServiceName,
     count()                                         AS spans,
     countIf(` + errorSpanExpr("") + `)              AS errors,
-    quantiles(0.5, 0.95, 0.99)(toFloat64(Duration)) AS qs
+    quantiles(0.5, 0.95, 0.99)(toFloat64(Duration)) AS qs,
+    ` + transportEvidenceExpr + `                   AS transport
 FROM otel_traces
 WHERE Tenant IN (?)
   AND Timestamp >= ? AND Timestamp < ?
@@ -41,7 +56,7 @@ ORDER BY spans DESC`
 			st    storage.ServiceStats
 			quant []float64
 		)
-		if err := rows.Scan(&st.Name, &st.SpanCount, &st.ErrorCount, &quant); err != nil {
+		if err := rows.Scan(&st.Name, &st.SpanCount, &st.ErrorCount, &quant, &st.TransportEvidence); err != nil {
 			return nil, fmt.Errorf("scanning service row: %w", err)
 		}
 		st.P50, st.P95, st.P99 = nsQuantiles(quant)

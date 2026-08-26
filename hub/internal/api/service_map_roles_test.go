@@ -98,3 +98,60 @@ func TestServiceMapRoleOmittedForApplications(t *testing.T) {
 		t.Errorf("application node serialized a role key: %s", body)
 	}
 }
+
+// The whole rider in one test: a gateway an operator called "public-edge"
+// matches no built-in pattern and never will, so before this it was drawn as an
+// application and its hops as dependencies. The mesh labelled its own workload;
+// the map now reads that label.
+func TestGatewayNamedAnythingIsTransportWhenTheMeshSaysSo(t *testing.T) {
+	withEvidence := &storagetest.Fake{
+		Services: []storage.ServiceStats{
+			{Name: "checkout", SpanCount: 10},
+			{Name: "public-edge", SpanCount: 40, TransportEvidence: true},
+		},
+	}
+	resp := mapResponse(t, withEvidence, Config{})
+	roles := map[string]string{}
+	for _, s := range resp.Services {
+		roles[s.Name] = s.Role
+	}
+	if roles["public-edge"] != string(topology.RoleTransport) {
+		t.Errorf("public-edge role = %q, want transport — its spans carried a mesh label", roles["public-edge"])
+	}
+	// "service" is the default and rides the wire unstamped, as the existing
+	// role test above already establishes.
+	if roles["checkout"] != "" {
+		t.Errorf("checkout role = %q, want unstamped (service)", roles["checkout"])
+	}
+
+	// The same names with no label on any span: unchanged, because a name is
+	// all there is to go on and "public-edge" is not a pattern anyone would
+	// dare add to the built-ins.
+	noEvidence := &storagetest.Fake{
+		Services: []storage.ServiceStats{
+			{Name: "checkout", SpanCount: 10},
+			{Name: "public-edge", SpanCount: 40},
+		},
+	}
+	resp = mapResponse(t, noEvidence, Config{})
+	for _, s := range resp.Services {
+		if s.Role != "" {
+			t.Errorf("%s role = %q with no evidence, want unstamped (service)", s.Name, s.Role)
+		}
+	}
+}
+
+// An operator who declared a workload an application keeps it, even when the
+// cluster labelled it. Their word is the final one on this map.
+func TestOperatorOverrideStillBeatsAMeshLabel(t *testing.T) {
+	fake := &storagetest.Fake{
+		Services: []storage.ServiceStats{{Name: "payments-gateway", SpanCount: 5, TransportEvidence: true}},
+	}
+	cfg := Config{Topology: func() topology.Config {
+		return topology.Config{Applications: []string{"payments-gateway"}}
+	}}
+	resp := mapResponse(t, fake, cfg)
+	if resp.Services[0].Role != "" {
+		t.Errorf("role = %q, want unstamped (service) — the applications list is an override", resp.Services[0].Role)
+	}
+}

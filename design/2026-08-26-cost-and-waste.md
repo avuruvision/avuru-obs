@@ -2,7 +2,7 @@
 
 - **Date:** 2026-08-26
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted
 
 ## Summary
 
@@ -196,12 +196,12 @@ different numbers.
 
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] `k8s_cluster` + `k8s_leader_elector` in the sensor config, behind the module
-- [ ] RBAC (Leases + watched object types), rendered with the module only
-- [ ] Storage: reserved/used/gap per workload and per node
-- [ ] Hub API + `cost` module registration
-- [ ] Rates as chart values, absent by default
-- [ ] UI: the waste screen, and allocation on Nodes
+- [x] AEP accepted
+- [x] `k8s_cluster` + `k8s_leader_elector` in the sensor config, behind the module
+- [x] RBAC (Leases + watched object types), rendered with the module only
+- [x] Storage: reserved/used/gap per workload and per node
+- [x] Hub API + `cost` module registration
+- [x] Rates as chart values, absent by default
+- [x] UI: the waste screen, and allocation on Nodes
 - [ ] Green join: reserved-and-idle in Wh / gCO2e
-- [ ] kind e2e: no series reported twice
+- [x] kind e2e: no series reported twice

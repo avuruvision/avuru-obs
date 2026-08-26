@@ -25,11 +25,41 @@ const (
 type Classifier struct {
 	transport []string
 	apps      []string
+	// evidenced are workload names the MESH ITSELF identified, via the labels
+	// it writes on its own data plane (design/2026-08-26-transport-from-labels.md).
+	evidenced map[string]bool
 }
 
 // New builds a Classifier from cfg. The zero Config yields the built-ins.
 func New(cfg Config) Classifier {
 	return Classifier{transport: lower(cfg.TransportPatterns()), apps: lower(cfg.Applications)}
+}
+
+// WithEvidence returns a copy that also treats `names` as transport, on the
+// strength of the mesh labels their spans carried.
+//
+// POSITIVE ONLY, and the asymmetry is the whole design. A name in the set is
+// transport whatever the patterns say — the mesh labelled its own workload, and
+// no glob list beats that. A name NOT in the set means nothing at all: in the
+// sidecar model the proxy is a container inside the application's pod and wears
+// the application's labels, so there is no label to read. Absence is not
+// evidence of absence, and treating it as such would put every sidecar back on
+// the map as a dependency.
+//
+// The `applications` list still wins over both. It is the operator's explicit
+// word, and an override that a signal can defeat is not an override.
+func (c Classifier) WithEvidence(names []string) Classifier {
+	if len(names) == 0 {
+		return c
+	}
+	ev := make(map[string]bool, len(names))
+	for _, n := range names {
+		if n != "" {
+			ev[strings.ToLower(n)] = true
+		}
+	}
+	c.evidenced = ev
+	return c
 }
 
 // Role classifies one workload name. The applications list wins over the
@@ -48,6 +78,9 @@ func (c Classifier) IsTransport(name string) bool {
 	}
 	if matchAny(c.apps, name) {
 		return false
+	}
+	if c.evidenced[strings.ToLower(name)] {
+		return true
 	}
 	return matchAny(c.transport, name)
 }

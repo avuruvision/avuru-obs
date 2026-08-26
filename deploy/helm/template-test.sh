@@ -580,9 +580,29 @@ ok "the guard fires"
 echo "== business tags: nothing mapped by default"
 out="$(render)"
 grep -q 'avuru.tag.' <<<"$out" && fail "a business tag rendered with no tags.labels set"
-grep -q 'resource_labels' <<<"$out" && fail "resource_labels rendered with no tags.labels set"
 assert_obi_config_valid "$out" "no tags"
 ok "no tag mapping until an operator maps one"
+
+echo "== transport evidence: the mesh's own labels, carried unconditionally"
+# resource_labels is no longer a tags-only block: the transport labels ride it
+# on every install, because an operator should not have to know their gateway
+# is mis-drawn in order to fix it (design/2026-08-26-transport-from-labels.md).
+out="$(render)"
+body="$(obi_config "$out")"
+for label in gateway.networking.k8s.io/gateway-name istio.io/gateway-name \
+             operator.istio.io/component linkerd.io/control-plane-component; do
+  grep -q "$label" <<<"$body" || fail "transport label $label is not carried"
+done
+# These mark a MESHED APPLICATION, not a proxy. Carrying them would classify
+# every sidecar-injected workload as transport and empty the map.
+grep -q 'service.istio.io/canonical-name' <<<"$body" && fail "canonical-name would classify applications as transport"
+grep -q 'security.istio.io/tlsMode' <<<"$body" && fail "tlsMode would classify applications as transport"
+# TRACES ONLY: the classifier reads otel_traces, and a trace-side decision must
+# not become a dimension on every metric.
+agent="$(awk '/^  name: .*-sensor-agent$/,/^---$/' <<<"$out")"
+agent_hits="$(grep -c 'avuru.transport.' <<<"$agent" || true)"
+[ "${agent_hits:-0}" = "0" ] || fail "transport labels reached the agent's k8sattributes — metric cardinality for a trace question"
+ok "carried on traces, absent from metrics, application labels excluded"
 
 echo "== business tags: one mapping reaches BOTH collection paths"
 out="$(render --set 'tags.labels.team=team' --set 'tags.labels.tier=app.kubernetes.io/component')"
