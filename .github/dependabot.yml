@@ -2,7 +2,15 @@ version: 2
 # One grouped PR per ecosystem per week (instead of one PR per dependency) to
 # keep the noise down on a small team. Majors are bundled too — review the group
 # PR and split out a breaking bump manually if needed.
+#
+# Coverage note: until 2026-08-27 this file watched five targets while the repo
+# had ten Go modules, four Dockerfiles and two npm projects. The three gateway
+# modules and the sensor's tdp-estimator ship in released images and were
+# drifting unwatched. Anything added here that builds a shipped artifact should
+# stay here.
 updates:
+  # The hub is the largest module and keeps its own group so its PR stays
+  # reviewable on its own.
   - package-ecosystem: gomod
     directory: /hub
     schedule:
@@ -11,15 +19,61 @@ updates:
     groups:
       hub-go:
         patterns: ["*"]
+    ignore:
+      # OTLP Profiles is an ALPHA wire format that changes between collector
+      # releases. The reader (hub/internal/storage/profilesadapter) must stay on
+      # the same line as the writer — sensor.profiler.image.tag in
+      # deploy/helm/avuruobs/values.yaml. Bumping this half alone desynchronises
+      # them, and the only reason anyone noticed last time was an unrelated
+      # compile error. Upgrade both together, with the DDL parity re-check
+      # agent_docs/tech_stack.md asks for.
+      - dependency-name: "go.opentelemetry.io/collector/pdata"
+      - dependency-name: "go.opentelemetry.io/collector/pdata/pprofile"
 
-  - package-ecosystem: npm
-    directory: /ui
+  # Every other Go module. Grouped separately from the hub so a satellite bump
+  # never hides inside the hub's diff.
+  - package-ecosystem: gomod
+    directories:
+      - /gateway/avuruingestauth
+      - /gateway/sentryreceiver
+      - /gateway/tenantfromauth
+      - /clients/cli
+      - /clients/grafana-datasource
+      - /sensor/tdp-estimator
+      - /e2e
+      - /tools/seed
+      - /tools/compatsend
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      ui-npm:
+      satellite-go:
         patterns: ["*"]
+    ignore:
+      # The gateway modules are compiled into the OCB-built collector binary and
+      # must stay on the exact line gateway/ocb-manifest.yaml pins (0.154.0 /
+      # v1.60.0). Letting dependabot float them would either fail the OCB build
+      # or link a mismatched collector API. The collector upgrade is a
+      # deliberate change that re-verifies ClickHouse DDL parity.
+      - dependency-name: "go.opentelemetry.io/collector*"
+
+  - package-ecosystem: npm
+    directories:
+      - /ui
+      - /clients/grafana-datasource
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      npm:
+        patterns: ["*"]
+    ignore:
+      # No stable typescript-eslint release supports TypeScript 7 — 8.68.0 still
+      # declares `typescript: >=4.8.4 <6.1.0`, so a TS 7 bump breaks `npm run
+      # lint` outright rather than degrading. Revisit when typescript-eslint
+      # ships TS 7 support; the UI is on the newest version it does support.
+      - dependency-name: "typescript"
+        versions: [">=7.0.0"]
 
   - package-ecosystem: github-actions
     directory: /
@@ -31,17 +85,13 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: docker
-    directory: /hub
+    directories:
+      - /hub
+      - /ui
+      - /gateway
+      - /sensor/tdp-estimator
     schedule:
       interval: weekly
     groups:
-      hub-docker:
-        patterns: ["*"]
-
-  - package-ecosystem: docker
-    directory: /ui
-    schedule:
-      interval: weekly
-    groups:
-      ui-docker:
+      docker-images:
         patterns: ["*"]
