@@ -12,6 +12,7 @@ import {
   ScrollText,
   Server,
   Settings,
+  Wallet,
   Waypoints,
   type LucideIcon,
 } from "lucide-react";
@@ -93,8 +94,8 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     // "What does it run on, and what does that cost?" Green sits here rather
     // than beside the signals because energy and carbon are properties of the
-    // fleet, not another telemetry stream — and it is where a cost surface
-    // would join it.
+    // fleet, not another telemetry stream — and it is where the cost surface
+    // joined it.
     title: "Infrastructure",
     items: [
       { href: "/nodes", label: "Nodes", icon: Server, module: "infra-metrics", docs: "signals/metrics" },
@@ -104,6 +105,12 @@ export const NAV_SECTIONS: NavSection[] = [
       // module, which is most installs.
       { href: "/mesh", label: "Mesh", icon: Waypoints, module: "mesh", docs: "signals/mesh" },
       { href: "/green", label: "Green", icon: Leaf, module: "green", docs: "signals/green" },
+      // Cost is Green's nearest neighbour, not a separate concern: one measures
+      // the energy a workload draws, the other the capacity nobody drew on.
+      // No `docs:` yet — the docs site has no cost page, and this file's rule
+      // is that a link which 404s is worse than no link. It arrives with the
+      // page, in the release's docs-align pass.
+      { href: "/cost", label: "Cost", icon: Wallet, module: "cost" },
     ],
   },
   {
