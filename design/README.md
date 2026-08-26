@@ -45,7 +45,7 @@ only if the design needs to be pinned down before coding.
 | [2026-07-18](2026-07-18-service-health-groups.md) | Service health groups — consolidated group health from RED | Accepted |
 | [2026-07-19](2026-07-19-alerting.md) | Alerting — webhook notifications on service-health transitions | Accepted |
 | [2026-07-19](2026-07-19-network-health.md) | Network health on the service map — per-edge RTT + connection failures | Accepted |
-| [2026-07-20](2026-07-20-endpoint-checks.md) | Endpoint checks — health when there is no traffic | Draft |
+| [2026-07-20](2026-07-20-endpoint-checks.md) | Endpoint checks — health when there is no traffic | Accepted |
 | [2026-07-21](2026-07-21-auth-oidc-rbac.md) | Authentication, RBAC and per-project ingest keys | Draft |
 | [2026-07-22](2026-07-22-green-carbon.md) | Green — per-service energy and carbon attribution (Kepler) | Accepted |
 | [2026-07-27](2026-07-27-projects-completion.md) | Projects completion — CRUD, per-project retention, status, chart toggles | Accepted |
@@ -62,6 +62,9 @@ only if the design needs to be pinned down before coding.
 | [2026-08-23](2026-08-23-service-map-transport.md) | Transport workloads on the service map — stop drawing mesh hops as dependencies | Accepted |
 | [2026-08-23](2026-08-23-virtual-targets.md) | Virtual targets — databases, caches and brokers on the map | Accepted |
 | [2026-08-24](2026-08-24-map-encoding.md) | A map that carries more meaning — boundaries, edge volume, undetected peers | Accepted |
+| [2026-08-25](2026-08-25-transport-hop-collapse.md) | Hop collapse — the dependency behind the proxy, from per-trace ancestry | Accepted |
+| [2026-08-25](2026-08-25-mesh-surfaces.md) | Mesh-facing surfaces — proxy RED and control-plane health | Accepted |
+| [2026-08-26](2026-08-26-cost-and-waste.md) | Cost and waste — reserved versus used | Draft |
 
 ## Conventions
 
