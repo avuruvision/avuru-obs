@@ -47,7 +47,7 @@ export function MapLegend({
       <span>dotted = observed connection, no traced calls</span>
       {infra && <span>diamond = mesh or gateway</span>}
       {mesh && <span>&ldquo;via&rdquo; on hover = recovered across a mesh hop</span>}
-      {virtual && <span>dashed hexagon = database, cache or queue</span>}
+      {virtual && <span>dashed barrel = database, cache or queue</span>}
       {peers && <span>hollow outline = seen in traffic, never heard from</span>}
       {grouping !== "none" && (
         <span>box = {grouping === "namespace" ? "namespace" : "service group"}</span>
