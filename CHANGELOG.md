@@ -11,6 +11,29 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-08-26
+
+**What it costs.** Every release so far answered *what is happening*. v0.9
+finished that story for a meshed cluster: what depends on what, what carries it,
+and what the kernel sees breaking underneath. This one answers a question that
+arrives from someone who will never open a service map — what is this cluster
+costing, and how much of that is buying nothing at all.
+
+It answers it from capacity rather than from an invoice. A cluster is sized and
+billed for what its workloads *reserve*; the gap between that and what they draw
+is the waste, and it is visible without a pricing API. There is none here, and
+there will not be: it would be the first outbound call in a product whose whole
+promise is that nothing leaves the cluster. Rates are chart values, and with
+none set the screens report cores and bytes and say so.
+
+Beside it, two places where the product was confidently wrong. A gateway an
+operator had not named like a gateway had its hops drawn as application
+dependencies — fixed by believing the labels a mesh writes on its own data
+plane, and only ever to *promote* a workload to transport, because a false
+positive there erases a real service from the map. And a read-only account was
+being offered the install's configuration screens, two of which could only
+answer it with an error.
+
 ### Added
 
 - **Cost & waste: what you reserved against what you used.** A new `cost`
@@ -1434,7 +1457,9 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
 
 <!--
 Release links:
-[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/avuruvision/avuru-obs/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/avuruvision/avuru-obs/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/avuruvision/avuru-obs/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/avuruvision/avuru-obs/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/avuruvision/avuru-obs/compare/v0.5.0...v0.6.0

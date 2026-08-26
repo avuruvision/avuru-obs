@@ -181,7 +181,7 @@ that could not yet give more.
 | **Mesh-facing surfaces** | A screen for the fabric itself: every proxy's rate, success rate and latency, with the calls it carried **in and out counted apart** — traffic arriving with none leaving is a proxy that stopped forwarding, a failure its own error rate need not show. Plus **control-plane health**, including the configuration your proxies *refused*: a rejected push means control plane and data plane disagree while the fleet keeps serving what it last accepted. Scraped from the gateway, because istiod is one Deployment and a DaemonSet would multiply every series by node count — [AEP](design/2026-08-25-mesh-surfaces.md) |
 | **Endpoint checks** | Health when nothing is calling. A group with no spans is either idle or dead, and only a probe tells the two apart at 3 a.m. Two consecutive failures move a group, never one. Each probe emits a span of its own — a check is synthetic traffic, not a side channel — so a failing check links straight to the trace of the request that failed, with the hub sending it as an OTLP *client* of the gateway and never writing `otel_traces` itself — [AEP](design/2026-07-20-endpoint-checks.md) |
 
-## v0.10 — what it costs — on trunk
+## v0.10 — what it costs — SHIPPED (v0.10.0)
 
 Every release so far has answered *what is happening*. v0.9 finished that
 story for a meshed cluster: what depends on what, what carries it, and what the
@@ -192,7 +192,7 @@ platform team gets from someone who will never open a service map.
 > that is buying nothing at all — in the same screens, from the same
 > collection, with nothing leaving the cluster to find out.**
 
-| Theme | Landed |
+| Theme | Shipped |
 |---|---|
 | **The capacity nobody drew on** | The release-defining item: every workload's reserved CPU and memory against what it actually used, ranked by the gap — and a workload that declares **no** request called out as its own state rather than shown as a zero, because the scheduler cannot place it deliberately and the kubelet evicts it first. Idle is measured against the **peak**, never the mean: a request cannot be cut below what a workload reached without risking eviction the next time it gets there. Prices are chart values; there is no pricing API, because it would be the first outbound call in a product whose promise is that nothing leaves the cluster. No new workload either — the collector already in the sensor carries both the cluster-object receiver and the leader-election Lease that keeps exactly one node reporting, so a cluster fact read from a DaemonSet cannot multiply by the size of the fleet — [AEP](design/2026-08-26-cost-and-waste.md) |
 | **A gateway you named anything at all** | Transport classification could only read names, and its built-in list is deliberately narrow because a false positive erases a real service from the map — so a gateway called `public-edge` had its hops drawn as dependencies until somebody noticed. The sensor now carries the labels a mesh writes on its own data plane. Labels only ever **promote**: a sidecar is a container inside the application's pod wearing the application's labels, so there is nothing to read and absence proves nothing. Names remain the answer there, and the operator's `applications` list still beats both — [AEP](design/2026-08-26-transport-from-labels.md) |
@@ -205,7 +205,7 @@ refused* — the most valuable number on the card — so it is not a mapping tab
 but a design question that needs someone running one to answer. The product
 states the limitation instead; the AEP records what is missing.
 
-## Beyond v0.10
+## Beyond v0.10 (directional)
 
 - **Read a second control plane**, once someone running one can say which of its
   signals answer the four questions the Istio card answers — and which of them
