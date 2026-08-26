@@ -38,11 +38,12 @@ export function CollectionSettings() {
   // it needs the infra-metrics module; without it the query would just 404.
   const infraMetrics = useModuleEnabled("infra-metrics");
   const { data, isLoading, isError } = useAgents(600, { enabled: infraMetrics });
-  // isAdmin mirrors the hub's securedAdmin gate on the overlay routes —
-  // defense in depth, same as the ingest-keys card.
+  // canAdminister mirrors the hub's securedAdmin gate on the overlay routes —
+  // defense in depth, same as the ingest-keys card. Not isAdmin: securedAdmin
+  // serves every caller with authentication off, where there is no grant to read.
   const runtimeControl = useCollectionRuntimeControl();
-  const { isAdmin } = useAuth();
-  const writable = runtimeControl && isAdmin;
+  const { canAdminister } = useAuth();
+  const writable = runtimeControl && canAdminister;
 
   return (
     <div className="flex flex-col gap-4">

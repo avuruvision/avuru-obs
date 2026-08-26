@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn";
 import { useTimeRange } from "@/hooks/use-time-range";
 import { useURLState } from "@/hooks/use-url-state";
 import { useHealthGroups } from "@/hooks/use-health-data";
+import { useAuth } from "@/hooks/use-auth";
 import { CenteredSpinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { statusDotClass, statusLabel } from "@/lib/health-status";
@@ -31,6 +32,10 @@ export function HealthScreen() {
   const selected = get("member") ?? null;
 
   const { data, isLoading } = useHealthGroups(time, includeAux);
+  // Grouping is authored in an admin-only editor. Pointing a read-only
+  // viewer at it sends them to a tab that is not theirs — the board still
+  // reads the same, it just stops offering a door they cannot open.
+  const { canAdminister } = useAuth();
   const groups = useMemo(() => data?.groups ?? [], [data]);
 
   const lanes = useMemo(() => {
@@ -46,11 +51,17 @@ export function HealthScreen() {
     return (
       <EmptyState icon={Activity} title="No service health yet">
         Health is derived from your traces (RED) — services appear here as soon
-        as telemetry flows. Then say which ones matter in{" "}
-        <Link href="/settings?tab=groups" className="text-primary hover:underline">
-          Settings → Groups
-        </Link>{" "}
-        (e.g. <code className="rounded bg-base-300 px-1">auth-service → T0</code>).
+        as telemetry flows.
+        {canAdminister && (
+          <>
+            {" "}
+            Then say which ones matter in{" "}
+            <Link href="/settings?tab=groups" className="text-primary hover:underline">
+              Settings → Groups
+            </Link>{" "}
+            (e.g. <code className="rounded bg-base-300 px-1">auth-service → T0</code>).
+          </>
+        )}
       </EmptyState>
     );
   }
@@ -107,14 +118,16 @@ export function HealthScreen() {
           {/* The lanes below are only as useful as the grouping behind them,
               and that is now editable — so the way to change it is one click
               from the board it changes. */}
-          <Link
-            href="/settings?tab=groups"
-            className="flex items-center gap-1 text-xs text-base-content/70 hover:text-base-content"
-            data-testid="manage-groups-link"
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-            Manage groups
-          </Link>
+          {canAdminister && (
+            <Link
+              href="/settings?tab=groups"
+              className="flex items-center gap-1 text-xs text-base-content/70 hover:text-base-content"
+              data-testid="manage-groups-link"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Manage groups
+            </Link>
+          )}
         </div>
 
         {TIER_LANES.map((lane) => {

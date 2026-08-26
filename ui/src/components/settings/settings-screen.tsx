@@ -33,7 +33,7 @@ type Tab = (typeof TABS)[number];
 // (useSearchParams).
 export function SettingsScreen() {
   const { get, setMany } = useURLState();
-  const { me, isAdmin } = useAuth();
+  const { me, isAdmin, canAdminister } = useAuth();
   // Groups belong to the service-health module; the tab follows it, like the
   // sidebar entries do.
   const healthEnabled = useModuleEnabled("service-health");
@@ -43,31 +43,40 @@ export function SettingsScreen() {
   const signedIn = me !== null && !me.user.anonymous;
   // "users" is admin-only; anyone else requesting either tab falls back to
   // general (matches the hub, which answers 403 on /api/v1/users to non-admins).
-  // "groups" is readable by anyone — the panel itself hides the write controls
-  // from non-admins, matching the hub's viewer-read/admin-write split. It is
-  // gated on the service-health MODULE, not on a role.
-  // "storage" and "status" read the same admin-only endpoint and are gated the
-  // same way: not at all. isAdmin is false on an auth-DISABLED install (there
-  // is no /auth/me to read a grant from), so gating on it would hide them from
-  // exactly the installs where anyone may use them. "access" is open on
-  // purpose — understanding a refusal is not a privilege, and the hub serves
-  // the matrix to any caller.
+  //
+  // "groups", "storage" and "status" are administration too, and are gated on
+  // canAdminister rather than isAdmin — false there means "no admin grant",
+  // which is also true on an auth-DISABLED install where anyone may use them,
+  // so isAdmin alone would hide them from exactly those installs.
+  //   · groups is a configuration editor. A viewer cannot change a group, and
+  //     the grouping it edits is already shown where it is read — the health
+  //     board's tier lanes. Offering the read-only editor to the shared demo
+  //     account was the visible half of that: a settings screen full of
+  //     controls it exists to not have.
+  //   · storage and status both read /api/v1/system/status, which is
+  //     securedAdmin. Shown to a viewer they rendered "couldn't reach the
+  //     hub" — an outage that was not happening, in place of a refusal that
+  //     was.
+  // "access" stays open on purpose — understanding a refusal is not a
+  // privilege, and the hub serves the matrix to any caller.
   const requested = get("tab");
   const tab = (TABS.find(
     (t) =>
       t === requested &&
       (t !== "users" || isAdmin) &&
       (t !== "account" || signedIn) &&
-      (t !== "groups" || healthEnabled),
+      (t !== "groups" || (healthEnabled && canAdminister)) &&
+      (t !== "storage" || canAdminister) &&
+      (t !== "status" || canAdminister),
   ) ?? "general") as Tab;
 
   const items: TabItem<Tab>[] = [
     { value: "general", label: "General" },
     { value: "collection", label: "Collection" },
-    ...(healthEnabled ? [{ value: "groups" as const, label: "Groups" }] : []),
-    { value: "storage", label: "Storage" },
+    ...(healthEnabled && canAdminister ? [{ value: "groups" as const, label: "Groups" }] : []),
+    ...(canAdminister ? [{ value: "storage" as const, label: "Storage" }] : []),
     { value: "access", label: "Access" },
-    { value: "status", label: "Status" },
+    ...(canAdminister ? [{ value: "status" as const, label: "Status" }] : []),
     ...(signedIn ? [{ value: "account" as const, label: "Account" }] : []),
     ...(isAdmin ? [{ value: "users" as const, label: "Users" }] : []),
   ];

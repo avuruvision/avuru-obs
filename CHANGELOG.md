@@ -11,6 +11,28 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Settings stops offering a read-only account the install's configuration.**
+  The shared demo viewer — and any viewer — was shown **Groups**, **Storage**
+  and **Status**. Groups is a group *editor*: every control in it was already
+  hidden from a non-admin, so what a viewer got was a configuration screen
+  defined by what it would not let them do. Storage and Status are worse than
+  inert: their only endpoint (`/api/v1/system/status`) is admin-only, so both
+  rendered "Couldn't reach the hub" — an outage that was not happening, in
+  place of a refusal that was. All three now follow the same rule as Users, and
+  the health board no longer points a viewer at a group editor it will not
+  open. The gate is "no admin grant **and** authentication is on", not "not an
+  admin": the latter is also true on an install running without authentication,
+  and would have hidden the configuration screens from exactly the installs
+  where anyone may use them.
+- **Administration works again on an install running without authentication.**
+  The same "not an admin" test gated every write control in Settings — new
+  project, ingest keys, the collection overlay, the group editor — while the
+  hub's `securedAdmin` serves *every* caller when authentication is off. The
+  UI was refusing what the hub allows, so on an auth-less install none of that
+  configuration could be reached from the product at all.
+
 ## [0.9.0] — 2026-08-25
 
 **The mesh and the kernel.** v0.8 stopped the service map *lying* about a meshed
