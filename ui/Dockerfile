@@ -6,6 +6,9 @@
 # build runs Node under QEMU — an hour of emulation that then dies on
 # "qemu: uncaught target signal 4" (this failed the v0.2.0 cut). Only the
 # nginx stage below is per-architecture.
+# Node stays on the Active LTS line. node:26 is the Current release until
+# 2026-10-28 and is not what a shipped artifact should be built on; revisit
+# once 26 is LTS, which is also when 24 enters maintenance.
 FROM --platform=$BUILDPLATFORM node:24-alpine AS build
 WORKDIR /src/ui
 COPY ui/package.json ui/package-lock.json ./
@@ -13,7 +16,7 @@ RUN npm ci --no-audit --no-fund
 COPY ui/ ./
 RUN npm run build
 
-FROM nginx:1.27-alpine
+FROM nginx:1.31-alpine
 # Patch base-image OS packages (OpenSSL/zlib/expat, …) to the latest Alpine
 # security-fixed versions at build time. The floating nginx:1.27-alpine tag can
 # lag behind Alpine's patched packages; this keeps the image scanner-clean
