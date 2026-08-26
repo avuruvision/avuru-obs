@@ -107,10 +107,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/green", label: "Green", icon: Leaf, module: "green", docs: "signals/green" },
       // Cost is Green's nearest neighbour, not a separate concern: one measures
       // the energy a workload draws, the other the capacity nobody drew on.
-      // No `docs:` yet — the docs site has no cost page, and this file's rule
-      // is that a link which 404s is worse than no link. It arrives with the
-      // page, in the release's docs-align pass.
-      { href: "/cost", label: "Cost", icon: Wallet, module: "cost" },
+      { href: "/cost", label: "Cost", icon: Wallet, module: "cost", docs: "signals/cost" },
     ],
   },
   {

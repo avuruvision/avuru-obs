@@ -30,8 +30,8 @@ light up — no SDK, no sidecars, no YAML archaeology.
 
 </details>
 
-> **Status: v0.9.0 released** (2026-08-25); `main` is under active development
-> toward v0.10. See [CHANGELOG.md](CHANGELOG.md) for what shipped,
+> **Status: v0.10.0 released** (2026-08-26); `main` is under active development
+> toward v0.11. See [CHANGELOG.md](CHANGELOG.md) for what shipped,
 > [ROADMAP.md](ROADMAP.md) for where it's headed and
 > [`agent_docs/architecture.md`](agent_docs/architecture.md) for the living
 > architecture.
@@ -142,6 +142,21 @@ Beyond the core signals, the day-2 layer:
   because each probe emits a span of its own, a failing check links straight to
   the trace of the request that failed. Two consecutive failures move a group,
   never one.
+- **What the cluster is costing, and what that buys** *(v0.10)* — a cluster is
+  sized and billed for what its workloads *reserve*, so the gap between that and
+  what they draw is money buying nothing. Every workload and node is ranked by
+  that gap, with idle measured against the **peak** a workload reached and never
+  its average — you cannot cut a request below the peak without risking the
+  eviction that peak would cause. A workload declaring no request at all is
+  called out as its own state, not shown as a zero. Rates are your numbers in
+  `values.yaml`: there is no pricing API here, and nothing leaves the cluster to
+  produce the figure.
+- **A gateway you named anything at all** *(v0.10)* — transport classification
+  could only read workload names, so a gateway an operator called `public-edge`
+  had its hops drawn as application dependencies. The map now reads the labels
+  a mesh writes on its own data plane — Gateway API, Istio, Linkerd — and
+  believes them. Labels only ever promote a workload to transport, never demote
+  one, so an install with none of them classifies exactly as it did before.
 - **Personal API tokens** *(v0.5)* — scripts and CI call the API with
   `Authorization: Bearer avurut_…` instead of a scraped cookie: hashed at
   rest, shown once, resolving to the owner's live permissions, so disabling a
