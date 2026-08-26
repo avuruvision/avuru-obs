@@ -230,6 +230,16 @@ modules:
     enabled: false
   green:
     enabled: false
+  # Cost: what each workload RESERVED against what it actually used — the
+  # capacity you are paying for and not drawing on. Born OFF for two reasons
+  # that both matter at upgrade: it starts watching cluster-scoped objects, and
+  # it takes a coordination.k8s.io Lease, neither of which an install had
+  # before. REQUIRES modules.infraMetrics — the "used" half of every number it
+  # prints is the kubeletstats series that module owns — enforced by a chart
+  # guard. Collect by ALSO setting sensor.agent.cluster.enabled; see the cost:
+  # and sensor.agent.cluster: blocks below.
+  cost:
+    enabled: false
 
 # Mesh control plane. Rendered into the GATEWAY's collector config, not the
 # sensor's: istiod is a single Deployment, and the sensor is a DaemonSet, so
@@ -250,6 +260,20 @@ mesh:
       # pilot_total_xds_rejects = config the proxies REFUSED — the one signal
       # nothing else in the product can produce.
       keep: "pilot_xds|pilot_xds_pushes|pilot_proxy_convergence_time.*|pilot_total_xds_rejects"
+
+# Cost. Rates are yours to declare: this product makes no outbound call, so
+# there is no pricing API to look them up, and inventing a number would be
+# worse than showing none. Left unset, the screens report cores and bytes and
+# say that no rates are configured; set, they also report money.
+#
+# Both are per hour of RESERVED capacity — what the scheduler set aside, which
+# is what a node is sized (and billed) for, not what the process touched.
+cost:
+  rates:
+    # e.g. 0.0331 for a machine costing ~$24/vCPU/month.
+    cpuCoreHour: 0
+    memGiBHour: 0
+    currency: ""
 
 # Alerting rules and channels. Rendered to a ConfigMap the hub reads (mounted at
 # AVURUOBS_ALERTS_CONFIG) when modules.alerting.enabled. No rules = nothing
@@ -481,6 +505,18 @@ sensor:
     kubeletstats:
       enabled: true
       interval: 30s
+    # Cluster-scoped objects: what each container REQUESTS and is LIMITED to,
+    # and what each node has allocatable. Only effective with modules.cost.
+    #
+    # Cluster objects are not per-node facts, and this collector is a DaemonSet
+    # — so the receiver runs behind a leader-election Lease and exactly one node
+    # reports them. Without that every series would be multiplied by node count.
+    cluster:
+      enabled: true
+      interval: 30s
+      # Lease name, in the release namespace. Change it only if two avuru-obs
+      # installs share a namespace, which they should not.
+      leaseName: ""
     resources:
       requests:
         cpu: 50m

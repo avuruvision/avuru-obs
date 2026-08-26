@@ -88,6 +88,7 @@ otel
 {{- if .Values.modules.alerting.enabled -}}{{- $mods = append $mods "alerting" -}}{{- end -}}
 {{- if .Values.modules.mesh.enabled -}}{{- $mods = append $mods "mesh" -}}{{- end -}}
 {{- if .Values.modules.green.enabled -}}{{- $mods = append $mods "green" -}}{{- end -}}
+{{- if .Values.modules.cost.enabled -}}{{- $mods = append $mods "cost" -}}{{- end -}}
 {{- join "," $mods -}}
 {{- end -}}
 
@@ -385,6 +386,24 @@ http://{{ include "avuruobs.fullname" . }}-hub:80/internal/v1/ingest-keys/valida
      therefore render as placeholder ConfigMaps the applier fills in place.
      Same true/"" contract as the collect* helpers — consume via `if include`,
      never compare to "false". */}}
+{{/* True when the node collector should run the cluster-object receiver:
+     the cost module AND the sensor sub-flag. Cluster objects are not per-node
+     facts and this is a DaemonSet, so the receiver never renders without the
+     leader-election extension beside it — the two travel together in
+     sensor-config.yaml, and template-test.sh asserts they do. The v0.9 sensor
+     crash came from exactly this shape of pair coming apart. Same true/""
+     contract as the sibling collect* helpers — consume via `if include`, never
+     compare to "false". */}}
+{{- define "avuruobs.collectCost" -}}
+{{- if and .Values.modules.cost.enabled .Values.sensor.agent.cluster.enabled -}}true{{- end -}}
+{{- end -}}
+
+{{/* The leader-election Lease name. Defaults to the release's fullname so two
+     installs in one namespace cannot silently elect across each other. */}}
+{{- define "avuruobs.costLeaseName" -}}
+{{- .Values.sensor.agent.cluster.leaseName | default (printf "%s-cluster" (include "avuruobs.fullname" .)) -}}
+{{- end -}}
+
 {{- define "avuruobs.collectionPlaceholders" -}}
 {{- if and .Values.collection.runtimeControl.enabled .Values.sensor.enabled -}}true{{- end -}}
 {{- end -}}

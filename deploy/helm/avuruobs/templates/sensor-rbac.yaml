@@ -32,6 +32,45 @@ rules:
   - apiGroups: [""]
     resources: ["nodes/stats", "nodes/proxy"]
     verbs: ["get"]
+{{- if include "avuruobs.collectCost" . }}
+  # Cost (k8s_cluster + k8s_leader_elector). Rendered ONLY with the module, so
+  # an install that does not run it gains no permission it did not have: this
+  # is the one place the sensor reads cluster-scoped objects rather than the
+  # node's own. The object list is upstream's documented set for the receiver —
+  # it watches all of them regardless of which metrics are enabled, and a
+  # narrowed role buys a quieter ClusterRole in exchange for a log full of
+  # informer errors.
+  - apiGroups: [""]
+    resources:
+      - events
+      - namespaces
+      - namespaces/status
+      - nodes/spec
+      - persistentvolumes
+      - persistentvolumeclaims
+      - pods/status
+      - replicationcontrollers
+      - replicationcontrollers/status
+      - resourcequotas
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["daemonsets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+  # The Lease the leader election runs on. Without it every node would report
+  # every cluster-scoped series and each one would be counted once per node.
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

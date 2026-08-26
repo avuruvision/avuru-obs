@@ -15,6 +15,7 @@ const HELM_VALUE: Record<Exclude<ModuleName, "core">, string> = {
   alerting: "modules.alerting.enabled",
   mesh: "modules.mesh.enabled",
   green: "modules.green.enabled",
+  cost: "modules.cost.enabled",
 };
 
 const LABEL: Record<Exclude<ModuleName, "core">, string> = {
@@ -26,6 +27,7 @@ const LABEL: Record<Exclude<ModuleName, "core">, string> = {
   alerting: "Alerting",
   mesh: "Service mesh",
   green: "Energy & carbon",
+  cost: "Cost & waste",
 };
 
 // Renders `children` unless this install doesn't run `module`, in which case

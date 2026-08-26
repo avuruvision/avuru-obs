@@ -13,7 +13,8 @@ export type ModuleName =
   | "service-health"
   | "alerting"
   | "mesh"
-  | "green";
+  | "green"
+  | "cost";
 
 export interface CapabilitiesResponse {
   version: string;
