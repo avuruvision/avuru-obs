@@ -127,9 +127,16 @@ test.describe("auth: demo", () => {
     await expect(page).not.toHaveURL(/\/login/);
     await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Switch project" })).toContainText("demo");
-    // Read-only: the admin-only Users tab is absent in Settings.
+    // Read-only: none of the administration tabs are offered. Users was
+    // always gated; Groups, Storage and Status were not, so the shared demo
+    // account was handed a group editor it could not save and two tabs whose
+    // only endpoint refuses it. settings-viewer.spec.ts proves the rule
+    // against a stubbed viewer on every run; this proves it against the real
+    // demo account, which is where it was noticed.
     await page.goto("/settings");
-    await expect(page.getByRole("tab", { name: "Users" })).toHaveCount(0);
+    for (const name of ["Users", "Groups", "Storage", "Status"]) {
+      await expect(page.getByRole("tab", { name })).toHaveCount(0);
+    }
   });
 
   // The demo account is an ordinary LOCAL user, so the Account tab used to
