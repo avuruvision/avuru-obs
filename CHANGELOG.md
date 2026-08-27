@@ -13,6 +13,69 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **The shape of one request.** A trace could be read span by span — a
+  waterfall, a tree, a flamegraph — or not at all: at three hundred spans the
+  services it crossed, and the order it crossed them in, are in there and cannot
+  be seen. The service map does not help, because it aggregates every trace in
+  the window and so cannot describe a single one. A new **Path** view on the
+  trace answers the question between them: which services this request touched,
+  what called what, and where its time went.
+
+  Each service is weighted by the time spent **inside it** rather than by how
+  long its span lasted — a caller's span contains its callee's, so duration
+  would credit the entry point with the whole request no matter where the time
+  actually went. Dependencies that never sent a span of their own — a database,
+  a cache, a third-party API — are drawn as the terminal hops they are, named by
+  the endpoint the caller recorded and marked as measured at the caller, because
+  the far end never confirmed any of it. A branch that failed is red end to end.
+
+  Selecting **focus** on a service reduces the view to what that service caused,
+  which is what filtering a trace by a parent looks like on a graph.
+
+- **A page for one service.** Clicking a service — in the inventory or on the
+  map — used to open a filtered trace list, which answers what it served and
+  nothing else. Asking the ordinary next questions meant visiting four screens
+  and re-applying the same filter in each. There is now a page per service: its
+  health and why, its rate, errors and latency over time, **who calls it and
+  what it depends on** in two separate lists, and its traces, logs and error
+  issues behind tabs.
+
+  Callers and callees are shown apart on purpose — one is who is affected when
+  this service breaks, the other is what could be breaking it, and merging them
+  makes both harder to read. The dependency numbers come from the same edge set
+  the map draws, so the two screens cannot disagree about what depends on what,
+  and a dependency the hub had to recover across a proxy says so rather than
+  passing as directly observed. Latency that was never measured shows as a dash,
+  never as zero.
+
+  Nothing new is collected or stored: the page is composed from reads the
+  product already made.
+
+- **Where the traffic actually goes.** Every trace view so far returned rows —
+  which requests, and how slow. None answered *how much of what*, so working out
+  that one route carries 60% of the traffic meant exporting the operations table
+  and adding it up by hand. A new **Breakdown** tab on Traces draws that
+  distribution as a treemap and a donut, grouped by service, operation, outcome,
+  span kind, or any span or resource attribute — an HTTP route, a database, a
+  namespace, an environment, a business tag. It takes the filter panel already
+  above it, so the chart and the trace list beneath it always describe the same
+  traffic, and a slice drills straight into the traces behind it.
+
+  Two things make it worth trusting. It can be weighted by **requests or by
+  total time**, and the two rank differently — a service at 5% of requests and
+  18% of the wall time is invisible under a request count and is exactly what a
+  latency investigation is looking for. And it is honest about its tail: the
+  totals are computed over every matching span before the top-N is cut, so what
+  the chart does not draw comes back as its own slice instead of the top eight
+  quietly redrawing themselves as the whole estate.
+
+  It also separates three questions the product used to answer as one:
+  **requests served** (what each service was asked to do), **trace entry
+  points** (where traffic entered, one per trace), and **all spans**. On a
+  meshed estate the first two differ by a factor of two. Nothing new is
+  collected — it reads the traces already stored —
+  [AEP](design/2026-08-27-trace-analytics.md)
+
 - **Refused: a third answer to "did it work?"** A server that replies 4xx has
   neither failed nor succeeded, and the product only had those two words for
   it — so a WAF blocking a request, or an authorization layer turning one away,

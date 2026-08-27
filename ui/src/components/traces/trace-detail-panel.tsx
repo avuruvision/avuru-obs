@@ -18,6 +18,7 @@ import { SpansTable } from "./views/spans-table";
 import { Flamegraph } from "./views/flamegraph";
 import { TraceStats } from "./views/trace-stats";
 import { TraceTree } from "./views/trace-tree";
+import { TracePath } from "./views/trace-path";
 import { TraceJson } from "./views/trace-json";
 import { TraceDiff } from "./views/trace-diff";
 import { CLEAR_WORKSPACE_PARAMS } from "./workspace-params";
@@ -30,6 +31,12 @@ const VIEWS = [
   { value: "flame", label: "Flamegraph" },
   { value: "stats", label: "Statistics" },
   { value: "graph", label: "Tree" },
+  // "Path" is the SERVICE-level shape of this one request. It is not the
+  // aggregated graph the Tree replaced: that drew spans, and the estate-wide
+  // topology it aggregated already lives on the service map. This answers the
+  // question neither does — which services this request crossed, in what order,
+  // and where its time went — which a 300-card tree cannot show at a glance.
+  { value: "path", label: "Path" },
   { value: "json", label: "JSON" },
 ] as const;
 
@@ -228,6 +235,14 @@ export function TraceDetailPanel({
               {view === "stats" && <TraceStats trace={trace} />}
               {view === "graph" && (
                 <TraceTree
+                  key={trace.traceId}
+                  trace={trace}
+                  selectedSpanId={selectedSpanId}
+                  onSelectSpan={onSelectSpan}
+                />
+              )}
+              {view === "path" && (
+                <TracePath
                   key={trace.traceId}
                   trace={trace}
                   selectedSpanId={selectedSpanId}

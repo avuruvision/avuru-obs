@@ -40,6 +40,11 @@ export const queryKeys = {
     filters: Record<string, string | number | boolean | undefined>,
   ) => [p, "traces", "search", { ...t, ...filters }] as const,
   trace: (p: string, traceId: string) => [p, "traces", "detail", traceId] as const,
+  breakdown: (
+    p: string,
+    t: TimeParams,
+    filters: Record<string, string | number | boolean | undefined>,
+  ) => [p, "traces", "breakdown", { ...t, ...filters }] as const,
   heatmap: (
     p: string,
     t: TimeParams,

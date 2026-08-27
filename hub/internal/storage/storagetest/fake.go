@@ -27,31 +27,34 @@ type Fake struct {
 	ControlPlane          storage.MeshControlPlane
 	// Endpoint-check results: per-check history for the results route, and the
 	// recent-states map the health evaluation's consecutive-failure rule reads.
-	CheckResultsByID map[string][]storage.CheckResult
-	CheckStates      map[string][]storage.CheckResult
-	RecordedChecks   []storage.CheckResult
-	Virtual          []storage.VirtualTarget
-	NetEdgeHealth    []storage.NetworkEdgeHealth
-	Zones            []storage.ZoneTraffic
-	Tags             []storage.TagKey
-	Ops              []storage.OperationStats
-	Page             storage.TracePage
-	Traces           map[string]storage.Trace
-	SpanTraces       map[string]string // spanId -> traceId
-	Heat             storage.Heatmap
-	LogPage          storage.LogPage
-	TraceLogs        map[string][]storage.LogRecord
-	Stats            storage.SystemStats
-	StatsErr         error
-	Nodes            []storage.NodeStat
-	Pods             []storage.PodStat
-	Agents           []storage.AgentNode
-	Tenants          []string
-	TenantsErr       error
-	RED              []storage.REDSeries
-	Written          []storage.ProfileSample
-	Profiled         []storage.ProfiledService
-	Flame            storage.FlameNode
+	CheckResultsByID   map[string][]storage.CheckResult
+	CheckStates        map[string][]storage.CheckResult
+	RecordedChecks     []storage.CheckResult
+	Virtual            []storage.VirtualTarget
+	NetEdgeHealth      []storage.NetworkEdgeHealth
+	Zones              []storage.ZoneTraffic
+	Tags               []storage.TagKey
+	Ops                []storage.OperationStats
+	Breakdown          storage.Breakdown
+	BreakdownErr       error
+	LastBreakdownQuery storage.BreakdownQuery
+	Page               storage.TracePage
+	Traces             map[string]storage.Trace
+	SpanTraces         map[string]string // spanId -> traceId
+	Heat               storage.Heatmap
+	LogPage            storage.LogPage
+	TraceLogs          map[string][]storage.LogRecord
+	Stats              storage.SystemStats
+	StatsErr           error
+	Nodes              []storage.NodeStat
+	Pods               []storage.PodStat
+	Agents             []storage.AgentNode
+	Tenants            []string
+	TenantsErr         error
+	RED                []storage.REDSeries
+	Written            []storage.ProfileSample
+	Profiled           []storage.ProfiledService
+	Flame              storage.FlameNode
 
 	ServiceEnergies    []storage.ServiceEnergy
 	NodeEnergies       []storage.NodeEnergy
@@ -289,6 +292,11 @@ func (f *Fake) ZoneTraffic(_ context.Context, q storage.ServiceQuery) ([]storage
 func (f *Fake) TraceOverview(_ context.Context, q storage.OverviewQuery) ([]storage.OperationStats, error) {
 	f.LastOverviewQuery = q
 	return f.Ops, nil
+}
+
+func (f *Fake) TraceBreakdown(_ context.Context, q storage.BreakdownQuery) (storage.Breakdown, error) {
+	f.LastBreakdownQuery = q
+	return f.Breakdown, f.BreakdownErr
 }
 
 func (f *Fake) SearchTraces(_ context.Context, q storage.TraceQuery) (storage.TracePage, error) {

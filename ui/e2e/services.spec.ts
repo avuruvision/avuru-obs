@@ -5,7 +5,7 @@ import { test, expect } from "@playwright/test";
 const SEED_SERVICE = "seed-checkout";
 
 test.describe("services inventory (seeded data)", () => {
-  test("lists the seeded service and drills into its traces", async ({ page }) => {
+  test("lists the seeded service and drills into its detail page", async ({ page }) => {
     await page.goto("/services");
 
     const row = page.getByRole("row").filter({ hasText: SEED_SERVICE });
@@ -14,6 +14,7 @@ test.describe("services inventory (seeded data)", () => {
 
     await row.click();
     await expect(page).toHaveURL(new RegExp(`service=${SEED_SERVICE}`));
+    await expect(page.getByRole("heading", { name: SEED_SERVICE })).toBeVisible();
   });
 
   test("sorts by a column and toggles direction", async ({ page }) => {

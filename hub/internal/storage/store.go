@@ -369,6 +369,105 @@ type Trace struct {
 	Spans   []Span
 }
 
+// BreakdownDimension names the span property a breakdown groups by. It is a
+// CLOSED set: the dimension reaches SQL as a column expression, so accepting an
+// arbitrary string here would be an injection seam. The two parameterised
+// dimensions (AttributeKey/ResourceKey) carry their key as data instead, bound
+// as a query argument like every other filter value.
+type BreakdownDimension string
+
+const (
+	BreakdownService   BreakdownDimension = "service"
+	BreakdownOperation BreakdownDimension = "operation"
+	BreakdownKind      BreakdownDimension = "kind"
+	BreakdownStatus    BreakdownDimension = "status"
+	// BreakdownAttribute groups by SpanAttributes[Key] — the span's own
+	// property (http.route, db.system, messaging.destination...).
+	BreakdownAttribute BreakdownDimension = "attribute"
+	// BreakdownResource groups by ResourceAttributes[Key] — a property of the
+	// workload that emitted the span (k8s.namespace.name, deployment.environment,
+	// a business tag under avuru.tag.*).
+	BreakdownResource BreakdownDimension = "resource"
+)
+
+// BreakdownScope selects WHICH spans a breakdown counts. The three answers are
+// genuinely different questions, and collapsing them is how a chart comes to
+// mean nothing:
+//
+//   - ScopeEntry — Server/Consumer spans: "requests each service SERVED".
+//     The same population RED and the operation overview aggregate, so a
+//     breakdown by service reconciles with the numbers beside it.
+//   - ScopeRoot — parentless spans only: "requests that ENTERED the estate",
+//     one row per trace. A service appears here only when traffic starts at it,
+//     so this is the breakdown that answers "where does our traffic come from".
+//   - ScopeAll — every span. The only scope whose duration sum double-counts
+//     (a parent's duration contains its children's), so it is for span-shape
+//     questions, never for "where does the time go".
+type BreakdownScope string
+
+const (
+	ScopeEntry BreakdownScope = "entry"
+	ScopeRoot  BreakdownScope = "root"
+	ScopeAll   BreakdownScope = "all"
+)
+
+// BreakdownQuery filters TraceBreakdown. The filter fields mirror TraceQuery so
+// a breakdown and the trace list beneath it describe the same population.
+type BreakdownQuery struct {
+	Tenant  string
+	Tenants []string // resolved tenant set; empty means []string{Tenant}
+	Range   TimeRange
+	// GroupBy is the dimension; Key is its map key for attribute/resource and
+	// is ignored otherwise.
+	GroupBy     BreakdownDimension
+	Key         string
+	Scope       BreakdownScope
+	Service     string
+	Operation   string
+	Status      string            // "", "ok", "error", "refused"
+	Tags        map[string]string // span-attribute equality filters
+	MinDuration time.Duration
+	MaxDuration time.Duration
+	ExcludeAux  bool // drop health-check/metrics/control-plane traffic
+	// Limit caps the groups RETURNED, not the groups counted: everything past
+	// it is folded into Breakdown.Other so the parts still sum to the whole.
+	Limit int
+}
+
+// BreakdownGroup is one slice of a breakdown — a distinct value of the grouping
+// dimension with its RED numbers.
+type BreakdownGroup struct {
+	// Key is the dimension value. Empty means the spans carried no such
+	// attribute; the API reports that as its own group rather than dropping the
+	// rows, because "how much of my traffic is unlabelled" is the question a
+	// tagging rollout is actually asking.
+	Key          string
+	Count        uint64
+	ErrorCount   uint64
+	RefusedCount uint64
+	// DurationSum is the total wall time of the group's spans. It is what makes
+	// a treemap answer "where does the time go" rather than "what is called
+	// most" — a rare, slow operation and a frequent, fast one look identical
+	// under count and nothing alike under this.
+	DurationSum time.Duration
+	P50         time.Duration
+	P95         time.Duration
+	P99         time.Duration
+}
+
+// Breakdown is a grouped aggregate over spans, plus the totals needed to render
+// it as a part-of-whole chart honestly.
+type Breakdown struct {
+	Groups []BreakdownGroup
+	// Total is the aggregate over EVERY matching span, including the groups
+	// past Limit. A treemap sized against the returned rows alone would silently
+	// redraw itself as 100% whenever the tail was cut, so the tail is reported.
+	Total BreakdownGroup
+	// GroupCount is how many distinct values exist in total — the number that
+	// tells a reader the returned rows are a top-N of something much larger.
+	GroupCount uint64
+}
+
 // HeatmapQuery filters TraceHeatmap.
 type HeatmapQuery struct {
 	Tenant          string
@@ -967,6 +1066,9 @@ type Store interface {
 	// window — what the consecutive-failure rule needs, and no more.
 	LatestCheckStates(ctx context.Context, q ServiceQuery, perCheck int) (map[string][]CheckResult, error)
 	TraceOverview(ctx context.Context, q OverviewQuery) ([]OperationStats, error)
+	// TraceBreakdown groups spans by one dimension for the part-of-whole views
+	// (treemap, donut) and the top-N tables built on the same numbers.
+	TraceBreakdown(ctx context.Context, q BreakdownQuery) (Breakdown, error)
 	SearchTraces(ctx context.Context, q TraceQuery) (TracePage, error)
 	// GetTrace/FindSpanTrace/LogsForTrace (and the error-issue reads below)
 	// take the resolved tenant set — same semantics as the Tenants query
