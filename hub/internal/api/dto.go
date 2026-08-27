@@ -276,3 +276,106 @@ func toTraceResponse(t storage.Trace) traceResponse {
 	}
 	return resp
 }
+
+// breakdownGroupDTO is one slice of a part-of-whole view.
+type breakdownGroupDTO struct {
+	// Key is the dimension's value. Empty is meaningful — spans that carry no
+	// such attribute — and the UI labels it rather than hiding it.
+	Key          string  `json:"key"`
+	Count        uint64  `json:"count"`
+	ErrorCount   uint64  `json:"errorCount"`
+	ErrorRate    float64 `json:"errorRate"`
+	RefusedCount uint64  `json:"refusedCount,omitempty"`
+	RefusedRate  float64 `json:"refusedRate,omitempty"`
+	// DurationMsSum is the group's total wall time — the treemap's other
+	// weighting, and the one that answers "where does the time go".
+	DurationMsSum float64 `json:"durationMsSum"`
+	// Quantiles are absent on the synthetic "other" group: quantiles of a
+	// population cannot be recovered by subtracting one sub-population from
+	// another, and a plausible wrong number is worse than none.
+	P50Ms float64 `json:"p50Ms,omitempty"`
+	P95Ms float64 `json:"p95Ms,omitempty"`
+	P99Ms float64 `json:"p99Ms,omitempty"`
+}
+
+type breakdownResponse struct {
+	// GroupBy/Scope echo what was asked, so a cached response is
+	// self-describing and a chart can title itself without re-reading the URL.
+	GroupBy string              `json:"groupBy"`
+	Scope   string              `json:"scope"`
+	Groups  []breakdownGroupDTO `json:"groups"`
+	// Other aggregates every group past the limit. Present only when the tail
+	// is non-empty — and then it MUST be drawn: a part-of-whole chart that
+	// silently omits its tail redraws a top-20 as the entire estate.
+	Other *breakdownGroupDTO `json:"other,omitempty"`
+	// Total covers every matching span, tail included.
+	Total breakdownGroupDTO `json:"total"`
+	// GroupCount is how many distinct values exist, so a reader can see that
+	// the rows are a top-N of something larger.
+	GroupCount uint64 `json:"groupCount"`
+}
+
+func toBreakdownGroupDTO(g storage.BreakdownGroup) breakdownGroupDTO {
+	return breakdownGroupDTO{
+		Key:           g.Key,
+		Count:         g.Count,
+		ErrorCount:    g.ErrorCount,
+		ErrorRate:     ratio(g.ErrorCount, g.Count),
+		RefusedCount:  g.RefusedCount,
+		RefusedRate:   ratio(g.RefusedCount, g.Count),
+		DurationMsSum: ms(g.DurationSum),
+		P50Ms:         ms(g.P50),
+		P95Ms:         ms(g.P95),
+		P99Ms:         ms(g.P99),
+	}
+}
+
+// toBreakdownResponse maps a breakdown and derives the tail bucket.
+//
+// The tail is arithmetic on the totals rather than a second query: ClickHouse
+// already computed the aggregate over every matching span, so what the returned
+// groups do not account for IS the tail, exactly.
+func toBreakdownResponse(bd storage.Breakdown, groupBy, scope string) breakdownResponse {
+	if groupBy == "" {
+		groupBy = string(storage.BreakdownService)
+	}
+	resp := breakdownResponse{
+		GroupBy:    groupBy,
+		Scope:      scope,
+		Groups:     make([]breakdownGroupDTO, 0, len(bd.Groups)),
+		Total:      toBreakdownGroupDTO(bd.Total),
+		GroupCount: bd.GroupCount,
+	}
+	var shown storage.BreakdownGroup
+	for _, g := range bd.Groups {
+		resp.Groups = append(resp.Groups, toBreakdownGroupDTO(g))
+		shown.Count += g.Count
+		shown.ErrorCount += g.ErrorCount
+		shown.RefusedCount += g.RefusedCount
+		shown.DurationSum += g.DurationSum
+	}
+	if bd.Total.Count > shown.Count {
+		other := storage.BreakdownGroup{
+			Key:          "",
+			Count:        bd.Total.Count - shown.Count,
+			ErrorCount:   saturatingSub(bd.Total.ErrorCount, shown.ErrorCount),
+			RefusedCount: saturatingSub(bd.Total.RefusedCount, shown.RefusedCount),
+			DurationSum:  bd.Total.DurationSum - shown.DurationSum,
+		}
+		dto := toBreakdownGroupDTO(other)
+		dto.P50Ms, dto.P95Ms, dto.P99Ms = 0, 0, 0
+		resp.Other = &dto
+	}
+	return resp
+}
+
+// saturatingSub keeps a derived count from wrapping around on uint64. The
+// totals and the group rows come from the same aggregation pass, so a>=b holds
+// in practice; this exists so that a driver or ClickHouse surprise shows up as
+// a zero rather than as 18 quintillion errors on a dashboard.
+func saturatingSub(a, b uint64) uint64 {
+	if a < b {
+		return 0
+	}
+	return a - b
+}

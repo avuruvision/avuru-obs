@@ -240,6 +240,7 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 	mux.Handle("GET /api/v1/service-map", a.secured(auth.RoleViewer, a.handleServiceMap))
 	mux.Handle("GET /api/v1/traces", a.secured(auth.RoleViewer, a.handleSearchTraces))
 	mux.Handle("GET /api/v1/traces/overview", a.secured(auth.RoleViewer, a.handleTraceOverview))
+	mux.Handle("GET /api/v1/traces/breakdown", a.secured(auth.RoleViewer, a.handleTraceBreakdown))
 	mux.Handle("GET /api/v1/traces/heatmap", a.secured(auth.RoleViewer, a.handleHeatmap))
 	mux.Handle("GET /api/v1/traces/{traceId}", a.secured(auth.RoleViewer, a.handleGetTrace))
 	mux.Handle("GET /api/v1/spans/{spanId}", a.secured(auth.RoleViewer, a.handleGetSpan))
