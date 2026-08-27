@@ -38,6 +38,12 @@ deploy/helm/**/*.tgz
 # ── Sensor (first-party Go modules) ───────────────────────────
 sensor/tdp-estimator/tdp-estimator
 
+# ── Dev tools (first-party Go modules) ────────────────────────
+# Both are run with `go run .` — the Makefile seed targets and e2e/compat_test.go
+# never look for a built binary, so nothing needs these on disk.
+tools/seed/seed
+tools/compatsend/compatsend
+
 # ── Logs & temp ───────────────────────────────────────────────
 *.log
 logs/
