@@ -115,6 +115,49 @@
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }
 
+/* ========================================
+   Categorical series palette
+   ========================================
+   Eight hues in a FIXED order for part-of-whole charts (breakdown treemap and
+   donut). Both modes are selected, not flipped: the dark steps are the same
+   hues re-stepped for the navy surface and validated against it.
+
+   Rules this palette exists to enforce:
+   - Slots are assigned in this order and NEVER cycled. A ninth value folds
+     into `--series-other` — a neutral, because "everything else" is not an
+     identity and must not look like one.
+   - Status colours (success/warning/error) are reserved for state and are
+     deliberately absent here, so an error red on a chart always means error.
+
+   Validated (OKLab CVD ΔE, adjacent pairs) against the card surface in both
+   modes: light on --color-base-200 #f8fafc, dark on #0f1729. Three light steps
+   sit below 3:1 contrast, which is why every chart drawn from this palette
+   ships direct labels AND a table view. Re-run the check before editing a hex.
+   ======================================== */
+:root {
+  --series-1: #2a78d6; /* blue */
+  --series-2: #eb6834; /* orange */
+  --series-3: #1baf7a; /* aqua */
+  --series-4: #eda100; /* yellow */
+  --series-5: #e87ba4; /* magenta */
+  --series-6: #008300; /* green */
+  --series-7: #4a3aa7; /* violet */
+  --series-8: #e34948; /* red */
+  --series-other: #94a3b8; /* slate-400 — the tail, never an identity */
+}
+
+[data-theme="dark"] {
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+  --series-other: #64748b; /* slate-500 */
+}
+
 :root {
   /* Soft-shadow scale (SkyWalking-modern cards) */
   --shadow-card: 0 1px 3px rgb(15 23 42 / 0.06), 0 1px 2px rgb(15 23 42 / 0.04);

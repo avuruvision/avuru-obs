@@ -146,6 +146,39 @@ export interface OverviewResponse {
   operations: OperationStats[];
 }
 
+/** One slice of a part-of-whole view over spans. */
+export interface BreakdownGroup {
+  /** The dimension's value. Empty means the spans carry no such attribute — a
+   *  real answer ("how much of my traffic is unlabelled"), not a gap. */
+  key: string;
+  count: number;
+  errorCount: number;
+  errorRate: number;
+  refusedCount?: number;
+  refusedRate?: number;
+  /** Total wall time of the group's spans — the weighting that answers
+   *  "where does the time go" rather than "what is called most". */
+  durationMsSum: number;
+  /** Absent on the synthetic "other" bucket: quantiles cannot be subtracted. */
+  p50Ms?: number;
+  p95Ms?: number;
+  p99Ms?: number;
+}
+
+export interface BreakdownResponse {
+  groupBy: string;
+  scope: string;
+  groups: BreakdownGroup[];
+  /** Everything past the limit, present only when the tail is non-empty. It
+   *  MUST be drawn: a part-of-whole chart that hides its tail redraws a top-N
+   *  as the entire estate. */
+  other?: BreakdownGroup;
+  /** Every matching span, tail included. */
+  total: BreakdownGroup;
+  /** How many distinct values exist, so a top-N reads as a top-N. */
+  groupCount: number;
+}
+
 export interface TraceSummary {
   traceId: string;
   rootService: string;

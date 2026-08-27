@@ -17,9 +17,10 @@ import { OverviewTable } from "./overview-table";
 import { TraceList } from "./trace-list";
 import { TraceFilterPanel } from "./trace-filters";
 import { TraceWorkspace } from "./trace-workspace";
+import { BreakdownPanel } from "./breakdown/breakdown-panel";
 import { CLEAR_WORKSPACE_PARAMS } from "./workspace-params";
 
-type Tab = "overview" | "traces";
+type Tab = "overview" | "breakdown" | "traces";
 
 // Coroot flow: filter panel + heatmap on top, tabs below; every filter and the
 // selected trace live in the URL. The selected trace opens a full-window viewer.
@@ -27,7 +28,13 @@ export function TracesScreen() {
   const { time, windowMs } = useTimeRange();
   const { get, setMany } = useURLState();
 
-  const tab: Tab = get("tab") === "traces" ? "traces" : "overview";
+  const rawTab = get("tab");
+  const tab: Tab = rawTab === "traces" || rawTab === "breakdown" ? rawTab : "overview";
+  // Breakdown controls are URL state like every other filter, so a shared link
+  // reopens the same chart of the same traffic.
+  const groupBy = get("groupBy") ?? "service";
+  const scope = get("scope") ?? "entry";
+  const weight = get("weight") === "time" ? "time" : "count";
   const selectedTrace = get("trace") ?? null;
   const compareTrace = get("compare") ?? null;
   const filters: TraceFilters = useMemo(
@@ -103,6 +110,7 @@ export function TracesScreen() {
       <Tabs<Tab>
         items={[
           { value: "overview", label: "Overview" },
+          { value: "breakdown", label: "Breakdown" },
           { value: "traces", label: "Traces" },
         ]}
         value={tab}
@@ -120,6 +128,16 @@ export function TracesScreen() {
           hasNextPage={Boolean(search.hasNextPage)}
           isFetchingNextPage={search.isFetchingNextPage}
           fetchNextPage={() => search.fetchNextPage()}
+        />
+      ) : tab === "breakdown" ? (
+        <BreakdownPanel
+          time={time}
+          filters={filters}
+          groupBy={groupBy}
+          scope={scope}
+          weight={weight}
+          onControlChange={setMany}
+          onDrill={setMany}
         />
       ) : tab === "overview" ? (
         <OverviewTable

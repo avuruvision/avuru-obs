@@ -5,6 +5,7 @@ import { apiGet } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { queryKeys, type TimeParams } from "@/lib/query-keys";
 import type {
+  BreakdownResponse,
   HeatmapResponse,
   OverviewResponse,
   ServicesResponse,
@@ -77,6 +78,42 @@ export function useHeatmap(time: TimeParams, filters: TraceFilters) {
           includeAux: aux(filters.includeAux),
           timeBuckets: 60,
           durationBuckets: 24,
+        },
+        { project },
+      ),
+  });
+}
+
+// One grouped aggregate over spans, for the part-of-whole views.
+//
+// It takes the SAME TraceFilters as the list and the heatmap, so the chart and
+// the rows under it can never describe different traffic — the filter panel
+// drives all three from one piece of URL state.
+export function useTraceBreakdown(
+  time: TimeParams,
+  filters: TraceFilters,
+  groupBy: string,
+  scope: string,
+  limit = 20,
+) {
+  const { project } = useProject();
+  return useQuery({
+    queryKey: queryKeys.breakdown(project, time, { ...filters, groupBy, scope, limit }),
+    queryFn: () =>
+      apiGet<BreakdownResponse>(
+        "/api/v1/traces/breakdown",
+        {
+          ...time,
+          groupBy,
+          scope,
+          limit,
+          service: filters.service,
+          operation: filters.operation,
+          status: filters.status,
+          tags: filters.tags,
+          minDurationMs: filters.minDurationMs,
+          maxDurationMs: filters.maxDurationMs,
+          includeAux: aux(filters.includeAux),
         },
         { project },
       ),
