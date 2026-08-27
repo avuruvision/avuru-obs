@@ -205,17 +205,49 @@ refused* — the most valuable number on the card — so it is not a mapping tab
 but a design question that needs someone running one to answer. The product
 states the limitation instead; the AEP records what is missing.
 
-## Beyond v0.10 (directional)
+## v0.11 — what was already in your traces — SHIPPED (v0.11.0)
 
+v0.10 answered what a cluster costs, and it needed new collection to do it.
+v0.11 adds **none at all**. Every feature in it reads spans the wedge has been
+storing since the first five minutes, and asks them questions the product could
+not previously ask — which means an install that upgrades sees its history, not
+just what arrives next.
+
+> **As a team we can see how our traffic is distributed, what one service is
+> doing, what shape a single request took, and what our applications are
+> spending on models — from data we were already sending, with nothing new to
+> install.**
+
+| Theme | Shipped |
+|---|---|
+| **The model calls you were already sending** | The release-defining item: applications are calling models, those calls arrive as ordinary spans, and there was no way to ask what any of it added up to. A new **AI** module reports per model — calls, tokens in and out, latency, failures, and how often an answer was cut off at the token ceiling — and per calling service, the same numbers with an owner. Four readings guard the ways of being confidently wrong: the model that **answered** wins over the one requested; **both** token spellings the convention has had are read, because a large share of real traffic still reports the older pair; a call that reported no usage is counted and excluded from the token totals rather than averaged in as a zero; and truncation is not failure — the call succeeded and hit the ceiling, which is the commonest reason a response comes back unusable. Prices are yours to declare and absent by default, an unpriced model is named rather than costed at zero, and there is no pricing API — it would be the first outbound call in a product whose promise is that nothing leaves the cluster — [AEP](design/2026-08-27-ai-observability.md) |
+| **A decision about prompts** | The half that made the above an AEP rather than a feature. The gateway had no redaction stage, `otel_traces` stored span and event attributes verbatim under the ordinary retention, and the trace view rendered both to anyone holding Viewer — so on any install whose SDK captured message content, user text was being stored and displayed. No feature put it there and no feature would have shown you. It is now dropped at the gateway **by default**, ungated by the AI module (content arrives whether or not you run the screen), with the pattern anchored so a token *count* is never mistaken for a prompt and a span event keeping its name while losing its attributes. The screen never renders content and reports it when it arrives anyway |
+| **Where the traffic actually goes** | Every trace surface returned rows — which requests, how slow — and none answered *how much of what*. A **Breakdown** tab draws the distribution as a treemap and a donut, grouped by service, operation, outcome, span kind or any span/resource attribute, weighted by request count **or** total wall time, because a rare slow operation and a frequent fast one rank identically in one and nothing alike in the other. The tail is a real bucket computed before the limit, so the parts sum to the whole rather than a top-N quietly redrawing itself as the estate — [AEP](design/2026-08-27-trace-analytics.md) |
+| **A page for one service, and the shape of one request** | Clicking a service used to open a filtered trace list; there is now a page with its health, its rate/errors/latency, **who calls it and what it depends on** as two separate lists, and its traces, logs and errors behind tabs. And a **Path** view on the trace: the service-level graph of a single request, weighted by the time spent *inside* each service rather than by span duration, with the dependencies that never sent a span of their own drawn as the terminal hops they are |
+| **Refused, a third answer to "did it work?"** | A server replying 4xx has neither failed nor succeeded, and the product had only those two words — so a blocked request or an authorization refusal was reported as `OK`. Server-side 4xx is now its own class across the span badge, the operations overview, the trace table and the search filter, deliberately **out of** the error rate: folding it in would put every auth challenge and every crawler 404 into the number people are paged on |
+| **A map that says what it means** | An application is a hexagon and the datastore it depends on is a barrel, so the glyph a reader meets most often is the distinctive one; and the trace list shows the status code a span answered instead of the word "OK" it used to contradict one panel over |
+
+## Beyond v0.11 (directional)
+
+- **Agents and tool calls as a shape.** `execute_tool` spans and the
+  `gen_ai.agent.*` attributes describe a graph, and the trace Path view already
+  draws one. v0.11 reports model calls as rows; an agent that fans out to four
+  tools is a shape, not a table.
+- **Token budgets and an alert rule**, the way green already has carbon
+  budgets. Spend is the number people want a threshold on.
+- **Prices authored in the UI** rather than the chart, shared with the cost
+  module's rates — once either of them needs a second rate table.
 - **Read a second control plane**, once someone running one can say which of its
   signals answer the four questions the Istio card answers — and which of them
   simply have no answer there.
 - **Cost joined to green:** the same reserved-and-idle capacity in Wh and
   gCO2e, on an install running both. One story about waste, in two units.
 - **The incident.** Root-cause summaries, with a provider switch that is
-  **disabled by default**. Deliberately not in v0.10: it would be the first
+  **disabled by default**. Deliberately still out: it would be the first
   outbound network call in a product whose whole promise is that nothing leaves
-  the cluster, and that is a release-level decision, not a corner of one.
+  the cluster, and that is a release-level decision, not a corner of one — the
+  same reason v0.11's AI module prices from rates you declare rather than from
+  a pricing API.
 - **Scripted multi-step check journeys**, if demand appears — v0.9 ships
   single-request checks deliberately.
 - **Deeper profiling:** off-CPU and memory profiles as the upstream OTel eBPF

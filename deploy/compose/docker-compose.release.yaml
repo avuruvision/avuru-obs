@@ -42,7 +42,7 @@ services:
   # One-shot schema migrator (mirrors the k8s Helm post-install/post-upgrade
   # hook). gateway + hub wait for it to complete before starting.
   migrate:
-    image: ghcr.io/avuruvision/avuru-obs-hub:${AVURUOBS_VERSION:-v0.10}
+    image: ghcr.io/avuruvision/avuru-obs-hub:${AVURUOBS_VERSION:-v0.11}
     command: ["migrate"]
     environment:
       AVURUOBS_CLICKHOUSE_ADDR: clickhouse:9000
@@ -60,7 +60,7 @@ services:
     restart: "no"
 
   gateway:
-    image: ghcr.io/avuruvision/avuru-obs-gateway:${AVURUOBS_VERSION:-v0.10}
+    image: ghcr.io/avuruvision/avuru-obs-gateway:${AVURUOBS_VERSION:-v0.11}
     command: ["--config=/etc/avuru/config.yaml"]
     configs:
       - source: gateway-config
@@ -75,7 +75,7 @@ services:
     # No container healthcheck: the distro image is distroless (no shell).
 
   hub:
-    image: ghcr.io/avuruvision/avuru-obs-hub:${AVURUOBS_VERSION:-v0.10}
+    image: ghcr.io/avuruvision/avuru-obs-hub:${AVURUOBS_VERSION:-v0.11}
     environment:
       AVURUOBS_CLICKHOUSE_ADDR: clickhouse:9000
       AVURUOBS_CLICKHOUSE_USER: avuru
@@ -101,7 +101,7 @@ services:
   # Static UI (own nginx pod). Single-origin: serves the SPA at / and
   # reverse-proxies /api -> hub. Open http://localhost:3001.
   ui:
-    image: ghcr.io/avuruvision/avuru-obs-ui:${AVURUOBS_VERSION:-v0.10}
+    image: ghcr.io/avuruvision/avuru-obs-ui:${AVURUOBS_VERSION:-v0.11}
     ports:
       - "3001:80"
     depends_on:

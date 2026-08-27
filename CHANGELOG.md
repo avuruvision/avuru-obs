@@ -11,6 +11,8 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-08-28
+
 ### Added
 
 - **The model calls you are already sending.** Applications in this estate are
@@ -1611,7 +1613,8 @@ promise is enforced as a CI gate. All four v0.1 signal tiers ship: traces
 
 <!--
 Release links:
-[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/avuruvision/avuru-obs/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/avuruvision/avuru-obs/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/avuruvision/avuru-obs/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/avuruvision/avuru-obs/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/avuruvision/avuru-obs/compare/v0.7.0...v0.8.0
