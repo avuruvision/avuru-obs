@@ -68,6 +68,7 @@ only if the design needs to be pinned down before coding.
 | [2026-08-26](2026-08-26-transport-from-labels.md) | Transport classified from Kubernetes labels | Accepted |
 | [2026-08-26](2026-08-26-control-plane-diagnosis.md) | Why the control plane is silent — three states, not one | Accepted |
 | [2026-08-27](2026-08-27-trace-analytics.md) | Trace analytics — grouped breakdowns over spans | Draft |
+| [2026-08-27](2026-08-27-ai-observability.md) | AI observability — the model calls you are already sending | Accepted |
 
 ## Conventions
 
