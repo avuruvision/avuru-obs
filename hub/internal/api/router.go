@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/avuru/avuru-obs/hub/internal/ai"
 	"github.com/avuru/avuru-obs/hub/internal/alerting"
 	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/collection"
@@ -96,6 +97,11 @@ type Config struct {
 	// operator declared none, and the API says so rather than reporting a
 	// currency it invented — there is no pricing service to ask, by design.
 	CostRates CostRates
+	// AIConfig returns the current AI prices (module ai), hot-reloaded like
+	// GreenConfig. nil → ai.Default(), i.e. no prices: the screens then report
+	// tokens and say that is what they are reporting. Same reasoning as
+	// CostRates — there is no pricing service to ask.
+	AIConfig func() ai.Config
 	// MeshScrapeJob is the Prometheus job name the gateway's control-plane
 	// scrape runs under (chart: mesh.controlPlane.jobName). The hub looks the
 	// scrape-report series up by it, so the value travels rather than being
@@ -383,6 +389,13 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 	if active.Enabled(modules.Cost) {
 		mux.Handle("GET /api/v1/cost/workloads", a.secured(auth.RoleViewer, a.handleCostWorkloads))
 		mux.Handle("GET /api/v1/cost/nodes", a.secured(auth.RoleViewer, a.handleCostNodes))
+	}
+	if active.Enabled(modules.AI) {
+		// Reads otel_traces, so no second module gate: an install running core
+		// already has the data these three answer from.
+		mux.Handle("GET /api/v1/ai/summary", a.secured(auth.RoleViewer, a.handleAISummary))
+		mux.Handle("GET /api/v1/ai/models", a.secured(auth.RoleViewer, a.handleAIModels))
+		mux.Handle("GET /api/v1/ai/callers", a.secured(auth.RoleViewer, a.handleAICallers))
 	}
 }
 

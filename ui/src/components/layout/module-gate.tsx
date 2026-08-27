@@ -16,6 +16,7 @@ const HELM_VALUE: Record<Exclude<ModuleName, "core">, string> = {
   mesh: "modules.mesh.enabled",
   green: "modules.green.enabled",
   cost: "modules.cost.enabled",
+  ai: "modules.ai.enabled",
 };
 
 const LABEL: Record<Exclude<ModuleName, "core">, string> = {
@@ -28,6 +29,7 @@ const LABEL: Record<Exclude<ModuleName, "core">, string> = {
   mesh: "Service mesh",
   green: "Energy & carbon",
   cost: "Cost & waste",
+  ai: "AI observability",
 };
 
 // Renders `children` unless this install doesn't run `module`, in which case

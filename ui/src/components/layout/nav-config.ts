@@ -1,5 +1,6 @@
 import {
   Activity,
+  Bot,
   Boxes,
   BellRing,
   Bug,
@@ -81,6 +82,16 @@ export const NAV_SECTIONS: NavSection[] = [
       // RED is derived from traces, not from the metrics tables — core.
       { href: "/metrics", label: "Metrics", icon: Gauge, docs: "signals/metrics" },
       { href: "/profiling", label: "Profiling", icon: Flame, module: "profiling", docs: "signals/profiling" },
+      // AI sits with the signals rather than with Cost, because screens in
+      // this product are placed by their SUBJECT and not by their source:
+      // Errors is derived from spans and lives under Operations because it
+      // demands attention; Green and Cost are derived from metrics and live
+      // under Infrastructure because their subject is the fleet. The subject
+      // here is what an application asked a model to do — application
+      // behaviour, the same layer as its traces and its logs.
+      // No `docs` yet: the docs site has no AI page, and a link that 404s is
+      // worse than no link. It joins when that page ships.
+      { href: "/ai", label: "AI", icon: Bot, module: "ai" },
     ],
   },
   {

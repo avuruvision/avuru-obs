@@ -53,10 +53,23 @@ const (
 	// starts watching cluster-scoped objects and takes a Lease, neither of
 	// which an install had before. See design/2026-08-26-cost-and-waste.md.
 	Cost Name = "cost"
+	// AI reports the model calls an instrumented application already sends —
+	// per-model tokens, latency, failures and truncation, priced from rates
+	// the operator declared. It owns no schema, adds no collection and depends
+	// on no other module: gen_ai spans land in otel_traces like any other.
+	// Born OFF for the reason mesh is: most installs call no models, and a nav
+	// entry for something you do not have is what the grouped navigation set
+	// out to stop.
+	//
+	// The module does NOT gate the gateway's content redaction. Prompts arrive
+	// whether or not an install runs this screen, so gating the protection on
+	// the screen would protect only the installs that opted into looking. See
+	// design/2026-08-27-ai-observability.md.
+	AI Name = "ai"
 )
 
 // All lists every known module in registry (display) order.
-var All = []Name{Core, Logs, InfraMetrics, Profiling, ErrorTracking, ServiceHealth, Alerting, Mesh, Green, Cost}
+var All = []Name{Core, Logs, InfraMetrics, Profiling, ErrorTracking, ServiceHealth, Alerting, Mesh, Green, Cost, AI}
 
 // Set is a resolved active-module set; Core is always present.
 type Set map[Name]bool

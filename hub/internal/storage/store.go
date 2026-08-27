@@ -1012,6 +1012,92 @@ type NodeCoverage struct {
 	Nodes []string
 }
 
+// AIQuery filters the AI-observability reads (module ai). It reads
+// otel_traces — an application's model calls arrive as ordinary spans — so
+// unlike green and cost it depends on no metrics module and no schema of its
+// own. See design/2026-08-27-ai-observability.md.
+type AIQuery struct {
+	Tenant  string
+	Tenants []string
+	Range   TimeRange
+	// Service narrows to one calling service; Model to one model. Both take
+	// the same values the corresponding rows report, so a row is its own
+	// filter.
+	Service string
+	Model   string
+	Tags    map[string]string
+	// ExcludeAux drops the product's own telemetry, exactly as the trace
+	// search does.
+	ExcludeAux bool
+	Limit      int
+}
+
+// AIModelUsage is one model's traffic over the window. The same shape carries
+// the totals row, where Model and Provider are empty.
+//
+// Four counters exist to keep the screen from reporting a confident wrong
+// number, and each guards a different way of being wrong:
+//
+//   - Truncated is not an error. The call succeeded and hit the token ceiling;
+//     folding it into Errors would overstate failure, and dropping it would
+//     hide the commonest cause of a malformed answer.
+//   - CallsWithoutUsage is the population excluded from the token sums. A call
+//     that never reported usage is not a call that used nothing.
+//   - CallsFromRequestModel counts rows attributed to the model REQUESTED
+//     because nothing said what answered — a weaker claim, and labelled.
+//   - CallsWithContent counts calls still carrying prompt or completion text.
+//     The module never renders it; it reports that it is arriving, which is
+//     the one thing an operator cannot otherwise discover.
+type AIModelUsage struct {
+	Model    string
+	Provider string
+
+	Calls     uint64
+	Errors    uint64
+	Refused   uint64
+	Truncated uint64
+
+	CallsWithoutUsage     uint64
+	CallsFromRequestModel uint64
+	CallsWithContent      uint64
+
+	InputTokens  uint64
+	OutputTokens uint64
+
+	P50 time.Duration
+	P95 time.Duration
+	P99 time.Duration
+}
+
+// AIUsage is the model table and the window's totals from ONE read. Total
+// covers every model call in the window, including those past the limit, so
+// the summary above a truncated table still describes the whole window and a
+// tail can be derived rather than invented.
+type AIUsage struct {
+	Models []AIModelUsage
+	Total  AIModelUsage
+	// ModelCount is the number of DISTINCT models in the window — which is not
+	// len(Models) whenever the limit bit.
+	ModelCount uint64
+}
+
+// AICallerUsage is one calling service's traffic to one model: spend with an
+// owner. Quantiles are deliberately absent — latency belongs to the model, and
+// a p99 over a handful of calls from one service is noise wearing a number.
+type AICallerUsage struct {
+	Service   string
+	Model     string
+	Calls     uint64
+	Errors    uint64
+	Truncated uint64
+	// CallsWithoutUsage matters here for the same reason it does per model: a
+	// row whose every call reported nothing has no token total, and printing
+	// one as 0 would read as "this service is free".
+	CallsWithoutUsage uint64
+	InputTokens       uint64
+	OutputTokens      uint64
+}
+
 // Store is the telemetry query seam implemented by storage backends.
 type Store interface {
 	Ping(ctx context.Context) error
@@ -1111,6 +1197,15 @@ type Store interface {
 	// Cost (module cost).
 	WorkloadCosts(ctx context.Context, q CostQuery) ([]WorkloadCost, error)
 	NodeCosts(ctx context.Context, q CostQuery) ([]NodeCost, error)
+	// AI observability (module ai): per-model and per-caller usage read from
+	// the gen_ai.* attributes on spans core already stores. No schema, no
+	// collection, no metrics dependency.
+	//
+	// Prices never enter SQL — AIModels returns tokens, and the API layer
+	// applies the operator's declared rates, the same separation green keeps
+	// for its carbon factors.
+	AIModels(ctx context.Context, q AIQuery) (AIUsage, error)
+	AICallers(ctx context.Context, q AIQuery) ([]AICallerUsage, error)
 	// Alerting (module alerting).
 	LoadAlertStates(ctx context.Context, tenant string) ([]AlertState, error)
 	SaveAlertStates(ctx context.Context, states []AlertState) error

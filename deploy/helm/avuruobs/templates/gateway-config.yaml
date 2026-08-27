@@ -187,6 +187,45 @@ data:
             value: {{ .Values.gateway.tenant | quote }}
             action: {{ if .Values.gateway.tenantByNamespace }}insert{{ else }}upsert{{ end }}
     {{- end }}
+    {{- if .Values.gateway.genai.redactContent }}
+      # Model prompts and completions are USER TEXT. They arrive only when an
+      # application's own SDK was configured to capture them — nothing in this
+      # product asks for them — and before this stage existed they were stored
+      # verbatim under the ordinary trace retention and rendered in the trace
+      # view to anyone holding the Viewer role. Nobody decided that; this is
+      # the decision. See design/2026-08-27-ai-observability.md.
+      #
+      # Deliberately NOT gated on modules.ai. Content arrives whether or not an
+      # install runs the AI screen, so gating the protection on the screen
+      # would protect only the installs that opted into looking — backwards.
+      #
+      # The pattern is anchored so gen_ai.usage.prompt_tokens — a token COUNT
+      # under the convention's older spelling — can never match it. It must
+      # stay in step with aiContentKeyPattern in
+      # hub/internal/storage/clickhouse/ai.go, which decides whether the screen
+      # reports content as arriving.
+      #
+      # Span EVENTS keep their name and lose their attributes: an empty
+      # gen_ai.content.prompt event is evidence that the instrumentation is
+      # emitting content, carrying none of it.
+      transform/genai:
+        error_mode: ignore
+        trace_statements:
+          - context: span
+            statements:
+              - 'delete_matching_keys(span.attributes, "^gen_ai\\.(prompt|completion|input\\.messages|output\\.messages|system_instructions|content)")'
+          - context: spanevent
+            statements:
+              - 'delete_matching_keys(spanevent.attributes, "^gen_ai\\.(prompt|completion|input|output|system_instructions|content)")'
+        log_statements:
+          - context: log
+            statements:
+              - 'delete_matching_keys(log.attributes, "^gen_ai\\.(prompt|completion|input\\.messages|output\\.messages|system_instructions|content)")'
+              # The current convention carries content in the log record BODY of
+              # a gen_ai event. The record survives so the conversation is still
+              # countable; what it said does not.
+              - 'set(body, "[redacted: gateway.genai.redactContent]") where IsMatch(log.attributes["event.name"], "^gen_ai\\.(system|user|assistant|tool)\\.message$|^gen_ai\\.choice$")'
+    {{- end }}
       batch:
         send_batch_size: 4096
         timeout: 2s
@@ -287,6 +326,12 @@ data:
     service:
       extensions: [health_check{{ if $ingestAuth }}, avuruingestauth{{ end }}]
       pipelines:
+    {{- /* Content redaction runs FIRST, before the tenant stamp and before
+           batch — so it applies to every exporter on the pipeline, forwarding
+           targets included. Redacting locally and forwarding verbatim would be
+           the same exposure with an extra hop. */}}
+    {{- $genaiStage := "" }}
+    {{- if .Values.gateway.genai.redactContent }}{{ $genaiStage = "transform/genai, " }}{{ end }}
     {{- $tenantStage := "" }}
     {{- if .Values.gateway.tenantByNamespace }}{{ $tenantStage = "transform/tenant, " }}{{ end }}
     {{- if .Values.gateway.tenant }}{{ $tenantStage = printf "%sresource/tenant, " $tenantStage }}{{ end }}
@@ -308,12 +353,12 @@ data:
     {{- $fwdM := "" }}{{ if and $fwdOTLP.enabled (has "metrics" $fwdOTLP.signals) }}{{ $fwdM = printf ", %s" $fwdName }}{{ end }}{{ if and $fwdKafka.enabled (has "metrics" $fwdKafka.signals) }}{{ $fwdM = printf "%s, kafka/forward" $fwdM }}{{ end }}
         traces:
           receivers: [otlp{{ if $jaeger }}, jaeger{{ end }}{{ if $zipkin }}, zipkin{{ end }}]
-          processors: [{{ $tenantStage }}batch]
+          processors: [{{ $genaiStage }}{{ $tenantStage }}batch]
           exporters: [clickhouse{{ $fwdT }}]
     {{- if or .Values.modules.logs.enabled $sentry }}
         logs:
           receivers: [otlp{{ if $sentry }}, sentry{{ end }}{{ if $loki }}, loki{{ end }}]
-          processors: [{{ $tenantStage }}batch]
+          processors: [{{ $genaiStage }}{{ $tenantStage }}batch]
           exporters: [clickhouse{{ $fwdL }}]
     {{- end }}
     {{- if .Values.modules.infraMetrics.enabled }}

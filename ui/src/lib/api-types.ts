@@ -14,7 +14,8 @@ export type ModuleName =
   | "alerting"
   | "mesh"
   | "green"
-  | "cost";
+  | "cost"
+  | "ai";
 
 export interface CapabilitiesResponse {
   version: string;
@@ -1078,4 +1079,81 @@ export interface CollectionOverlayResponse {
   effective?: CollectionEffective;
   updatedAt?: string;
   updatedBy?: string;
+}
+
+// AI observability (module ai) — the model calls an instrumented application
+// already sends. Everything here is read from the gen_ai.* span attributes;
+// nothing new is collected. See design/2026-08-27-ai-observability.md.
+export interface AIUsage {
+  model: string;
+  provider?: string;
+  calls: number;
+  errors: number;
+  refused: number;
+  // A SUCCESSFUL call the model cut off at the token ceiling. Reported apart
+  // from errors on purpose: the request worked and the answer may still be
+  // unusable, which is a different thing to go and fix.
+  truncated: number;
+  // The population excluded from the token totals. A call that reported no
+  // usage is not a call that used nothing.
+  callsWithoutUsage: number;
+  // Rows attributed to the model that was ASKED for, because nothing said what
+  // answered — a weaker claim, and labelled as one.
+  callsFromRequestModel: number;
+  // Calls still carrying prompt or completion text. Never rendered; reported,
+  // because this screen is the only place that can notice.
+  callsWithContent: number;
+  inputTokens: number;
+  outputTokens: number;
+  p50Ms: number;
+  p95Ms: number;
+  p99Ms: number;
+  // Absent means no rate was declared for this model — which is not zero.
+  cost?: number;
+  // The cost came from a prefix rule rather than an entry naming this exact
+  // model: a number the product inferred, not one the operator stated.
+  pricedByPrefix?: boolean;
+}
+
+export interface AIModelsResponse {
+  models: AIUsage[];
+  // The whole window, including models past the limit.
+  total: AIUsage;
+  // The tail. Its quantiles are zero — latency cannot be subtracted — so they
+  // must not be drawn.
+  other?: AIUsage;
+  modelCount: number;
+  priced: boolean;
+  currency?: string;
+  unpricedModels: string[];
+}
+
+export interface AISummaryResponse {
+  total: AIUsage;
+  modelCount: number;
+  priced: boolean;
+  currency?: string;
+  // A floor whenever unpricedModels is non-empty.
+  totalCost?: number;
+  unpricedModels: string[];
+}
+
+export interface AICaller {
+  service: string;
+  model: string;
+  calls: number;
+  errors: number;
+  truncated: number;
+  // A row whose every call reported nothing has no token total, and printing
+  // one as 0 would read as "this service is free".
+  callsWithoutUsage: number;
+  inputTokens: number;
+  outputTokens: number;
+  cost?: number;
+}
+
+export interface AICallersResponse {
+  callers: AICaller[];
+  priced: boolean;
+  currency?: string;
 }

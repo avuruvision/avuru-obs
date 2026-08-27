@@ -91,6 +91,15 @@
             "minLength": 1
           }
         },
+        "genai": {
+          "type": "object",
+          "properties": {
+            "redactContent": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
         "sentry": {
           "type": "object",
           "properties": {
@@ -375,6 +384,17 @@
           "required": [
             "enabled"
           ]
+        },
+        "ai": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
         }
       },
       "required": [
@@ -386,7 +406,8 @@
         "alerting",
         "mesh",
         "green",
-        "cost"
+        "cost",
+        "ai"
       ]
     },
     "mesh": {
@@ -422,6 +443,39 @@
             }
           },
           "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "ai": {
+      "type": "object",
+      "properties": {
+        "currency": {
+          "type": "string"
+        },
+        "prices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "model": {
+                "type": "string",
+                "minLength": 1
+              },
+              "inputPer1MTokens": {
+                "type": "number",
+                "minimum": 0
+              },
+              "outputPer1MTokens": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "model"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": false

@@ -38,23 +38,29 @@ type Fake struct {
 	Breakdown          storage.Breakdown
 	BreakdownErr       error
 	LastBreakdownQuery storage.BreakdownQuery
-	Page               storage.TracePage
-	Traces             map[string]storage.Trace
-	SpanTraces         map[string]string // spanId -> traceId
-	Heat               storage.Heatmap
-	LogPage            storage.LogPage
-	TraceLogs          map[string][]storage.LogRecord
-	Stats              storage.SystemStats
-	StatsErr           error
-	Nodes              []storage.NodeStat
-	Pods               []storage.PodStat
-	Agents             []storage.AgentNode
-	Tenants            []string
-	TenantsErr         error
-	RED                []storage.REDSeries
-	Written            []storage.ProfileSample
-	Profiled           []storage.ProfiledService
-	Flame              storage.FlameNode
+	// AI observability: LastAIQuery records the filters the handler built, so
+	// a test can assert the trace vocabulary reached storage.
+	AIUsageResult storage.AIUsage
+	AICallerRows  []storage.AICallerUsage
+	AIErr         error
+	LastAIQuery   storage.AIQuery
+	Page          storage.TracePage
+	Traces        map[string]storage.Trace
+	SpanTraces    map[string]string // spanId -> traceId
+	Heat          storage.Heatmap
+	LogPage       storage.LogPage
+	TraceLogs     map[string][]storage.LogRecord
+	Stats         storage.SystemStats
+	StatsErr      error
+	Nodes         []storage.NodeStat
+	Pods          []storage.PodStat
+	Agents        []storage.AgentNode
+	Tenants       []string
+	TenantsErr    error
+	RED           []storage.REDSeries
+	Written       []storage.ProfileSample
+	Profiled      []storage.ProfiledService
+	Flame         storage.FlameNode
 
 	ServiceEnergies    []storage.ServiceEnergy
 	NodeEnergies       []storage.NodeEnergy
@@ -396,6 +402,24 @@ func (f *Fake) NodeCosts(_ context.Context, q storage.CostQuery) ([]storage.Node
 		return nil, f.CostErr
 	}
 	return f.NodeCostRows, nil
+}
+
+// AI observability (module ai).
+
+func (f *Fake) AIModels(_ context.Context, q storage.AIQuery) (storage.AIUsage, error) {
+	f.LastAIQuery = q
+	if f.AIErr != nil {
+		return storage.AIUsage{}, f.AIErr
+	}
+	return f.AIUsageResult, nil
+}
+
+func (f *Fake) AICallers(_ context.Context, q storage.AIQuery) ([]storage.AICallerUsage, error) {
+	f.LastAIQuery = q
+	if f.AIErr != nil {
+		return nil, f.AIErr
+	}
+	return f.AICallerRows, nil
 }
 
 func (f *Fake) LoadAlertStates(_ context.Context, tenant string) ([]storage.AlertState, error) {

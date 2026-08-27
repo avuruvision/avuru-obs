@@ -122,7 +122,9 @@ ok "default render carries no tenant plumbing"
 out="$(render --set gateway.tenant=staging --set 'projects={default,staging}' --set sensor.profiler.enabled=true)"
 grep -q 'value: "staging"' <<<"$out" || fail "resource/tenant value missing"
 grep -q 'action: upsert' <<<"$out" || fail "resource/tenant action missing"
-n=$(grep -c 'processors: \[resource/tenant, batch\]' <<<"$out")
+# gen_ai content redaction precedes the tenant stamp on the two signals that
+# can carry message text (traces and logs); metrics has none to carry.
+n=$(grep -cE 'processors: \[(transform/genai, )?resource/tenant, batch\]' <<<"$out")
 [ "$n" = "3" ] || fail "resource/tenant not in all 3 gateway pipelines (got $n)"
 grep -q 'X-Avuru-Tenant: "staging"' <<<"$out" || fail "profiler ingest header missing"
 grep -q 'value: "default,staging"' <<<"$out" || fail "AVURUOBS_PROJECTS env missing"
@@ -936,7 +938,9 @@ echo "== ingest keys: enforce stamps the tenant LAST so the key wins"
 out="$(render --set auth.ingest.mode=enforce --set gateway.tenant=staging)"
 # Ordering is the correctness property: resource/tenant upserts the static
 # tenant, so stamping before it would let the static value silently win.
-n=$(grep -c 'processors: \[resource/tenant, tenantfromauth, batch\]' <<<"$out")
+# The optional gen_ai redaction sits ahead of the whole tenant stage on traces
+# and logs; what matters here is that tenantfromauth is still LAST.
+n=$(grep -cE 'processors: \[(transform/genai, )?resource/tenant, tenantfromauth, batch\]' <<<"$out")
 [ "$n" = "3" ] || fail "tenantfromauth not last in all 3 gateway pipelines (got $n)"
 grep -q 'mode: "enforce"' <<<"$out" || fail "enforce mode not rendered into the extension"
 ok "enforce: key project overrides the static tenant in all 3 pipelines"
@@ -1265,5 +1269,38 @@ out="$(render "${secondary[@]}" --set ingress.enabled=true --set gateway.sentry.
 # exits 1 and takes the whole pipeline with it, which reads as a failure here.
 grep -q "test-avuruobs-hub" <<<"$out" && fail "gateway-only ingress still routes to the hub"
 ok "ingress: no rules means no Ingress; the Sentry host still works alone"
+
+echo "== ai: born opt-off -> no surface, but redaction is NOT gated on it"
+out="$(render)"
+grep -q 'AVURUOBS_AI_CONFIG' <<<"$out" && fail "ai env rendered without opt-in"
+grep -q 'ai.json' <<<"$out" && fail "ai ConfigMap rendered without opt-in"
+grep -A1 'name: AVURUOBS_MODULES' <<<"$out" | grep -qE ',ai[,"]' && fail "ai in AVURUOBS_MODULES without opt-in"
+# The whole point: content arrives whether or not this install runs the screen,
+# so the protection cannot depend on the screen.
+grep -q 'transform/genai:' <<<"$out" || fail "gen_ai content redaction missing with the ai module OFF"
+ok "no env, ConfigMap or module entry by default — and redaction still on"
+
+echo "== ai: module on -> prices ConfigMap, env, module entry"
+out="$(render --set modules.ai.enabled=true --set ai.currency=USD)"
+grep -q 'name: test-avuruobs-ai' <<<"$out" || fail "ai (prices) ConfigMap missing"
+grep -q 'AVURUOBS_AI_CONFIG' <<<"$out" || fail "AVURUOBS_AI_CONFIG env missing"
+grep -q 'core,logs,infra-metrics,profiling,error-tracking,service-health,alerting,ai' <<<"$out" \
+  || fail "ai missing from AVURUOBS_MODULES"
+ok "prices ConfigMap, env and module entry render together"
+
+echo "== ai: content redaction runs first, on every pipeline, and can be refused"
+out="$(render)"
+# Before the tenant stamp and before batch, so it applies to EVERY exporter on
+# the pipeline — forwarding targets included. Redacting locally and forwarding
+# verbatim is the same exposure with an extra hop.
+grep -qE 'processors: \[transform/genai, .*batch\]' <<<"$out" || fail "redaction is not the first processor"
+# Anchored so a token COUNT under the older spelling is never deleted: it is
+# the number the module exists to report.
+grep -qF 'delete_matching_keys(span.attributes, "^gen_ai\\.(prompt|completion|input\\.messages|output\\.messages|system_instructions|content)")' <<<"$out" \
+  || fail "the span content pattern is missing or has drifted from ai.go"
+grep -q 'context: spanevent' <<<"$out" || fail "span events are not redacted (the earlier convention put content there)"
+out="$(render --set gateway.genai.redactContent=false)"
+grep -q 'transform/genai' <<<"$out" && fail "redactContent=false still rendered the stage"
+ok "runs first on traces and logs; an operator can still refuse it"
 
 echo "ALL TEMPLATE ASSERTIONS PASSED"
