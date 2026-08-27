@@ -40,7 +40,7 @@ export function ServicesTable({ services }: { services: ServiceStats[] }) {
           {sorted.map((s) => (
             <tr
               key={s.name}
-              onClick={() => router.push(`/traces?service=${encodeURIComponent(s.name)}`)}
+              onClick={() => router.push(`/services?service=${encodeURIComponent(s.name)}`)}
               className="cursor-pointer border-b border-neutral/40 transition-colors last:border-0 hover:bg-base-300/50"
               title={`Open ${s.name} traces`}
             >

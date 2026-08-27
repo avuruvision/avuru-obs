@@ -13,6 +13,25 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **A page for one service.** Clicking a service — in the inventory or on the
+  map — used to open a filtered trace list, which answers what it served and
+  nothing else. Asking the ordinary next questions meant visiting four screens
+  and re-applying the same filter in each. There is now a page per service: its
+  health and why, its rate, errors and latency over time, **who calls it and
+  what it depends on** in two separate lists, and its traces, logs and error
+  issues behind tabs.
+
+  Callers and callees are shown apart on purpose — one is who is affected when
+  this service breaks, the other is what could be breaking it, and merging them
+  makes both harder to read. The dependency numbers come from the same edge set
+  the map draws, so the two screens cannot disagree about what depends on what,
+  and a dependency the hub had to recover across a proxy says so rather than
+  passing as directly observed. Latency that was never measured shows as a dash,
+  never as zero.
+
+  Nothing new is collected or stored: the page is composed from reads the
+  product already made.
+
 - **Where the traffic actually goes.** Every trace view so far returned rows —
   which requests, and how slow. None answered *how much of what*, so working out
   that one route carries 60% of the traffic meant exporting the operations table

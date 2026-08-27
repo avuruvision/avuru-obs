@@ -8,6 +8,7 @@ import { useServicesData } from "@/hooks/use-services-data";
 import { CenteredSpinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ServicesTable } from "./services-table";
+import { ServiceDetail } from "./service-detail";
 
 // Auto-discovered service inventory with RED stats. Row click drills into the
 // service's traces; the map link shows the same services as topology.
@@ -15,7 +16,14 @@ export function ServicesScreen() {
   const { time } = useTimeRange();
   const { get, setMany } = useURLState();
   const includeAux = get("includeAux") === "true";
+  const selected = get("service");
   const { data, isLoading } = useServicesData(time, includeAux);
+
+  // One route, two screens. A dynamic segment (/services/[name]) cannot be
+  // statically exported without knowing every service at build time, and the
+  // set is discovered at runtime by definition — so the selection is URL state,
+  // exactly like every other filter in this UI.
+  if (selected) return <ServiceDetail service={selected} />;
 
   if (isLoading) return <CenteredSpinner />;
   const services = data?.services ?? [];
