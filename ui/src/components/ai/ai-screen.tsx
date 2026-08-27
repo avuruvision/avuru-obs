@@ -133,7 +133,11 @@ export function AIScreen() {
           Grouped by the model that <em>answered</em>. To slice the same calls
           any other way — by route, namespace or business tag —{" "}
           <Link
-            href="/traces?tab=breakdown&groupBy=attribute:gen_ai.request.model&scope=all"
+            // The RESPONSE model, to agree with the table above; and every
+            // span scope, because a model call is a Client span and the
+            // breakdown's default population is what a service was asked to
+            // serve.
+            href="/traces?tab=breakdown&groupBy=attribute:gen_ai.response.model&scope=all"
             className="text-primary hover:underline"
           >
             open them in the trace breakdown
