@@ -198,14 +198,22 @@ export function ServiceDetail({ service }: { service: string }) {
   );
 }
 
+// Back to the inventory. A button rather than a <Link href="/services">,
+// because the selection IS url state on this same screen: the App Router
+// treats a link to the pathname it is already on as a no-op and leaves
+// ?service= in place, while clearing the parameter is what "all services"
+// actually means. `view` goes with it — a tab chosen for one service is not a
+// preference to carry back to the list.
 function BackLink() {
+  const { setMany } = useURLState();
   return (
-    <Link
-      href="/services"
+    <button
+      type="button"
+      onClick={() => setMany({ service: undefined, view: undefined })}
       className="inline-flex items-center gap-1 text-xs text-base-content/50 hover:text-primary"
     >
       <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> All services
-    </Link>
+    </button>
   );
 }
 

@@ -46,8 +46,10 @@ test.describe("service detail", () => {
   test("a name with nothing behind it says so", async ({ page }) => {
     await page.goto("/services?service=does-not-exist");
     await expect(page.getByText("No data for does-not-exist")).toBeVisible();
-    // And the way back is always present.
-    await page.getByRole("link", { name: "All services" }).click();
+    // And the way back is always present. It is a button, not a link: the
+    // selection is url state on this same screen, and the App Router skips a
+    // link to the pathname it is already on — leaving ?service= in place.
+    await page.getByRole("button", { name: "All services" }).click();
     await expect(page).not.toHaveURL(/service=/);
   });
 });
