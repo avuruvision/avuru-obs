@@ -1296,7 +1296,7 @@ out="$(render)"
 grep -qE 'processors: \[transform/genai, .*batch\]' <<<"$out" || fail "redaction is not the first processor"
 # Anchored so a token COUNT under the older spelling is never deleted: it is
 # the number the module exists to report.
-grep -qF 'delete_matching_keys(attributes, "^gen_ai\\.(prompt|completion|input\\.messages|output\\.messages|system_instructions|content)")' <<<"$out" \
+grep -qF 'delete_matching_keys(span.attributes, "^gen_ai\\.(prompt|completion|input\\.messages|output\\.messages|system_instructions|content)")' <<<"$out" \
   || fail "the span content pattern is missing or has drifted from ai.go"
 grep -q 'context: spanevent' <<<"$out" || fail "span events are not redacted (the earlier convention put content there)"
 out="$(render --set gateway.genai.redactContent=false)"

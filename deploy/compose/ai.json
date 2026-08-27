@@ -1,0 +1,7 @@
+{
+  "currency": "USD",
+  "prices": [
+    { "model": "gpt-4o", "inputPer1MTokens": 2.5, "outputPer1MTokens": 10 },
+    { "model": "text-embedding-3-small", "inputPer1MTokens": 0.02 }
+  ]
+}

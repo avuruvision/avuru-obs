@@ -95,14 +95,15 @@ type aiSummaryResponse struct {
 }
 
 type aiCallerDTO struct {
-	Service      string   `json:"service"`
-	Model        string   `json:"model"`
-	Calls        uint64   `json:"calls"`
-	Errors       uint64   `json:"errors"`
-	Truncated    uint64   `json:"truncated"`
-	InputTokens  uint64   `json:"inputTokens"`
-	OutputTokens uint64   `json:"outputTokens"`
-	Cost         *float64 `json:"cost,omitempty"`
+	Service           string   `json:"service"`
+	Model             string   `json:"model"`
+	Calls             uint64   `json:"calls"`
+	Errors            uint64   `json:"errors"`
+	Truncated         uint64   `json:"truncated"`
+	CallsWithoutUsage uint64   `json:"callsWithoutUsage"`
+	InputTokens       uint64   `json:"inputTokens"`
+	OutputTokens      uint64   `json:"outputTokens"`
+	Cost              *float64 `json:"cost,omitempty"`
 }
 
 type aiCallersResponse struct {
@@ -189,9 +190,12 @@ func (a *API) handleAIModels(w http.ResponseWriter, r *http.Request) error {
 	}
 	// The totals row has no model, so it never matches a price. Its cost is
 	// the sum of the priced models' costs instead — a floor, and the response
-	// names what the floor is missing.
+	// names what the floor is missing. The provider goes too: SQL picks one
+	// from whichever call declared it, which is meaningful for a model and
+	// meaningless for the window.
 	resp.Total.Cost = nil
 	resp.Total.PricedByPrefix = false
+	resp.Total.Provider = ""
 	if cfg.Priced() {
 		resp.Currency = cfg.Currency
 	}
@@ -253,6 +257,7 @@ func (a *API) handleAISummary(w http.ResponseWriter, r *http.Request) error {
 	}
 	resp.Total.Cost = nil
 	resp.Total.PricedByPrefix = false
+	resp.Total.Provider = ""
 	if cfg.Priced() {
 		resp.Currency = cfg.Currency
 	}
@@ -301,15 +306,18 @@ func (a *API) handleAICallers(w http.ResponseWriter, r *http.Request) error {
 	}
 	for _, c := range rows {
 		d := aiCallerDTO{
-			Service:      c.Service,
-			Model:        c.Model,
-			Calls:        c.Calls,
-			Errors:       c.Errors,
-			Truncated:    c.Truncated,
-			InputTokens:  c.InputTokens,
-			OutputTokens: c.OutputTokens,
+			Service:           c.Service,
+			Model:             c.Model,
+			Calls:             c.Calls,
+			Errors:            c.Errors,
+			Truncated:         c.Truncated,
+			CallsWithoutUsage: c.CallsWithoutUsage,
+			InputTokens:       c.InputTokens,
+			OutputTokens:      c.OutputTokens,
 		}
-		if p, _, ok := cfg.Lookup(c.Model); ok {
+		// A row where nothing reported usage has no cost to state — pricing it
+		// at zero would read as free rather than as unknown.
+		if p, _, ok := cfg.Lookup(c.Model); ok && c.CallsWithoutUsage < c.Calls {
 			cost := p.Cost(c.InputTokens, c.OutputTokens)
 			d.Cost = &cost
 		}

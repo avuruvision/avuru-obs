@@ -13,6 +13,39 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **The model calls you are already sending.** Applications in this estate are
+  calling models, and because those calls arrive as ordinary spans they were
+  already in the trace store — one at a time, in a waterfall, with no way to ask
+  what any of it added up to. A new **AI** module reads them: per model, the
+  calls, the tokens in and out, latency, failures, and how often an answer was
+  cut off at the token ceiling; per calling service, the same numbers with an
+  owner. Nothing new is collected and no schema changes — it reads the
+  `gen_ai.*` attributes on spans you are already storing, so an install that
+  switches the module on sees its history, not just what arrives next.
+
+  Four readings do the work, and each of them guards a way of being confidently
+  wrong. The model that **answered** wins over the one that was asked for,
+  because an alias resolves at the provider and the response is what a bill is
+  computed against — and a row that only knows what was requested says so. Both
+  spellings of the token counts are read, since a large share of real traffic
+  still reports the older ones and reading only the current pair would show that
+  traffic as having spent nothing at all. A call that reported **no** usage is
+  counted and left out of the token totals rather than averaged in as a zero.
+  And a **truncated** answer is not a failed one: the call succeeded and hit the
+  ceiling, which is the commonest reason a response comes back unusable, so it
+  gets a column of its own instead of being hidden or mixed into the error rate.
+
+  Prices are yours to declare (`ai.prices`, per million tokens) and absent by
+  default, in which case the screen reports tokens and says so. A model with no
+  rate is named rather than costed at zero, so the total is explicitly a floor.
+  There is no pricing API — it would be the first outbound call in a product
+  whose promise is that nothing leaves the cluster — and no bundled price table,
+  which would be stale within a month while looking exactly as authoritative as
+  a number you typed yourself.
+
+  Born **off**: most installs call no models, and a navigation entry for
+  something you do not have is noise.
+
 - **The shape of one request.** A trace could be read span by span — a
   waterfall, a tree, a flamegraph — or not at all: at three hundred spans the
   services it crossed, and the order it crossed them in, are in there and cannot
@@ -91,6 +124,31 @@ When a release is cut, that block is renamed to the version with its date.
   there the caller is the one that failed.
 
 ### Changed
+
+- **Prompts and completions are dropped at the gateway by default.**
+  *(Behaviour change — see below if you want them kept.)* Model message content
+  reaches avuru-obs only because an application's own SDK was configured to
+  capture it; nothing here ever asked for it. But nothing here refused it
+  either, so on any install whose instrumentation captures content, user text
+  was being written to the trace store under your ordinary retention and
+  rendered in the trace view to anyone holding the Viewer role. Nobody chose
+  that. From this release the gateway deletes those attributes before they are
+  written.
+
+  The rule is deliberately narrow and deliberately ungated. It matches only the
+  `gen_ai.*` keys that carry message text, anchored so that a token **count**
+  under the convention's older spelling is never mistaken for a prompt; a span
+  event that carried content keeps its name and loses its attributes, so you can
+  still see that your instrumentation is emitting content without holding any of
+  it. And it is **not** tied to the AI module: content arrives whether or not
+  you run that screen, so making the protection depend on the screen would have
+  protected only the installs that went looking.
+
+  It applies from the upgrade forward — text already stored stays until its
+  retention expires it, and nothing here rewrites your history. If you have
+  decided you want content kept, and have a retention and access story for it,
+  set `gateway.genai.redactContent=false`. Token counts, models, latency and
+  cost are unaffected either way: those are attributes, not content.
 
 - **The service map's node shapes now say what a node is at a glance.** An
   application is a hexagon rather than a circle, and the database, cache or

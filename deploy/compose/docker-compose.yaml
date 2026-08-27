@@ -102,6 +102,11 @@ services:
       # otel_metrics_* tables seeded by metrics_kepler.json /
       # metrics_kubeletstats_pods.json.
       AVURUOBS_GREEN_CONFIG: /etc/avuruobs-green/green.json
+      # AI token prices. Deliberately PARTIAL: gpt-4o is priced and answers as
+      # gpt-4o-2024-08-06, so the sandbox exercises prefix matching; claude-
+      # sonnet is priced by nothing, so it exercises the unpriced row and the
+      # "this total is a floor" line beside it.
+      AVURUOBS_AI_CONFIG: /etc/avuruobs-ai/ai.json
       # The same numbers the migrate service turns into table TTLs. The hub
       # reports them (Settings → Storage: configured vs enforced) and bounds a
       # per-project retention window with them, so the two must not drift.
@@ -114,6 +119,7 @@ services:
       - ./groups.json:/etc/avuruobs/groups.json:ro
       - ./alerts.json:/etc/avuruobs-alerts/alerts.json:ro
       - ./green.json:/etc/avuruobs-green/green.json:ro
+      - ./ai.json:/etc/avuruobs-ai/ai.json:ro
     ports:
       - "18080:8080"
     depends_on:

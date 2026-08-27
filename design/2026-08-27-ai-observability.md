@@ -264,11 +264,11 @@ missing count is not a zero.
 ## Roadmap
 
 - [x] AEP accepted
-- [ ] Detection, per-model and per-caller reads in storage
-- [ ] `GET /api/v1/ai/{summary,models,callers}` + `ai` module registration
-- [ ] Gateway content redaction — default on, ungated by the module
-- [ ] Prices as chart values, absent by default
-- [ ] UI: the AI screen, the content warning, the module gate
+- [x] Detection, per-model and per-caller reads in storage
+- [x] `GET /api/v1/ai/{summary,models,callers}` + `ai` module registration
+- [x] Gateway content redaction — default on, ungated by the module
+- [x] Prices as chart values, absent by default
+- [x] UI: the AI screen, the content warning, the module gate
 - [ ] Docs site: feature page + setup note (bilingual)
 
 ## Follow-ups

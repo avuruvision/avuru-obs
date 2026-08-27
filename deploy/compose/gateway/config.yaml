@@ -20,6 +20,26 @@ receivers:
         service_name: sentry-demo
 
 processors:
+  # Model prompts and completions, dropped before they are written — the same
+  # stage the chart renders by default (deploy/helm/avuruobs/templates/
+  # gateway-config.yaml, gateway.genai.redactContent). It lives here too so the
+  # sandbox and the e2e run the shipped behaviour rather than a friendlier one.
+  #
+  # The pattern is anchored: gen_ai.usage.prompt_tokens is a token COUNT and
+  # must survive. Span events keep their name and lose their attributes.
+  transform/genai:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - 'delete_matching_keys(span.attributes, "^gen_ai\\.(prompt|completion|input\\.messages|output\\.messages|system_instructions|content)")'
+      - context: spanevent
+        statements:
+          - 'delete_matching_keys(spanevent.attributes, "^gen_ai\\.(prompt|completion|input|output|system_instructions|content)")'
+    log_statements:
+      - context: log
+        statements:
+          - 'delete_matching_keys(log.attributes, "^gen_ai\\.(prompt|completion|input\\.messages|output\\.messages|system_instructions|content)")'
   batch:
     send_batch_size: 4096
     timeout: 2s
@@ -47,11 +67,11 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
+      processors: [transform/genai, batch]
       exporters: [clickhouse]
     logs:
       receivers: [otlp, sentry]
-      processors: [batch]
+      processors: [transform/genai, batch]
       exporters: [clickhouse]
     metrics:
       receivers: [otlp]

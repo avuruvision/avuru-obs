@@ -1085,13 +1085,17 @@ type AIUsage struct {
 // owner. Quantiles are deliberately absent — latency belongs to the model, and
 // a p99 over a handful of calls from one service is noise wearing a number.
 type AICallerUsage struct {
-	Service      string
-	Model        string
-	Calls        uint64
-	Errors       uint64
-	Truncated    uint64
-	InputTokens  uint64
-	OutputTokens uint64
+	Service   string
+	Model     string
+	Calls     uint64
+	Errors    uint64
+	Truncated uint64
+	// CallsWithoutUsage matters here for the same reason it does per model: a
+	// row whose every call reported nothing has no token total, and printing
+	// one as 0 would read as "this service is free".
+	CallsWithoutUsage uint64
+	InputTokens       uint64
+	OutputTokens      uint64
 }
 
 // Store is the telemetry query seam implemented by storage backends.

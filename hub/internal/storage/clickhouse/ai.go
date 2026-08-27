@@ -221,6 +221,7 @@ SELECT
     count()                              AS calls,
     countIf(` + errorSpanExpr("") + `)   AS errors,
     countIf(` + aiTruncatedExpr + `)     AS truncated,
+    countIf(NOT ` + aiHasUsageExpr + `)  AS noUsage,
     sum(` + aiInputTokensExpr + `)       AS inTokens,
     sum(` + aiOutputTokensExpr + `)      AS outTokens
 FROM otel_traces
@@ -244,7 +245,7 @@ LIMIT ?`
 	for rows.Next() {
 		var c storage.AICallerUsage
 		if err := rows.Scan(&c.Service, &c.Model, &c.Calls, &c.Errors, &c.Truncated,
-			&c.InputTokens, &c.OutputTokens); err != nil {
+			&c.CallsWithoutUsage, &c.InputTokens, &c.OutputTokens); err != nil {
 			return nil, fmt.Errorf("scanning ai caller row: %w", err)
 		}
 		out = append(out, c)

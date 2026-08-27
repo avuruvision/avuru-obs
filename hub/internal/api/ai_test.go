@@ -83,6 +83,11 @@ func TestAIModelsUnpricedShowsNoMoney(t *testing.T) {
 	if resp.Models[0].Cost != nil || resp.Total.Cost != nil {
 		t.Error("no rates declared must mean no cost at all, not a zero")
 	}
+	// The totals row describes the window, not a model: SQL picks a provider
+	// from whichever call declared one, which means nothing here.
+	if resp.Total.Model != "" || resp.Total.Provider != "" {
+		t.Errorf("totals should carry no identity: %+v", resp.Total)
+	}
 	// And nothing is "unpriced" either — there is no price table to be missing
 	// from, so naming models would be noise.
 	if len(resp.UnpricedModels) != 0 {

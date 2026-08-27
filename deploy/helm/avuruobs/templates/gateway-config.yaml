@@ -213,18 +213,18 @@ data:
         trace_statements:
           - context: span
             statements:
-              - 'delete_matching_keys(attributes, "^gen_ai\\.(prompt|completion|input\\.messages|output\\.messages|system_instructions|content)")'
+              - 'delete_matching_keys(span.attributes, "^gen_ai\\.(prompt|completion|input\\.messages|output\\.messages|system_instructions|content)")'
           - context: spanevent
             statements:
-              - 'delete_matching_keys(attributes, "^gen_ai\\.(prompt|completion|input|output|system_instructions|content)")'
+              - 'delete_matching_keys(spanevent.attributes, "^gen_ai\\.(prompt|completion|input|output|system_instructions|content)")'
         log_statements:
           - context: log
             statements:
-              - 'delete_matching_keys(attributes, "^gen_ai\\.(prompt|completion|input\\.messages|output\\.messages|system_instructions|content)")'
+              - 'delete_matching_keys(log.attributes, "^gen_ai\\.(prompt|completion|input\\.messages|output\\.messages|system_instructions|content)")'
               # The current convention carries content in the log record BODY of
               # a gen_ai event. The record survives so the conversation is still
               # countable; what it said does not.
-              - 'set(body, "[redacted: gateway.genai.redactContent]") where IsMatch(attributes["event.name"], "^gen_ai\\.(system|user|assistant|tool)\\.message$|^gen_ai\\.choice$")'
+              - 'set(body, "[redacted: gateway.genai.redactContent]") where IsMatch(log.attributes["event.name"], "^gen_ai\\.(system|user|assistant|tool)\\.message$|^gen_ai\\.choice$")'
     {{- end }}
       batch:
         send_batch_size: 4096
