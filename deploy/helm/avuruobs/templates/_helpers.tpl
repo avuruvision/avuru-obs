@@ -89,6 +89,7 @@ otel
 {{- if .Values.modules.mesh.enabled -}}{{- $mods = append $mods "mesh" -}}{{- end -}}
 {{- if .Values.modules.green.enabled -}}{{- $mods = append $mods "green" -}}{{- end -}}
 {{- if .Values.modules.cost.enabled -}}{{- $mods = append $mods "cost" -}}{{- end -}}
+{{- if .Values.modules.ai.enabled -}}{{- $mods = append $mods "ai" -}}{{- end -}}
 {{- join "," $mods -}}
 {{- end -}}
 
@@ -308,6 +309,34 @@ http://{{ include "avuruobs.fullname" . }}-hub:80/internal/v1/ingest-keys/valida
 {{- if .Values.modules.green.enabled }}
 - name: green-config
   mountPath: /etc/avuruobs-green
+  readOnly: true
+{{- end }}
+{{- end -}}
+
+{{/* AI token prices: env + volume + mount, in its OWN dir so it never collides
+     with the groups/alerts/green mounts. Emitted only when the ai module is
+     on. Unset prices are still rendered — an empty list is what the hub reads
+     as "not priced", and it must be able to pick up prices added later without
+     a restart. */}}
+{{- define "avuruobs.aiEnv" -}}
+{{- if .Values.modules.ai.enabled }}
+- name: AVURUOBS_AI_CONFIG
+  value: /etc/avuruobs-ai/ai.json
+{{- end }}
+{{- end -}}
+
+{{- define "avuruobs.aiVolume" -}}
+{{- if .Values.modules.ai.enabled }}
+- name: ai-config
+  configMap:
+    name: {{ include "avuruobs.fullname" . }}-ai
+{{- end }}
+{{- end -}}
+
+{{- define "avuruobs.aiVolumeMount" -}}
+{{- if .Values.modules.ai.enabled }}
+- name: ai-config
+  mountPath: /etc/avuruobs-ai
   readOnly: true
 {{- end }}
 {{- end -}}

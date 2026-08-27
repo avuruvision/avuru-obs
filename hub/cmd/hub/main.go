@@ -270,6 +270,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	aiConfig, err := loadAIConfig(ctx)
+	if err != nil {
+		return err
+	}
 	topologyConfig, err := loadTopologyConfig(ctx)
 	if err != nil {
 		return err
@@ -324,6 +328,7 @@ func run() error {
 		DemoEmail:                       demoEmail,
 		DemoPassword:                    demoPassword,
 		GreenConfig:                     greenConfig,
+		AIConfig:                        aiConfig,
 		CostRates:                       costRates(),
 		MeshScrapeJob:                   envOr("AVURUOBS_MESH_SCRAPE_JOB", ""),
 		Topology:                        topologyConfig,

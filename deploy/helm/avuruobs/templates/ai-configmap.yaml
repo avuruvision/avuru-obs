@@ -1,0 +1,17 @@
+{{- /* Hub-owned config: not rendered on a gateway-only install. */}}
+{{- if and .Values.hub.enabled .Values.modules.ai.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "avuruobs.fullname" . }}-ai
+  labels:
+    {{- include "avuruobs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hub
+data:
+  # The hub parses this as JSON (fail-loud on invalid content — a duplicate
+  # model or a price that says nothing crashes startup rather than silently
+  # reporting a wrong bill). ai is authored as YAML in values.yaml; toJson
+  # renders it for the hub, which hot-reloads on change so `kubectl edit`
+  # applies without a pod restart.
+  ai.json: {{ .Values.ai | toJson | quote }}
+{{- end }}

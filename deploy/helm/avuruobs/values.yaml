@@ -91,6 +91,23 @@ gateway:
   tenantByNamespace: {}
   #  avuru-services: production
   #  avuru-services-staging: staging
+  # Model prompts and completions (gen_ai content). ON by default, and NOT
+  # tied to modules.ai: this text arrives whether or not you run the AI screen,
+  # so gating the protection on the screen would protect only the installs that
+  # went looking.
+  #
+  # Content reaches this gateway only because an application's own SDK was
+  # configured to capture it — nothing here asks for it. Left alone it is user
+  # text, stored under your ordinary trace retention and rendered in the trace
+  # view to every Viewer. This drops it before it is written; the span event
+  # that carried it survives, emptied, so you can still see that your
+  # instrumentation is emitting content.
+  #
+  # Set false ONLY if you have decided you want prompts stored, and have a
+  # retention and access story for them. Token counts, models, latency and cost
+  # are unaffected either way — those are attributes, not content.
+  genai:
+    redactContent: true
   # Sentry SDK ingest (error-tracking module). OFF by default: it opens a
   # network surface (:4319) for browser/app error reporting. Needs the
   # error-tracking AND logs modules (events are stored as log records). Expose
@@ -240,6 +257,15 @@ modules:
   # and sensor.agent.cluster: blocks below.
   cost:
     enabled: false
+  # AI observability: the model calls your applications already send —
+  # per-model tokens, latency, failures, truncation and, if you price them,
+  # money. Reads the gen_ai.* attributes on spans you are already storing:
+  # no schema, no collection, no dependency on another module.
+  # Born OFF for the same reason as mesh — most installs call no models, and a
+  # nav entry for something you do not have is noise. Turning it OFF does NOT
+  # turn off prompt redaction; that is gateway.genai.redactContent.
+  ai:
+    enabled: false
 
 # Mesh control plane. Rendered into the GATEWAY's collector config, not the
 # sensor's: istiod is a single Deployment, and the sensor is a DaemonSet, so
@@ -288,6 +314,31 @@ cost:
     cpuCoreHour: 0
     memGiBHour: 0
     currency: ""
+
+# Token prices for the AI module, per MILLION tokens — which is how every
+# provider publishes them. Rendered to a ConfigMap the hub reads (mounted at
+# AVURUOBS_AI_CONFIG) when modules.ai.enabled, and hot-reloaded on a
+# `kubectl edit`.
+#
+# Unset (the default) is a real answer: the screens report token counts and say
+# that is what they are reporting. There is no bundled price table — it would
+# be stale within a month and would carry a wrong number with the confidence of
+# a right one — and no pricing API, which would be the first outbound call in a
+# product whose promise is that nothing leaves the cluster.
+#
+# `model` matches the id in your telemetry exactly, or as a PREFIX of it:
+# pricing "gpt-4o" also prices "gpt-4o-2024-08-06". An exact entry always wins
+# over a prefix, and the longest prefix wins among prefixes. A cost derived
+# from a prefix is marked as such on the screen.
+ai:
+  currency: ""
+  prices: []
+  #  - model: gpt-4o
+  #    inputPer1MTokens: 2.5
+  #    outputPer1MTokens: 10
+  #  - model: claude-sonnet
+  #    inputPer1MTokens: 3
+  #    outputPer1MTokens: 15
 
 # Alerting rules and channels. Rendered to a ConfigMap the hub reads (mounted at
 # AVURUOBS_ALERTS_CONFIG) when modules.alerting.enabled. No rules = nothing
