@@ -13,6 +13,31 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **Where the traffic actually goes.** Every trace view so far returned rows —
+  which requests, and how slow. None answered *how much of what*, so working out
+  that one route carries 60% of the traffic meant exporting the operations table
+  and adding it up by hand. A new **Breakdown** tab on Traces draws that
+  distribution as a treemap and a donut, grouped by service, operation, outcome,
+  span kind, or any span or resource attribute — an HTTP route, a database, a
+  namespace, an environment, a business tag. It takes the filter panel already
+  above it, so the chart and the trace list beneath it always describe the same
+  traffic, and a slice drills straight into the traces behind it.
+
+  Two things make it worth trusting. It can be weighted by **requests or by
+  total time**, and the two rank differently — a service at 5% of requests and
+  18% of the wall time is invisible under a request count and is exactly what a
+  latency investigation is looking for. And it is honest about its tail: the
+  totals are computed over every matching span before the top-N is cut, so what
+  the chart does not draw comes back as its own slice instead of the top eight
+  quietly redrawing themselves as the whole estate.
+
+  It also separates three questions the product used to answer as one:
+  **requests served** (what each service was asked to do), **trace entry
+  points** (where traffic entered, one per trace), and **all spans**. On a
+  meshed estate the first two differ by a factor of two. Nothing new is
+  collected — it reads the traces already stored —
+  [AEP](design/2026-08-27-trace-analytics.md)
+
 - **Refused: a third answer to "did it work?"** A server that replies 4xx has
   neither failed nor succeeded, and the product only had those two words for
   it — so a WAF blocking a request, or an authorization layer turning one away,
