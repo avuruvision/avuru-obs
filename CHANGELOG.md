@@ -13,6 +13,25 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **The shape of one request.** A trace could be read span by span — a
+  waterfall, a tree, a flamegraph — or not at all: at three hundred spans the
+  services it crossed, and the order it crossed them in, are in there and cannot
+  be seen. The service map does not help, because it aggregates every trace in
+  the window and so cannot describe a single one. A new **Path** view on the
+  trace answers the question between them: which services this request touched,
+  what called what, and where its time went.
+
+  Each service is weighted by the time spent **inside it** rather than by how
+  long its span lasted — a caller's span contains its callee's, so duration
+  would credit the entry point with the whole request no matter where the time
+  actually went. Dependencies that never sent a span of their own — a database,
+  a cache, a third-party API — are drawn as the terminal hops they are, named by
+  the endpoint the caller recorded and marked as measured at the caller, because
+  the far end never confirmed any of it. A branch that failed is red end to end.
+
+  Selecting **focus** on a service reduces the view to what that service caused,
+  which is what filtering a trace by a parent looks like on a graph.
+
 - **A page for one service.** Clicking a service — in the inventory or on the
   map — used to open a filtered trace list, which answers what it served and
   nothing else. Asking the ordinary next questions meant visiting four screens
