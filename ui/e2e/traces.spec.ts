@@ -15,7 +15,7 @@ test.describe("shell", () => {
   test("renders sidebar nav and toggles theme", async ({ page }) => {
     await page.goto("/traces");
 
-    await expect(page.getByRole("link", { name: "avuru obs" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Avuru Obs", exact: true })).toBeVisible();
     for (const item of ["Services", "Service Map", "Traces", "Logs", "Profiling"]) {
       await expect(page.getByRole("link", { name: item, exact: true })).toBeVisible();
     }

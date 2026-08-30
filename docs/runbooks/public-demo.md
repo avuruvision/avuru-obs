@@ -1,6 +1,6 @@
 # Runbook: public Live Demo (demo.avuruobs.io)
 
-Runs avuru obs as an internet-facing, read-only showcase backed by the
+Runs Avuru Obs as an internet-facing, read-only showcase backed by the
 [Astronomy Shop](../../deploy/demo/astronomy/README.md). Anonymous visitors
 get **Viewer on exactly one project** (`demo`) — the v0.2 anonymous-access
 feature built for this. Everything else stays closed.
@@ -13,7 +13,7 @@ Manifests: [`deploy/demo/public/`](../../deploy/demo/public/).
   APISIX; any class works) and TLS (cert-manager or a pre-provisioned
   certificate in Secret `demo-avuruobs-tls`).
 - DNS: `demo.avuruobs.io` → the ingress' public address.
-- ~6 GB / 4 CPU headroom for the shop on top of the avuru obs footprint.
+- ~6 GB / 4 CPU headroom for the shop on top of the Avuru Obs footprint.
 
 ## Install
 
