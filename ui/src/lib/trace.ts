@@ -4,13 +4,53 @@
 
 import type { Span } from "@/lib/api-types";
 
+// The hue band services are drawn from: [40, 330), avoiding the red/pink error
+// band at both ends ([0,40) and (330,360]). A service whose name hashed red
+// used to make an all-OK trace read as failing.
+const HUE_START = 40;
+const HUE_SPAN = 290;
+
+// Hues are QUANTIZED to this many steps rather than taken anywhere in the band.
+// A continuous hash puts two services three degrees apart as readily as thirty,
+// and three degrees is not a distinction — it is a rendering artifact. It was
+// tolerable while services only ever appeared as thin waterfall bars; adjacent
+// treemap blocks made it a defect.
+//
+// Eighteen steps put any two DIFFERENT steps at least 16 degrees apart, which
+// is comfortably above the just-noticeable difference at this lightness and
+// chroma, while keeping the palette large enough that same-hue pairs stay rare.
+//
+// The cost is real and deliberate: two services can now share a hue EXACTLY.
+// That cannot be probed away the way series-color.ts resolves its categorical
+// slots, because probing assigns from the set being rendered, and this hash has
+// to answer per name — a service must be the same colour in the waterfall as in
+// the treemap, on screens that never see the same set. So the trade is between
+// two kinds of collision, and shared beats near: a shared colour reads as "these
+// two look alike", while three degrees reads as "these two are the same and the
+// renderer is wobbling".
+const HUE_STEPS = 18;
+
+// FNV-1a, 32-bit — the same hash series-color.ts uses, and for the same reason:
+// small, dependency-free, and stable across renders, reloads and browsers, so a
+// service keeps its colour.
+//
+// The previous hash reduced modulo 360 on every character, which capped the
+// state at nine bits and cost it most of its avalanche: names sharing a suffix
+// landed near each other rather than anywhere. Quantizing a weak hash would
+// just concentrate the collisions, so this had to be fixed first.
+function hashName(name: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < name.length; i++) {
+    h ^= name.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
 // Stable service hue from a name hash — consistent colors across all screens.
-// Hues are kept out of the red/pink error band ([0,40) and (330,360]): a
-// service whose name hashed red used to make an all-OK trace read as failing.
 export function serviceHue(name: string): number {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
-  return 40 + (h % 290);
+  const step = hashName(name) % HUE_STEPS;
+  return HUE_START + Math.round((step * HUE_SPAN) / HUE_STEPS);
 }
 
 export function serviceColor(name: string): string {
