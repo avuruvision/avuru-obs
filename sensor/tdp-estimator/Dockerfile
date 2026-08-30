@@ -2,7 +2,7 @@
 # hub/Dockerfile's shape (static Go binary, distroless runtime).
 # Build context = repo root (release.yml: context ., file sensor/tdp-estimator/Dockerfile).
 
-FROM golang:1.26-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src/sensor/tdp-estimator
 COPY sensor/tdp-estimator/go.mod ./
 RUN go mod download

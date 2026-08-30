@@ -48,9 +48,9 @@ func TestFetchPods(t *testing.T) {
 
 func TestKubeletBaseURL(t *testing.T) {
 	cases := []struct{ host, want string }{
-		{"vmdev1", "https://vmdev1:10250"},          // hostname passthrough (legacy fallback)
+		{"vmdev1", "https://vmdev1:10250"},               // hostname passthrough (legacy fallback)
 		{"192.168.40.56", "https://192.168.40.56:10250"}, // the NODE_IP path
-		{"fd00::1", "https://[fd00::1]:10250"},      // IPv6 must be bracketed
+		{"fd00::1", "https://[fd00::1]:10250"},           // IPv6 must be bracketed
 	}
 	for _, c := range cases {
 		if got := kubeletBaseURL(c.host); got != c.want {

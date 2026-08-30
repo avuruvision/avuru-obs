@@ -13,9 +13,9 @@ import (
 func TestPlanTrimSelectsOnlyProjectsWithTheirOwnWindow(t *testing.T) {
 	now := time.Date(2026, 8, 22, 3, 0, 0, 0, time.UTC)
 	projects := []storage.Project{
-		{ID: "prod"},                      // inherits the global TTL
-		{ID: "staging", RetentionDays: 3}, // trims to now-3d
-		{ID: "ci", RetentionDays: 1},      // trims to now-1d
+		{ID: "prod"},                                              // inherits the global TTL
+		{ID: "staging", RetentionDays: 3},                         // trims to now-3d
+		{ID: "ci", RetentionDays: 1},                              // trims to now-1d
 		{ID: "estate", RetentionDays: 3, Members: []string{"ci"}}, // aggregate: owns no rows
 	}
 
