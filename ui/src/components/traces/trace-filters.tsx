@@ -47,6 +47,8 @@ export function TraceFilterPanel({
   servicesLoading,
   operations,
   operationsLoading,
+  traceId,
+  spanId,
 }: {
   filters: TraceFilters;
   set: SetFn;
@@ -56,6 +58,10 @@ export function TraceFilterPanel({
   servicesLoading?: boolean;
   operations: string[];
   operationsLoading?: boolean;
+  // The currently open trace/span (workspace URL params), so the ID input
+  // reflects deep-links from Errors/Logs instead of staying blank.
+  traceId?: string | null;
+  spanId?: string | null;
 }) {
   const apply = (key: string) => (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") set({ [key]: (e.target as HTMLInputElement).value || undefined });
@@ -87,9 +93,13 @@ export function TraceFilterPanel({
     <Card className="p-3">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
         <Field label="Trace / Span ID" className="col-span-2 xl:col-span-1">
+          {/* Uncontrolled, so the key is what resets it: on a service change
+              (a pasted id no longer belongs to the new scope) and on the open
+              trace changing (a deep-link should show the id it landed on). */}
           <input
-            key={`trace-${filters.service ?? ""}`}
+            key={`trace-${filters.service ?? ""}-${spanId ?? traceId ?? ""}`}
             type="text"
+            defaultValue={spanId ?? traceId ?? ""}
             placeholder="paste a trace or span id…"
             aria-label="Open trace or span by id"
             onKeyDown={(e) => {

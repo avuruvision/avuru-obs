@@ -108,6 +108,11 @@ test.describe("traces screen (seeded data)", () => {
     await expect(page.getByText(SEED_TRACE_ID)).toBeVisible();
     await expect(page.getByRole("group", { name: "Trace summary" })).toBeVisible();
     await expect(page.getByRole("button", { name: /GET cache/ })).toBeVisible();
+    // A deep link (from Errors, Logs, or a pasted URL) seeds the id input too,
+    // so the query panel says which trace is open instead of sitting blank.
+    await expect(page.getByLabel("Open trace or span by id")).toHaveValue(
+      SEED_TRACE_ID,
+    );
   });
 
   test("clicking a tab closes an open trace and shows the tab content", async ({ page }) => {
