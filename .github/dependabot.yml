@@ -105,12 +105,19 @@ updates:
       docker-images:
         patterns: ["*"]
     ignore:
-      # Node stays on the Active LTS line — node:26 is Current until 2026-10-28
-      # and is not what a shipped artifact should be built on. The same reason
-      # is on the pin itself at ui/Dockerfile:9. Revisit once 26 is LTS, which
-      # is also when 24 enters maintenance.
+      # Node stays on the Active LTS line, which is 24 until 2026-10-28. The
+      # same reason is on the pin itself at ui/Dockerfile:9.
+      #
+      # This pins ">=25", not ">=26", because Node's majors alternate: EVEN
+      # majors become LTS, odd ones never do — 25 is Current for its whole life
+      # and then goes end-of-life. An earlier ">=26" here blocked the version
+      # that will BE the next LTS while waving through the one that can never
+      # be, and dependabot proposed exactly that within the hour.
+      #
+      # Lift this to ">=27" when 26 enters Active LTS on 2026-10-28, which is
+      # also when 24 enters maintenance.
       - dependency-name: "node"
-        versions: [">=26"]
+        versions: [">=25"]
 
   # The gateway image builds the OCB distro, and its Go line is not free to
   # move on its own: the three in-repo modules compiled into that binary
