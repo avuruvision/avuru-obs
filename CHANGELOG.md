@@ -1180,6 +1180,16 @@ README.
   did change and what to do next (sign in again with the new one, or that other
   sessions are still live and should be ended from another device).
 
+## [0.3.1] — 2026-07-31
+
+**A default install pulls again.** A patch for one defect with two halves: the
+chart's image coordinates never matched what the release workflow publishes, so
+`helm install` with no `--set` could not resolve the hub, UI, gateway or
+TDP-estimator images. Nothing else changes — no schema migration, no API or
+config surface.
+
+### Fixed
+
 - **A default `helm install` now pulls the images it is supposed to.** The
   chart's image defaults never matched what the release workflow publishes, in
   two independent ways: the repositories read `avuruobs/hub` (Docker Hub) while
@@ -1622,6 +1632,7 @@ Release links:
 [0.6.0]: https://github.com/avuruvision/avuru-obs/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/avuruvision/avuru-obs/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/avuruvision/avuru-obs/compare/v0.3.1...v0.4.0
+[0.3.1]: https://github.com/avuruvision/avuru-obs/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/avuruvision/avuru-obs/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/avuruvision/avuru-obs/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/avuruvision/avuru-obs/releases/tag/v0.1.0
