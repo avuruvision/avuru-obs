@@ -227,16 +227,34 @@ just what arrives next.
 | **Refused, a third answer to "did it work?"** | A server replying 4xx has neither failed nor succeeded, and the product had only those two words — so a blocked request or an authorization refusal was reported as `OK`. Server-side 4xx is now its own class across the span badge, the operations overview, the trace table and the search filter, deliberately **out of** the error rate: folding it in would put every auth challenge and every crawler 404 into the number people are paged on |
 | **A map that says what it means** | An application is a hexagon and the datastore it depends on is a barrel, so the glyph a reader meets most often is the distinctive one; and the trace list shows the status code a span answered instead of the word "OK" it used to contradict one panel over |
 
-## Beyond v0.11 (directional)
+## v0.12 — the spend you can act on — IN PROGRESS
 
-- **Agents and tool calls as a shape.** `execute_tool` spans and the
-  `gen_ai.agent.*` attributes describe a graph, and the trace Path view already
-  draws one. v0.11 reports model calls as rows; an agent that fans out to four
-  tools is a shape, not a table.
-- **Token budgets and an alert rule**, the way green already has carbon
-  budgets. Spend is the number people want a threshold on.
-- **Prices authored in the UI** rather than the chart, shared with the cost
-  module's rates — once either of them needs a second rate table.
+v0.11 taught the product to read the model calls already in its trace store,
+and to report them. A report is not an action. v0.12 is about the three things
+standing between the two — and it opens by fixing a way of reading those spans
+that turned out to be wrong.
+
+> **As a team we can see the shape of what our agents actually do, get told
+> when spend crosses a line we set, and write down what things cost once.**
+
+| Theme | Planned |
+|---|---|
+| **Tool calls are not model calls** | The release opens with a defect. The AI module decides what counts as a model call by testing that `gen_ai.operation.name` is *present*, never looking at its value — but `execute_tool`, `invoke_agent` and `embeddings` are legal values of that attribute, so on an agent workload every tool execution is counted as a call to a model. Call counts inflate, latency quantiles mix a database lookup with a completion, the model resolves to nothing, and the "reported no usage" bucket — which exists to name an instrumentation gap honestly — fills with spans that were never model calls at all. Splitting the population by operation class restores all four — [AEP](design/2026-08-30-agents-budgets-and-rates.md) |
+| **An agent turn is a shape** | Once tools are told apart they are worth drawing. An agent turn is a small graph — a model call that decides, a fan-out to tools, results coming back, often another model call after — and the questions worth asking about it are graph questions: which tool is slow, which fails, how many hops before it converges, which one a retry loop is stuck on. The renderer already exists: the Path view weights each node by the time spent *inside* it, which is exactly right when the model-call span contains its tool spans. A tool a turn hit four times is one node with a count, because the loop is the thing worth seeing |
+| **A threshold on spend** | Nobody watches a screen. Green already solved this shape for carbon, and solved it as a *pure* state machine writing into the shared alert tables behind a rule-key prefix, with the alerting package unedited by contract. Spend wants that machine with the unit changed — tokens or money, per calling service or across the estate — not a second one, because two state machines writing one table is how firing and pending semantics drift apart. A cost budget over models you have not priced is refused when the config is parsed, since a budget that measures against a floor comes in under every threshold by being ignorant of half the spend |
+| **One rate table, written down once** | There are two now, and they differ in more than content: AI prices are a hot-reloading ConfigMap validated fail-loud, cost rates are three environment variables read once at startup. The same operator declaring what their estate costs does it twice, in two formats, one of which needs a pod restart — and the two currency fields can disagree with nothing noticing. Both move behind one resolver, authored in the UI over the overlay storage runtime collection control already established, with chart-declared values still readable and marked read-only the way service groups are |
+
+**Deliberately not in this list**, each for a reason that already exists in the
+tree. **Cost joined to green** stays blocked on the real-RAPL confirmation:
+green's Kepler read has been unverified on real hardware since v0.2, and
+joining it to cost's CI-proven numbers would launder that doubt rather than
+resolve it. **Reading a second control plane** still needs an operator running
+one. And **root-cause summaries from a model** remain out, because they would
+be the first outbound network call in a product whose whole promise is that
+nothing leaves the cluster — a release-level decision, not a corner of one.
+
+## Beyond v0.12 (directional)
+
 - **Read a second control plane**, once someone running one can say which of its
   signals answer the four questions the Istio card answers — and which of them
   simply have no answer there.
