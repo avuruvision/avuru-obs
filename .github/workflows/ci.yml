@@ -220,9 +220,11 @@ jobs:
   # them silently rotted across two releases. The lesson from that gate applies
   # unchanged: a test nobody runs is documentation with a worse failure mode.
   #
-  # The two opt-in suites in the same directory skip themselves here, by
-  # design: compat needs the compat-e2e overlay (AVURUOBS_E2E_COMPAT) and oidc
-  # needs the mock-IdP stack (AVURUOBS_E2E_OIDC). Both have their own targets.
+  # Three opt-in suites in the same directory skip themselves here, by design,
+  # each wanting a stack this job does not raise: compat (AVURUOBS_E2E_COMPAT,
+  # the compat-e2e overlay), ingest keys (AVURUOBS_E2E_INGEST, the ingest-e2e
+  # overlay) and oidc (AVURUOBS_E2E_OIDC, the mock IdP). Each has its own
+  # target. First green run: 17 passed, 10 skipped, 0 failed in 7m37s.
   e2e-compose:
     runs-on: ubuntu-latest
     # The same four images e2e-ui builds, without the browser or the specs.
