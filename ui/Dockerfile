@@ -9,7 +9,7 @@
 # Node stays on the Active LTS line. node:26 is the Current release until
 # 2026-10-28 and is not what a shipped artifact should be built on; revisit
 # once 26 is LTS, which is also when 24 enters maintenance.
-FROM --platform=$BUILDPLATFORM node:24-alpine AS build
+FROM --platform=$BUILDPLATFORM node:26-alpine AS build
 WORKDIR /src/ui
 COPY ui/package.json ui/package-lock.json ./
 RUN npm ci --no-audit --no-fund

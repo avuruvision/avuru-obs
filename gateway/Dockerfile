@@ -1,7 +1,7 @@
 # Avuru gateway — minimal OTel Collector distro built with OCB from
 # ocb-manifest.yaml. Build from the REPO ROOT:
 #   docker build -t avuru-obs-gateway -f gateway/Dockerfile .
-FROM golang:1.25 AS build
+FROM golang:1.27 AS build
 ARG OCB_VERSION=0.154.0
 WORKDIR /src
 
