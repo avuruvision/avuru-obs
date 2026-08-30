@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the public Live Demo: avuru obs (anonymous read-only on the `demo`
+# Install the public Live Demo: Avuru Obs (anonymous read-only on the `demo`
 # project) + the Astronomy Shop feeding it over OTLP.
 #
 # Prereqs (see docs/runbooks/public-demo.md): a cluster with an ingress
@@ -13,7 +13,7 @@ NS="${NS:-demo-obs}"
 VERSION="${VERSION:?set VERSION to a released chart version, e.g. VERSION=0.2.1}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "Installing avuru obs $VERSION into namespace '$NS' (public-demo values)…"
+echo "Installing Avuru Obs $VERSION into namespace '$NS' (public-demo values)…"
 helm upgrade --install avuruobs oci://ghcr.io/avuruvision/charts/avuruobs \
   --version "$VERSION" \
   -n "$NS" --create-namespace \

@@ -1,6 +1,6 @@
 # Public demo overlay — demo.avuruobs.io
 #
-# Runs avuru obs as an internet-facing, read-only showcase: anonymous visitors
+# Runs Avuru Obs as an internet-facing, read-only showcase: anonymous visitors
 # get Viewer on exactly one project (`demo`), fed by the Astronomy Shop
 # (deploy/demo/astronomy) over OTLP. Every other surface stays closed. See
 # docs/runbooks/public-demo.md for the full install + hardening runbook.

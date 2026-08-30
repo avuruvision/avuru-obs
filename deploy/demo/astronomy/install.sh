@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Install the OpenTelemetry Astronomy Shop, wired to avuru obs over OTLP.
+# Install the OpenTelemetry Astronomy Shop, wired to Avuru Obs over OTLP.
 #
 # This is the multi-service app behind the public Live Demo. It exercises the
 # STABLE OTLP ingestion path (not the eBPF sensor): every shop service exports
-# traces, metrics and logs straight to the avuru obs gateway.
+# traces, metrics and logs straight to the Avuru Obs gateway.
 #
-# Prereq: avuru obs already installed (Helm release `avuruobs`) in $NS. Install
+# Prereq: Avuru Obs already installed (Helm release `avuruobs`) in $NS. Install
 # the demo into the SAME namespace so `avuruobs-gateway` resolves.
 set -euo pipefail
 
@@ -35,7 +35,7 @@ helm upgrade --install "$RELEASE" open-telemetry/opentelemetry-demo \
 cat <<EOF
 
 Done. The shop's built-in load generator drives traffic automatically.
-Open the avuru obs UI and watch the service map fill in — over OTLP, no eBPF.
+Open the Avuru Obs UI and watch the service map fill in — over OTLP, no eBPF.
 
 Tear down with:  helm uninstall $RELEASE -n $NS
 EOF

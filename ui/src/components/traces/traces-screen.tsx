@@ -81,6 +81,8 @@ export function TracesScreen() {
         filters={filters}
         set={setMany}
         hasFilters={hasFilters}
+        traceId={selectedTrace}
+        spanId={get("span")}
         services={services.data ?? []}
         servicesLoading={services.isLoading}
         operations={operationOptions}
