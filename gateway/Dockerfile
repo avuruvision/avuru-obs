@@ -1,6 +1,10 @@
 # Avuru gateway — minimal OTel Collector distro built with OCB from
 # ocb-manifest.yaml. Build from the REPO ROOT:
 #   docker build -t avuru-obs-gateway -f gateway/Dockerfile .
+# Go stays on the line the compiled-in modules declare. sentryreceiver,
+# avuruingestauth and tenantfromauth all say `go 1.25.0` to match the collector
+# release OCB_VERSION pins, and dependabot holds them there on purpose. This
+# image moves as part of a collector upgrade, never on its own.
 FROM golang:1.25 AS build
 ARG OCB_VERSION=0.154.0
 WORKDIR /src

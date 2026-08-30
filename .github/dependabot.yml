@@ -92,14 +92,36 @@ updates:
       github-actions:
         patterns: ["*"]
 
+  # The gateway is deliberately NOT in this list: its base image belongs to the
+  # collector-upgrade unit below, not to the weekly image sweep.
   - package-ecosystem: docker
     directories:
       - /hub
       - /ui
-      - /gateway
       - /sensor/tdp-estimator
     schedule:
       interval: weekly
     groups:
       docker-images:
         patterns: ["*"]
+    ignore:
+      # Node stays on the Active LTS line — node:26 is Current until 2026-10-28
+      # and is not what a shipped artifact should be built on. The same reason
+      # is on the pin itself at ui/Dockerfile:9. Revisit once 26 is LTS, which
+      # is also when 24 enters maintenance.
+      - dependency-name: "node"
+        versions: [">=26"]
+
+  # The gateway image builds the OCB distro, and its Go line is not free to
+  # move on its own: the three in-repo modules compiled into that binary
+  # (sentryreceiver, avuruingestauth, tenantfromauth) declare `go 1.25.0` to
+  # match the collector line ocb-manifest.yaml pins, and the go-modules ignore
+  # above holds them there on purpose. Bumping the base image alone would build
+  # the distro on a toolchain its own modules do not declare. Both move
+  # together, as part of a collector upgrade.
+  - package-ecosystem: docker
+    directory: /gateway
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "golang"
