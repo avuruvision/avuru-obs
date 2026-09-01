@@ -11,6 +11,34 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Security
+
+- **The two collectors an install runs no longer ship a fixable CRITICAL or
+  HIGH between them.** CVE-2026-56854 — an authentication bypass in
+  `golang.org/x/crypto/ssh`, where source-address restrictions go unenforced —
+  landed on the collector line the gateway is built from, and the whole 0.154.0
+  line resolves `x/crypto` to the vulnerable v0.53.0. The gateway is an OCB
+  distro, so it can pin what it links: `gateway/ocb-manifest.yaml` now carries a
+  v0.55.0 floor beside the ones it already held for `grpc` and `x/text`. The
+  distro exposes no SSH surface, so this closes a supply-chain finding rather
+  than a reachable hole — but an unfixable CRITICAL in a published image is not
+  something to carry, and registries with a block-on-critical policy stop
+  serving it, which turns a scan finding into a failed rollout.
+
+  The **node agent** cannot be fixed that way: it needs `filelog`,
+  `kubeletstats`, `k8s_cluster` and `prometheus`, none of them in the gateway's
+  minimal distro, so it runs the stock contrib image and can pin nothing. It now
+  tracks contrib's own line at **0.159.0**, which takes the same scan from
+  1 CRITICAL + 14 HIGH down to 1 CRITICAL + 2 HIGH: `x/net`, `x/text`, `grpc`
+  and the stdlib findings are gone. What remains has no upstream fix at any
+  collector release — the CRITICAL (`x/crypto` v0.54.0 against the fixed
+  v0.55.0) and two `golang.org/x/mod` HIGHs — and an operator whose registry
+  blocks criticals needs that stated rather than discovered on the next pull.
+
+  Moving the agent alone is safe by construction: its only exporter is OTLP to
+  the gateway, so it touches no ClickHouse DDL and re-runs no contract freeze.
+  The gateway stays on the 0.154.0 line.
+
 ## [0.11.0] — 2026-08-28
 
 ### Added

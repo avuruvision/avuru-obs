@@ -66,6 +66,6 @@ services:
   # debug exporter (verbosity detailed) out — forwarded trace ids show up in
   # `docker logs`, no published ports needed.
   forward-sink:
-    image: otel/opentelemetry-collector-contrib:0.154.0
+    image: otel/opentelemetry-collector-contrib:0.159.0
     volumes:
       - ./gateway/config.compat-e2e-sink.yaml:/etc/otelcol-contrib/config.yaml:ro
