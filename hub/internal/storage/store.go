@@ -1133,6 +1133,22 @@ type AIToolUsage struct {
 	P99 time.Duration
 }
 
+// AIServiceSpend is month-to-date traffic for one (calling service, model)
+// pair — the rows a spend budget is evaluated over.
+//
+// Grouped by MODEL as well as service because cost is applied per model from
+// the operator's declared rates: collapsing to a service total here would make
+// the price unresolvable, and a budget denominated in money would have nothing
+// to multiply. Unlimited and unordered: a budget measured over a truncated
+// table would measure the top N and call it the estate.
+type AIServiceSpend struct {
+	Service      string
+	Model        string
+	Calls        uint64
+	InputTokens  uint64
+	OutputTokens uint64
+}
+
 // Store is the telemetry query seam implemented by storage backends.
 type Store interface {
 	Ping(ctx context.Context) error
@@ -1242,6 +1258,7 @@ type Store interface {
 	AIModels(ctx context.Context, q AIQuery) (AIUsage, error)
 	AICallers(ctx context.Context, q AIQuery) ([]AICallerUsage, error)
 	AITools(ctx context.Context, q AIQuery) ([]AIToolUsage, error)
+	AISpendByService(ctx context.Context, q AIQuery) ([]AIServiceSpend, error)
 	// Alerting (module alerting).
 	LoadAlertStates(ctx context.Context, tenant string) ([]AlertState, error)
 	SaveAlertStates(ctx context.Context, states []AlertState) error

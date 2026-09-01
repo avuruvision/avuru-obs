@@ -387,3 +387,48 @@ LIMIT ?`
 	}
 	return out, rows.Err()
 }
+
+// AISpendByService returns month-to-date tokens per calling service, plus the
+// unpriced-call counts a cost budget needs to know its number is a floor.
+//
+// Deliberately NOT a second reading of the caller table: that one is limited and
+// ordered for a screen, and a budget evaluated over a truncated table would be
+// measuring the top N services and calling it the estate. This is unlimited and
+// grouped only by what a budget can be scoped to.
+//
+// Cost is not computed here. SQL returns what was measured; the caller applies
+// the operator's declared rates — the same separation green keeps for its carbon
+// factors, and the reason the budget evaluator and the API cannot disagree about
+// a price.
+func (s *Store) AISpendByService(ctx context.Context, q storage.AIQuery) ([]storage.AIServiceSpend, error) {
+	query := `
+SELECT
+    ServiceName                          AS service,
+    ` + aiModelExpr + `                  AS model,
+    count()                              AS calls,
+    sum(` + aiInputTokensExpr + `)       AS inTokens,
+    sum(` + aiOutputTokensExpr + `)      AS outTokens
+FROM otel_traces
+WHERE Tenant IN (?)
+  AND Timestamp >= ? AND Timestamp < ?`
+	args := []any{tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
+	query, args = aiFilters(query, q, aiInference, args)
+	query += `
+GROUP BY service, model`
+
+	rows, err := s.conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ai spend by service: %w", err)
+	}
+	defer rows.Close()
+
+	var out []storage.AIServiceSpend
+	for rows.Next() {
+		var r storage.AIServiceSpend
+		if err := rows.Scan(&r.Service, &r.Model, &r.Calls, &r.InputTokens, &r.OutputTokens); err != nil {
+			return nil, fmt.Errorf("scanning ai spend row: %w", err)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

@@ -59,7 +59,7 @@ func TestEvaluateOnceStampsTenantAndResolvesUIChannels(t *testing.T) {
 	// A fixed clock (For:0 rules fire regardless); no green hook here.
 	now := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
 	for i := 0; i < 2; i++ {
-		if err := evaluateOnce(context.Background(), func() storage.Store { return fake }, gcfg, acfg, notifier, nil, nil, now); err != nil {
+		if err := evaluateOnce(context.Background(), func() storage.Store { return fake }, gcfg, acfg, notifier, nil, nil, nil, now); err != nil {
 			t.Fatalf("evaluateOnce: %v", err)
 		}
 		// Feed all saved state back chronologically; toEvalState is last-wins
@@ -158,7 +158,7 @@ func TestEvaluateOnceMergesGreenBudgetsWithoutClobber(t *testing.T) {
 	)
 	notifier := &captureNotifier{}
 
-	if err := evaluateOnce(context.Background(), func() storage.Store { return fake }, health.Default(), acfg, notifier, nil, gb, now); err != nil {
+	if err := evaluateOnce(context.Background(), func() storage.Store { return fake }, health.Default(), acfg, notifier, nil, gb, nil, now); err != nil {
 		t.Fatalf("evaluateOnce: %v", err)
 	}
 
@@ -223,7 +223,7 @@ func TestEvaluateOnceSkipsGreenWhenHookNil(t *testing.T) {
 		Labels:          []storage.ServiceLabel{{Service: "checkout", K8sNamespace: "shop"}},
 		ServiceEnergies: []storage.ServiceEnergy{{Service: "checkout", WattHours: 5000}}, // would blow the budget
 	}
-	if err := evaluateOnce(context.Background(), func() storage.Store { return fake }, health.Default(), alerting.Default(), &captureNotifier{}, nil, nil, now); err != nil {
+	if err := evaluateOnce(context.Background(), func() storage.Store { return fake }, health.Default(), alerting.Default(), &captureNotifier{}, nil, nil, nil, now); err != nil {
 		t.Fatalf("evaluateOnce: %v", err)
 	}
 	if fake.LastGreenQuery.Tenant != "" {
@@ -257,7 +257,7 @@ func TestBudgetUsageCacheThrottlesRecompute(t *testing.T) {
 	)
 	fake := &storagetest.Fake{}
 	run := func(now time.Time) {
-		if err := evaluateOnce(context.Background(), func() storage.Store { return fake }, health.Default(), alerting.Default(), &captureNotifier{}, nil, gb, now); err != nil {
+		if err := evaluateOnce(context.Background(), func() storage.Store { return fake }, health.Default(), alerting.Default(), &captureNotifier{}, nil, gb, nil, now); err != nil {
 			t.Fatalf("evaluateOnce: %v", err)
 		}
 	}
@@ -302,7 +302,7 @@ func TestEvaluateOnceChannelLessBudgetIsDashboardOnly(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logbuf, &slog.HandlerOptions{Level: slog.LevelWarn})))
 	defer slog.SetDefault(old)
 
-	if err := evaluateOnce(context.Background(), func() storage.Store { return fake }, health.Default(), alerting.Default(), notifier, nil, gb, now); err != nil {
+	if err := evaluateOnce(context.Background(), func() storage.Store { return fake }, health.Default(), alerting.Default(), notifier, nil, gb, nil, now); err != nil {
 		t.Fatalf("evaluateOnce: %v", err)
 	}
 
@@ -363,7 +363,7 @@ func TestGreenBudgetUnknownGroupWarnsOnceAnHour(t *testing.T) {
 	defer slog.SetDefault(old)
 
 	run := func(at time.Time) {
-		if err := evaluateOnce(context.Background(), func() storage.Store { return fake }, health.Default(), alerting.Default(), &captureNotifier{}, nil, gb, at); err != nil {
+		if err := evaluateOnce(context.Background(), func() storage.Store { return fake }, health.Default(), alerting.Default(), &captureNotifier{}, nil, gb, nil, at); err != nil {
 			t.Fatalf("evaluateOnce: %v", err)
 		}
 	}

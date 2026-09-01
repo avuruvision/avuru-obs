@@ -4,6 +4,7 @@ package clickhouse
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -615,5 +616,78 @@ func TestAIToolsIgnoreTheModelFilter(t *testing.T) {
 	}
 	if len(tools) != 1 {
 		t.Errorf("tools = %d rows, want 1 (the model filter cannot apply to tools)", len(tools))
+	}
+}
+
+// A budget is evaluated over the WHOLE month's traffic, not the top rows of a
+// screen. Grouped by (service, model) because cost is applied per model from
+// declared rates — collapsing to a service total here would leave money with
+// nothing to multiply.
+func TestAISpendByServiceGroupsByServiceAndModel(t *testing.T) {
+	store := startClickHouse(t)
+	insertAISpans(t, store, []aiSpan{
+		llmSpan("s1", "assistant", map[string]string{
+			"gen_ai.operation.name": "chat", "gen_ai.response.model": "gpt-4o",
+			"gen_ai.usage.input_tokens": "100", "gen_ai.usage.output_tokens": "20",
+		}),
+		llmSpan("s2", "assistant", map[string]string{
+			"gen_ai.operation.name": "chat", "gen_ai.response.model": "gpt-4o",
+			"gen_ai.usage.input_tokens": "50", "gen_ai.usage.output_tokens": "10",
+		}),
+		llmSpan("s3", "assistant", map[string]string{
+			"gen_ai.operation.name": "chat", "gen_ai.response.model": "claude-sonnet",
+			"gen_ai.usage.input_tokens": "70", "gen_ai.usage.output_tokens": "5",
+		}),
+		// Tool spans spend no tokens and must not enter a spend total.
+		llmSpan("s4", "assistant", map[string]string{
+			"gen_ai.operation.name": "execute_tool", "gen_ai.tool.name": "search_docs",
+		}),
+	})
+
+	rows, err := store.AISpendByService(context.Background(), storage.AIQuery{Tenant: "default", Range: aiWindow()})
+	if err != nil {
+		t.Fatalf("AISpendByService: %v", err)
+	}
+	byModel := map[string]storage.AIServiceSpend{}
+	for _, r := range rows {
+		if r.Service != "assistant" {
+			t.Errorf("unexpected service %q", r.Service)
+		}
+		byModel[r.Model] = r
+	}
+	if len(byModel) != 2 {
+		t.Fatalf("rows = %d, want 2 models (the tool span is not spend): %+v", len(byModel), rows)
+	}
+	if got := byModel["gpt-4o"]; got.InputTokens != 150 || got.OutputTokens != 30 || got.Calls != 2 {
+		t.Errorf("gpt-4o = %+v, want 2 calls / 150 in / 30 out", got)
+	}
+	if got := byModel["claude-sonnet"]; got.InputTokens != 70 {
+		t.Errorf("claude-sonnet = %+v, want 70 in", got)
+	}
+}
+
+// No limit. A budget measured over a truncated table would measure the top N
+// services and call it the estate — quietly under every threshold.
+func TestAISpendByServiceIsNotLimited(t *testing.T) {
+	store := startClickHouse(t)
+	var spans []aiSpan
+	for i := 0; i < 60; i++ {
+		spans = append(spans, llmSpan(fmt.Sprintf("l%d", i), fmt.Sprintf("svc-%02d", i), map[string]string{
+			"gen_ai.operation.name": "chat", "gen_ai.response.model": "gpt-4o",
+			"gen_ai.usage.input_tokens": "10",
+		}))
+	}
+	insertAISpans(t, store, spans)
+
+	// Limit is deliberately set: the query must ignore it, since a budget is
+	// not a screen.
+	rows, err := store.AISpendByService(context.Background(), storage.AIQuery{
+		Tenant: "default", Range: aiWindow(), Limit: 5,
+	})
+	if err != nil {
+		t.Fatalf("AISpendByService: %v", err)
+	}
+	if len(rows) != 60 {
+		t.Errorf("rows = %d, want all 60 services", len(rows))
 	}
 }
