@@ -258,12 +258,7 @@ export interface StatusResponse {
   clickhouse: string;
 }
 
-export type HealthStatus =
-  | "healthy"
-  | "degraded"
-  | "down"
-  | "idle"
-  | "unknown";
+export type HealthStatus = "healthy" | "degraded" | "down" | "idle" | "unknown";
 
 export interface ComponentHealth {
   name: string;
@@ -1157,4 +1152,75 @@ export interface AICallersResponse {
   callers: AICaller[];
   priced: boolean;
   currency?: string;
+}
+
+// One tool executed inside an agent turn. No tokens and no cost: the spend of a
+// turn sits on the model call that decided to invoke the tool, and a zero here
+// would read as "this tool is free" rather than "tokens are not the unit".
+export interface AITool {
+  tool: string;
+  calls: number;
+  errors: number;
+  refused: number;
+  // Calls whose name came from the span rather than from gen_ai.tool.name — a
+  // weaker attribution, counted so the table can say so.
+  namedBySpan: number;
+  callers: string[];
+  callerCount: number;
+  p50Ms: number;
+  p95Ms: number;
+  p99Ms: number;
+}
+
+export interface AIToolsResponse {
+  tools: AITool[];
+  // A model filter was set and could not apply, because a tool span carries no
+  // model. Reported so the screen can explain why this table did not narrow
+  // with the others.
+  modelFilterIgnored?: boolean;
+}
+
+// The one rate table (design/2026-08-30-agents-budgets-and-rates.md). Model
+// prices and compute rates in one document, with a single currency — two
+// independent currency fields could render EUR on one screen and USD on
+// another with nothing noticing.
+export interface RateModelPrice {
+  model: string;
+  inputPer1MTokens?: number;
+  outputPer1MTokens?: number;
+}
+
+export interface RateCompute {
+  cpuCoreHour?: number;
+  memGiBHour?: number;
+}
+
+export interface RateTable {
+  currency?: string;
+  compute?: RateCompute;
+  models?: RateModelPrice[];
+}
+
+// Where a resolved value came from. A chart-declared entry is read-only here:
+// offering an edit would promise a change a `helm upgrade` silently reverts.
+export type RateSource = "chart" | "overlay";
+
+export interface ResolvedRateModel extends RateModelPrice {
+  source: RateSource;
+}
+
+export interface ResolvedRates {
+  currency?: string;
+  currencySource?: RateSource;
+  compute: RateCompute;
+  computeSource?: RateSource;
+  models: ResolvedRateModel[];
+}
+
+export interface RatesResponse {
+  overlay: RateTable;
+  chart: RateTable;
+  effective: ResolvedRates;
+  updatedAt?: string;
+  updatedBy?: string;
 }

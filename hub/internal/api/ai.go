@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/avuru/avuru-obs/hub/internal/ai"
 	"github.com/avuru/avuru-obs/hub/internal/auth"
+	"github.com/avuru/avuru-obs/hub/internal/rates"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
@@ -12,13 +14,49 @@ import (
 // read each, all taking the trace filter vocabulary so their numbers reconcile
 // with the Traces screen. See design/2026-08-27-ai-observability.md.
 
-// aiConfig resolves the current prices, defaulting to none — which the
-// responses report as "not priced", never as free.
+// aiConfig resolves the current AI configuration, defaulting to none — which
+// the responses report as "not priced", never as free.
+//
+// Prices and currency come from the RATE RESOLVER, not from this config, so a
+// price authored in the UI takes effect here without a pod restart and without
+// this handler and the budget evaluator being able to disagree about it. The
+// budgets stay from the config: they are declared, not priced.
 func (a *API) aiConfig() ai.Config {
+	cfg := ai.Default()
 	if a.cfg.AIConfig != nil {
-		return a.cfg.AIConfig()
+		cfg = a.cfg.AIConfig()
 	}
-	return ai.Default()
+	// No resolver wired means no rate table to resolve through, and the
+	// config's own prices stand. In production main always wires one — and it
+	// folds these same prices into its chart-declared half — so this is the
+	// degraded path, not a second source of truth.
+	if a.rates == nil {
+		return cfg
+	}
+	return withResolvedPrices(cfg, a.rates.Resolve(context.Background()))
+}
+
+// withResolvedPrices replaces a config's prices and currency with the resolved
+// rate table, leaving everything else alone. Exported behaviour lives in
+// AIConfigWithRates; this is the internal half both share.
+func withResolvedPrices(cfg ai.Config, resolved rates.Resolved) ai.Config {
+	cfg.Currency = resolved.Currency
+	cfg.Prices = nil
+	for _, m := range resolved.Models {
+		cfg.Prices = append(cfg.Prices, ai.Price{
+			Model:             m.Model,
+			InputPer1MTokens:  m.InputPer1MTokens,
+			OutputPer1MTokens: m.OutputPer1MTokens,
+		})
+	}
+	return cfg
+}
+
+// AIConfigWithRates is the same resolution the handlers use, for the alerting
+// tick — which does not go through the API and must price a budget against
+// exactly what the screen shows.
+func AIConfigWithRates(cfg ai.Config, resolved rates.Resolved) ai.Config {
+	return withResolvedPrices(cfg, resolved)
 }
 
 // aiUsageDTO is the shape every AI row shares: what was called, how it went,
@@ -110,6 +148,31 @@ type aiCallersResponse struct {
 	Callers  []aiCallerDTO `json:"callers"`
 	Priced   bool          `json:"priced"`
 	Currency string        `json:"currency,omitempty"`
+}
+
+// aiToolDTO is one tool's row. No cost and no tokens: the spend of a turn sits
+// on the model call that decided to invoke the tool, and a zero here would read
+// as "free" rather than as "not the unit".
+type aiToolDTO struct {
+	Tool        string   `json:"tool"`
+	Calls       uint64   `json:"calls"`
+	Errors      uint64   `json:"errors"`
+	Refused     uint64   `json:"refused"`
+	NamedBySpan uint64   `json:"namedBySpan"`
+	Callers     []string `json:"callers"`
+	CallerCount uint64   `json:"callerCount"`
+	P50Ms       float64  `json:"p50Ms"`
+	P95Ms       float64  `json:"p95Ms"`
+	P99Ms       float64  `json:"p99Ms"`
+}
+
+type aiToolsResponse struct {
+	Tools []aiToolDTO `json:"tools"`
+	// ModelFilterIgnored reports that a model filter was set and could not
+	// apply here, because a tool span carries no model. Stated rather than
+	// silently obeyed or silently dropped: the screen has to be able to say
+	// why this table did not narrow with the others.
+	ModelFilterIgnored bool `json:"modelFilterIgnored,omitempty"`
 }
 
 // aiQuery builds the storage query from the shared filter parameters.
@@ -322,6 +385,49 @@ func (a *API) handleAICallers(w http.ResponseWriter, r *http.Request) error {
 			d.Cost = &cost
 		}
 		resp.Callers = append(resp.Callers, d)
+	}
+	writeJSON(w, http.StatusOK, resp)
+	return nil
+}
+
+// handleAITools returns per-tool usage inside agent turns.
+//
+// Gated with the rest of the AI module and reading the same spans; what makes
+// it a separate endpoint rather than a column is that its population is
+// different — tool executions, not model calls — which is the distinction the
+// module got wrong before operation classes existed.
+func (a *API) handleAITools(w http.ResponseWriter, r *http.Request) error {
+	store, err := a.store()
+	if err != nil {
+		return err
+	}
+	q, err := a.aiQuery(r, 50)
+	if err != nil {
+		return err
+	}
+	rows, err := store.AITools(r.Context(), q)
+	if err != nil {
+		return err
+	}
+
+	resp := aiToolsResponse{Tools: []aiToolDTO{}, ModelFilterIgnored: q.Model != ""}
+	for _, t := range rows {
+		callers := t.Callers
+		if callers == nil {
+			callers = []string{}
+		}
+		resp.Tools = append(resp.Tools, aiToolDTO{
+			Tool:        t.Tool,
+			Calls:       t.Calls,
+			Errors:      t.Errors,
+			Refused:     t.Refused,
+			NamedBySpan: t.NamedBySpan,
+			Callers:     callers,
+			CallerCount: t.CallerCount,
+			P50Ms:       ms(t.P50),
+			P95Ms:       ms(t.P95),
+			P99Ms:       ms(t.P99),
+		})
 	}
 	writeJSON(w, http.StatusOK, resp)
 	return nil

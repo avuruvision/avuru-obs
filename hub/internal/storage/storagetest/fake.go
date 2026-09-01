@@ -42,6 +42,8 @@ type Fake struct {
 	// a test can assert the trace vocabulary reached storage.
 	AIUsageResult storage.AIUsage
 	AICallerRows  []storage.AICallerUsage
+	AIToolRows    []storage.AIToolUsage
+	AISpendRows   []storage.AIServiceSpend
 	AIErr         error
 	LastAIQuery   storage.AIQuery
 	Page          storage.TracePage
@@ -91,10 +93,14 @@ type Fake struct {
 	DeletedChannels       []string
 
 	// Collection overlay fake.
-	Overlay       storage.CollectionOverlay
-	OverlaySet    bool
-	OverlayErr    error
-	SavedOverlays []storage.CollectionOverlay
+	Overlay            storage.CollectionOverlay
+	OverlaySet         bool
+	RatesOverlay       storage.RatesOverlay
+	RatesOverlaySet    bool
+	RatesOverlayErr    error
+	SavedRatesOverlays []storage.RatesOverlay
+	OverlayErr         error
+	SavedOverlays      []storage.CollectionOverlay
 
 	// Auth fakes. Users is keyed by ID; Grants by user ID; Sessions by token
 	// hash. UsersByEmail is a convenience index for tests that want a user
@@ -422,6 +428,22 @@ func (f *Fake) AICallers(_ context.Context, q storage.AIQuery) ([]storage.AICall
 	return f.AICallerRows, nil
 }
 
+func (f *Fake) AITools(_ context.Context, q storage.AIQuery) ([]storage.AIToolUsage, error) {
+	f.LastAIQuery = q
+	if f.AIErr != nil {
+		return nil, f.AIErr
+	}
+	return f.AIToolRows, nil
+}
+
+func (f *Fake) AISpendByService(_ context.Context, q storage.AIQuery) ([]storage.AIServiceSpend, error) {
+	f.LastAIQuery = q
+	if f.AIErr != nil {
+		return nil, f.AIErr
+	}
+	return f.AISpendRows, nil
+}
+
 func (f *Fake) LoadAlertStates(_ context.Context, tenant string) ([]storage.AlertState, error) {
 	var out []storage.AlertState
 	for _, s := range f.AlertStates {
@@ -493,6 +515,23 @@ func (f *Fake) SaveCollectionOverlay(_ context.Context, ov storage.CollectionOve
 	f.SavedOverlays = append(f.SavedOverlays, ov)
 	f.Overlay = ov
 	f.OverlaySet = true
+	return nil
+}
+
+func (f *Fake) LoadRatesOverlay(_ context.Context) (storage.RatesOverlay, error) {
+	if f.RatesOverlayErr != nil {
+		return storage.RatesOverlay{}, f.RatesOverlayErr
+	}
+	if !f.RatesOverlaySet {
+		return storage.RatesOverlay{}, storage.ErrNotFound
+	}
+	return f.RatesOverlay, nil
+}
+
+func (f *Fake) SaveRatesOverlay(_ context.Context, ov storage.RatesOverlay) error {
+	f.SavedRatesOverlays = append(f.SavedRatesOverlays, ov)
+	f.RatesOverlay = ov
+	f.RatesOverlaySet = true
 	return nil
 }
 

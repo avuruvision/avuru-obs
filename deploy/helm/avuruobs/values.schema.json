@@ -476,6 +476,45 @@
             ],
             "additionalProperties": false
           }
+        },
+        "budgets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "scope": {
+                "type": "string"
+              },
+              "monthlyTokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "monthlyCost": {
+                "type": "number",
+                "minimum": 0
+              },
+              "warnRatio": {
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 1
+              },
+              "channel": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "budgetCheckIntervalSec": {
+          "type": "integer",
+          "minimum": 1
         }
       },
       "additionalProperties": false

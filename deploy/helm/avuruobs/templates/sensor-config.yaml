@@ -470,7 +470,9 @@ data:
       # explicit label on every datapoint (AEP). The prometheus receiver sets
       # resource.attributes["service.name"] from each scrape job's job_name —
       # confirmed empirically against the pinned otel/opentelemetry-
-      # collector-contrib:0.154.0 image (see the AEP design spec §5.4).
+      # collector-contrib image (0.154.0 when the AEP design spec §5.4 was
+      # written; the agent pin now tracks contrib's line, and the green gate in
+      # deploy/helm/e2e-helm.sh re-asserts the behaviour on every run).
       transform/green_quality:
         error_mode: ignore
         metric_statements:

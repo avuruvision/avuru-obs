@@ -80,7 +80,7 @@ func TestUIAuthoredGroupReachesBothHealthAndAlerting(t *testing.T) {
 	// Two ticks: ok -> pending, pending -> firing + notify (as in the
 	// evaluateOnce test), replaying saved state between them.
 	for range 2 {
-		if err := evaluateOnce(ctx, provider, groups.Config(ctx), acfg, notifier, []string{"default"}, nil, now); err != nil {
+		if err := evaluateOnce(ctx, provider, groups.Config(ctx), acfg, notifier, []string{"default"}, nil, nil, now); err != nil {
 			t.Fatalf("evaluateOnce: %v", err)
 		}
 		fake.AlertStates = nil

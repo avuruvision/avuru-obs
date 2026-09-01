@@ -69,7 +69,7 @@ only if the design needs to be pinned down before coding.
 | [2026-08-26](2026-08-26-control-plane-diagnosis.md) | Why the control plane is silent — three states, not one | Accepted |
 | [2026-08-27](2026-08-27-trace-analytics.md) | Trace analytics — grouped breakdowns over spans | Draft |
 | [2026-08-27](2026-08-27-ai-observability.md) | AI observability — the model calls you are already sending | Accepted |
-| [2026-08-30](2026-08-30-agents-budgets-and-rates.md) | Agents, budgets, and one rate table — the spend you can act on | Draft |
+| [2026-08-30](2026-08-30-agents-budgets-and-rates.md) | Agents, budgets, and one rate table — the spend you can act on | Accepted |
 | [2026-09-01](2026-09-01-mcp-server.md) | A Model Context Protocol server — the estate an agent can read | Draft |
 
 ## Conventions

@@ -2,7 +2,7 @@
 
 - **Date:** 2026-08-30
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted
 
 ## Summary
 
@@ -275,10 +275,10 @@ warning naming both rather than a silent pick.
 
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] Operation classes + the four totals corrected (the fix, on its own)
-- [ ] `GET /api/v1/ai/tools` + the tools table
-- [ ] Agent-turn Path view
-- [ ] Token/cost budgets + the tick
-- [ ] One rate resolver, `/api/v1/rates`, and the Settings surface
+- [x] AEP accepted
+- [x] Operation classes + the four totals corrected (the fix, on its own)
+- [x] `GET /api/v1/ai/tools` + the tools table
+- [x] Agent-turn Path view
+- [x] Token/cost budgets + the tick
+- [x] One rate resolver, `/api/v1/rates`, and the Settings surface
 - [ ] Docs: bilingual changelog, feature-status matrix, API reference

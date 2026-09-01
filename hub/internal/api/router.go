@@ -16,6 +16,7 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/green"
 	"github.com/avuru/avuru-obs/hub/internal/health"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
+	"github.com/avuru/avuru-obs/hub/internal/rates"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 	"github.com/avuru/avuru-obs/hub/internal/topology"
 )
@@ -130,6 +131,10 @@ type Config struct {
 	// (design/2026-07-27-collection-control-plane.md). Chart-generated,
 	// injected as AVURUOBS_COLLECTION_RUNTIME_CONTROL_ENABLED.
 	CollectionRuntimeControlEnabled bool
+	// Rates resolves chart-declared and UI-authored rates into one table.
+	// nil is usable and behaves as "nothing declared" (see rates.Resolver).
+	Rates *rates.Resolver
+
 	// CollectionApplier pushes an accepted overlay to the cluster. nil
 	// defaults to collection.NoopApplier{} in Register.
 	CollectionApplier collection.Applier
@@ -162,6 +167,10 @@ type API struct {
 	tenants           tenantCache
 	projects          projectCache
 	collectionApplier collection.Applier
+	// rates is the ONE resolver for chart-declared and UI-authored rates. main
+	// hands the SAME one to the budget evaluator, so a budget can never be
+	// measured against a different price than the screen displays.
+	rates *rates.Resolver
 	// routes is every registered route with the guard it enforces, captured
 	// by routeIndex during Register and read only by the permissions matrix.
 	routes []routeGuard
@@ -193,6 +202,7 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		active = modules.AllSet()
 	}
 	a := &API{provider: provider, cfg: cfg, modules: active}
+	a.rates = cfg.Rates
 	if cfg.CollectionApplier != nil {
 		a.collectionApplier = cfg.CollectionApplier
 	} else {
@@ -235,6 +245,14 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("PUT /api/v1/collection/overlay", a.securedAdmin(a.handlePutCollectionOverlay))
 		mux.Handle("DELETE /api/v1/collection/overlay", a.securedAdmin(a.handleDeleteCollectionOverlay))
 	}
+	// The one rate table (design/2026-08-30-agents-budgets-and-rates.md).
+	// Admin-gated, and NOT behind a feature flag the way the collection
+	// overlay is: there is no cluster-mutating half here, only a document.
+	// Ungated by module too, deliberately — rates price both cost and ai, so
+	// gating on either would hide the table from an install running the other.
+	mux.Handle("GET /api/v1/rates", a.securedAdmin(a.handleGetRates))
+	mux.Handle("PUT /api/v1/rates", a.securedAdmin(a.handlePutRates))
+	mux.Handle("DELETE /api/v1/rates", a.securedAdmin(a.handleDeleteRates))
 	// system/status is instance-wide (disk capacity, retained-row counts) —
 	// not project data, so a single-project viewer or the anonymous demo
 	// identity has no business seeing it. Global admin only.
@@ -392,10 +410,11 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 	}
 	if active.Enabled(modules.AI) {
 		// Reads otel_traces, so no second module gate: an install running core
-		// already has the data these three answer from.
+		// already has the data these four answer from.
 		mux.Handle("GET /api/v1/ai/summary", a.secured(auth.RoleViewer, a.handleAISummary))
 		mux.Handle("GET /api/v1/ai/models", a.secured(auth.RoleViewer, a.handleAIModels))
 		mux.Handle("GET /api/v1/ai/callers", a.secured(auth.RoleViewer, a.handleAICallers))
+		mux.Handle("GET /api/v1/ai/tools", a.secured(auth.RoleViewer, a.handleAITools))
 	}
 	if active.Enabled(modules.MCP) {
 		// Not under /api/v1: MCP clients are configured with a bare server URL

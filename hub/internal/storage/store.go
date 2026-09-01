@@ -1098,6 +1098,57 @@ type AICallerUsage struct {
 	OutputTokens      uint64
 }
 
+// AIToolUsage is one tool's traffic inside an agent turn: how often it ran, how
+// often it failed, how long it took, and which services invoked it.
+//
+// Tokens are deliberately absent. A tool execution spends no tokens of its own
+// — the model call that decided to invoke it is where the spend is — and a zero
+// token column here would read as "this tool is free" rather than "tokens are
+// not the unit". Latency is present for the opposite reason: a slow tool is the
+// commonest reason a turn is slow, and it is the one number the model table
+// cannot show.
+type AIToolUsage struct {
+	// Tool is gen_ai.tool.name, falling back to the span name when the
+	// instrumentation did not set it — a tool that ran is worth reporting
+	// under a weaker name rather than dropping.
+	Tool string
+
+	Calls   uint64
+	Errors  uint64
+	Refused uint64
+
+	// NamedBySpan counts calls whose name came from the span rather than from
+	// gen_ai.tool.name. Counted, not hidden, for the same reason
+	// CallsFromRequestModel is: it is a weaker attribution and the screen says so.
+	NamedBySpan uint64
+
+	// Callers are the distinct services that invoked this tool, capped. The
+	// count is separate because the list is truncated and a count of 40 next
+	// to ten names is the honest way to say so.
+	Callers     []string
+	CallerCount uint64
+
+	P50 time.Duration
+	P95 time.Duration
+	P99 time.Duration
+}
+
+// AIServiceSpend is month-to-date traffic for one (calling service, model)
+// pair — the rows a spend budget is evaluated over.
+//
+// Grouped by MODEL as well as service because cost is applied per model from
+// the operator's declared rates: collapsing to a service total here would make
+// the price unresolvable, and a budget denominated in money would have nothing
+// to multiply. Unlimited and unordered: a budget measured over a truncated
+// table would measure the top N and call it the estate.
+type AIServiceSpend struct {
+	Service      string
+	Model        string
+	Calls        uint64
+	InputTokens  uint64
+	OutputTokens uint64
+}
+
 // Store is the telemetry query seam implemented by storage backends.
 type Store interface {
 	Ping(ctx context.Context) error
@@ -1206,6 +1257,8 @@ type Store interface {
 	// for its carbon factors.
 	AIModels(ctx context.Context, q AIQuery) (AIUsage, error)
 	AICallers(ctx context.Context, q AIQuery) ([]AICallerUsage, error)
+	AITools(ctx context.Context, q AIQuery) ([]AIToolUsage, error)
+	AISpendByService(ctx context.Context, q AIQuery) ([]AIServiceSpend, error)
 	// Alerting (module alerting).
 	LoadAlertStates(ctx context.Context, tenant string) ([]AlertState, error)
 	SaveAlertStates(ctx context.Context, states []AlertState) error
@@ -1225,6 +1278,12 @@ type Store interface {
 	// separate delete method.
 	LoadCollectionOverlay(ctx context.Context) (CollectionOverlay, error)
 	SaveCollectionOverlay(ctx context.Context, ov CollectionOverlay) error
+	// Rates overlay: the UI-authored rate table (design/
+	// 2026-08-30-agents-budgets-and-rates.md). Same singleton idiom as the
+	// collection overlay above; ErrNotFound means "never saved", which is the
+	// empty overlay — chart-declared rates alone.
+	LoadRatesOverlay(ctx context.Context) (RatesOverlay, error)
+	SaveRatesOverlay(ctx context.Context, ov RatesOverlay) error
 	// Auth (core): local users, per-project grants, server-side sessions.
 	// GetAuthUserByEmail/GetAuthUser return ErrNotFound for unknown users;
 	// disabled users ARE returned (callers decide). SaveAuthUser upserts by
@@ -1329,6 +1388,16 @@ type Store interface {
 // 2026-07-27-collection-control-plane.md). Overlay is an opaque JSON blob —
 // its schema is owned and validated by package collection, not here.
 type CollectionOverlay struct {
+	Overlay   string
+	UpdatedAt time.Time
+	UpdatedBy string
+}
+
+// RatesOverlay is the persisted UI-authored rate table (design/
+// 2026-08-30-agents-budgets-and-rates.md). Overlay is an opaque JSON blob —
+// storage stores documents, the rates package owns their shape, exactly as
+// CollectionOverlay above does.
+type RatesOverlay struct {
 	Overlay   string
 	UpdatedAt time.Time
 	UpdatedBy string

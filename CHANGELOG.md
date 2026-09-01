@@ -13,6 +13,127 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **One rate table, written down once.** An operator declaring what their estate
+  costs used to do it **twice**, in two formats, one of which needed a pod
+  restart: model prices arrived as a mounted ConfigMap, hot-reloaded and
+  validated strictly, while compute rates were three environment variables read
+  once at startup. The two had separate currency fields, so an install could
+  render one screen in EUR and another in USD with nothing noticing.
+
+  Both now resolve through one table, editable in **Settings → Rates** and
+  applied without a redeploy. Values declared in the chart keep working exactly
+  as they did and are shown **read-only** — an operator who cannot see them has
+  no way to explain a price the screens are already using, and offering an edit
+  would promise a change a `helm upgrade` silently reverts. UI-authored entries
+  overlay them, each row saying which it is. There is one currency now, and an
+  install that had set the two differently gets a startup warning naming both
+  rather than a silent pick.
+
+  Crucially the budget evaluator and the screens read the **same** resolver, so
+  a budget can never be measured against a different price than the one on
+  display — the failure service groups hit when its alerting evaluator turned
+  out to be reading different configuration than the API served. Served at
+  `GET`/`PUT`/`DELETE /api/v1/rates`.
+
+- **A threshold on spend.** Nobody watches a screen. Monthly **budgets** on AI
+  spend — in tokens or in money, for one calling service or across the estate —
+  now fire through the alerting channels an install already has: a warning at
+  80% of the ceiling by default, and an alert at the ceiling itself, each
+  resolving on its own when the month rolls over or spend drops back.
+
+  It is green's carbon-budget state machine with the unit changed rather than a
+  second engine, and it rides the same evaluation tick, because two state
+  machines writing one alert table with different rules is how firing and
+  resolving drift apart. A transient failure to recompute spend preserves a
+  firing budget rather than quietly resolving it — a database blip is not
+  evidence that spend came back under the line.
+
+  A budget in **money** is refused at startup when no prices are declared: spend
+  measured without prices is zero, so such a budget would sit under every
+  threshold forever and never fire. Where only some models in scope are priced
+  the alert says so in as many words, because an operator reading "at 82%" is
+  entitled to know the real figure is higher. Declare budgets under `ai.budgets`.
+
+- **An agent turn, drawn as the shape it is.** A turn is not a list — it is a
+  model call that decides, a fan-out to tools, results coming back, and often
+  another model call after — and the questions worth asking about it are graph
+  questions: which tool is slow, which one fails, how many hops before it
+  converges, which tool a retry loop is stuck on. A new **Turn** view on the
+  trace draws exactly that, and it appears only on traces that hold one.
+
+  It reuses the Path view's renderer with the unit changed. Path groups by
+  service, which is right for a request crossing an estate and wrong here, since
+  every span of a turn usually belongs to one service — so Path collapses the
+  whole turn into a single node. The unit here is the model or tool being
+  called. A tool the turn hit four times is **one node with a count**, because
+  the loop is the thing worth seeing and four identical cards hide that it
+  repeated. Time is weighted by what was spent *inside* each call rather than by
+  span duration, since a model-call span contains the tool spans it triggered
+  and duration would report the model as responsible for time the tools spent.
+
+- **The tools your agents actually run.** Once tool executions were told apart
+  from model calls they became worth reporting, and the model table could never
+  have shown them: a new **Tools** table names each tool an agent ran, how often
+  it ran, how often it failed, how long it took at p95, and which services
+  invoked it. A tool a turn hit four times is one row with a count, because the
+  loop is the thing worth seeing.
+
+  No tokens and no cost columns, deliberately — a tool execution spends neither,
+  the model call that decided to invoke it is where the spend is, and a zero
+  there would read as "this tool is free" rather than "tokens are not the unit".
+  A tool whose instrumentation set no name is reported under its span name and
+  labelled as such rather than dropped, since a tool that ran is worth reporting
+  under a weaker name. And a model filter cannot narrow this table — a tool call
+  carries no model of its own — so the screen says the filter did not apply
+  instead of showing an empty table that silently disagrees with the filter bar
+  above it. Served at `GET /api/v1/ai/tools`.
+
+### Fixed
+
+- **Tool calls are no longer counted as model calls.** The AI module decided
+  what counted as a call to a model by testing that `gen_ai.operation.name` was
+  *present*, never looking at its value — but `chat` is only one of the values
+  the convention defines. An agent instrumentation emits `execute_tool` for
+  every tool it runs, so on an agent workload every tool execution was counted
+  as a model call, and four numbers went wrong together: call counts inflated
+  (one turn consulting two tools reported as five calls), the latency
+  percentiles ranked a database lookup against a completion, the model resolved
+  to nothing and that empty row then counted as a model of its own, and the
+  "reported no usage" bucket — which exists to name an instrumentation gap
+  honestly — filled with spans that were never model calls at all.
+
+  Calls are now split by operation, and every existing view reads the inference
+  population it was designed for. Embeddings stay counted as model calls,
+  because an embeddings call spends real tokens on a real model. An estate whose
+  applications make plain chat completions was never affected and will see no
+  change; one running agents will see its call counts fall to the truth.
+### Security
+
+- **The two collectors an install runs no longer ship a fixable CRITICAL or
+  HIGH between them.** CVE-2026-56854 — an authentication bypass in
+  `golang.org/x/crypto/ssh`, where source-address restrictions go unenforced —
+  landed on the collector line the gateway is built from, and the whole 0.154.0
+  line resolves `x/crypto` to the vulnerable v0.53.0. The gateway is an OCB
+  distro, so it can pin what it links: `gateway/ocb-manifest.yaml` now carries a
+  v0.55.0 floor beside the ones it already held for `grpc` and `x/text`. The
+  distro exposes no SSH surface, so this closes a supply-chain finding rather
+  than a reachable hole — but an unfixable CRITICAL in a published image is not
+  something to carry, and registries with a block-on-critical policy stop
+  serving it, which turns a scan finding into a failed rollout.
+
+  The **node agent** cannot be fixed that way: it needs `filelog`,
+  `kubeletstats`, `k8s_cluster` and `prometheus`, none of them in the gateway's
+  minimal distro, so it runs the stock contrib image and can pin nothing. It now
+  tracks contrib's own line at **0.159.0**, which takes the same scan from
+  1 CRITICAL + 14 HIGH down to 1 CRITICAL + 2 HIGH: `x/net`, `x/text`, `grpc`
+  and the stdlib findings are gone. What remains has no upstream fix at any
+  collector release — the CRITICAL (`x/crypto` v0.54.0 against the fixed
+  v0.55.0) and two `golang.org/x/mod` HIGHs — and an operator whose registry
+  blocks criticals needs that stated rather than discovered on the next pull.
+
+  Moving the agent alone is safe by construction: its only exporter is OTLP to
+  the gateway, so it touches no ClickHouse DDL and re-runs no contract freeze.
+  The gateway stays on the 0.154.0 line.
 - **An agent can read this estate.** This product has known a great deal about
   agents since v0.11 — the model calls your applications make, what they cost,
   when they cross a budget. Nothing let an agent know anything about it. A new

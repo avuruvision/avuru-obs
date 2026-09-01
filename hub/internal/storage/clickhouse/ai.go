@@ -28,6 +28,63 @@ const aiCallExpr = `(SpanAttributes['gen_ai.operation.name'] != '' ` +
 	`OR SpanAttributes['gen_ai.system'] != '' ` +
 	`OR SpanAttributes['gen_ai.provider.name'] != '')`
 
+// aiOperationClass names what KIND of gen_ai span a row is. aiCallExpr above
+// answers "is this span gen_ai at all"; this answers "gen_ai *what*", which is
+// the question v0.11 never asked — and the reason its four totals were wrong on
+// any workload that runs tools.
+//
+// The convention gives gen_ai.operation.name a set of well-known values, and
+// `chat` is only one of them. A compliant agent instrumentation emits a span
+// with `execute_tool` for every tool it runs; counting those as model calls
+// inflates the call count, ranks a database lookup against a completion in the
+// latency quantiles, resolves the model to the empty string, and fills the
+// no-usage bucket with spans that were never model calls.
+type aiOperationClass int
+
+const (
+	// aiInference is a call to a model: chat, text_completion,
+	// generate_content, embeddings — and the empty/unknown case, where only
+	// gen_ai.system or gen_ai.provider.name identified the span.
+	aiInference aiOperationClass = iota
+	// aiTool is one tool execution inside an agent turn.
+	aiTool
+	// aiAgentOp is an agent lifecycle span: create_agent, invoke_agent. It
+	// CONTAINS the model and tool calls of a turn, so counting it beside them
+	// would double-count the turn.
+	aiAgentOp
+)
+
+// The class predicates. Note the asymmetry, which is deliberate: tool and agent
+// are ALLOW-lists over the two operation values each owns, and inference is
+// their COMPLEMENT rather than an allow-list of its own.
+//
+// Enumerating inference instead would be the more obvious spelling and the more
+// dangerous one: the convention keeps adding operations (generate_content is
+// itself a recent arrival), and an install emitting one this build has not
+// heard of would have its traffic classified as nothing at all — counted in no
+// table, in no total, and visible nowhere. Traffic that silently vanishes is
+// exactly the failure v0.11 built the no-usage bucket to avoid. The complement
+// mis-labels an unknown operation as inference, which is wrong in a way that is
+// visible and recoverable; the allow-list makes it disappear.
+const (
+	aiToolOpExpr  = `(SpanAttributes['gen_ai.operation.name'] = 'execute_tool')`
+	aiAgentOpExpr = `(SpanAttributes['gen_ai.operation.name'] IN ('create_agent', 'invoke_agent'))`
+	// Everything that is a gen_ai span and is neither a tool nor an agent span.
+	aiInferenceOpExpr = `(NOT ` + aiToolOpExpr + ` AND NOT ` + aiAgentOpExpr + `)`
+)
+
+// classExpr returns the predicate selecting this class alone.
+func (c aiOperationClass) classExpr() string {
+	switch c {
+	case aiTool:
+		return aiToolOpExpr
+	case aiAgentOp:
+		return aiAgentOpExpr
+	default:
+		return aiInferenceOpExpr
+	}
+}
+
 // aiModelExpr resolves the model a call actually used.
 //
 // The RESPONSE model wins over the request model: an alias resolves at the
@@ -104,13 +161,26 @@ const aiHasContentExpr = `(arrayExists(k -> match(toString(k), '` + aiContentKey
 // aiFilters appends the shared WHERE clauses — the same filter vocabulary the
 // trace search uses, so the AI screen and the Traces screen describe the same
 // traffic when set to the same window.
-func aiFilters(query string, q storage.AIQuery, args []any) (string, []any) {
-	query += " AND " + aiCallExpr
+//
+// The class is taken here rather than on storage.AIQuery on purpose. Every
+// query has exactly one population it means — the model and caller tables are
+// inference, the tools table is tools — so a class knob on the query would let
+// a caller ask for a mixture that answers no question, and would put this
+// defect back within reach of the API layer. One choke point, one decision:
+// the AEP rejects filtering per query as "four call sites, four chances to
+// forget the fifth".
+func aiFilters(query string, q storage.AIQuery, class aiOperationClass, args []any) (string, []any) {
+	query += " AND " + aiCallExpr + " AND " + class.classExpr()
 	if q.Service != "" {
 		query += " AND ServiceName = ?"
 		args = append(args, q.Service)
 	}
-	if q.Model != "" {
+	// The model filter applies to inference only, and deliberately does not
+	// silently empty the other tables. A tool span carries neither a response
+	// nor a request model — the model that decided to call it does — so
+	// applying this predicate to tools would match nothing and report "this
+	// model used no tools", which is false rather than merely narrow.
+	if q.Model != "" && class == aiInference {
 		query += " AND " + aiModelExpr + " = ?"
 		args = append(args, q.Model)
 	}
@@ -156,7 +226,7 @@ FROM otel_traces
 WHERE Tenant IN (?)
   AND Timestamp >= ? AND Timestamp < ?`
 	args := []any{tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
-	query, args = aiFilters(query, q, args)
+	query, args = aiFilters(query, q, aiInference, args)
 	query += `
 GROUP BY model WITH TOTALS
 ORDER BY calls DESC, model ASC
@@ -228,7 +298,7 @@ FROM otel_traces
 WHERE Tenant IN (?)
   AND Timestamp >= ? AND Timestamp < ?`
 	args := []any{tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
-	query, args = aiFilters(query, q, args)
+	query, args = aiFilters(query, q, aiInference, args)
 	query += `
 GROUP BY service, model
 ORDER BY calls DESC, service ASC, model ASC
@@ -249,6 +319,116 @@ LIMIT ?`
 			return nil, fmt.Errorf("scanning ai caller row: %w", err)
 		}
 		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// aiToolNameExpr names the tool a span ran. gen_ai.tool.name is the convention;
+// the span name is the fallback, because an instrumentation that skipped the
+// attribute still ran a tool, and reporting it under a weaker name beats
+// dropping it from the table entirely.
+const aiToolNameExpr = `if(SpanAttributes['gen_ai.tool.name'] != '', ` +
+	`SpanAttributes['gen_ai.tool.name'], SpanName)`
+
+// aiToolUnnamedExpr is true when the name above came from the span rather than
+// from the attribute — a weaker attribution, counted so the screen can say so.
+const aiToolUnnamedExpr = `(SpanAttributes['gen_ai.tool.name'] = '')`
+
+// maxAIToolCallers caps the caller list carried on each tool row. The exact
+// count travels beside it, so a truncated list is visibly truncated rather than
+// quietly wrong.
+const maxAIToolCallers = 10
+
+// AITools returns usage per tool executed inside an agent turn.
+//
+// This is the table the model view cannot show. Once tool spans are told apart
+// from model calls they carry the questions an operator actually has about an
+// agent: which tool is slow, which one fails, and who is invoking it. Latency
+// belongs here for the same reason it does not belong on the caller table —
+// it is a property of the thing being called.
+func (s *Store) AITools(ctx context.Context, q storage.AIQuery) ([]storage.AIToolUsage, error) {
+	query := `
+SELECT
+    ` + aiToolNameExpr + `                                  AS tool,
+    count()                                                 AS calls,
+    countIf(` + errorSpanExpr("") + `)                      AS errors,
+    countIf(` + refusedSpanExpr("") + `)                    AS refused,
+    countIf(` + aiToolUnnamedExpr + `)                      AS namedBySpan,
+    arraySlice(groupUniqArray(ServiceName), 1, ?)           AS callers,
+    uniqExact(ServiceName)                                  AS callerCount,
+    quantiles(0.5, 0.95, 0.99)(toFloat64(Duration))         AS qs
+FROM otel_traces
+WHERE Tenant IN (?)
+  AND Timestamp >= ? AND Timestamp < ?`
+	args := []any{maxAIToolCallers, tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
+	query, args = aiFilters(query, q, aiTool, args)
+	query += `
+GROUP BY tool
+ORDER BY calls DESC, tool ASC
+LIMIT ?`
+	args = append(args, aiLimit(q.Limit))
+
+	rows, err := s.conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ai tools: %w", err)
+	}
+	defer rows.Close()
+
+	var out []storage.AIToolUsage
+	for rows.Next() {
+		var t storage.AIToolUsage
+		var quant []float64
+		if err := rows.Scan(&t.Tool, &t.Calls, &t.Errors, &t.Refused, &t.NamedBySpan,
+			&t.Callers, &t.CallerCount, &quant); err != nil {
+			return nil, fmt.Errorf("scanning ai tool row: %w", err)
+		}
+		t.P50, t.P95, t.P99 = nsQuantiles(quant)
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// AISpendByService returns month-to-date tokens per calling service, plus the
+// unpriced-call counts a cost budget needs to know its number is a floor.
+//
+// Deliberately NOT a second reading of the caller table: that one is limited and
+// ordered for a screen, and a budget evaluated over a truncated table would be
+// measuring the top N services and calling it the estate. This is unlimited and
+// grouped only by what a budget can be scoped to.
+//
+// Cost is not computed here. SQL returns what was measured; the caller applies
+// the operator's declared rates — the same separation green keeps for its carbon
+// factors, and the reason the budget evaluator and the API cannot disagree about
+// a price.
+func (s *Store) AISpendByService(ctx context.Context, q storage.AIQuery) ([]storage.AIServiceSpend, error) {
+	query := `
+SELECT
+    ServiceName                          AS service,
+    ` + aiModelExpr + `                  AS model,
+    count()                              AS calls,
+    sum(` + aiInputTokensExpr + `)       AS inTokens,
+    sum(` + aiOutputTokensExpr + `)      AS outTokens
+FROM otel_traces
+WHERE Tenant IN (?)
+  AND Timestamp >= ? AND Timestamp < ?`
+	args := []any{tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
+	query, args = aiFilters(query, q, aiInference, args)
+	query += `
+GROUP BY service, model`
+
+	rows, err := s.conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ai spend by service: %w", err)
+	}
+	defer rows.Close()
+
+	var out []storage.AIServiceSpend
+	for rows.Next() {
+		var r storage.AIServiceSpend
+		if err := rows.Scan(&r.Service, &r.Model, &r.Calls, &r.InputTokens, &r.OutputTokens); err != nil {
+			return nil, fmt.Errorf("scanning ai spend row: %w", err)
+		}
+		out = append(out, r)
 	}
 	return out, rows.Err()
 }

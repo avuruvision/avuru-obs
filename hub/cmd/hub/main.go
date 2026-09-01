@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
+	"github.com/avuru/avuru-obs/hub/internal/ai"
 	"github.com/avuru/avuru-obs/hub/internal/alerting"
 	"github.com/avuru/avuru-obs/hub/internal/api"
 	"github.com/avuru/avuru-obs/hub/internal/auth"
@@ -26,6 +27,7 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/collection"
 	"github.com/avuru/avuru-obs/hub/internal/health"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
+	"github.com/avuru/avuru-obs/hub/internal/rates"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 	ch "github.com/avuru/avuru-obs/hub/internal/storage/clickhouse"
 )
@@ -274,6 +276,30 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
+	// The ONE rate table. Chart-declared rates — the AI price ConfigMap and the
+	// AVURUOBS_COST_* environment variables — are folded into its read-only
+	// half; UI-authored entries overlay them. The SAME resolver goes to the API
+	// and to the budget evaluator below, which is the whole point: the
+	// evaluator does not go through the API, so two resolutions could price a
+	// budget differently from the screen that shows it.
+	ratesResolver := rates.NewResolver(
+		func() rates.Table {
+			t, warnings := rates.FromLegacy(aiConfig(), envFloatOr("AVURUOBS_COST_CPU_CORE_HOUR", 0),
+				envFloatOr("AVURUOBS_COST_MEM_GIB_HOUR", 0), envOr("AVURUOBS_COST_CURRENCY", ""))
+			for _, w := range warnings {
+				slog.Warn("rate configuration", "detail", w)
+			}
+			return t
+		},
+		func() rates.Store {
+			st := provider()
+			if st == nil {
+				return nil
+			}
+			return st
+		},
+	)
 	topologyConfig, err := loadTopologyConfig(ctx)
 	if err != nil {
 		return err
@@ -329,7 +355,7 @@ func run() error {
 		DemoPassword:                    demoPassword,
 		GreenConfig:                     greenConfig,
 		AIConfig:                        aiConfig,
-		CostRates:                       costRates(),
+		Rates:                           ratesResolver,
 		MeshScrapeJob:                   envOr("AVURUOBS_MESH_SCRAPE_JOB", ""),
 		Topology:                        topologyConfig,
 		OIDC:                            oidcProvider,
@@ -349,7 +375,7 @@ func run() error {
 	// The alerting evaluator is a single background loop (see runAlertingEvaluator);
 	// started only when the module is active.
 	if active.Enabled(modules.Alerting) {
-		go runAlertingEvaluator(ctx, provider, gate, groupsResolver, alertsConfig, greenConfig, notifier, splitCSV(envOr("AVURUOBS_PROJECTS", "")), active)
+		go runAlertingEvaluator(ctx, provider, gate, groupsResolver, alertsConfig, greenConfig, aiBudgetConfig(aiConfig, ratesResolver), notifier, splitCSV(envOr("AVURUOBS_PROJECTS", "")), active)
 	}
 
 	// Endpoint checks: the one signal that cannot be derived from observed
@@ -598,17 +624,6 @@ func schemaAutoMigrate() bool {
 	return true
 }
 
-// costRates reads the chart-declared prices for reserved capacity. Unset (the
-// default) leaves every rate at zero, which the API reports as "not priced"
-// rather than as free — there is no pricing service to ask, deliberately.
-func costRates() api.CostRates {
-	return api.CostRates{
-		CPUCoreHour: envFloatOr("AVURUOBS_COST_CPU_CORE_HOUR", 0),
-		MemGiBHour:  envFloatOr("AVURUOBS_COST_MEM_GIB_HOUR", 0),
-		Currency:    envOr("AVURUOBS_COST_CURRENCY", ""),
-	}
-}
-
 // envFloatOr reads a float env var, falling back on anything unparseable. A
 // mistyped rate must not stop the hub booting: it reports as unpriced, which
 // is visible on the screen, rather than as a crash loop nobody can read.
@@ -716,4 +731,15 @@ func splitCSV(v string) []string {
 		}
 	}
 	return out
+}
+
+// aiBudgetConfig hands the evaluator the AI config with prices resolved through
+// the SAME rate table the API serves. Without this a cost budget would be
+// measured against the ConfigMap while the screen showed the UI-authored price,
+// which is the exact failure service groups hit when the alerting evaluator
+// read different config than the API served.
+func aiBudgetConfig(cfg func() ai.Config, resolver *rates.Resolver) func() ai.Config {
+	return func() ai.Config {
+		return api.AIConfigWithRates(cfg(), resolver.Resolve(context.Background()))
+	}
 }
