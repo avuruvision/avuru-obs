@@ -18,8 +18,12 @@ Rules:
   is a deliberate MR that re-runs the ClickHouse DDL contract-freeze procedure
   (`gateway/schemas/README.md`).
 - The **stock contrib image** (`otel/opentelemetry-collector-contrib:0.154.0`)
-  runs the exact same config — the compose sandbox uses it, and the Helm chart
-  accepts it as an override (`gateway.image.repository`/`tag`) if pulling the
-  distro is not an option.
+  runs the exact same config, and the Helm chart accepts it as an override
+  (`gateway.image.repository`/`tag`) if pulling the distro is not an option.
+  It costs the `replaces:` security floors, though: the stock image of this
+  line scans with the CRITICAL and the HIGHs the manifest pins above, and no
+  contrib release fixes the `x/crypto` one (0.159.0 still resolves v0.54.0,
+  below the fixed v0.55.0). The sensor's node agent runs contrib because it
+  needs receivers this distro does not carry; the gateway has no such reason.
 - Releases publish `ghcr.io/<owner>/avuru-obs-gateway:<tag>` via
   `.github/workflows/release.yml`; the chart's default `appVersion` tag matches.

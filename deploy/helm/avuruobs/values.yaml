@@ -66,6 +66,11 @@ ui:
 # OCB distro (gateway/ocb-manifest.yaml). The stock contrib image works with
 # the same config — override repository/tag to fall back:
 #   otel/opentelemetry-collector-contrib : 0.154.0
+# Falling back costs the distro's security floors: the OCB manifest pins
+# x/crypto, x/text and grpc above advisories the 0.154.0 contrib image still
+# ships, so the stock image scans with one CRITICAL and three HIGHs the
+# default image does not have. Stay on 0.154.0 if you do fall back — the
+# ClickHouse DDL this chart expects is frozen against that line.
 gateway:
   # The ingest path. A secondary cluster installs this (plus the sensor) and
   # nothing else; a query-only instance can turn it off and receive telemetry
@@ -581,8 +586,22 @@ sensor:
   agent:
     enabled: true
     image:
+      # The agent needs filelog, kubeletstats, k8s_cluster and prometheus —
+      # none of them in the gateway's minimal OCB distro — so it runs the stock
+      # contrib image and tracks contrib's OWN line, no longer in lockstep with
+      # the gateway pin. It can: the agent's only exporter is otlphttp to the
+      # gateway, so it touches no ClickHouse DDL and moving it re-runs no
+      # contract freeze. Newer is the security position, measured rather than
+      # assumed — trivy --ignore-unfixed --severity HIGH,CRITICAL reports
+      # 1 CRITICAL + 14 HIGH on 0.154.0 and 1 CRITICAL + 2 HIGH on 0.159.0.
+      # Gone: x/net, x/text, grpc, stdlib. Left: golang.org/x/mod
+      # (CVE-2026-56864/56865, fixed in v0.40.0) — on both lines, and no
+      # collector release carries the fix yet. The CRITICAL (CVE-2026-56854,
+      # x/crypto) has no upstream fix either: 0.159.0 still resolves v0.54.0
+      # against the fixed v0.55.0. Only the OCB distro can pin those floors,
+      # which is why the gateway does and this image cannot.
       repository: otel/opentelemetry-collector-contrib
-      tag: "0.154.0" # keep in lockstep with the gateway pin (tech_stack.md)
+      tag: "0.159.0"
     logs:
       enabled: true
     # Node/pod CPU, memory, network from the kubelet (Supporting signal tier).
