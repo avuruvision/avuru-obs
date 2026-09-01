@@ -50,6 +50,7 @@ var Ordered = []string{
 	"0018_auth_tokens.sql",
 	"0019_project_retention.sql",
 	"0020_endpoint_checks.sql",
+	"0021_rates_overlay.sql",
 }
 
 // ByModule tags each migration with the module(s) whose schema it owns; the
@@ -103,6 +104,10 @@ var ByModule = map[string][]modules.Name{
 	// module owns the table: an install without it never creates the table and
 	// never starts the scheduler.
 	"0020_endpoint_checks.sql": {modules.ServiceHealth},
+	// rates_overlay — the UI-authored rate table. Spans cost AND ai, so neither
+	// module can own it; created everywhere like collection_overlay (0014),
+	// with only the routes and the surfaces that read it gated.
+	"0021_rates_overlay.sql": {modules.Core},
 }
 
 // Expected returns, in apply order, the versions that should exist on an

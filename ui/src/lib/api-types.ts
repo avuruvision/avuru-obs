@@ -1178,3 +1178,48 @@ export interface AIToolsResponse {
   // with the others.
   modelFilterIgnored?: boolean;
 }
+
+// The one rate table (design/2026-08-30-agents-budgets-and-rates.md). Model
+// prices and compute rates in one document, with a single currency — two
+// independent currency fields could render EUR on one screen and USD on
+// another with nothing noticing.
+export interface RateModelPrice {
+  model: string;
+  inputPer1MTokens?: number;
+  outputPer1MTokens?: number;
+}
+
+export interface RateCompute {
+  cpuCoreHour?: number;
+  memGiBHour?: number;
+}
+
+export interface RateTable {
+  currency?: string;
+  compute?: RateCompute;
+  models?: RateModelPrice[];
+}
+
+// Where a resolved value came from. A chart-declared entry is read-only here:
+// offering an edit would promise a change a `helm upgrade` silently reverts.
+export type RateSource = "chart" | "overlay";
+
+export interface ResolvedRateModel extends RateModelPrice {
+  source: RateSource;
+}
+
+export interface ResolvedRates {
+  currency?: string;
+  currencySource?: RateSource;
+  compute: RateCompute;
+  computeSource?: RateSource;
+  models: ResolvedRateModel[];
+}
+
+export interface RatesResponse {
+  overlay: RateTable;
+  chart: RateTable;
+  effective: ResolvedRates;
+  updatedAt?: string;
+  updatedBy?: string;
+}

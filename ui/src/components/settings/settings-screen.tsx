@@ -12,11 +12,13 @@ import { UsersPanel } from "./users-panel";
 import { ServiceGroupsPanel } from "./service-groups-panel";
 import { StorageTab } from "./storage-tab";
 import { AccessTab } from "./access-tab";
+import { RatesPanel } from "./rates-panel";
 
 const TABS = [
   "general",
   "collection",
   "groups",
+  "rates",
   "storage",
   "access",
   "status",
@@ -66,6 +68,7 @@ export function SettingsScreen() {
       (t !== "users" || isAdmin) &&
       (t !== "account" || signedIn) &&
       (t !== "groups" || (healthEnabled && canAdminister)) &&
+      (t !== "rates" || canAdminister) &&
       (t !== "storage" || canAdminister) &&
       (t !== "status" || canAdminister),
   ) ?? "general") as Tab;
@@ -73,7 +76,12 @@ export function SettingsScreen() {
   const items: TabItem<Tab>[] = [
     { value: "general", label: "General" },
     { value: "collection", label: "Collection" },
-    ...(healthEnabled && canAdminister ? [{ value: "groups" as const, label: "Groups" }] : []),
+    ...(healthEnabled && canAdminister
+      ? [{ value: "groups" as const, label: "Groups" }]
+      : []),
+    // Rates price BOTH cost and ai, so the tab is not gated on either module:
+    // gating on one would hide the table from an install running the other.
+    ...(canAdminister ? [{ value: "rates" as const, label: "Rates" }] : []),
     ...(canAdminister ? [{ value: "storage" as const, label: "Storage" }] : []),
     { value: "access", label: "Access" },
     ...(canAdminister ? [{ value: "status" as const, label: "Status" }] : []),
@@ -100,6 +108,7 @@ export function SettingsScreen() {
           <StorageTab />
         </div>
       )}
+      {tab === "rates" && <RatesPanel />}
       {tab === "access" && <AccessTab />}
       {tab === "status" && (
         <div className="flex flex-col gap-2">

@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/avuru/avuru-obs/hub/internal/ai"
 	"github.com/avuru/avuru-obs/hub/internal/auth"
+	"github.com/avuru/avuru-obs/hub/internal/rates"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
@@ -12,13 +14,49 @@ import (
 // read each, all taking the trace filter vocabulary so their numbers reconcile
 // with the Traces screen. See design/2026-08-27-ai-observability.md.
 
-// aiConfig resolves the current prices, defaulting to none — which the
-// responses report as "not priced", never as free.
+// aiConfig resolves the current AI configuration, defaulting to none — which
+// the responses report as "not priced", never as free.
+//
+// Prices and currency come from the RATE RESOLVER, not from this config, so a
+// price authored in the UI takes effect here without a pod restart and without
+// this handler and the budget evaluator being able to disagree about it. The
+// budgets stay from the config: they are declared, not priced.
 func (a *API) aiConfig() ai.Config {
+	cfg := ai.Default()
 	if a.cfg.AIConfig != nil {
-		return a.cfg.AIConfig()
+		cfg = a.cfg.AIConfig()
 	}
-	return ai.Default()
+	// No resolver wired means no rate table to resolve through, and the
+	// config's own prices stand. In production main always wires one — and it
+	// folds these same prices into its chart-declared half — so this is the
+	// degraded path, not a second source of truth.
+	if a.rates == nil {
+		return cfg
+	}
+	return withResolvedPrices(cfg, a.rates.Resolve(context.Background()))
+}
+
+// withResolvedPrices replaces a config's prices and currency with the resolved
+// rate table, leaving everything else alone. Exported behaviour lives in
+// AIConfigWithRates; this is the internal half both share.
+func withResolvedPrices(cfg ai.Config, resolved rates.Resolved) ai.Config {
+	cfg.Currency = resolved.Currency
+	cfg.Prices = nil
+	for _, m := range resolved.Models {
+		cfg.Prices = append(cfg.Prices, ai.Price{
+			Model:             m.Model,
+			InputPer1MTokens:  m.InputPer1MTokens,
+			OutputPer1MTokens: m.OutputPer1MTokens,
+		})
+	}
+	return cfg
+}
+
+// AIConfigWithRates is the same resolution the handlers use, for the alerting
+// tick — which does not go through the API and must price a budget against
+// exactly what the screen shows.
+func AIConfigWithRates(cfg ai.Config, resolved rates.Resolved) ai.Config {
+	return withResolvedPrices(cfg, resolved)
 }
 
 // aiUsageDTO is the shape every AI row shares: what was called, how it went,

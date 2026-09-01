@@ -1278,6 +1278,12 @@ type Store interface {
 	// separate delete method.
 	LoadCollectionOverlay(ctx context.Context) (CollectionOverlay, error)
 	SaveCollectionOverlay(ctx context.Context, ov CollectionOverlay) error
+	// Rates overlay: the UI-authored rate table (design/
+	// 2026-08-30-agents-budgets-and-rates.md). Same singleton idiom as the
+	// collection overlay above; ErrNotFound means "never saved", which is the
+	// empty overlay — chart-declared rates alone.
+	LoadRatesOverlay(ctx context.Context) (RatesOverlay, error)
+	SaveRatesOverlay(ctx context.Context, ov RatesOverlay) error
 	// Auth (core): local users, per-project grants, server-side sessions.
 	// GetAuthUserByEmail/GetAuthUser return ErrNotFound for unknown users;
 	// disabled users ARE returned (callers decide). SaveAuthUser upserts by
@@ -1382,6 +1388,16 @@ type Store interface {
 // 2026-07-27-collection-control-plane.md). Overlay is an opaque JSON blob —
 // its schema is owned and validated by package collection, not here.
 type CollectionOverlay struct {
+	Overlay   string
+	UpdatedAt time.Time
+	UpdatedBy string
+}
+
+// RatesOverlay is the persisted UI-authored rate table (design/
+// 2026-08-30-agents-budgets-and-rates.md). Overlay is an opaque JSON blob —
+// storage stores documents, the rates package owns their shape, exactly as
+// CollectionOverlay above does.
+type RatesOverlay struct {
 	Overlay   string
 	UpdatedAt time.Time
 	UpdatedBy string

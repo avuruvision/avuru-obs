@@ -13,6 +13,28 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **One rate table, written down once.** An operator declaring what their estate
+  costs used to do it **twice**, in two formats, one of which needed a pod
+  restart: model prices arrived as a mounted ConfigMap, hot-reloaded and
+  validated strictly, while compute rates were three environment variables read
+  once at startup. The two had separate currency fields, so an install could
+  render one screen in EUR and another in USD with nothing noticing.
+
+  Both now resolve through one table, editable in **Settings → Rates** and
+  applied without a redeploy. Values declared in the chart keep working exactly
+  as they did and are shown **read-only** — an operator who cannot see them has
+  no way to explain a price the screens are already using, and offering an edit
+  would promise a change a `helm upgrade` silently reverts. UI-authored entries
+  overlay them, each row saying which it is. There is one currency now, and an
+  install that had set the two differently gets a startup warning naming both
+  rather than a silent pick.
+
+  Crucially the budget evaluator and the screens read the **same** resolver, so
+  a budget can never be measured against a different price than the one on
+  display — the failure service groups hit when its alerting evaluator turned
+  out to be reading different configuration than the API served. Served at
+  `GET`/`PUT`/`DELETE /api/v1/rates`.
+
 - **A threshold on spend.** Nobody watches a screen. Monthly **budgets** on AI
   spend — in tokens or in money, for one calling service or across the estate —
   now fire through the alerting channels an install already has: a warning at
