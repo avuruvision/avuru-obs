@@ -108,6 +108,33 @@ grep -Eq 'processors: \[memory_limiter, k8sattributes, filter/collection, transf
 grep -Eq 'processors: \[memory_limiter, k8sattributes, filter/collection, batch\]' <<<"$out" || fail "metrics pipeline missing filter/collection"
 ok "filter/collection wired into logs + metrics pipelines"
 
+echo "== structured log parsing"
+out="$(render)"
+# Without these operators every container log lands with SeverityNumber 0 and
+# an empty TraceId, and three things fail silently rather than loudly: the Logs
+# severity filter matches nothing (it compares >= a floor), no log is ever
+# promoted to an error issue (that view keys on >= 17), and a trace shows no
+# correlated logs.
+grep -q 'type: json_parser' <<<"$out" || fail "json_parser operator missing from filelog"
+grep -q 'parse_to: attributes' <<<"$out" || fail "json_parser must parse to attributes, leaving body intact"
+grep -q 'parse_from: attributes.level' <<<"$out" || fail "severity parser missing"
+# The UI badge colours by NAME, so a pino record keeping "50" as its text
+# renders neutral grey rather than red.
+grep -q 'overwrite_text: true' <<<"$out" || fail "severity text must be rewritten to the canonical name"
+grep -q 'parse_from: attributes.trace_id' <<<"$out" || fail "trace_id parser missing"
+grep -q 'parse_from: attributes.span_id' <<<"$out" || fail "span_id parser missing"
+# Both dialects on one column: pino writes numeric levels, logback writes names.
+grep -Eq 'info: \[30, "INFO"\]' <<<"$out" || fail "severity mapping must cover numeric (pino) and string (logback) levels"
+grep -Eq 'error: \[50, "ERROR", "SEVERE"\]' <<<"$out" || fail "error severity mapping incomplete"
+# The app's own clock is deliberately not trusted.
+grep -q 'type: time_parser' <<<"$out" && fail "timestamp parsing must stay off"
+ok "filelog parses JSON bodies into severity + trace ids"
+
+out="$(render --set sensor.agent.logs.parseJson=false)"
+grep -q 'type: json_parser' <<<"$out" && fail "json_parser rendered with parseJson=false"
+grep -q 'type: container' <<<"$out" || fail "container operator must survive parseJson=false"
+ok "parseJson=false leaves collection intact, parsing off"
+
 echo "== empty guardrails -> no filter processor"
 out="$(render --set-json 'sensor.collection.excludeNamespaces=[]' --set sensor.collection.optOutLabel="")"
 grep -q 'filter/collection' <<<"$out" && fail "filter/collection rendered with no guardrails"

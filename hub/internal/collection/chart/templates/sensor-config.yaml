@@ -291,6 +291,53 @@ data:
           # k8s.namespace.name, k8s.container.name, k8s.pod.uid from the file
           # path to resource attributes.
           - type: container
+        {{- if .Values.sensor.agent.logs.parseJson }}
+          # Structured bodies, read in place.
+          #
+          # The container operator parses the CRI envelope and stops there, so
+          # a JSON log line arrived as an opaque string with SeverityNumber 0
+          # and no trace id. Three things quietly did not work as a result:
+          # the Logs UI severity filter returned NOTHING for container logs
+          # (it filters SeverityNumber >= floor, and 0 clears no floor), no
+          # log ever became an error issue (that view keys on >= 17), and the
+          # trace -> logs pivot was empty because TraceId was never populated.
+          #
+          # `if` keeps this to bodies that actually look like JSON: startup
+          # banners, framework noise and stack traces flow through untouched
+          # rather than counting as parse failures.
+          - type: json_parser
+            if: 'body matches "^\\s*\\{.*\\}\\s*$"'
+            parse_from: body
+            # To attributes, not to body: the raw line stays searchable in
+            # full text while each field also becomes queryable on its own.
+            parse_to: attributes
+            severity:
+              parse_from: attributes.level
+              # Rewrite SeverityText to the canonical name for the level that
+              # was matched. Without it a pino record keeps its numeric level
+              # as its text, and the Logs UI badge reads "50" in neutral grey
+              # instead of ERROR in red — it colours by name.
+              overwrite_text: true
+              # Two dialects, one column. pino (Node) writes numeric levels,
+              # logback/slf4j (the Spring services) write names — and a
+              # service that emits neither simply keeps severity unset, as
+              # before.
+              mapping:
+                trace: [10, "TRACE"]
+                debug: [20, "DEBUG"]
+                info: [30, "INFO"]
+                warn: [40, "WARN", "WARNING"]
+                error: [50, "ERROR", "SEVERE"]
+                fatal: [60, "FATAL", "CRITICAL"]
+            trace:
+              trace_id:
+                parse_from: attributes.trace_id
+              span_id:
+                parse_from: attributes.span_id
+          # Deliberately no timestamp parser: the runtime's own timestamp is
+          # trusted rather than the application's, so one pod with a skewed
+          # clock cannot scatter its lines across the time axis.
+        {{- end }}
     {{- end }}
     {{- if include "avuruobs.collectInfraMetrics" . }}
       # Node/pod CPU, memory, network from this node's kubelet (Supporting

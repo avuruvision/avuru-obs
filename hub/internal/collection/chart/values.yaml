@@ -604,6 +604,15 @@ sensor:
       tag: "0.159.0"
     logs:
       enabled: true
+      # Parse JSON log bodies in place, so `level` becomes SeverityNumber and
+      # `trace_id`/`span_id` become the TraceId/SpanId columns.
+      #
+      # Without it a structured log line lands as an opaque string with
+      # severity 0, and three things silently do nothing: the Logs severity
+      # filter matches no container log at all, no log is ever promoted to an
+      # error issue, and a trace has no logs to show. Non-JSON lines are
+      # untouched either way.
+      parseJson: true
     # Node/pod CPU, memory, network from the kubelet (Supporting signal tier).
     kubeletstats:
       enabled: true

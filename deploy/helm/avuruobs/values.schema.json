@@ -1141,6 +1141,9 @@
               "properties": {
                 "enabled": {
                   "type": "boolean"
+                },
+                "parseJson": {
+                  "type": "boolean"
                 }
               }
             },
