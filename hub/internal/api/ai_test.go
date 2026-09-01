@@ -281,3 +281,78 @@ func TestAIEmptyWindowIsAnEmptyAnswer(t *testing.T) {
 		}
 	}
 }
+
+// The tools table carries no cost and no tokens. A tool execution spends
+// neither, and printing zeros beside the model table's real numbers would read
+// as "these were free" rather than "tokens are not this table's unit".
+func TestAIToolsReportsCallsLatencyAndCallers(t *testing.T) {
+	fake := &storagetest.Fake{AIToolRows: []storage.AIToolUsage{{
+		Tool: "search_docs", Calls: 12, Errors: 2, Refused: 1,
+		Callers: []string{"assistant", "support-bot"}, CallerCount: 2,
+		P50: 40 * time.Millisecond, P95: 300 * time.Millisecond, P99: 900 * time.Millisecond,
+	}}}
+
+	var resp struct {
+		Tools []struct {
+			Tool        string   `json:"tool"`
+			Calls       uint64   `json:"calls"`
+			Errors      uint64   `json:"errors"`
+			Refused     uint64   `json:"refused"`
+			Callers     []string `json:"callers"`
+			CallerCount uint64   `json:"callerCount"`
+			P95Ms       float64  `json:"p95Ms"`
+		} `json:"tools"`
+		ModelFilterIgnored bool `json:"modelFilterIgnored"`
+	}
+	decodeInto(t, aiMux(fake, ai.Default()), "/api/v1/ai/tools", &resp)
+
+	if len(resp.Tools) != 1 {
+		t.Fatalf("tools = %d rows, want 1", len(resp.Tools))
+	}
+	got := resp.Tools[0]
+	if got.Tool != "search_docs" || got.Calls != 12 || got.Errors != 2 || got.Refused != 1 {
+		t.Errorf("row = %+v", got)
+	}
+	if got.CallerCount != 2 || len(got.Callers) != 2 {
+		t.Errorf("callers = %v (count %d), want 2 named", got.Callers, got.CallerCount)
+	}
+	if got.P95Ms != 300 {
+		t.Errorf("p95Ms = %v, want 300", got.P95Ms)
+	}
+	if resp.ModelFilterIgnored {
+		t.Error("modelFilterIgnored set with no model filter")
+	}
+}
+
+// A model filter cannot narrow the tools table — a tool span carries no model —
+// so the response SAYS the filter did not apply. Silently obeying it would
+// report "this model used no tools"; silently dropping it would show a table
+// that disagrees with the filter bar above it with no explanation.
+func TestAIToolsSaysWhenTheModelFilterCouldNotApply(t *testing.T) {
+	fake := &storagetest.Fake{AIToolRows: []storage.AIToolUsage{{Tool: "run_sql", Calls: 3}}}
+
+	var resp struct {
+		Tools              []struct{} `json:"tools"`
+		ModelFilterIgnored bool       `json:"modelFilterIgnored"`
+	}
+	decodeInto(t, aiMux(fake, ai.Default()), "/api/v1/ai/tools?model=gpt-4o", &resp)
+
+	if !resp.ModelFilterIgnored {
+		t.Error("modelFilterIgnored not set despite ?model=gpt-4o")
+	}
+	if len(resp.Tools) != 1 {
+		t.Errorf("tools = %d rows, want the unfiltered row", len(resp.Tools))
+	}
+}
+
+// An empty window is an empty table, not an error, and not a null array — the
+// UI maps over it.
+func TestAIToolsEmptyWindowIsAnEmptyArray(t *testing.T) {
+	var resp struct {
+		Tools []struct{} `json:"tools"`
+	}
+	decodeInto(t, aiMux(&storagetest.Fake{}, ai.Default()), "/api/v1/ai/tools", &resp)
+	if resp.Tools == nil {
+		t.Error("tools is null; want []")
+	}
+}

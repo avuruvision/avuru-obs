@@ -175,7 +175,12 @@ func aiFilters(query string, q storage.AIQuery, class aiOperationClass, args []a
 		query += " AND ServiceName = ?"
 		args = append(args, q.Service)
 	}
-	if q.Model != "" {
+	// The model filter applies to inference only, and deliberately does not
+	// silently empty the other tables. A tool span carries neither a response
+	// nor a request model — the model that decided to call it does — so
+	// applying this predicate to tools would match nothing and report "this
+	// model used no tools", which is false rather than merely narrow.
+	if q.Model != "" && class == aiInference {
 		query += " AND " + aiModelExpr + " = ?"
 		args = append(args, q.Model)
 	}
@@ -314,6 +319,71 @@ LIMIT ?`
 			return nil, fmt.Errorf("scanning ai caller row: %w", err)
 		}
 		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// aiToolNameExpr names the tool a span ran. gen_ai.tool.name is the convention;
+// the span name is the fallback, because an instrumentation that skipped the
+// attribute still ran a tool, and reporting it under a weaker name beats
+// dropping it from the table entirely.
+const aiToolNameExpr = `if(SpanAttributes['gen_ai.tool.name'] != '', ` +
+	`SpanAttributes['gen_ai.tool.name'], SpanName)`
+
+// aiToolUnnamedExpr is true when the name above came from the span rather than
+// from the attribute — a weaker attribution, counted so the screen can say so.
+const aiToolUnnamedExpr = `(SpanAttributes['gen_ai.tool.name'] = '')`
+
+// maxAIToolCallers caps the caller list carried on each tool row. The exact
+// count travels beside it, so a truncated list is visibly truncated rather than
+// quietly wrong.
+const maxAIToolCallers = 10
+
+// AITools returns usage per tool executed inside an agent turn.
+//
+// This is the table the model view cannot show. Once tool spans are told apart
+// from model calls they carry the questions an operator actually has about an
+// agent: which tool is slow, which one fails, and who is invoking it. Latency
+// belongs here for the same reason it does not belong on the caller table —
+// it is a property of the thing being called.
+func (s *Store) AITools(ctx context.Context, q storage.AIQuery) ([]storage.AIToolUsage, error) {
+	query := `
+SELECT
+    ` + aiToolNameExpr + `                                  AS tool,
+    count()                                                 AS calls,
+    countIf(` + errorSpanExpr("") + `)                      AS errors,
+    countIf(` + refusedSpanExpr("") + `)                    AS refused,
+    countIf(` + aiToolUnnamedExpr + `)                      AS namedBySpan,
+    arraySlice(groupUniqArray(ServiceName), 1, ?)           AS callers,
+    uniqExact(ServiceName)                                  AS callerCount,
+    quantiles(0.5, 0.95, 0.99)(toFloat64(Duration))         AS qs
+FROM otel_traces
+WHERE Tenant IN (?)
+  AND Timestamp >= ? AND Timestamp < ?`
+	args := []any{maxAIToolCallers, tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
+	query, args = aiFilters(query, q, aiTool, args)
+	query += `
+GROUP BY tool
+ORDER BY calls DESC, tool ASC
+LIMIT ?`
+	args = append(args, aiLimit(q.Limit))
+
+	rows, err := s.conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ai tools: %w", err)
+	}
+	defer rows.Close()
+
+	var out []storage.AIToolUsage
+	for rows.Next() {
+		var t storage.AIToolUsage
+		var quant []float64
+		if err := rows.Scan(&t.Tool, &t.Calls, &t.Errors, &t.Refused, &t.NamedBySpan,
+			&t.Callers, &t.CallerCount, &quant); err != nil {
+			return nil, fmt.Errorf("scanning ai tool row: %w", err)
+		}
+		t.P50, t.P95, t.P99 = nsQuantiles(quant)
+		out = append(out, t)
 	}
 	return out, rows.Err()
 }
