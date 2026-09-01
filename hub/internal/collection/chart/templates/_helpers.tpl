@@ -90,6 +90,7 @@ otel
 {{- if .Values.modules.green.enabled -}}{{- $mods = append $mods "green" -}}{{- end -}}
 {{- if .Values.modules.cost.enabled -}}{{- $mods = append $mods "cost" -}}{{- end -}}
 {{- if .Values.modules.ai.enabled -}}{{- $mods = append $mods "ai" -}}{{- end -}}
+{{- if .Values.modules.mcp.enabled -}}{{- $mods = append $mods "mcp" -}}{{- end -}}
 {{- join "," $mods -}}
 {{- end -}}
 

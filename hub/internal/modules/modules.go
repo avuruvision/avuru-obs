@@ -66,10 +66,24 @@ const (
 	// the screen would protect only the installs that opted into looking. See
 	// design/2026-08-27-ai-observability.md.
 	AI Name = "ai"
+	// MCP serves a Model Context Protocol server at POST /mcp: the read-only
+	// tools an agent uses to investigate an incident, over the spans, logs,
+	// issues and health this install already stores. It owns no schema, adds no
+	// collection, deploys no component and depends on no other module — the
+	// tools of a module that is off are simply absent from tools/list.
+	//
+	// Born OFF, and for a reason the other opt-off modules do not share: this is
+	// the one surface whose whole purpose is to hand telemetry to something
+	// outside the cluster. The product still makes no outbound call — the
+	// operator's agent pulls — but an operator who connects a model provider to
+	// this server is exporting traces and log bodies by their own hand, so the
+	// switch has to be theirs to throw.
+	// See design/2026-09-01-mcp-server.md.
+	MCP Name = "mcp"
 )
 
 // All lists every known module in registry (display) order.
-var All = []Name{Core, Logs, InfraMetrics, Profiling, ErrorTracking, ServiceHealth, Alerting, Mesh, Green, Cost, AI}
+var All = []Name{Core, Logs, InfraMetrics, Profiling, ErrorTracking, ServiceHealth, Alerting, Mesh, Green, Cost, AI, MCP}
 
 // Set is a resolved active-module set; Core is always present.
 type Set map[Name]bool

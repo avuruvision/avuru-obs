@@ -76,7 +76,11 @@ Beyond the core signals, the day-2 layer:
 - **Auth & SSO** — secure-by-default login, per-project roles, OIDC single
   sign-on, and opt-in anonymous read access for public demos.
 - **Modules** — one switch per signal family gates schema, pipeline, API and
-  UI together; run only what you need.
+  UI together; run only what you need. The newest is **MCP** (off by default):
+  a Model Context Protocol server your agent reads the estate through — service
+  health, dependencies, traces, logs and error issues — using a personal API
+  token, with every call logged. Turning it on means telemetry leaves the
+  cluster for your model provider, which is why it is yours to switch on.
 - **Secure by default**: login + per-project RBAC out of the box, and
   enterprise SSO via any OIDC IdP (Keycloak, Entra, Okta, ...) in OSS — IdP
   groups map to per-project roles, `forceSSO` for IdP-only fleets — with no

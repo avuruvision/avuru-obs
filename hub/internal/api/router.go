@@ -416,6 +416,18 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		mux.Handle("GET /api/v1/ai/callers", a.secured(auth.RoleViewer, a.handleAICallers))
 		mux.Handle("GET /api/v1/ai/tools", a.secured(auth.RoleViewer, a.handleAITools))
 	}
+	if active.Enabled(modules.MCP) {
+		// Not under /api/v1: MCP clients are configured with a bare server URL
+		// and this is a protocol endpoint, not a REST resource — versioning it
+		// alongside the resource API would imply the two move together.
+		//
+		// secured() and nothing else: a personal API token resolves its
+		// owner's LIVE permissions, so the tools read exactly what that person
+		// reads in the UI. It also brings the CSRF origin check along, which
+		// costs a header-setting client nothing (it sends no Origin) and is
+		// what a browser-hosted client should be held to.
+		mux.Handle("POST /mcp", a.secured(auth.RoleViewer, a.handleMCP))
+	}
 }
 
 // groupsConfig resolves the active service-health config — chart-declared and

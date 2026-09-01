@@ -17,6 +17,9 @@ const HELM_VALUE: Record<Exclude<ModuleName, "core">, string> = {
   green: "modules.green.enabled",
   cost: "modules.cost.enabled",
   ai: "modules.ai.enabled",
+  // No screen gates on mcp — it serves an agent, not a page — but the record
+  // is exhaustive on purpose, so a new module has to be decided about here.
+  mcp: "modules.mcp.enabled",
 };
 
 const LABEL: Record<Exclude<ModuleName, "core">, string> = {
@@ -30,6 +33,7 @@ const LABEL: Record<Exclude<ModuleName, "core">, string> = {
   green: "Energy & carbon",
   cost: "Cost & waste",
   ai: "AI observability",
+  mcp: "MCP server",
 };
 
 // Renders `children` unless this install doesn't run `module`, in which case

@@ -271,6 +271,23 @@ modules:
   # turn off prompt redaction; that is gateway.genai.redactContent.
   ai:
     enabled: false
+  # MCP: a Model Context Protocol server at POST /mcp, so an agent — a
+  # claude.ai connector, Claude Code, any MCP client — can read this estate to
+  # investigate an incident: service health, dependencies, traces, logs and
+  # error issues. No new collection, no schema, no extra container: it is one
+  # handler on the hub, authenticated with a personal API token, and it returns
+  # exactly what that token's owner can already see in the UI.
+  #
+  # READ THIS BEFORE TURNING IT ON. Everything above still holds — this product
+  # makes no outbound call of its own. But an agent you connect to this server
+  # pulls traces and LOG BODIES out of the cluster and into whichever model
+  # provider you pointed it at. Log bodies are where user data lives on the
+  # installs that have any. That is the trade this switch makes, which is why
+  # it is off by default and why every tool call is logged with the token
+  # owner, the tool, its arguments and the row count.
+  # See design/2026-09-01-mcp-server.md.
+  mcp:
+    enabled: false
 
 # Mesh control plane. Rendered into the GATEWAY's collector config, not the
 # sensor's: istiod is a single Deployment, and the sensor is a DaemonSet, so

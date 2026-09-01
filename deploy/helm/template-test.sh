@@ -1303,4 +1303,21 @@ out="$(render --set gateway.genai.redactContent=false)"
 grep -q 'transform/genai' <<<"$out" && fail "redactContent=false still rendered the stage"
 ok "runs first on traces and logs; an operator can still refuse it"
 
+echo "== mcp: born opt-off -> no module entry, no route"
+out="$(render)"
+grep -A1 'name: AVURUOBS_MODULES' <<<"$out" | grep -qE ',mcp[,"]' && fail "mcp in AVURUOBS_MODULES without opt-in"
+ok "no module entry by default"
+
+echo "== mcp: module on -> module entry, and still no new component"
+out="$(render --set modules.mcp.enabled=true)"
+grep -q 'core,logs,infra-metrics,profiling,error-tracking,service-health,alerting,mcp' <<<"$out" \
+  || fail "mcp missing from AVURUOBS_MODULES"
+# The whole claim of this feature: it is a handler on the hub, not a
+# deployable. If turning it on ever renders a Deployment, the time-to-value
+# gate is no longer measuring the same install.
+before="$(render | grep -c '^kind: Deployment' || true)"
+after="$(grep -c '^kind: Deployment' <<<"$out" || true)"
+[ "$before" = "$after" ] || fail "mcp added a Deployment ($before -> $after)"
+ok "module entry renders; component count unchanged"
+
 echo "ALL TEMPLATE ASSERTIONS PASSED"
