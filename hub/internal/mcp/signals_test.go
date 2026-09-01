@@ -279,3 +279,84 @@ func TestGetTraceNotFound(t *testing.T) {
 		t.Errorf("no message: %v", payload)
 	}
 }
+
+func TestSearchLogs(t *testing.T) {
+	f := fakeWithServices("payment-api")
+	f.LogPage = storage.LogPage{Logs: []storage.LogRecord{{
+		Timestamp: testNow, Severity: "ERROR", Service: "payment-api",
+		Body: "connection refused talking to ledger", TraceID: "abc", SpanID: "s1",
+	}}}
+	payload, isErr := callTool(t, serverWith(f), "search_logs",
+		`{"service":"payment-api","level":"ERROR","query":"refused","window":"30m"}`)
+	if isErr {
+		t.Fatalf("unexpected tool error: %v", payload)
+	}
+	logs, _ := payload["logs"].([]any)
+	if len(logs) != 1 {
+		t.Fatalf("got %d logs, want 1: %v", len(logs), payload)
+	}
+	first, _ := logs[0].(map[string]any)
+	// The body is returned in full. Redacting it would make the tool useless
+	// for the job it exists to do — the line you would mask is invariably the
+	// one that explains the failure. The opt-in module and the audit line are
+	// what carry that decision (design/2026-09-01-mcp-server.md).
+	if first["body"] != "connection refused talking to ledger" {
+		t.Errorf("body = %v", first["body"])
+	}
+	if first["traceId"] != "abc" {
+		t.Errorf("traceId = %v — correlation is the point of returning logs here", first["traceId"])
+	}
+	if f.LastLogQuery.MinSeverity != "ERROR" || f.LastLogQuery.Query != "refused" {
+		t.Errorf("filters did not reach storage: %+v", f.LastLogQuery)
+	}
+}
+
+// A trace id takes the correlated path, not the search path: it is a different
+// store call, and the one that answers "what did this request log".
+func TestSearchLogsByTraceID(t *testing.T) {
+	f := fakeWithServices("payment-api")
+	f.TraceLogs = map[string][]storage.LogRecord{"abc": {{
+		Timestamp: testNow, Severity: "ERROR", Service: "payment-api", Body: "boom", TraceID: "abc"}}}
+	payload, isErr := callTool(t, serverWith(f), "search_logs", `{"trace_id":"abc"}`)
+	if isErr {
+		t.Fatalf("unexpected tool error: %v", payload)
+	}
+	logs, _ := payload["logs"].([]any)
+	if len(logs) != 1 {
+		t.Fatalf("got %d logs, want the 1 on this trace: %v", len(logs), payload)
+	}
+}
+
+func TestListErrorIssues(t *testing.T) {
+	f := fakeWithServices("payment-api")
+	f.Issues = []storage.ErrorIssue{{
+		Fingerprint: 0xdeadbeef, Service: "payment-api", Type: "ConnectionError",
+		Message: "connection refused", Source: "span", Status: "unresolved",
+		Count: 42, FirstSeen: testNow.Add(-time.Hour), LastSeen: testNow, LastTraceID: "abc",
+	}}
+	payload, isErr := callTool(t, serverWith(f), "list_error_issues", `{"service":"payment-api"}`)
+	if isErr {
+		t.Fatalf("unexpected tool error: %v", payload)
+	}
+	issues, _ := payload["issues"].([]any)
+	if len(issues) != 1 {
+		t.Fatalf("got %d issues, want 1: %v", len(issues), payload)
+	}
+	first, _ := issues[0].(map[string]any)
+	if first["type"] != "ConnectionError" || first["count"] != float64(42) {
+		t.Errorf("issue row = %v", first)
+	}
+	// Hex, the same wire form the REST API uses, so an id an agent reads here
+	// pastes into a URL a human can open.
+	if first["fingerprint"] != "00000000deadbeef" {
+		t.Errorf("fingerprint = %v, want the hex form", first["fingerprint"])
+	}
+	if first["lastTraceId"] != "abc" {
+		t.Errorf("lastTraceId = %v — it is the bridge to get_trace", first["lastTraceId"])
+	}
+	// Open issues by default: an agent asking what is broken is not asking
+	// what used to be.
+	if f.LastIssueQuery.Status != "unresolved" {
+		t.Errorf("default status = %q, want unresolved", f.LastIssueQuery.Status)
+	}
+}

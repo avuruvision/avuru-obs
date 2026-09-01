@@ -399,3 +399,236 @@ func selfTimeByService(spans []storage.Span) []serviceSelfTime {
 	})
 	return out
 }
+
+var searchLogsDef = toolDef{
+	Name: "search_logs",
+	Description: "Search log records: by service, minimum severity, a substring of the message, or a trace id. " +
+		"Passing trace_id returns exactly the logs correlated to that request, which is how you read what one " +
+		"failing request actually printed. Log bodies are returned in full.",
+	InputSchema: inputSchema{
+		Type: "object",
+		Properties: withWindow(map[string]property{
+			"service":  {Type: "string", Description: "Only logs from this service."},
+			"level":    {Type: "string", Description: `Minimum severity, e.g. "WARN" or "ERROR". Matches that level and worse.`},
+			"query":    {Type: "string", Description: "Case-insensitive substring of the log body."},
+			"trace_id": {Type: "string", Description: "Return the logs correlated to this trace. Ignores the other filters and the window."},
+			"limit":    {Type: "integer", Description: "Maximum rows (default 20, maximum 100)."},
+		}),
+	},
+}
+
+type searchLogsArgs struct {
+	windowArgs
+	Service string `json:"service,omitempty"`
+	Level   string `json:"level,omitempty"`
+	Query   string `json:"query,omitempty"`
+	TraceID string `json:"trace_id,omitempty"`
+	Limit   int    `json:"limit,omitempty"`
+}
+
+type logRow struct {
+	Timestamp string `json:"timestamp"`
+	Severity  string `json:"severity"`
+	Service   string `json:"service"`
+	Body      string `json:"body"`
+	TraceID   string `json:"traceId,omitempty"`
+	SpanID    string `json:"spanId,omitempty"`
+}
+
+func toLogRow(l storage.LogRecord) logRow {
+	return logRow{
+		Timestamp: l.Timestamp.UTC().Format(time.RFC3339Nano), Severity: l.Severity,
+		Service: l.Service, Body: l.Body, TraceID: l.TraceID, SpanID: l.SpanID,
+	}
+}
+
+type searchLogsPayload struct {
+	Window    *windowDTO `json:"window,omitempty"` // absent on a trace_id read, which has no window
+	Logs      []logRow   `json:"logs"`
+	Returned  int        `json:"returned"`
+	Truncated bool       `json:"truncated"`
+}
+
+func (p searchLogsPayload) rows() int { return p.Returned }
+
+func runSearchLogs(ctx context.Context, s *Server, raw json.RawMessage) (any, error) {
+	var a searchLogsArgs
+	if err := decodeArgs(raw, &a); err != nil {
+		return nil, err
+	}
+	limit := clampRows(a.Limit, defaultRows, maxRows)
+
+	// A trace id takes the correlated path — a different store call, and the
+	// one that answers "what did THIS request print". Mixing it into the
+	// search would return whatever else happened to be in the window too.
+	if a.TraceID != "" {
+		records, err := s.Store.LogsForTrace(ctx, s.Tenants, a.TraceID)
+		if err != nil {
+			return nil, fmt.Errorf("reading logs for trace: %w", err)
+		}
+		rows := make([]logRow, 0, len(records))
+		for _, l := range records {
+			rows = append(rows, toLogRow(l))
+		}
+		truncated := len(rows) > limit
+		if truncated {
+			rows = rows[:limit]
+		}
+		return searchLogsPayload{Logs: rows, Returned: len(rows), Truncated: truncated}, nil
+	}
+
+	tr, err := a.timeRange(s.now())
+	if err != nil {
+		return nil, err
+	}
+	service := ""
+	if a.Service != "" {
+		if service, err = s.resolveService(ctx, tr, a.Service); err != nil {
+			return nil, err
+		}
+	}
+	page, err := s.Store.SearchLogs(ctx, storage.LogQuery{
+		Tenant:      s.Tenant,
+		Tenants:     s.Tenants,
+		Range:       tr,
+		Service:     service,
+		MinSeverity: a.Level,
+		Query:       a.Query,
+		Limit:       limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("searching logs: %w", err)
+	}
+	rows := make([]logRow, 0, len(page.Logs))
+	for _, l := range page.Logs {
+		rows = append(rows, toLogRow(l))
+	}
+	w := toWindowDTO(tr)
+	return searchLogsPayload{
+		Window: &w, Logs: rows,
+		Returned: len(rows), Truncated: page.NextCursor != nil,
+	}, nil
+}
+
+var listErrorIssuesDef = toolDef{
+	Name: "list_error_issues",
+	Description: "List deduplicated error issues — exceptions grouped by fingerprint, with first/last seen and an " +
+		"occurrence count — rather than raw exception events. Unresolved by default. Each issue carries the id of a " +
+		"trace it last occurred in, which get_trace will open.",
+	InputSchema: inputSchema{
+		Type: "object",
+		Properties: withWindow(map[string]property{
+			"service": {Type: "string", Description: "Only issues from this service."},
+			"query":   {Type: "string", Description: "Case-insensitive substring of the exception type or message."},
+			"status":  {Type: "string", Description: `Triage state; "unresolved" by default.`, Enum: []string{"unresolved", "resolved", "ignored", "all"}},
+			"sort":    {Type: "string", Description: `"lastSeen" (default), "count" or "firstSeen".`, Enum: []string{"lastSeen", "count", "firstSeen"}},
+			"limit":   {Type: "integer", Description: "Maximum rows (default 20, maximum 100)."},
+		}),
+	},
+}
+
+type listErrorIssuesArgs struct {
+	windowArgs
+	Service string `json:"service,omitempty"`
+	Query   string `json:"query,omitempty"`
+	Status  string `json:"status,omitempty"`
+	Sort    string `json:"sort,omitempty"`
+	Limit   int    `json:"limit,omitempty"`
+}
+
+type issueRow struct {
+	Fingerprint string `json:"fingerprint"`
+	Service     string `json:"service"`
+	Type        string `json:"type"`
+	Message     string `json:"message"`
+	Source      string `json:"source,omitempty"`
+	Status      string `json:"status"`
+	Regressed   bool   `json:"regressed,omitempty"`
+	Count       uint64 `json:"count"`
+	FirstSeen   string `json:"firstSeen"`
+	LastSeen    string `json:"lastSeen"`
+	LastTraceID string `json:"lastTraceId,omitempty"`
+}
+
+func toIssueRow(i storage.ErrorIssue) issueRow {
+	return issueRow{
+		// Hex, the same wire form the REST API uses (fingerprintHex), so an id
+		// an agent reports pastes straight into a URL a human can open.
+		Fingerprint: fmt.Sprintf("%016x", i.Fingerprint),
+		Service:     i.Service, Type: i.Type, Message: i.Message, Source: i.Source,
+		Status: i.Status, Regressed: i.Regressed, Count: i.Count,
+		FirstSeen: i.FirstSeen.UTC().Format(time.RFC3339),
+		LastSeen:  i.LastSeen.UTC().Format(time.RFC3339),
+		// The bridge to get_trace: an issue an agent can only read about is
+		// half an answer.
+		LastTraceID: i.LastTraceID,
+	}
+}
+
+type listErrorIssuesPayload struct {
+	Window    windowDTO  `json:"window"`
+	Issues    []issueRow `json:"issues"`
+	Returned  int        `json:"returned"`
+	Truncated bool       `json:"truncated"`
+}
+
+func (p listErrorIssuesPayload) rows() int { return p.Returned }
+
+func runListErrorIssues(ctx context.Context, s *Server, raw json.RawMessage) (any, error) {
+	var a listErrorIssuesArgs
+	if err := decodeArgs(raw, &a); err != nil {
+		return nil, err
+	}
+	tr, err := a.timeRange(s.now())
+	if err != nil {
+		return nil, err
+	}
+	if err := enumOr(a.Status, "status", "unresolved", "resolved", "ignored", "all"); err != nil {
+		return nil, err
+	}
+	if err := enumOr(a.Sort, "sort", "lastSeen", "count", "firstSeen"); err != nil {
+		return nil, err
+	}
+	service := ""
+	if a.Service != "" {
+		if service, err = s.resolveService(ctx, tr, a.Service); err != nil {
+			return nil, err
+		}
+	}
+	status := a.Status
+	if status == "" {
+		// The REST API's empty status means "every state". This tool defaults
+		// to unresolved instead, deliberately and in its description: an agent
+		// asking what is broken is not asking what used to be, and a page of
+		// long-resolved issues is how an investigation goes down a dead end.
+		status = "unresolved"
+	}
+	limit := clampRows(a.Limit, defaultRows, maxRows)
+	issues, err := s.Store.SearchErrorIssues(ctx, storage.ErrorIssueQuery{
+		Tenant:  s.Tenant,
+		Tenants: s.Tenants,
+		Range:   tr,
+		Status:  status,
+		Service: service,
+		Query:   a.Query,
+		Sort:    a.Sort,
+		// One more than asked for, so "there is more" is a fact and not a
+		// guess: this store call returns a slice, not a cursor.
+		Limit: limit + 1,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("searching error issues: %w", err)
+	}
+	truncated := len(issues) > limit
+	if truncated {
+		issues = issues[:limit]
+	}
+	rows := make([]issueRow, 0, len(issues))
+	for _, i := range issues {
+		rows = append(rows, toIssueRow(i))
+	}
+	return listErrorIssuesPayload{
+		Window: toWindowDTO(tr), Issues: rows,
+		Returned: len(rows), Truncated: truncated,
+	}, nil
+}

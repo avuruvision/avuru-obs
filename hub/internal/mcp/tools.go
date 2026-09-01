@@ -60,6 +60,8 @@ func (s *Server) tools() []tool {
 		{def: listServicesDef, run: runListServices},
 		{def: searchTracesDef, run: runSearchTraces},
 		{def: getTraceDef, run: runGetTrace},
+		{def: searchLogsDef, module: modules.Logs, run: runSearchLogs},
+		{def: listErrorIssuesDef, module: modules.ErrorTracking, run: runListErrorIssues},
 	}
 }
 
