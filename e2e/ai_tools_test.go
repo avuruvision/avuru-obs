@@ -119,11 +119,14 @@ func TestAIModelsExcludeToolAndAgentSpans(t *testing.T) {
 		}
 	}
 
-	// Every seeded model call reports token usage, so the no-usage bucket must
-	// be empty. Pre-fix the turn's four tool spans and its agent span landed in
-	// it, which is exactly the honest signal the bucket exists to carry.
-	if resp.Total.CallsWithoutUsage != 0 {
-		t.Errorf("callsWithoutUsage = %d, want 0 — tool spans must not land in the instrumentation-gap bucket",
+	// The no-usage bucket must hold exactly the ONE genuine instrumentation gap
+	// the fixture carries — seed-search's failed gpt-4o call, which reports no
+	// usage at all — and nothing else. Pre-fix the turn's four tool spans and
+	// its agent span landed here too, drowning the honest signal the bucket
+	// exists to carry in spans that were never model calls.
+	if resp.Total.CallsWithoutUsage != 1 {
+		t.Errorf("callsWithoutUsage = %d, want exactly 1 (the seeded failed call) — "+
+			"tool and agent spans must not land in the instrumentation-gap bucket",
 			resp.Total.CallsWithoutUsage)
 	}
 }
