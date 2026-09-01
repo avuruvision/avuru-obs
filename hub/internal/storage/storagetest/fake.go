@@ -42,6 +42,7 @@ type Fake struct {
 	// a test can assert the trace vocabulary reached storage.
 	AIUsageResult storage.AIUsage
 	AICallerRows  []storage.AICallerUsage
+	AIToolRows    []storage.AIToolUsage
 	AIErr         error
 	LastAIQuery   storage.AIQuery
 	Page          storage.TracePage
@@ -420,6 +421,14 @@ func (f *Fake) AICallers(_ context.Context, q storage.AIQuery) ([]storage.AICall
 		return nil, f.AIErr
 	}
 	return f.AICallerRows, nil
+}
+
+func (f *Fake) AITools(_ context.Context, q storage.AIQuery) ([]storage.AIToolUsage, error) {
+	f.LastAIQuery = q
+	if f.AIErr != nil {
+		return nil, f.AIErr
+	}
+	return f.AIToolRows, nil
 }
 
 func (f *Fake) LoadAlertStates(_ context.Context, tenant string) ([]storage.AlertState, error) {

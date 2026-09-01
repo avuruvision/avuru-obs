@@ -7,9 +7,9 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { CenteredSpinner } from "@/components/ui/spinner";
 import { useTimeRange } from "@/hooks/use-time-range";
-import { useAICallers, useAIModels } from "@/hooks/use-ai-data";
+import { useAICallers, useAIModels, useAITools } from "@/hooks/use-ai-data";
 import { formatMs, formatPercent } from "@/lib/format";
-import type { AICaller, AIUsage } from "@/lib/api-types";
+import type { AICaller, AITool, AIUsage } from "@/lib/api-types";
 
 // AI observability: what the applications in this estate asked models to do.
 //
@@ -22,6 +22,7 @@ export function AIScreen() {
   const { time } = useTimeRange();
   const models = useAIModels(time);
   const callers = useAICallers(time);
+  const tools = useAITools(time);
 
   if (models.isLoading) return <CenteredSpinner />;
   if (models.isError) {
@@ -41,10 +42,11 @@ export function AIScreen() {
   if (!total || total.calls === 0) {
     return (
       <EmptyState icon={Bot} title="No model calls in this window">
-        This reads the <code className="rounded bg-base-300 px-1">gen_ai.*</code>{" "}
-        attributes an instrumented application already sends — nothing extra is
-        collected. Point an LLM SDK’s OpenTelemetry instrumentation at this
-        install and its calls appear here with the rest of its traces.
+        This reads the{" "}
+        <code className="rounded bg-base-300 px-1">gen_ai.*</code> attributes an
+        instrumented application already sends — nothing extra is collected.
+        Point an LLM SDK’s OpenTelemetry instrumentation at this install and its
+        calls appear here with the rest of its traces.
       </EmptyState>
     );
   }
@@ -77,13 +79,23 @@ export function AIScreen() {
               testid="ai-cost"
             />
           ) : (
-            <Stat label="Total tokens" value={compact(tokens)} testid="ai-cost" />
+            <Stat
+              label="Total tokens"
+              value={compact(tokens)}
+              testid="ai-cost"
+            />
           )}
-          <Stat label="Models" value={String(data?.modelCount ?? rows.length)} />
+          <Stat
+            label="Models"
+            value={String(data?.modelCount ?? rows.length)}
+          />
         </div>
 
         <ContentWarning calls={total.callsWithContent} />
-        <Coverage total={total} unpriced={priced ? (data?.unpricedModels ?? []) : []} />
+        <Coverage
+          total={total}
+          unpriced={priced ? (data?.unpricedModels ?? []) : []}
+        />
       </Card>
 
       <Card className="overflow-hidden">
@@ -118,10 +130,18 @@ export function AIScreen() {
                 <tr className="border-b border-neutral/50 text-base-content/60 last:border-0">
                   <td className="italic">everything else</td>
                   <td className="text-right">{compact(data.other.calls)}</td>
-                  <td className="text-right">{compact(data.other.errors + data.other.refused)}</td>
-                  <td className="text-right">{compact(data.other.truncated)}</td>
-                  <td className="text-right">{compact(data.other.inputTokens)}</td>
-                  <td className="text-right">{compact(data.other.outputTokens)}</td>
+                  <td className="text-right">
+                    {compact(data.other.errors + data.other.refused)}
+                  </td>
+                  <td className="text-right">
+                    {compact(data.other.truncated)}
+                  </td>
+                  <td className="text-right">
+                    {compact(data.other.inputTokens)}
+                  </td>
+                  <td className="text-right">
+                    {compact(data.other.outputTokens)}
+                  </td>
                   <td className="text-right">—</td>
                   {priced && <td className="text-right">—</td>}
                 </tr>
@@ -155,7 +175,10 @@ export function AIScreen() {
         </CardHeader>
         {callers.data?.callers.length ? (
           <div className="overflow-x-auto">
-            <table className="table-dense w-full text-sm" data-testid="ai-callers">
+            <table
+              className="table-dense w-full text-sm"
+              data-testid="ai-callers"
+            >
               <thead>
                 <tr className="border-y border-neutral text-left">
                   <th>Service</th>
@@ -167,7 +190,11 @@ export function AIScreen() {
               </thead>
               <tbody>
                 {callers.data.callers.map((c) => (
-                  <CallerRow key={`${c.service}/${c.model}`} c={c} priced={priced} />
+                  <CallerRow
+                    key={`${c.service}/${c.model}`}
+                    c={c}
+                    priced={priced}
+                  />
                 ))}
               </tbody>
             </table>
@@ -178,7 +205,114 @@ export function AIScreen() {
           </p>
         )}
       </Card>
+
+      <ToolsCard
+        tools={tools.data?.tools ?? []}
+        filtered={!!tools.data?.modelFilterIgnored}
+      />
     </div>
+  );
+}
+
+// What the agents actually ran.
+//
+// A turn is a model call that fans out to tools, and until v0.12 those tool
+// spans were counted as model calls — inflating the call count and ranking a
+// database lookup against a completion. Now they are their own population, and
+// this is the table that population was hiding: which tool is slow, which one
+// fails, and who invokes it.
+//
+// No tokens and no cost. A tool execution spends neither; the model call that
+// decided to invoke it is where the spend is, and a zero column here would read
+// as "these were free" rather than "tokens are not this table's unit".
+function ToolsCard({
+  tools,
+  filtered,
+}: {
+  tools: AITool[];
+  filtered: boolean;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Tools</CardTitle>
+        <span className="text-xs text-base-content/50">
+          what the agents ran, and how long it took
+        </span>
+      </CardHeader>
+      {filtered && (
+        <p className="border-b border-neutral px-4 py-2 text-xs text-base-content/60">
+          Not narrowed by the model filter — a tool call carries no model of its
+          own.
+        </p>
+      )}
+      {tools.length ? (
+        <div className="overflow-x-auto">
+          <table className="table-dense w-full text-sm" data-testid="ai-tools">
+            <thead>
+              <tr className="border-y border-neutral text-left">
+                <th>Tool</th>
+                <th className="text-right">Calls</th>
+                <th className="text-right">Failed</th>
+                <th className="text-right">p95</th>
+                <th>Called by</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tools.map((t) => (
+                <ToolRow key={t.tool} t={t} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="p-4 text-xs text-base-content/45">
+          No tool calls in this window. Tool spans carry{" "}
+          <code>gen_ai.operation.name=execute_tool</code>; an estate making
+          plain completions has none.
+        </p>
+      )}
+    </Card>
+  );
+}
+
+function ToolRow({ t }: { t: AITool }) {
+  const failed = t.errors + t.refused;
+  // The caller list is capped on the hub side, so the count is what says
+  // whether the names shown are all of them.
+  const extra = t.callerCount - t.callers.length;
+  return (
+    <tr className="border-b border-neutral/50 last:border-0">
+      <td className="font-medium">
+        {t.tool}
+        {/* A name taken from the span rather than from gen_ai.tool.name is a
+            weaker claim, and the table says so rather than presenting it as
+            the name the instrumentation gave. */}
+        {t.namedBySpan > 0 && (
+          <Badge tone="neutral" className="ml-2">
+            {t.namedBySpan === t.calls ? "span name" : "some span names"}
+          </Badge>
+        )}
+      </td>
+      <td className="text-right tabular-nums">{t.calls.toLocaleString()}</td>
+      <td className="text-right tabular-nums">
+        {failed > 0 ? (
+          <span className="text-error">
+            {failed.toLocaleString()}{" "}
+            <span className="text-base-content/45">
+              ({formatPercent(failed / t.calls)})
+            </span>
+          </span>
+        ) : (
+          <span className="text-base-content/35">0</span>
+        )}
+      </td>
+      <td className="text-right tabular-nums">{formatMs(t.p95Ms)}</td>
+      <td className="text-base-content/70">
+        {t.callers.join(", ")}
+        {extra > 0 && <span className="text-base-content/45"> +{extra}</span>}
+      </td>
+    </tr>
   );
 }
 
@@ -197,11 +331,14 @@ function ContentWarning({ calls }: { calls: number }) {
       className="flex items-start gap-2 border-t border-neutral bg-warning/10 p-2.5 text-xs"
       data-testid="ai-content-warning"
     >
-      <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden />
+      <ShieldAlert
+        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning"
+        aria-hidden
+      />
       <span>
         <strong>
-          {compact(calls)} call{calls === 1 ? "" : "s"} arrived carrying prompt or
-          completion text
+          {compact(calls)} call{calls === 1 ? "" : "s"} arrived carrying prompt
+          or completion text
         </strong>{" "}
         — user content, stored under your trace retention and readable by anyone
         who can open a trace. Nothing here displays it. Drop it at the gateway
@@ -242,7 +379,10 @@ function Coverage({ total, unpriced }: { total: AIUsage; unpriced: string[] }) {
       className="flex items-start gap-2 border-t border-neutral p-2.5 text-xs text-base-content/55"
       data-testid="ai-coverage"
     >
-      <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-base-content/40" aria-hidden />
+      <TriangleAlert
+        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-base-content/40"
+        aria-hidden
+      />
       <span>{notes.join("; ")}.</span>
     </div>
   );
@@ -255,17 +395,26 @@ function ModelRow({ m, priced }: { m: AIUsage; priced: boolean }) {
       <td>
         <span className="font-medium">{m.model || "(model not reported)"}</span>
         {m.provider && (
-          <span className="ml-1.5 text-xs text-base-content/45">{m.provider}</span>
+          <span className="ml-1.5 text-xs text-base-content/45">
+            {m.provider}
+          </span>
         )}
         {m.callsFromRequestModel > 0 && m.callsFromRequestModel === m.calls && (
-          <Badge tone="warning" title="No response model was reported; this is what was asked for">
+          <Badge
+            tone="warning"
+            title="No response model was reported; this is what was asked for"
+          >
             requested
           </Badge>
         )}
       </td>
       <td className="text-right">{compact(m.calls)}</td>
-      <td className={`text-right ${failed > 0 ? "text-error" : "text-base-content/60"}`}>
-        {failed > 0 ? `${compact(failed)} · ${formatPercent(failed / m.calls)}` : "—"}
+      <td
+        className={`text-right ${failed > 0 ? "text-error" : "text-base-content/60"}`}
+      >
+        {failed > 0
+          ? `${compact(failed)} · ${formatPercent(failed / m.calls)}`
+          : "—"}
       </td>
       {/* Truncation is not failure, so it never wears the error colour. */}
       <td className="text-right text-base-content/60">
@@ -304,7 +453,9 @@ function CallerRow({ c, priced }: { c: AICaller; priced: boolean }) {
   return (
     <tr className="border-b border-neutral/50 last:border-0">
       <td className="font-medium">{c.service}</td>
-      <td className="text-base-content/70">{c.model || "(model not reported)"}</td>
+      <td className="text-base-content/70">
+        {c.model || "(model not reported)"}
+      </td>
       <td className="text-right">{compact(c.calls)}</td>
       <td className="text-right">
         {noUsage ? (
@@ -314,16 +465,28 @@ function CallerRow({ c, priced }: { c: AICaller; priced: boolean }) {
         )}
       </td>
       {priced && (
-        <td className="text-right">{c.cost === undefined ? "—" : money(c.cost)}</td>
+        <td className="text-right">
+          {c.cost === undefined ? "—" : money(c.cost)}
+        </td>
       )}
     </tr>
   );
 }
 
-function Stat({ label, value, testid }: { label: string; value: string; testid?: string }) {
+function Stat({
+  label,
+  value,
+  testid,
+}: {
+  label: string;
+  value: string;
+  testid?: string;
+}) {
   return (
     <div className="bg-base-200 p-3" data-testid={testid}>
-      <p className="text-xs uppercase tracking-wider text-base-content/50">{label}</p>
+      <p className="text-xs uppercase tracking-wider text-base-content/50">
+        {label}
+      </p>
       <p className="text-sm font-semibold">{value}</p>
     </div>
   );
@@ -340,7 +503,8 @@ function money(v: number): string {
 // Token counts run to the millions; a raw integer in a table cell is unreadable
 // and a locale separator is worse at a glance.
 function compact(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 1_000_000)
+    return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
   if (n >= 10_000) return `${(n / 1000).toFixed(0)}k`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);

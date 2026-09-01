@@ -112,6 +112,31 @@ type aiCallersResponse struct {
 	Currency string        `json:"currency,omitempty"`
 }
 
+// aiToolDTO is one tool's row. No cost and no tokens: the spend of a turn sits
+// on the model call that decided to invoke the tool, and a zero here would read
+// as "free" rather than as "not the unit".
+type aiToolDTO struct {
+	Tool        string   `json:"tool"`
+	Calls       uint64   `json:"calls"`
+	Errors      uint64   `json:"errors"`
+	Refused     uint64   `json:"refused"`
+	NamedBySpan uint64   `json:"namedBySpan"`
+	Callers     []string `json:"callers"`
+	CallerCount uint64   `json:"callerCount"`
+	P50Ms       float64  `json:"p50Ms"`
+	P95Ms       float64  `json:"p95Ms"`
+	P99Ms       float64  `json:"p99Ms"`
+}
+
+type aiToolsResponse struct {
+	Tools []aiToolDTO `json:"tools"`
+	// ModelFilterIgnored reports that a model filter was set and could not
+	// apply here, because a tool span carries no model. Stated rather than
+	// silently obeyed or silently dropped: the screen has to be able to say
+	// why this table did not narrow with the others.
+	ModelFilterIgnored bool `json:"modelFilterIgnored,omitempty"`
+}
+
 // aiQuery builds the storage query from the shared filter parameters.
 func (a *API) aiQuery(r *http.Request, defaultLimit int) (storage.AIQuery, error) {
 	tr, err := parseTimeRange(r)
@@ -322,6 +347,49 @@ func (a *API) handleAICallers(w http.ResponseWriter, r *http.Request) error {
 			d.Cost = &cost
 		}
 		resp.Callers = append(resp.Callers, d)
+	}
+	writeJSON(w, http.StatusOK, resp)
+	return nil
+}
+
+// handleAITools returns per-tool usage inside agent turns.
+//
+// Gated with the rest of the AI module and reading the same spans; what makes
+// it a separate endpoint rather than a column is that its population is
+// different — tool executions, not model calls — which is the distinction the
+// module got wrong before operation classes existed.
+func (a *API) handleAITools(w http.ResponseWriter, r *http.Request) error {
+	store, err := a.store()
+	if err != nil {
+		return err
+	}
+	q, err := a.aiQuery(r, 50)
+	if err != nil {
+		return err
+	}
+	rows, err := store.AITools(r.Context(), q)
+	if err != nil {
+		return err
+	}
+
+	resp := aiToolsResponse{Tools: []aiToolDTO{}, ModelFilterIgnored: q.Model != ""}
+	for _, t := range rows {
+		callers := t.Callers
+		if callers == nil {
+			callers = []string{}
+		}
+		resp.Tools = append(resp.Tools, aiToolDTO{
+			Tool:        t.Tool,
+			Calls:       t.Calls,
+			Errors:      t.Errors,
+			Refused:     t.Refused,
+			NamedBySpan: t.NamedBySpan,
+			Callers:     callers,
+			CallerCount: t.CallerCount,
+			P50Ms:       ms(t.P50),
+			P95Ms:       ms(t.P95),
+			P99Ms:       ms(t.P99),
+		})
 	}
 	writeJSON(w, http.StatusOK, resp)
 	return nil

@@ -11,6 +11,25 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **The tools your agents actually run.** Once tool executions were told apart
+  from model calls they became worth reporting, and the model table could never
+  have shown them: a new **Tools** table names each tool an agent ran, how often
+  it ran, how often it failed, how long it took at p95, and which services
+  invoked it. A tool a turn hit four times is one row with a count, because the
+  loop is the thing worth seeing.
+
+  No tokens and no cost columns, deliberately — a tool execution spends neither,
+  the model call that decided to invoke it is where the spend is, and a zero
+  there would read as "this tool is free" rather than "tokens are not the unit".
+  A tool whose instrumentation set no name is reported under its span name and
+  labelled as such rather than dropped, since a tool that ran is worth reporting
+  under a weaker name. And a model filter cannot narrow this table — a tool call
+  carries no model of its own — so the screen says the filter did not apply
+  instead of showing an empty table that silently disagrees with the filter bar
+  above it. Served at `GET /api/v1/ai/tools`.
+
 ### Fixed
 
 - **Tool calls are no longer counted as model calls.** The AI module decided

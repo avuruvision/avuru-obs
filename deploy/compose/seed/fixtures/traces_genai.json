@@ -182,6 +182,271 @@
                   }
                 }
               ]
+            },
+            {
+              "traceId": "abcd000aabcd000babcd000cabcd000d",
+              "spanId": "b100000000000001",
+              "name": "invoke_agent researcher",
+              "kind": 3,
+              "startTimeUnixNano": "0",
+              "endTimeUnixNano": "4200000000",
+              "status": {
+                "code": 1
+              },
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "invoke_agent"
+                  }
+                },
+                {
+                  "key": "gen_ai.system",
+                  "value": {
+                    "stringValue": "openai"
+                  }
+                },
+                {
+                  "key": "gen_ai.agent.name",
+                  "value": {
+                    "stringValue": "researcher"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "abcd000aabcd000babcd000cabcd000d",
+              "spanId": "b100000000000002",
+              "parentSpanId": "b100000000000001",
+              "name": "chat gpt-4o",
+              "kind": 3,
+              "startTimeUnixNano": "50000000",
+              "endTimeUnixNano": "1100000000",
+              "status": {
+                "code": 1
+              },
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "chat"
+                  }
+                },
+                {
+                  "key": "gen_ai.system",
+                  "value": {
+                    "stringValue": "openai"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "gpt-4o"
+                  }
+                },
+                {
+                  "key": "gen_ai.response.model",
+                  "value": {
+                    "stringValue": "gpt-4o-2024-08-06"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": "900"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": "150"
+                  }
+                },
+                {
+                  "key": "gen_ai.response.finish_reasons",
+                  "value": {
+                    "stringValue": "[\"tool_calls\"]"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "abcd000aabcd000babcd000cabcd000d",
+              "spanId": "b100000000000003",
+              "parentSpanId": "b100000000000001",
+              "name": "execute_tool search_docs",
+              "kind": 3,
+              "startTimeUnixNano": "1150000000",
+              "endTimeUnixNano": "1700000000",
+              "status": {
+                "code": 1
+              },
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "execute_tool"
+                  }
+                },
+                {
+                  "key": "gen_ai.system",
+                  "value": {
+                    "stringValue": "openai"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.name",
+                  "value": {
+                    "stringValue": "search_docs"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "abcd000aabcd000babcd000cabcd000d",
+              "spanId": "b100000000000004",
+              "parentSpanId": "b100000000000001",
+              "name": "execute_tool search_docs",
+              "kind": 3,
+              "startTimeUnixNano": "1750000000",
+              "endTimeUnixNano": "2600000000",
+              "status": {
+                "code": 1
+              },
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "execute_tool"
+                  }
+                },
+                {
+                  "key": "gen_ai.system",
+                  "value": {
+                    "stringValue": "openai"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.name",
+                  "value": {
+                    "stringValue": "search_docs"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "abcd000aabcd000babcd000cabcd000d",
+              "spanId": "b100000000000005",
+              "parentSpanId": "b100000000000001",
+              "name": "execute_tool run_sql",
+              "kind": 3,
+              "startTimeUnixNano": "2650000000",
+              "endTimeUnixNano": "3400000000",
+              "status": {
+                "code": 2
+              },
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "execute_tool"
+                  }
+                },
+                {
+                  "key": "gen_ai.system",
+                  "value": {
+                    "stringValue": "openai"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.name",
+                  "value": {
+                    "stringValue": "run_sql"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "abcd000aabcd000babcd000cabcd000d",
+              "spanId": "b100000000000006",
+              "parentSpanId": "b100000000000001",
+              "name": "tools/lookup_customer",
+              "kind": 3,
+              "startTimeUnixNano": "3450000000",
+              "endTimeUnixNano": "3700000000",
+              "status": {
+                "code": 1
+              },
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "execute_tool"
+                  }
+                },
+                {
+                  "key": "gen_ai.system",
+                  "value": {
+                    "stringValue": "openai"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "abcd000aabcd000babcd000cabcd000d",
+              "spanId": "b100000000000007",
+              "parentSpanId": "b100000000000001",
+              "name": "chat gpt-4o",
+              "kind": 3,
+              "startTimeUnixNano": "3750000000",
+              "endTimeUnixNano": "4150000000",
+              "status": {
+                "code": 1
+              },
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "chat"
+                  }
+                },
+                {
+                  "key": "gen_ai.system",
+                  "value": {
+                    "stringValue": "openai"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "gpt-4o"
+                  }
+                },
+                {
+                  "key": "gen_ai.response.model",
+                  "value": {
+                    "stringValue": "gpt-4o-2024-08-06"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": "1500"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": "260"
+                  }
+                },
+                {
+                  "key": "gen_ai.response.finish_reasons",
+                  "value": {
+                    "stringValue": "[\"stop\"]"
+                  }
+                }
+              ]
             }
           ]
         }

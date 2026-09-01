@@ -392,10 +392,11 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 	}
 	if active.Enabled(modules.AI) {
 		// Reads otel_traces, so no second module gate: an install running core
-		// already has the data these three answer from.
+		// already has the data these four answer from.
 		mux.Handle("GET /api/v1/ai/summary", a.secured(auth.RoleViewer, a.handleAISummary))
 		mux.Handle("GET /api/v1/ai/models", a.secured(auth.RoleViewer, a.handleAIModels))
 		mux.Handle("GET /api/v1/ai/callers", a.secured(auth.RoleViewer, a.handleAICallers))
+		mux.Handle("GET /api/v1/ai/tools", a.secured(auth.RoleViewer, a.handleAITools))
 	}
 }
 

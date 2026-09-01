@@ -520,3 +520,100 @@ func TestAIModelsKeepsUnknownOperationsVisible(t *testing.T) {
 		t.Errorf("calls = %d, want 1 (an unknown operation must not disappear)", usage.Total.Calls)
 	}
 }
+
+// The tools table reads the population the model table excludes. The two are
+// complements over the same window, which is the property the operation-class
+// split exists to give them.
+func TestAIToolsGroupsByToolNameAndCallers(t *testing.T) {
+	store := startClickHouse(t)
+	insertAISpans(t, store, []aiSpan{
+		llmSpan("t1", "assistant", map[string]string{
+			"gen_ai.operation.name": "execute_tool", "gen_ai.tool.name": "search_docs",
+		}),
+		llmSpan("t2", "support-bot", map[string]string{
+			"gen_ai.operation.name": "execute_tool", "gen_ai.tool.name": "search_docs",
+		}),
+		llmSpan("t3", "assistant", map[string]string{
+			"gen_ai.operation.name": "execute_tool", "gen_ai.tool.name": "run_sql",
+		}),
+		// A model call in the same window must not appear in this table.
+		llmSpan("t4", "assistant", map[string]string{
+			"gen_ai.operation.name": "chat", "gen_ai.response.model": "gpt-4o",
+		}),
+	})
+
+	tools, err := store.AITools(context.Background(), storage.AIQuery{Tenant: "default", Range: aiWindow()})
+	if err != nil {
+		t.Fatalf("AITools: %v", err)
+	}
+	if len(tools) != 2 {
+		t.Fatalf("tools = %d rows, want 2 (the chat span is not a tool): %+v", len(tools), tools)
+	}
+	byName := map[string]storage.AIToolUsage{}
+	for _, tl := range tools {
+		byName[tl.Tool] = tl
+	}
+	search, ok := byName["search_docs"]
+	if !ok {
+		t.Fatalf("search_docs missing: %+v", tools)
+	}
+	if search.Calls != 2 {
+		t.Errorf("search_docs calls = %d, want 2", search.Calls)
+	}
+	if search.CallerCount != 2 {
+		t.Errorf("search_docs callerCount = %d, want 2", search.CallerCount)
+	}
+	if len(search.Callers) != 2 {
+		t.Errorf("search_docs callers = %v, want both services", search.Callers)
+	}
+	if byName["run_sql"].Calls != 1 {
+		t.Errorf("run_sql calls = %d, want 1", byName["run_sql"].Calls)
+	}
+}
+
+// A tool that ran without gen_ai.tool.name is reported under its span name and
+// COUNTED as weakly named, rather than dropped. Dropping it would understate
+// how much tool work a turn did; reporting it silently would present a span
+// name as if the instrumentation had named the tool.
+func TestAIToolsFallsBackToTheSpanNameAndSaysSo(t *testing.T) {
+	store := startClickHouse(t)
+	sp := llmSpan("u1", "assistant", map[string]string{"gen_ai.operation.name": "execute_tool"})
+	sp.name = "tools/lookup_customer"
+	insertAISpans(t, store, []aiSpan{sp})
+
+	tools, err := store.AITools(context.Background(), storage.AIQuery{Tenant: "default", Range: aiWindow()})
+	if err != nil {
+		t.Fatalf("AITools: %v", err)
+	}
+	if len(tools) != 1 {
+		t.Fatalf("tools = %d rows, want 1: %+v", len(tools), tools)
+	}
+	if tools[0].Tool != "tools/lookup_customer" {
+		t.Errorf("tool = %q, want the span name", tools[0].Tool)
+	}
+	if tools[0].NamedBySpan != 1 {
+		t.Errorf("namedBySpan = %d, want 1", tools[0].NamedBySpan)
+	}
+}
+
+// The model filter narrows the model table and leaves the tools table alone. A
+// tool span carries no model, so applying it here would report "this model used
+// no tools" — false, rather than merely narrow.
+func TestAIToolsIgnoreTheModelFilter(t *testing.T) {
+	store := startClickHouse(t)
+	insertAISpans(t, store, []aiSpan{
+		llmSpan("v1", "assistant", map[string]string{
+			"gen_ai.operation.name": "execute_tool", "gen_ai.tool.name": "search_docs",
+		}),
+	})
+
+	tools, err := store.AITools(context.Background(), storage.AIQuery{
+		Tenant: "default", Range: aiWindow(), Model: "gpt-4o",
+	})
+	if err != nil {
+		t.Fatalf("AITools: %v", err)
+	}
+	if len(tools) != 1 {
+		t.Errorf("tools = %d rows, want 1 (the model filter cannot apply to tools)", len(tools))
+	}
+}
