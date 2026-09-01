@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/avuru/avuru-obs/hub/internal/ai"
 	"github.com/avuru/avuru-obs/hub/internal/alerting"
 	"github.com/avuru/avuru-obs/hub/internal/api"
 	"github.com/avuru/avuru-obs/hub/internal/green"
@@ -48,7 +49,7 @@ func webhookAllowCIDRs() []*net.IPNet {
 // duplicate notifications (documented, HA leader election is v2).
 // groups is the same *health.Resolver the API is given (see main): the group
 // set alerts fire on must be the group set the screen shows.
-func runAlertingEvaluator(ctx context.Context, provider api.StoreProvider, gate *schemaGate, groups *health.Resolver, alertsCfg func() alerting.Config, greenCfg func() green.Config, notifier alerting.Notifier, projects []string, active modules.Set) {
+func runAlertingEvaluator(ctx context.Context, provider api.StoreProvider, gate *schemaGate, groups *health.Resolver, alertsCfg func() alerting.Config, greenCfg func() green.Config, aiCfg func() ai.Config, notifier alerting.Notifier, projects []string, active modules.Set) {
 	// Every tick reads otel_traces and alert_channel; without the schema each
 	// one used to warn twice per interval, forever. Wait instead — the gate
 	// reports the missing schema once, and heals it when it can.
@@ -63,19 +64,26 @@ func runAlertingEvaluator(ctx context.Context, provider api.StoreProvider, gate 
 	if gb != nil {
 		slog.Info("green budgets evaluated in the alerting tick")
 	}
+	// Spend budgets ride the SAME tick, for the same reason: one diffToSave and
+	// one delivery path, so ai:* and green:* rows cannot race each other in the
+	// alert_state they share.
+	ab := newAIBudgets(active, aiCfg, newAIUsageCache(defaultAIBudgetUsage))
+	if ab != nil {
+		slog.Info("ai spend budgets evaluated in the alerting tick")
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(alertsCfg().Interval()):
 		}
-		if err := evaluateOnce(ctx, provider, groups.Config(ctx), alertsCfg(), notifier, projects, gb, time.Now().UTC()); err != nil {
+		if err := evaluateOnce(ctx, provider, groups.Config(ctx), alertsCfg(), notifier, projects, gb, ab, time.Now().UTC()); err != nil {
 			slog.Warn("alerting evaluation tick failed", "error", err)
 		}
 	}
 }
 
-func evaluateOnce(ctx context.Context, provider api.StoreProvider, gcfg health.Config, acfg alerting.Config, notifier alerting.Notifier, projects []string, gb *greenBudgets, now time.Time) error {
+func evaluateOnce(ctx context.Context, provider api.StoreProvider, gcfg health.Config, acfg alerting.Config, notifier alerting.Notifier, projects []string, gb *greenBudgets, ab *aiBudgets, now time.Time) error {
 	store := provider()
 	if store == nil {
 		return fmt.Errorf("store unavailable")
@@ -98,6 +106,7 @@ func evaluateOnce(ctx context.Context, provider api.StoreProvider, gcfg health.C
 		prev := toEvalState(prevRows)
 		next, notes := alerting.Evaluate(acfg, report, prev, now)
 		notes = evalGreenBudgets(ctx, store, gcfg, gb, tenant, now, prev, next, notes)
+		notes = evalAIBudgets(ctx, store, ab, tenant, now, prev, next, notes)
 		for i := range notes {
 			notes[i].Tenant = tenant
 		}

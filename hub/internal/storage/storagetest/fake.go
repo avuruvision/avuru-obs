@@ -43,6 +43,7 @@ type Fake struct {
 	AIUsageResult storage.AIUsage
 	AICallerRows  []storage.AICallerUsage
 	AIToolRows    []storage.AIToolUsage
+	AISpendRows   []storage.AIServiceSpend
 	AIErr         error
 	LastAIQuery   storage.AIQuery
 	Page          storage.TracePage
@@ -429,6 +430,14 @@ func (f *Fake) AITools(_ context.Context, q storage.AIQuery) ([]storage.AIToolUs
 		return nil, f.AIErr
 	}
 	return f.AIToolRows, nil
+}
+
+func (f *Fake) AISpendByService(_ context.Context, q storage.AIQuery) ([]storage.AIServiceSpend, error) {
+	f.LastAIQuery = q
+	if f.AIErr != nil {
+		return nil, f.AIErr
+	}
+	return f.AISpendRows, nil
 }
 
 func (f *Fake) LoadAlertStates(_ context.Context, tenant string) ([]storage.AlertState, error) {

@@ -349,7 +349,7 @@ func run() error {
 	// The alerting evaluator is a single background loop (see runAlertingEvaluator);
 	// started only when the module is active.
 	if active.Enabled(modules.Alerting) {
-		go runAlertingEvaluator(ctx, provider, gate, groupsResolver, alertsConfig, greenConfig, notifier, splitCSV(envOr("AVURUOBS_PROJECTS", "")), active)
+		go runAlertingEvaluator(ctx, provider, gate, groupsResolver, alertsConfig, greenConfig, aiConfig, notifier, splitCSV(envOr("AVURUOBS_PROJECTS", "")), active)
 	}
 
 	// Endpoint checks: the one signal that cannot be derived from observed

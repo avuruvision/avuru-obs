@@ -340,6 +340,25 @@ ai:
   #    inputPer1MTokens: 3
   #    outputPer1MTokens: 15
 
+  # Monthly ceilings on spend. Each budget fires two rules through the SAME
+  # alerting tick green's carbon budgets use — ai:<name>:warn at warnRatio
+  # (default 0.8) and ai:<name>:over at the limit — so they need the alerting
+  # module on and deliver through an alerting channel by name.
+  #
+  # `scope` is a calling service, or omitted for the whole estate. Set exactly
+  # ONE of monthlyTokens or monthlyCost: a budget in money needs prices above,
+  # and is REFUSED at startup without them, because spend measured with no
+  # prices is zero and such a budget could never fire.
+  budgets: []
+  #  - name: estate-tokens
+  #    monthlyTokens: 50000000
+  #    channel: ops
+  #  - name: assistant-spend
+  #    scope: assistant
+  #    monthlyCost: 400
+  #    warnRatio: 0.75
+  #    channel: ops
+
 # Alerting rules and channels. Rendered to a ConfigMap the hub reads (mounted at
 # AVURUOBS_ALERTS_CONFIG) when modules.alerting.enabled. No rules = nothing
 # fires. Hot-reloads within ~15s on a `kubectl edit`, no restart. A channel is a

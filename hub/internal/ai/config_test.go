@@ -4,6 +4,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseConfigEmptyIsDefault(t *testing.T) {
@@ -99,5 +100,69 @@ func TestCostWithOneSidedRate(t *testing.T) {
 	p := Price{Model: "m", OutputPer1MTokens: 10}
 	if got := p.Cost(1_000_000, 1_000_000); math.Abs(got-10) > 1e-9 {
 		t.Errorf("Cost = %v, want 10", got)
+	}
+}
+
+// A cost budget over an estate with no prices measures against a floor of zero:
+// it would come in under every threshold by being ignorant of the whole bill,
+// and would never fire. Refused where the rest of the config is refused —
+// at parse time, on the config, not discovered from an alert that never arrives.
+func TestParseConfigRefusesACostBudgetWithNoPrices(t *testing.T) {
+	_, err := ParseConfig([]byte(`{"budgets":[{"name":"spend","monthlyCost":100}]}`))
+	if err == nil {
+		t.Fatal("a cost budget with no prices was accepted")
+	}
+	if !strings.Contains(err.Error(), "needs prices declared") {
+		t.Errorf("error = %v, want it to name the missing prices", err)
+	}
+}
+
+// The same budget denominated in TOKENS is fine without prices — tokens are
+// counted, not priced, which is the whole reason both units exist.
+func TestParseConfigAcceptsATokenBudgetWithNoPrices(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{"budgets":[{"name":"spend","monthlyTokens":1000000}]}`))
+	if err != nil {
+		t.Fatalf("ParseConfig: %v", err)
+	}
+	if len(cfg.Budgets) != 1 || cfg.Budgets[0].MonthlyTokens != 1_000_000 {
+		t.Errorf("budgets = %+v", cfg.Budgets)
+	}
+}
+
+func TestParseConfigRejectsUnusableBudgets(t *testing.T) {
+	cases := []struct {
+		name string
+		json string
+		want string
+	}{
+		{"no name", `{"budgets":[{"monthlyTokens":10}]}`, "name is required"},
+		{"no unit", `{"budgets":[{"name":"a"}]}`, "set one of"},
+		{"both units", `{"budgets":[{"name":"a","monthlyTokens":10,"monthlyCost":5}],"prices":[{"model":"m","inputPer1MTokens":1}]}`, "not both"},
+		{"negative", `{"budgets":[{"name":"a","monthlyTokens":-1}]}`, "cannot be negative"},
+		{"duplicate", `{"budgets":[{"name":"a","monthlyTokens":10},{"name":"a","monthlyTokens":20}]}`, "duplicate"},
+		{"warn ratio at 1", `{"budgets":[{"name":"a","monthlyTokens":10,"warnRatio":1}]}`, "between 0 and 1"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseConfig([]byte(tc.json))
+			if err == nil {
+				t.Fatalf("accepted %s", tc.json)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error = %v, want it to mention %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// The budget check interval falls back rather than being zero, which would
+// recompute a month-wide scan on every alerting tick.
+func TestBudgetCheckIntervalDefaults(t *testing.T) {
+	if got := Default().BudgetCheckInterval(); got != 300*time.Second {
+		t.Errorf("interval = %v, want 5m", got)
+	}
+	cfg := Config{BudgetCheckIntervalSec: 30}
+	if got := cfg.BudgetCheckInterval(); got != 30*time.Second {
+		t.Errorf("interval = %v, want 30s", got)
 	}
 }

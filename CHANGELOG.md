@@ -13,6 +13,25 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **A threshold on spend.** Nobody watches a screen. Monthly **budgets** on AI
+  spend — in tokens or in money, for one calling service or across the estate —
+  now fire through the alerting channels an install already has: a warning at
+  80% of the ceiling by default, and an alert at the ceiling itself, each
+  resolving on its own when the month rolls over or spend drops back.
+
+  It is green's carbon-budget state machine with the unit changed rather than a
+  second engine, and it rides the same evaluation tick, because two state
+  machines writing one alert table with different rules is how firing and
+  resolving drift apart. A transient failure to recompute spend preserves a
+  firing budget rather than quietly resolving it — a database blip is not
+  evidence that spend came back under the line.
+
+  A budget in **money** is refused at startup when no prices are declared: spend
+  measured without prices is zero, so such a budget would sit under every
+  threshold forever and never fire. Where only some models in scope are priced
+  the alert says so in as many words, because an operator reading "at 82%" is
+  entitled to know the real figure is higher. Declare budgets under `ai.budgets`.
+
 - **An agent turn, drawn as the shape it is.** A turn is not a list — it is a
   model call that decides, a fan-out to tools, results coming back, and often
   another model call after — and the questions worth asking about it are graph
