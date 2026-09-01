@@ -131,16 +131,21 @@ resolved before a single tool runs.
 | File | Role |
 |---|---|
 | `protocol.go` | JSON-RPC 2.0 envelope, `initialize`, `tools/list`, `tools/call`, error codes |
-| `tools.go` | The six tool definitions and their input schemas |
+| `tools.go` | The six tool definitions, the registry and the module gate |
+| `store.go` | The narrow slice of `storage.Store` the tools read |
+| `args.go` | Window translation, row bounds, service resolution and near matches |
 | `context.go` | `service_context` — the composite entry point |
 | `signals.go` | `list_services`, `search_traces`, `get_trace`, `search_logs`, `list_error_issues` |
 | `audit.go` | The per-call structured log line |
 
-Tools call `storage.Store` and the API's existing DTO builders. They do not
+Tools call the same `storage.Store` methods the REST handlers call, they do not
 call the REST API over the network, and they do not write SQL of their own —
 that is what keeps the two surfaces from drifting into disagreeing about the
 same number, the lesson service groups taught when the alerting evaluator
-turned out to be reading different config than the API served.
+turned out to be reading different config than the API served. They build their
+own payload shapes rather than reusing the wire DTOs: those are unexported in
+package `api`, and what an agent needs from a row is not what a chart needs
+from it. The shared thing is the READ, which is the thing that can drift.
 
 ### The six tools
 
@@ -267,8 +272,15 @@ included. Three obligations ship with it, and none is optional:
 ## Roadmap
 
 - [ ] AEP accepted
-- [ ] Module registered (born OFF) + protocol skeleton behind Bearer
-- [ ] The six tools, bounded responses, and the audit line
-- [ ] e2e case + chart template test
+- [x] Module registered (born OFF) + protocol skeleton behind Bearer
+- [x] The six tools, bounded responses, and the audit line
+- [x] e2e case + chart template test
+- [ ] `service_context` recovers mesh-hidden dependencies. Today a transport
+      counterpart is LABELLED (`role: "transport"`) rather than collapsed back
+      into the app→app dependency the service map recovers
+      ([AEP](2026-08-25-transport-hop-collapse.md)). Reimplementing that merge
+      for this client would be a second set of semantics to keep in step with
+      the first, so it is a follow-up rather than part of the first server.
+- [ ] The Path view reads the hub's self-time instead of computing its own
 - [ ] OAuth 2.1 for claude.ai connectors (own PR, own review)
 - [ ] Docs: bilingual changelog, feature-status matrix, API reference, README
