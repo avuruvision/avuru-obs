@@ -357,3 +357,166 @@ func TestAIEmptyWindowIsNotAnError(t *testing.T) {
 		t.Errorf("empty window should be empty: %+v", rows)
 	}
 }
+
+// The population is INFERENCE, not "anything wearing a gen_ai attribute".
+//
+// This is the regression test for the v0.12 defect: aiCallExpr tested that
+// gen_ai.operation.name was PRESENT and never read its value, so on an agent
+// workload every execute_tool span was counted as a call to a model. It fails
+// on the build that shipped v0.11 — one agent turn with two tools reported as
+// five model calls rather than two, which is the whole point of writing it.
+//
+// All four of the totals the defect corrupted are asserted here, because they
+// fail for one reason and would otherwise be four separate regressions:
+// the call count, the model resolution, the no-usage bucket, and the distinct
+// model count.
+func TestAIModelsCountsInferenceNotToolsOrAgents(t *testing.T) {
+	store := startClickHouse(t)
+	insertAISpans(t, store, []aiSpan{
+		// The turn: an agent span containing a model call and two tool calls.
+		llmSpan("a1", "assistant", map[string]string{
+			"gen_ai.operation.name": "invoke_agent", "gen_ai.system": "openai",
+			"gen_ai.agent.name": "researcher",
+		}),
+		llmSpan("a2", "assistant", map[string]string{
+			"gen_ai.operation.name": "chat", "gen_ai.system": "openai",
+			"gen_ai.response.model":      "gpt-4o",
+			"gen_ai.usage.input_tokens":  "100",
+			"gen_ai.usage.output_tokens": "20",
+		}),
+		llmSpan("a3", "assistant", map[string]string{
+			"gen_ai.operation.name": "execute_tool", "gen_ai.system": "openai",
+			"gen_ai.tool.name": "search_docs",
+		}),
+		llmSpan("a4", "assistant", map[string]string{
+			"gen_ai.operation.name": "execute_tool", "gen_ai.system": "openai",
+			"gen_ai.tool.name": "run_sql",
+		}),
+		// A second, ordinary model call — and the ONLY genuine instrumentation
+		// gap in this window: it is a model call that reported no usage.
+		llmSpan("b1", "chat-api", map[string]string{
+			"gen_ai.operation.name": "chat", "gen_ai.system": "openai",
+			"gen_ai.response.model": "gpt-4o",
+		}),
+	})
+
+	usage, err := store.AIModels(context.Background(), storage.AIQuery{Tenant: "default", Range: aiWindow()})
+	if err != nil {
+		t.Fatalf("AIModels: %v", err)
+	}
+
+	// 1. Call counts. Two chat spans; the agent span and both tool spans are
+	//    not calls to a model. Pre-fix this was 5.
+	if usage.Total.Calls != 2 {
+		t.Errorf("calls = %d, want 2 (the agent span and 2 tool spans are not model calls)", usage.Total.Calls)
+	}
+
+	// 2. The model resolves. A tool span has neither a response nor a request
+	//    model, so pre-fix it grouped under the empty model name.
+	models := modelsByName(usage)
+	if _, ok := models[""]; ok {
+		t.Errorf("a row grouped under the empty model name: %+v", usage.Models)
+	}
+	if got := models["gpt-4o"].Calls; got != 2 {
+		t.Errorf("gpt-4o calls = %d, want 2", got)
+	}
+
+	// 3. The no-usage bucket names an INSTRUMENTATION GAP. Exactly one model
+	//    call here reported no tokens; pre-fix the three non-inference spans
+	//    landed in it too, and the honest signal it carries was gone.
+	if usage.Total.CallsWithoutUsage != 1 {
+		t.Errorf("callsWithoutUsage = %d, want 1 (only the chat call that reported no tokens)",
+			usage.Total.CallsWithoutUsage)
+	}
+
+	// 4. The distinct-model count. Pre-fix the empty model counted as one.
+	if usage.ModelCount != 1 {
+		t.Errorf("modelCount = %d, want 1", usage.ModelCount)
+	}
+
+	// Tokens come only from the call that reported them.
+	if usage.Total.InputTokens != 100 || usage.Total.OutputTokens != 20 {
+		t.Errorf("tokens = %d in / %d out, want 100/20", usage.Total.InputTokens, usage.Total.OutputTokens)
+	}
+}
+
+// The caller table filters to the same population as the model table. They are
+// two readings of one set of spans, so a service that only ran tools must not
+// appear as a service that called a model.
+func TestAICallersCountInferenceOnly(t *testing.T) {
+	store := startClickHouse(t)
+	insertAISpans(t, store, []aiSpan{
+		llmSpan("c1", "chat-api", map[string]string{
+			"gen_ai.operation.name": "chat", "gen_ai.system": "openai",
+			"gen_ai.response.model":      "gpt-4o",
+			"gen_ai.usage.input_tokens":  "50",
+			"gen_ai.usage.output_tokens": "10",
+		}),
+		// A service that runs tools and never calls a model.
+		llmSpan("d1", "tool-runner", map[string]string{
+			"gen_ai.operation.name": "execute_tool", "gen_ai.system": "openai",
+			"gen_ai.tool.name": "search_docs",
+		}),
+	})
+
+	callers, err := store.AICallers(context.Background(), storage.AIQuery{Tenant: "default", Range: aiWindow()})
+	if err != nil {
+		t.Fatalf("AICallers: %v", err)
+	}
+	if len(callers) != 1 {
+		t.Fatalf("callers = %d rows, want 1: %+v", len(callers), callers)
+	}
+	if callers[0].Service != "chat-api" {
+		t.Errorf("service = %q, want chat-api (tool-runner never called a model)", callers[0].Service)
+	}
+}
+
+// Embeddings are INFERENCE, deliberately. An embeddings call is a real call to
+// a model that spends real tokens; classing it with tools would drop paid
+// traffic off the bill. This is the boundary case the roadmap prose originally
+// got wrong, so it is pinned here.
+func TestAIModelsCountsEmbeddingsAsInference(t *testing.T) {
+	store := startClickHouse(t)
+	insertAISpans(t, store, []aiSpan{
+		llmSpan("e1", "search", map[string]string{
+			"gen_ai.operation.name": "embeddings", "gen_ai.system": "openai",
+			"gen_ai.response.model":     "text-embedding-3-small",
+			"gen_ai.usage.input_tokens": "800",
+		}),
+	})
+
+	usage, err := store.AIModels(context.Background(), storage.AIQuery{Tenant: "default", Range: aiWindow()})
+	if err != nil {
+		t.Fatalf("AIModels: %v", err)
+	}
+	if usage.Total.Calls != 1 {
+		t.Errorf("calls = %d, want 1 (embeddings is a model call)", usage.Total.Calls)
+	}
+	if usage.Total.InputTokens != 800 {
+		t.Errorf("inputTokens = %d, want 800", usage.Total.InputTokens)
+	}
+}
+
+// An operation value this build has never heard of stays INFERENCE rather than
+// vanishing. The convention keeps adding operations; classifying by an
+// allow-list of known inference values would make tomorrow's operation
+// invisible — counted in no table and in no total — which is a worse failure
+// than mis-labelling it, because nothing on the screen would show it happened.
+func TestAIModelsKeepsUnknownOperationsVisible(t *testing.T) {
+	store := startClickHouse(t)
+	insertAISpans(t, store, []aiSpan{
+		llmSpan("f1", "search", map[string]string{
+			"gen_ai.operation.name": "rerank", "gen_ai.system": "cohere",
+			"gen_ai.response.model":     "rerank-v3",
+			"gen_ai.usage.input_tokens": "40",
+		}),
+	})
+
+	usage, err := store.AIModels(context.Background(), storage.AIQuery{Tenant: "default", Range: aiWindow()})
+	if err != nil {
+		t.Fatalf("AIModels: %v", err)
+	}
+	if usage.Total.Calls != 1 {
+		t.Errorf("calls = %d, want 1 (an unknown operation must not disappear)", usage.Total.Calls)
+	}
+}

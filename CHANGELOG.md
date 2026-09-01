@@ -11,6 +11,25 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tool calls are no longer counted as model calls.** The AI module decided
+  what counted as a call to a model by testing that `gen_ai.operation.name` was
+  *present*, never looking at its value — but `chat` is only one of the values
+  the convention defines. An agent instrumentation emits `execute_tool` for
+  every tool it runs, so on an agent workload every tool execution was counted
+  as a model call, and four numbers went wrong together: call counts inflated
+  (one turn consulting two tools reported as five calls), the latency
+  percentiles ranked a database lookup against a completion, the model resolved
+  to nothing and that empty row then counted as a model of its own, and the
+  "reported no usage" bucket — which exists to name an instrumentation gap
+  honestly — filled with spans that were never model calls at all.
+
+  Calls are now split by operation, and every existing view reads the inference
+  population it was designed for. Embeddings stay counted as model calls,
+  because an embeddings call spends real tokens on a real model. An estate whose
+  applications make plain chat completions was never affected and will see no
+  change; one running agents will see its call counts fall to the truth.
 ### Security
 
 - **The two collectors an install runs no longer ship a fixable CRITICAL or

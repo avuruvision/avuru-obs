@@ -28,6 +28,63 @@ const aiCallExpr = `(SpanAttributes['gen_ai.operation.name'] != '' ` +
 	`OR SpanAttributes['gen_ai.system'] != '' ` +
 	`OR SpanAttributes['gen_ai.provider.name'] != '')`
 
+// aiOperationClass names what KIND of gen_ai span a row is. aiCallExpr above
+// answers "is this span gen_ai at all"; this answers "gen_ai *what*", which is
+// the question v0.11 never asked — and the reason its four totals were wrong on
+// any workload that runs tools.
+//
+// The convention gives gen_ai.operation.name a set of well-known values, and
+// `chat` is only one of them. A compliant agent instrumentation emits a span
+// with `execute_tool` for every tool it runs; counting those as model calls
+// inflates the call count, ranks a database lookup against a completion in the
+// latency quantiles, resolves the model to the empty string, and fills the
+// no-usage bucket with spans that were never model calls.
+type aiOperationClass int
+
+const (
+	// aiInference is a call to a model: chat, text_completion,
+	// generate_content, embeddings — and the empty/unknown case, where only
+	// gen_ai.system or gen_ai.provider.name identified the span.
+	aiInference aiOperationClass = iota
+	// aiTool is one tool execution inside an agent turn.
+	aiTool
+	// aiAgentOp is an agent lifecycle span: create_agent, invoke_agent. It
+	// CONTAINS the model and tool calls of a turn, so counting it beside them
+	// would double-count the turn.
+	aiAgentOp
+)
+
+// The class predicates. Note the asymmetry, which is deliberate: tool and agent
+// are ALLOW-lists over the two operation values each owns, and inference is
+// their COMPLEMENT rather than an allow-list of its own.
+//
+// Enumerating inference instead would be the more obvious spelling and the more
+// dangerous one: the convention keeps adding operations (generate_content is
+// itself a recent arrival), and an install emitting one this build has not
+// heard of would have its traffic classified as nothing at all — counted in no
+// table, in no total, and visible nowhere. Traffic that silently vanishes is
+// exactly the failure v0.11 built the no-usage bucket to avoid. The complement
+// mis-labels an unknown operation as inference, which is wrong in a way that is
+// visible and recoverable; the allow-list makes it disappear.
+const (
+	aiToolOpExpr  = `(SpanAttributes['gen_ai.operation.name'] = 'execute_tool')`
+	aiAgentOpExpr = `(SpanAttributes['gen_ai.operation.name'] IN ('create_agent', 'invoke_agent'))`
+	// Everything that is a gen_ai span and is neither a tool nor an agent span.
+	aiInferenceOpExpr = `(NOT ` + aiToolOpExpr + ` AND NOT ` + aiAgentOpExpr + `)`
+)
+
+// classExpr returns the predicate selecting this class alone.
+func (c aiOperationClass) classExpr() string {
+	switch c {
+	case aiTool:
+		return aiToolOpExpr
+	case aiAgentOp:
+		return aiAgentOpExpr
+	default:
+		return aiInferenceOpExpr
+	}
+}
+
 // aiModelExpr resolves the model a call actually used.
 //
 // The RESPONSE model wins over the request model: an alias resolves at the
@@ -104,8 +161,16 @@ const aiHasContentExpr = `(arrayExists(k -> match(toString(k), '` + aiContentKey
 // aiFilters appends the shared WHERE clauses — the same filter vocabulary the
 // trace search uses, so the AI screen and the Traces screen describe the same
 // traffic when set to the same window.
-func aiFilters(query string, q storage.AIQuery, args []any) (string, []any) {
-	query += " AND " + aiCallExpr
+//
+// The class is taken here rather than on storage.AIQuery on purpose. Every
+// query has exactly one population it means — the model and caller tables are
+// inference, the tools table is tools — so a class knob on the query would let
+// a caller ask for a mixture that answers no question, and would put this
+// defect back within reach of the API layer. One choke point, one decision:
+// the AEP rejects filtering per query as "four call sites, four chances to
+// forget the fifth".
+func aiFilters(query string, q storage.AIQuery, class aiOperationClass, args []any) (string, []any) {
+	query += " AND " + aiCallExpr + " AND " + class.classExpr()
 	if q.Service != "" {
 		query += " AND ServiceName = ?"
 		args = append(args, q.Service)
@@ -156,7 +221,7 @@ FROM otel_traces
 WHERE Tenant IN (?)
   AND Timestamp >= ? AND Timestamp < ?`
 	args := []any{tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
-	query, args = aiFilters(query, q, args)
+	query, args = aiFilters(query, q, aiInference, args)
 	query += `
 GROUP BY model WITH TOTALS
 ORDER BY calls DESC, model ASC
@@ -228,7 +293,7 @@ FROM otel_traces
 WHERE Tenant IN (?)
   AND Timestamp >= ? AND Timestamp < ?`
 	args := []any{tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
-	query, args = aiFilters(query, q, args)
+	query, args = aiFilters(query, q, aiInference, args)
 	query += `
 GROUP BY service, model
 ORDER BY calls DESC, service ASC, model ASC
