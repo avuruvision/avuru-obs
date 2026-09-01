@@ -15,10 +15,12 @@ import { SpanDetail } from "./span-detail";
 import { SpanDetailOverlay } from "./span-detail-overlay";
 import { TraceSummaryBar } from "./trace-summary-bar";
 import { SpansTable } from "./views/spans-table";
+import { agentTurnRoots } from "@/lib/agent-turn";
 import { Flamegraph } from "./views/flamegraph";
 import { TraceStats } from "./views/trace-stats";
 import { TraceTree } from "./views/trace-tree";
 import { TracePath } from "./views/trace-path";
+import { AgentTurnView } from "./views/agent-turn";
 import { TraceJson } from "./views/trace-json";
 import { TraceDiff } from "./views/trace-diff";
 import { CLEAR_WORKSPACE_PARAMS } from "./workspace-params";
@@ -37,6 +39,12 @@ const VIEWS = [
   // question neither does — which services this request crossed, in what order,
   // and where its time went — which a 300-card tree cannot show at a glance.
   { value: "path", label: "Path" },
+  // "Turn" is the Path view's unit changed from service to CALL. Every span of
+  // an agent turn usually belongs to one service, so Path collapses a whole
+  // turn into a single node; this draws the model calls and tool executions
+  // the turn is actually made of. Offered only when the trace holds one, since
+  // an ordinary request has no turn to draw.
+  { value: "turn", label: "Turn" },
   { value: "json", label: "JSON" },
 ] as const;
 
@@ -118,23 +126,39 @@ export function TraceDetailPanel({
   const clampWidth = (w: number) => {
     const body = bodyRef.current;
     const max = body
-      ? Math.max(SPAN_PANEL_MIN, Math.round(body.getBoundingClientRect().width * 0.7))
+      ? Math.max(
+          SPAN_PANEL_MIN,
+          Math.round(body.getBoundingClientRect().width * 0.7),
+        )
       : SPAN_PANEL_DEFAULT;
     return Math.min(Math.max(Math.round(w), SPAN_PANEL_MIN), max);
   };
 
   const comparing = Boolean(compareId);
-  const view = (VIEWS.find((v) => v.value === get("view"))?.value ?? "timeline") as View;
+  const requested = (VIEWS.find((v) => v.value === get("view"))?.value ??
+    "timeline") as View;
   const selectedSpanId = get("span") ?? null;
 
   const trace = a.data;
-  const selectedSpan = trace?.spans.find((s) => s.spanId === selectedSpanId) ?? null;
+  const selectedSpan =
+    trace?.spans.find((s) => s.spanId === selectedSpanId) ?? null;
+
+  // The Turn tab exists only for traces that hold one. A deep link to
+  // ?view=turn on an ordinary request falls back rather than showing an empty
+  // panel, and the tab is hidden rather than shown-and-empty.
+  const hasTurn =
+    (trace?.spans.length ?? 0) > 0 &&
+    agentTurnRoots(trace?.spans ?? []).length > 0;
+  const views = VIEWS.filter((v) => v.value !== "turn" || hasTurn);
+  const view: View = requested === "turn" && !hasTurn ? "timeline" : requested;
 
   // ?focus= dims other services' spans; inert when the focused service isn't
   // in this trace (focus survives trace switches and applies where relevant).
   const focusRaw = get("focus");
   const focusService =
-    focusRaw && trace?.spans.some((s) => s.service === focusRaw) ? focusRaw : null;
+    focusRaw && trace?.spans.some((s) => s.service === focusRaw)
+      ? focusRaw
+      : null;
 
   const close = () => setMany(CLEAR_WORKSPACE_PARAMS);
   const onSelectSpan = (span: Span) =>
@@ -144,7 +168,9 @@ export function TraceDetailPanel({
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-neutral bg-base-200">
       <header className="flex flex-wrap items-center gap-2 border-b border-neutral px-3 py-2">
         <span className="group inline-flex min-w-0 items-center gap-1">
-          <span className="truncate font-mono text-xs font-semibold">{traceId}</span>
+          <span className="truncate font-mono text-xs font-semibold">
+            {traceId}
+          </span>
           <CopyButton
             value={traceId}
             ariaLabel="Copy trace id"
@@ -156,10 +182,14 @@ export function TraceDetailPanel({
         <div className="ml-auto flex items-center gap-1.5">
           {!comparing && (
             <div className="flex overflow-hidden rounded-lg border border-neutral">
-              {VIEWS.map((v) => (
+              {views.map((v) => (
                 <button
                   key={v.value}
-                  onClick={() => setMany({ view: v.value === "timeline" ? undefined : v.value })}
+                  onClick={() =>
+                    setMany({
+                      view: v.value === "timeline" ? undefined : v.value,
+                    })
+                  }
                   className={cn(
                     "px-2 py-1 text-xs font-medium transition-colors",
                     v.value === view
@@ -173,7 +203,11 @@ export function TraceDetailPanel({
             </div>
           )}
           {comparing && (
-            <Button variant="ghost" size="sm" onClick={() => setMany({ compare: undefined })}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setMany({ compare: undefined })}
+            >
               <GitCompare className="h-3.5 w-3.5" /> Exit compare
             </Button>
           )}
@@ -183,9 +217,18 @@ export function TraceDetailPanel({
             aria-label={fullscreen ? "Exit full screen" : "Full screen"}
             onClick={() => setMany({ full: fullscreen ? undefined : "1" })}
           >
-            {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            {fullscreen ? (
+              <Minimize2 className="h-4 w-4" />
+            ) : (
+              <Maximize2 className="h-4 w-4" />
+            )}
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Close trace" onClick={close}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Close trace"
+            onClick={close}
+          >
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -202,7 +245,8 @@ export function TraceDetailPanel({
               <TraceDiff a={a.data} b={b.data} />
             ) : (
               <p className="p-4 text-sm text-error">
-                One of the traces could not be loaded — it may have aged out of retention.
+                One of the traces could not be loaded — it may have aged out of
+                retention.
               </p>
             )
           ) : a.isLoading ? (
@@ -230,7 +274,11 @@ export function TraceDetailPanel({
                 />
               )}
               {view === "flame" && (
-                <Flamegraph trace={trace} selectedSpanId={selectedSpanId} onSelectSpan={onSelectSpan} />
+                <Flamegraph
+                  trace={trace}
+                  selectedSpanId={selectedSpanId}
+                  onSelectSpan={onSelectSpan}
+                />
               )}
               {view === "stats" && <TraceStats trace={trace} />}
               {view === "graph" && (
@@ -249,6 +297,14 @@ export function TraceDetailPanel({
                   onSelectSpan={onSelectSpan}
                 />
               )}
+              {view === "turn" && (
+                <AgentTurnView
+                  key={trace.traceId}
+                  trace={trace}
+                  selectedSpanId={selectedSpanId}
+                  onSelectSpan={onSelectSpan}
+                />
+              )}
               {view === "json" && <TraceJson trace={trace} />}
             </>
           )}
@@ -260,7 +316,9 @@ export function TraceDetailPanel({
               onDrag={(clientX) => {
                 const body = bodyRef.current;
                 if (body)
-                  setPanelWidth(clampWidth(body.getBoundingClientRect().right - clientX));
+                  setPanelWidth(
+                    clampWidth(body.getBoundingClientRect().right - clientX),
+                  );
               }}
               onNudge={(d) => setPanelWidth(clampWidth(panelWidth + d))}
               onReset={() => setPanelWidth(SPAN_PANEL_DEFAULT)}
@@ -291,7 +349,10 @@ export function TraceDetailPanel({
               <SpanDetail span={selectedSpan} />
             </aside>
             {expanded && (
-              <SpanDetailOverlay span={selectedSpan} onClose={() => setExpanded(false)} />
+              <SpanDetailOverlay
+                span={selectedSpan}
+                onClose={() => setExpanded(false)}
+              />
             )}
           </>
         )}

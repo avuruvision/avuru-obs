@@ -13,6 +13,23 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **An agent turn, drawn as the shape it is.** A turn is not a list — it is a
+  model call that decides, a fan-out to tools, results coming back, and often
+  another model call after — and the questions worth asking about it are graph
+  questions: which tool is slow, which one fails, how many hops before it
+  converges, which tool a retry loop is stuck on. A new **Turn** view on the
+  trace draws exactly that, and it appears only on traces that hold one.
+
+  It reuses the Path view's renderer with the unit changed. Path groups by
+  service, which is right for a request crossing an estate and wrong here, since
+  every span of a turn usually belongs to one service — so Path collapses the
+  whole turn into a single node. The unit here is the model or tool being
+  called. A tool the turn hit four times is **one node with a count**, because
+  the loop is the thing worth seeing and four identical cards hide that it
+  repeated. Time is weighted by what was spent *inside* each call rather than by
+  span duration, since a model-call span contains the tool spans it triggered
+  and duration would report the model as responsible for time the tools spent.
+
 - **The tools your agents actually run.** Once tool executions were told apart
   from model calls they became worth reporting, and the model table could never
   have shown them: a new **Tools** table names each tool an agent ran, how often
