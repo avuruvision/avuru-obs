@@ -13,6 +13,56 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **An agent can read this estate.** This product has known a great deal about
+  agents since v0.11 — the model calls your applications make, what they cost,
+  when they cross a budget. Nothing let an agent know anything about it. A new
+  **MCP module** serves a Model Context Protocol server at `POST /mcp`, so a
+  claude.ai connector, Claude Code, or any other MCP client can investigate an
+  incident against the traces, logs, error issues and health you are already
+  storing — instead of a person reading a screen and retyping what they saw.
+
+  Six read-only tools, with `service_context` as the way in: one call returns a
+  service's request rate, error rate and latency percentiles, who calls it and
+  what it depends on with per-path rate/error-rate/p95, its open issues, and any
+  alert firing in the project. From there `search_traces`, `get_trace`,
+  `search_logs` and `list_error_issues` drill down. `get_trace` carries a
+  per-service **self time** — the time spent inside each service rather than
+  waiting on a callee — which is the number that names the slow hop.
+
+  Three rules do as much work as the tools. A **misspelled service name is an
+  error naming the closest matches**, never an empty result: a model handed `[]`
+  concludes the service is dead and reports that with confidence. A tool whose
+  module is off is **absent** from the tool list rather than present and always
+  failing, and a `service_context` section its install cannot answer is absent
+  **and named**, because silence about a missing module reads as an absence of
+  trouble. And every response is bounded and says that it is.
+
+  Nothing new is collected, no schema changes, and no container is added — it is
+  one handler on the hub, authenticated with the personal API tokens that have
+  existed since v0.5, resolving its owner's live permissions. A token reads
+  exactly what that person reads in the UI, in the projects they are granted.
+
+  **The module is off by default, and here is why.** avuru-obs still makes no
+  outbound call of its own. But an agent you connect to this server pulls traces
+  and log bodies out of your cluster and into whichever model provider you chose,
+  and log bodies are where user data lives on the installs that have any. We do
+  not redact them — the line you would mask is invariably the one that explains
+  the failure, which would leave the tool useless for its only job. So the switch
+  is yours to throw (`modules.mcp.enabled`), the values file says this in as many
+  words, and **every tool call is logged** with the token owner, the tool, its
+  arguments and the row count — never the content returned. You can answer "what
+  did the agent read, and whose token did it use" from the hub's own logs.
+
+  Connect Claude Code with:
+
+  ```bash
+  claude mcp add --transport http avuruobs https://<your-hub>/mcp \
+    --header "Authorization: Bearer avurut_…"
+  ```
+
+  claude.ai connectors need OAuth 2.1, which is the next step and lands
+  separately. See [`design/2026-09-01-mcp-server.md`](design/2026-09-01-mcp-server.md).
+
 - **One rate table, written down once.** An operator declaring what their estate
   costs used to do it **twice**, in two formats, one of which needed a pod
   restart: model prices arrived as a mounted ConfigMap, hot-reloaded and
@@ -134,55 +184,6 @@ When a release is cut, that block is renamed to the version with its date.
   Moving the agent alone is safe by construction: its only exporter is OTLP to
   the gateway, so it touches no ClickHouse DDL and re-runs no contract freeze.
   The gateway stays on the 0.154.0 line.
-- **An agent can read this estate.** This product has known a great deal about
-  agents since v0.11 — the model calls your applications make, what they cost,
-  when they cross a budget. Nothing let an agent know anything about it. A new
-  **MCP module** serves a Model Context Protocol server at `POST /mcp`, so a
-  claude.ai connector, Claude Code, or any other MCP client can investigate an
-  incident against the traces, logs, error issues and health you are already
-  storing — instead of a person reading a screen and retyping what they saw.
-
-  Six read-only tools, with `service_context` as the way in: one call returns a
-  service's request rate, error rate and latency percentiles, who calls it and
-  what it depends on with per-path rate/error-rate/p95, its open issues, and any
-  alert firing in the project. From there `search_traces`, `get_trace`,
-  `search_logs` and `list_error_issues` drill down. `get_trace` carries a
-  per-service **self time** — the time spent inside each service rather than
-  waiting on a callee — which is the number that names the slow hop.
-
-  Three rules do as much work as the tools. A **misspelled service name is an
-  error naming the closest matches**, never an empty result: a model handed `[]`
-  concludes the service is dead and reports that with confidence. A tool whose
-  module is off is **absent** from the tool list rather than present and always
-  failing, and a `service_context` section its install cannot answer is absent
-  **and named**, because silence about a missing module reads as an absence of
-  trouble. And every response is bounded and says that it is.
-
-  Nothing new is collected, no schema changes, and no container is added — it is
-  one handler on the hub, authenticated with the personal API tokens that have
-  existed since v0.5, resolving its owner's live permissions. A token reads
-  exactly what that person reads in the UI, in the projects they are granted.
-
-  **The module is off by default, and here is why.** avuru-obs still makes no
-  outbound call of its own. But an agent you connect to this server pulls traces
-  and log bodies out of your cluster and into whichever model provider you chose,
-  and log bodies are where user data lives on the installs that have any. We do
-  not redact them — the line you would mask is invariably the one that explains
-  the failure, which would leave the tool useless for its only job. So the switch
-  is yours to throw (`modules.mcp.enabled`), the values file says this in as many
-  words, and **every tool call is logged** with the token owner, the tool, its
-  arguments and the row count — never the content returned. You can answer "what
-  did the agent read, and whose token did it use" from the hub's own logs.
-
-  Connect Claude Code with:
-
-  ```bash
-  claude mcp add --transport http avuruobs https://<your-hub>/mcp \
-    --header "Authorization: Bearer avurut_…"
-  ```
-
-  claude.ai connectors need OAuth 2.1, which is the next step and lands
-  separately. See [`design/2026-09-01-mcp-server.md`](design/2026-09-01-mcp-server.md).
 
 ## [0.11.0] — 2026-08-28
 
