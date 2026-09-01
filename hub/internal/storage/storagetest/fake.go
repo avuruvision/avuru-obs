@@ -93,10 +93,14 @@ type Fake struct {
 	DeletedChannels       []string
 
 	// Collection overlay fake.
-	Overlay       storage.CollectionOverlay
-	OverlaySet    bool
-	OverlayErr    error
-	SavedOverlays []storage.CollectionOverlay
+	Overlay            storage.CollectionOverlay
+	OverlaySet         bool
+	RatesOverlay       storage.RatesOverlay
+	RatesOverlaySet    bool
+	RatesOverlayErr    error
+	SavedRatesOverlays []storage.RatesOverlay
+	OverlayErr         error
+	SavedOverlays      []storage.CollectionOverlay
 
 	// Auth fakes. Users is keyed by ID; Grants by user ID; Sessions by token
 	// hash. UsersByEmail is a convenience index for tests that want a user
@@ -511,6 +515,23 @@ func (f *Fake) SaveCollectionOverlay(_ context.Context, ov storage.CollectionOve
 	f.SavedOverlays = append(f.SavedOverlays, ov)
 	f.Overlay = ov
 	f.OverlaySet = true
+	return nil
+}
+
+func (f *Fake) LoadRatesOverlay(_ context.Context) (storage.RatesOverlay, error) {
+	if f.RatesOverlayErr != nil {
+		return storage.RatesOverlay{}, f.RatesOverlayErr
+	}
+	if !f.RatesOverlaySet {
+		return storage.RatesOverlay{}, storage.ErrNotFound
+	}
+	return f.RatesOverlay, nil
+}
+
+func (f *Fake) SaveRatesOverlay(_ context.Context, ov storage.RatesOverlay) error {
+	f.SavedRatesOverlays = append(f.SavedRatesOverlays, ov)
+	f.RatesOverlay = ov
+	f.RatesOverlaySet = true
 	return nil
 }
 

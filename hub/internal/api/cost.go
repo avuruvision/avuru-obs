@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"math"
 	"net/http"
 
@@ -108,7 +109,10 @@ func (a *API) handleCostWorkloads(w http.ResponseWriter, r *http.Request) error 
 		return err
 	}
 
-	rates := a.cfg.CostRates
+	// Through the resolver, so a rate edited in the UI takes effect without a
+	// pod restart — the env vars this used to read once at startup are now one
+	// input to that table rather than the whole of it.
+	rates := a.costRates(r.Context())
 	resp := costResponse{Priced: rates.priced(), Workloads: []workloadCostDTO{}}
 	if resp.Priced {
 		resp.Currency = rates.Currency
@@ -175,4 +179,23 @@ func (a *API) handleCostNodes(w http.ResponseWriter, r *http.Request) error {
 	}
 	writeJSON(w, http.StatusOK, resp)
 	return nil
+}
+
+// costRates resolves compute rates through the one rate table. The chart's
+// AVURUOBS_COST_* environment variables still declare them — they are folded
+// into the chart-declared half of that table at startup — so an install that
+// sets them keeps working exactly as it did, now with hot reload it did not
+// have before.
+func (a *API) costRates(ctx context.Context) CostRates {
+	// No resolver wired means the legacy chart-declared rates stand — the
+	// degraded path, not a second source of truth.
+	if a.rates == nil {
+		return a.cfg.CostRates
+	}
+	resolved := a.rates.Resolve(ctx)
+	return CostRates{
+		CPUCoreHour: resolved.Compute.CPUCoreHour,
+		MemGiBHour:  resolved.Compute.MemGiBHour,
+		Currency:    resolved.Currency,
+	}
 }
