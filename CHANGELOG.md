@@ -11,6 +11,8 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-09-01
+
 ### Added
 
 - **An agent can read this estate.** This product has known a great deal about
