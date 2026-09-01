@@ -38,12 +38,12 @@ test.describe("rate table", () => {
     // The write must be visible to its own author immediately — a stale read
     // of your own edit reads as the save not having worked.
     await page.reload();
-    await expect(panel.getByDisplayValue("e2e-test-model")).toBeVisible();
+    await expect(panel.locator('input[value="e2e-test-model"]')).toBeVisible();
 
     // And clearing returns the install to the chart without un-pricing it.
     await panel.getByRole("button", { name: "Reset to chart values" }).click();
     await page.reload();
-    await expect(panel.getByDisplayValue("e2e-test-model")).toHaveCount(0);
+    await expect(panel.locator('input[value="e2e-test-model"]')).toHaveCount(0);
     await expect(
       panel.getByText("gpt-4o", { exact: true }).first(),
     ).toBeVisible();
