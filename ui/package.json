@@ -1,6 +1,6 @@
 {
   "name": "@avuru/ui",
-  "version": "0.12.0",
+  "version": "0.13.0-SNAPSHOT",
   "private": true,
   "license": "AGPL-3.0-only",
   "engines": {
