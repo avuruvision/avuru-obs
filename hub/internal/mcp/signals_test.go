@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 	"github.com/avuru/avuru-obs/hub/internal/storage/storagetest"
@@ -131,5 +132,150 @@ func TestUnknownToolIsInvalidParams(t *testing.T) {
 	e, ok := got["error"].(map[string]any)
 	if !ok || e["code"] != float64(codeInvalidParams) {
 		t.Errorf("unknown tool = %v, want an invalid-params error", got)
+	}
+}
+
+func TestSearchTraces(t *testing.T) {
+	f := fakeWithServices("payment-api")
+	f.Page = storage.TracePage{Traces: []storage.TraceSummary{{
+		TraceID: "abc", RootService: "payment-api", RootOperation: "POST /pay",
+		StartTime: testNow.Add(-time.Minute), Duration: 250 * time.Millisecond,
+		SpanCount: 3, ErrorCount: 1, StatusCode: "Error",
+	}}}
+	s := serverWith(f)
+
+	payload, isErr := callTool(t, s, "search_traces", `{"service":"payment-api","status":"error","min_duration_ms":100,"window":"30m"}`)
+	if isErr {
+		t.Fatalf("unexpected tool error: %v", payload)
+	}
+	traces, _ := payload["traces"].([]any)
+	if len(traces) != 1 {
+		t.Fatalf("got %d traces, want 1: %v", len(traces), payload)
+	}
+	first, _ := traces[0].(map[string]any)
+	if first["traceId"] != "abc" || first["durationMs"] != float64(250) {
+		t.Errorf("trace row = %v", first)
+	}
+	// The filters must reach storage, not be dropped on the floor between the
+	// tool schema and the query — that is the whole failure mode of a second
+	// read path.
+	if f.LastTraceQuery.Service != "payment-api" {
+		t.Errorf("service filter = %q, want payment-api", f.LastTraceQuery.Service)
+	}
+	if f.LastTraceQuery.Status != "error" {
+		t.Errorf("status filter = %q, want error", f.LastTraceQuery.Status)
+	}
+	if f.LastTraceQuery.MinDuration != 100*time.Millisecond {
+		t.Errorf("min duration = %v, want 100ms", f.LastTraceQuery.MinDuration)
+	}
+	if !f.LastTraceQuery.ExcludeAux {
+		t.Error("auxiliary traffic must be excluded — health checks are not what anyone is investigating")
+	}
+}
+
+// A misspelled service is an error naming the near matches, on every tool that
+// takes one — not just on service_context.
+func TestSearchTracesUnknownService(t *testing.T) {
+	payload, isErr := callTool(t, serverWith(fakeWithServices("payment-api")), "search_traces", `{"service":"paymnt-api"}`)
+	if !isErr {
+		t.Fatalf("unknown service accepted: %v", payload)
+	}
+	hints, _ := payload["didYouMean"].([]any)
+	if len(hints) == 0 || hints[0] != "payment-api" {
+		t.Errorf("didYouMean = %v, want payment-api", hints)
+	}
+}
+
+func TestSearchTracesRejectsAnInventedStatus(t *testing.T) {
+	payload, isErr := callTool(t, serverWith(fakeWithServices("a")), "search_traces", `{"status":"weird"}`)
+	if !isErr {
+		t.Fatalf("invented status accepted: %v", payload)
+	}
+}
+
+// The store reports "there is more" through its cursor; the payload has to
+// pass that on, because a model reading 20 of 900 traces as "all of them" will
+// conclude the failure is rarer than it is.
+func TestSearchTracesTruncationFollowsTheCursor(t *testing.T) {
+	f := fakeWithServices("a")
+	f.Page = storage.TracePage{
+		Traces:     []storage.TraceSummary{{TraceID: "one", StartTime: testNow}},
+		NextCursor: &storage.TraceCursor{TraceID: "one", Timestamp: testNow},
+	}
+	payload, _ := callTool(t, serverWith(f), "search_traces", `{}`)
+	if payload["truncated"] != true {
+		t.Errorf("truncated = %v, want true", payload["truncated"])
+	}
+}
+
+func TestGetTrace(t *testing.T) {
+	// A 250ms root in payment-api with two children in ledger: the root's own
+	// work is 250 - (100 + 40) = 110ms, and ledger accounts for 140ms.
+	f := fakeWithServices("payment-api", "ledger")
+	f.Traces = map[string]storage.Trace{"abc": {TraceID: "abc", Spans: []storage.Span{
+		{SpanID: "root", Service: "payment-api", Operation: "POST /pay", Kind: "Server",
+			StartTime: testNow, Duration: 250 * time.Millisecond, StatusCode: "Error"},
+		{SpanID: "a", ParentSpanID: "root", Service: "ledger", Operation: "SELECT",
+			StartTime: testNow, Duration: 100 * time.Millisecond},
+		{SpanID: "b", ParentSpanID: "root", Service: "ledger", Operation: "INSERT",
+			StartTime: testNow.Add(time.Millisecond), Duration: 40 * time.Millisecond},
+	}}}
+
+	payload, isErr := callTool(t, serverWith(f), "get_trace", `{"trace_id":"abc"}`)
+	if isErr {
+		t.Fatalf("unexpected tool error: %v", payload)
+	}
+	spans, _ := payload["spans"].([]any)
+	if len(spans) != 3 {
+		t.Fatalf("got %d spans, want 3", len(spans))
+	}
+	services, _ := payload["services"].([]any)
+	if len(services) != 2 {
+		t.Fatalf("got %d services in the rollup, want 2: %v", len(services), payload["services"])
+	}
+	byName := map[string]map[string]any{}
+	for _, sv := range services {
+		row, _ := sv.(map[string]any)
+		byName[row["service"].(string)] = row
+	}
+	if got := byName["ledger"]["selfTimeMs"]; got != float64(140) {
+		t.Errorf("ledger self time = %v, want 140 (100 + 40)", got)
+	}
+	if got := byName["payment-api"]["selfTimeMs"]; got != float64(110) {
+		t.Errorf("payment-api self time = %v, want 110 (250 minus what it waited on)", got)
+	}
+	// Biggest first: the answer to "where did the time go" is the first row.
+	if first, _ := services[0].(map[string]any); first["service"] != "ledger" {
+		t.Errorf("rollup starts with %v, want ledger", first["service"])
+	}
+	if byName["payment-api"]["errorCount"] != float64(1) {
+		t.Errorf("payment-api errorCount = %v, want 1", byName["payment-api"]["errorCount"])
+	}
+}
+
+// Concurrent children can outlast their parent's own clock. Self time floors
+// at zero rather than going negative, which would corrupt the rollup.
+func TestGetTraceSelfTimeNeverGoesNegative(t *testing.T) {
+	f := fakeWithServices("a")
+	f.Traces = map[string]storage.Trace{"x": {TraceID: "x", Spans: []storage.Span{
+		{SpanID: "root", Service: "a", Duration: 10 * time.Millisecond, StartTime: testNow},
+		{SpanID: "c1", ParentSpanID: "root", Service: "b", Duration: 30 * time.Millisecond, StartTime: testNow},
+	}}}
+	payload, _ := callTool(t, serverWith(f), "get_trace", `{"trace_id":"x"}`)
+	for _, sv := range payload["services"].([]any) {
+		row, _ := sv.(map[string]any)
+		if row["selfTimeMs"].(float64) < 0 {
+			t.Errorf("negative self time: %v", row)
+		}
+	}
+}
+
+func TestGetTraceNotFound(t *testing.T) {
+	payload, isErr := callTool(t, serverWith(fakeWithServices("a")), "get_trace", `{"trace_id":"nope"}`)
+	if !isErr {
+		t.Fatalf("missing trace accepted: %v", payload)
+	}
+	if payload["error"] == nil {
+		t.Errorf("no message: %v", payload)
 	}
 }

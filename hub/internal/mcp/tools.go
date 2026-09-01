@@ -58,6 +58,8 @@ type tool struct {
 func (s *Server) tools() []tool {
 	return []tool{
 		{def: listServicesDef, run: runListServices},
+		{def: searchTracesDef, run: runSearchTraces},
+		{def: getTraceDef, run: runGetTrace},
 	}
 }
 
