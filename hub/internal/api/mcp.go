@@ -40,8 +40,12 @@ func (a *API) handleMCP(w http.ResponseWriter, r *http.Request) error {
 		Modules: a.modules,
 		Tenant:  tenant,
 		Tenants: tenants,
-		Version: Version,
-		Actor:   actorName(r),
+		// The same accessor the service map uses, reading the same
+		// hot-reloaded config: one source, so the map and the tool cannot
+		// disagree about which workload is a proxy.
+		Topology: a.topologyClassifier(),
+		Version:  Version,
+		Actor:    actorName(r),
 	}
 	reply, err := srv.Handle(r.Context(), body)
 	if err != nil {

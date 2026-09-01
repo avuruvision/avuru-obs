@@ -57,6 +57,7 @@ type tool struct {
 // a map, so the list is stable across calls and a diff of it reads.
 func (s *Server) tools() []tool {
 	return []tool{
+		{def: serviceContextDef, run: runServiceContext},
 		{def: listServicesDef, run: runListServices},
 		{def: searchTracesDef, run: runSearchTraces},
 		{def: getTraceDef, run: runGetTrace},

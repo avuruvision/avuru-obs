@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/modules"
+	"github.com/avuru/avuru-obs/hub/internal/topology"
 )
 
 // ProtocolVersion is the MCP revision this server implements, and it is
@@ -68,8 +69,15 @@ type Server struct {
 	Modules modules.Set
 	Tenant  string
 	Tenants []string
-	Version string // hub build version, reported by initialize
-	Actor   string // who the audit line names (the token owner)
+	// Topology is the transport classifier — which workload names are mesh
+	// proxies and gateways rather than applications. It comes from the API,
+	// built from the SAME hot-reloaded config the service map uses, so the map
+	// and this tool cannot disagree about what a proxy is. The zero value
+	// classifies nothing as transport, which is what an unmeshed install and a
+	// test both want.
+	Topology topology.Classifier
+	Version  string // hub build version, reported by initialize
+	Actor    string // who the audit line names (the token owner)
 	// Now is the clock, injectable so a window test is not a race. nil → time.Now.
 	Now func() time.Time
 }
