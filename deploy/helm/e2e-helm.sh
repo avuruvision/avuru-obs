@@ -61,7 +61,7 @@ echo "==> pre-pulling wedge demo + sensor images (pull time is not the product's
 DEMO_IMGS=(nginx:1.29-alpine busybox:1.37)
 SENSOR_IMGS=(
   otel/ebpf-instrument:v0.12.2
-  otel/opentelemetry-collector-contrib:0.154.0
+  otel/opentelemetry-collector-contrib:0.159.0
   otel/opentelemetry-collector-ebpf-profiler:0.155.0
 )
 # Explicit single platform: kind's ctr import rejects multi-arch manifest

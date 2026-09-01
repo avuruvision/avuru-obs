@@ -97,3 +97,12 @@ replaces:
   # to v0.37.0, which the image scan fails on; pin the fixed v0.39.0. Drop this
   # when a collector bump carries v0.39.0+ on its own (revisit on the next OCB bump).
   - golang.org/x/text => golang.org/x/text v0.39.0
+  # Security floor: CVE-2026-56854 (CRITICAL — golang.org/x/crypto/ssh
+  # authentication bypass, source-address restrictions not enforced). The
+  # collector 0.154.0 line resolves golang.org/x/crypto to v0.53.0, which the
+  # image scan fails on; pin the fixed v0.55.0. This distro exposes no SSH
+  # surface, so the pin closes a supply-chain finding rather than a reachable
+  # hole — but an unfixable CRITICAL in the image is not something to carry.
+  # Drop this when a collector bump carries v0.55.0+ on its own (revisit on the
+  # next OCB bump).
+  - golang.org/x/crypto => golang.org/x/crypto v0.55.0
