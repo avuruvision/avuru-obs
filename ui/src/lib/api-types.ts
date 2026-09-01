@@ -15,7 +15,8 @@ export type ModuleName =
   | "mesh"
   | "green"
   | "cost"
-  | "ai";
+  | "ai"
+  | "mcp";
 
 export interface CapabilitiesResponse {
   version: string;
