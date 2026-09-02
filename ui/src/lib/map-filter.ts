@@ -8,10 +8,12 @@ export interface MapFilters {
   problemsOnly?: boolean;
   /** Keep only members of this service group. */
   group?: string;
+  /** Keep one service and its 1-hop neighbourhood, by exact name. */
+  focus?: string;
 }
 
 export function hasActiveFilter(f: MapFilters): boolean {
-  return Boolean(f.q?.trim() || f.problemsOnly || f.group);
+  return Boolean(f.q?.trim() || f.problemsOnly || f.group || f.focus?.trim());
 }
 
 // Whether any part of this dependency's traffic went through the mesh.
@@ -144,7 +146,25 @@ export function filterMap(
   if (!hasActiveFilter(filters)) return { services, edges };
 
   const q = filters.q?.trim().toLowerCase();
+  // "Show me THIS service on the map" is a neighbourhood, not a name match: the
+  // focused service plus everything on an edge to or from it. Matching the name
+  // alone — which is what the service page used to link to — keeps the node and
+  // drops every edge it has, landing the reader on an isolated dot.
+  //
+  // One hop, and one hop only: it is the same neighbourhood hovering a node
+  // lights up, and the answer to "what does this service touch" rather than
+  // "what does the estate look like from here".
+  const focus = filters.focus?.trim();
+  const neighbourhood = focus
+    ? new Set(
+        edges
+          .filter((e) => e.source === focus || e.target === focus)
+          .flatMap((e) => [e.source, e.target])
+          .concat(focus),
+      )
+    : undefined;
   const kept = services.filter((s) => {
+    if (neighbourhood && !neighbourhood.has(s.name)) return false;
     if (q && !s.name.toLowerCase().includes(q)) return false;
     const h = health.get(s.name);
     // A service with no health entry is unknown, not healthy — so it is never
