@@ -33,6 +33,13 @@ When a release is cut, that block is renamed to the version with its date.
   freeze. The stock image still works as an override for anyone who prefers
   upstream, and the values file says what that costs.
 
+  The gateway's own floors move in the same pass: `grpc` to v1.83.1, because
+  CVE-2026-84304 landed on v1.82.1 — the version its floor pinned — and
+  `apache/thrift` to v0.24.0 over CVE-2026-43871, which arrives through the
+  Jaeger receiver and sits in every gateway image whether or not the chart wires
+  a listener. A floor is a claim with a date on it, not a fact; CI found the
+  second one hours after a local scan had called the same image clean.
+
   The **profiler** pin moves 0.155.0 → 0.159.0 in the same pass. The old image
   was Debian-based and scanned six Criticals, five with no upstream fix at all,
   in `perl`, `openssh-client` and `linux-libc-dev` — packages a profiler never

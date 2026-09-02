@@ -108,3 +108,11 @@ replaces:
   # Drop this when a collector bump carries v0.55.0+ on its own (revisit on the
   # next OCB bump).
   - golang.org/x/crypto => golang.org/x/crypto v0.55.0
+  # Security floor: CVE-2026-43871 (HIGH — Apache Thrift, denial of service via
+  # an infinite loop). It arrives through jaegerreceiver, which carries the
+  # thrift protocols; the 0.154.0 line resolves a v0.23.1 pseudo-version and the
+  # fix is v0.24.0. That receiver is compiled in whether or not the chart wires a
+  # listener (design/2026-07-27-wider-ingest-compat.md), so the finding sits in
+  # every gateway image regardless of configuration. Drop on the first collector
+  # line that resolves v0.24.0+ by itself.
+  - github.com/apache/thrift => github.com/apache/thrift v0.24.0
