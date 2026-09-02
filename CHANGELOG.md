@@ -11,6 +11,41 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Security
+
+- **Every image an install pulls by default is now free of a fixable
+  CRITICAL or HIGH — with no registry allowlist anywhere.** The node agent was
+  the one that could not get there: it needs `filelog`, `kubeletstats`,
+  `k8s_cluster` and `prometheus`, so it ran the stock contrib image, and
+  CVE-2026-56854 (`golang.org/x/crypto/ssh`, authentication bypass) is fixed in
+  **no collector release** — 0.159.0 still resolves v0.54.0 against the fixed
+  v0.55.0. Every version bump left it in place. The only remaining moves were to
+  carry the finding, or to tell a registry to ignore it.
+
+  So the agent gets **a distro of its own**, built with OCB from
+  `sensor/agent/ocb-manifest.yaml` exactly as the gateway is, published as
+  `avuru-obs-agent` and pinning the floors upstream cannot: `x/crypto` v0.55.0
+  and `x/mod` v0.40.0. Its component set is precisely what the sensor's rendered
+  config uses and nothing else, because an unused component in a node agent is
+  attack surface with no job. It tracks the **contrib** line (0.159.0) rather
+  than the gateway's 0.154.0 — the agent's only exporter is OTLP to the gateway,
+  so it writes no ClickHouse and moves without re-running the DDL contract
+  freeze. The stock image still works as an override for anyone who prefers
+  upstream, and the values file says what that costs.
+
+  The **profiler** pin moves 0.155.0 → 0.159.0 in the same pass. The old image
+  was Debian-based and scanned six Criticals, five with no upstream fix at all,
+  in `perl`, `openssh-client` and `linux-libc-dev` — packages a profiler never
+  executes. Upstream rebased it; 0.159.0 carries one finding, the same
+  `x/crypto` one, and the component stays off by default.
+
+  What is left is stated rather than hidden: **OBI** (`ebpf-instrument`
+  v0.12.2, the newest release) scans 9 HIGH and no CRITICAL, and **Kepler**
+  v0.11.4 — off by default — scans 33 HIGH from its RHEL base. Neither is an
+  image this project builds, and neither has a newer upstream tag to move to.
+  ClickHouse 26.3 scans clean.
+
+
 ## [0.12.0] — 2026-09-01
 
 ### Added

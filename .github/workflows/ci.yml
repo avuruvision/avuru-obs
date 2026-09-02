@@ -251,6 +251,7 @@ jobs:
           - { component: ui, dockerfile: ui/Dockerfile }
           - { component: hub, dockerfile: hub/Dockerfile }
           - { component: gateway, dockerfile: gateway/Dockerfile }
+          - { component: agent, dockerfile: sensor/agent/Dockerfile }
           - { component: tdp-estimator, dockerfile: sensor/tdp-estimator/Dockerfile }
     steps:
       - uses: actions/checkout@v7

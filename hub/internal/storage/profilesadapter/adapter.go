@@ -60,7 +60,15 @@ func Convert(profiles pprofile.Profiles, tenant string) []storage.ProfileSample 
 					// Sample attributes override resource attributes for
 					// attribution (the profiler is host-scoped; container
 					// identity rides on the sample).
-					attrs := pprofile.FromAttributeIndices(dic.AttributeTable(), sample, dic)
+					// v0.159 made this fallible: a sample can now index outside
+					// the dictionary's attribute table. Skipping the sample
+					// would silently drop a stack that is otherwise complete,
+					// so attribute it with what the resource says instead — the
+					// frames are the part a flame graph cannot do without.
+					attrs, err := pprofile.FromAttributeIndices(dic.AttributeTable(), sample, dic)
+					if err != nil {
+						attrs = pcommon.NewMap()
+					}
 
 					s := storage.ProfileSample{
 						Tenant:     tenant,
