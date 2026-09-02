@@ -87,11 +87,13 @@ replaces:
   # Dockerfile copies it to /src/avuruingestauth so ../avuruingestauth resolves.
   - github.com/avuru/avuru-obs/gateway/avuruingestauth => ../avuruingestauth
   - github.com/avuru/avuru-obs/gateway/tenantfromauth => ../tenantfromauth
-  # Security floor: GHSA-hrxh-6v49-42gf (HIGH — gRPC-Go xDS RBAC / HTTP/2). The
-  # collector 0.154.0 line resolves google.golang.org/grpc to v1.81.1, which the
-  # image scan fails on; pin the fixed v1.82.1 in the distro. Drop this when a
-  # collector bump carries v1.82.1+ on its own (revisit on the next OCB bump).
-  - google.golang.org/grpc => google.golang.org/grpc v1.82.1
+  # Security floor: GHSA-hrxh-6v49-42gf (HIGH — gRPC-Go xDS RBAC / HTTP/2), and
+  # since 2026-09-02 CVE-2026-84304 as well, which lands on v1.82.1 — the version
+  # this floor used to pin. A floor is not a fact, it is a claim with a date on
+  # it: the collector 0.154.0 line resolves v1.81.1, the first fix was v1.82.1,
+  # and the fix for the newer advisory is v1.83.1. Drop this when a collector
+  # bump carries v1.83.1+ on its own (revisit on the next OCB bump).
+  - google.golang.org/grpc => google.golang.org/grpc v1.83.1
   # Security floor: CVE-2026-56852 (HIGH — golang.org/x/text norm.Iter infinite
   # loop on crafted input). The collector 0.154.0 line resolves golang.org/x/text
   # to v0.37.0, which the image scan fails on; pin the fixed v0.39.0. Drop this
@@ -106,3 +108,11 @@ replaces:
   # Drop this when a collector bump carries v0.55.0+ on its own (revisit on the
   # next OCB bump).
   - golang.org/x/crypto => golang.org/x/crypto v0.55.0
+  # Security floor: CVE-2026-43871 (HIGH — Apache Thrift, denial of service via
+  # an infinite loop). It arrives through jaegerreceiver, which carries the
+  # thrift protocols; the 0.154.0 line resolves a v0.23.1 pseudo-version and the
+  # fix is v0.24.0. That receiver is compiled in whether or not the chart wires a
+  # listener (design/2026-07-27-wider-ingest-compat.md), so the finding sits in
+  # every gateway image regardless of configuration. Drop on the first collector
+  # line that resolves v0.24.0+ by itself.
+  - github.com/apache/thrift => github.com/apache/thrift v0.24.0

@@ -68,6 +68,8 @@ jobs:
             dockerfile: ui/Dockerfile
           - component: gateway
             dockerfile: gateway/Dockerfile
+          - component: agent
+            dockerfile: sensor/agent/Dockerfile
           - component: tdp-estimator
             dockerfile: sensor/tdp-estimator/Dockerfile
     steps:

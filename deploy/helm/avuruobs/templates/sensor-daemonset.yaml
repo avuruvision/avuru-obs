@@ -183,7 +183,7 @@ spec:
         # Node collector — tails container stdout/stderr into the gateway
         # (zero-config logs tier). Runs as root: /var/log/pods is root-owned.
         - name: otel-agent
-          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.agent.image.repository "tag" .Values.sensor.agent.image.tag) }}
+          image: {{ include "avuruobs.image" (dict "registry" .Values.image.registry "repo" .Values.sensor.agent.image.repository "tag" (.Values.sensor.agent.image.tag | default .Chart.AppVersion)) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["--config=/etc/avuru/config.yaml"]
           securityContext:

@@ -1,0 +1,79 @@
+# OpenTelemetry Collector Builder (OCB) manifest for the Avuru node agent —
+# the sensor's per-node collector, built the same way the gateway is and for
+# the same reason: only a distro we build can pin the dependency floors an
+# advisory demands. The stock contrib image cannot, and its CRITICAL
+# (CVE-2026-56854, golang.org/x/crypto) is fixed in NO collector release —
+# 0.159.0 still resolves v0.54.0 against the fixed v0.55.0 — so running it
+# means carrying the finding or allowlisting it in the registry. Neither is
+# a decision to make on an operator's behalf. Build: sensor/agent/Dockerfile
+# (`make agent-image`).
+#
+# This distro tracks the CONTRIB line (0.159.0), not the gateway's 0.154.0:
+# the agent's only exporter is otlphttp to the gateway, so it touches no
+# ClickHouse DDL and moving it re-runs no contract freeze
+# (gateway/schemas/README.md). The component set is exactly what
+# deploy/helm/avuruobs/templates/sensor-config.yaml renders — nothing more,
+# because every extra component is attack surface a node agent does not need.
+dist:
+  name: avuru-agent
+  description: Avuru Obs node agent — the sensor's per-node collector
+  output_path: ./build
+  version: 0.1.0
+
+receivers:
+  # Container stdout/stderr (zero-config logs), with file_storage checkpoints.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.159.0
+  # Node/pod CPU, memory, network from this node's kubelet.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kubeletstatsreceiver v0.159.0
+  # Cluster-scoped objects (requests, limits, allocatable) for the cost module.
+  # Runs behind the leader-elector extension below — a DaemonSet must not have
+  # every node reporting cluster facts.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sclusterreceiver v0.159.0
+  # Scrapes Kepler on 127.0.0.1 for the green module (prometheus/green).
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.159.0
+
+processors:
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.159.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.159.0
+  # Workload names on pod-scoped telemetry (k8s.pod.uid -> deployment/…).
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/k8sattributesprocessor v0.159.0
+  # The collection guardrails: excluded namespaces and the opt-out label are
+  # enforced HERE, at the node, so telemetry an operator refused never leaves it.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.159.0
+  # service.name shaping, and the green module's standard-key mapping.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.159.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/groupbyattrsprocessor v0.159.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.159.0
+
+exporters:
+  # The ONLY exporter: everything goes to the gateway over OTLP/HTTP. No
+  # ClickHouse exporter here — the node agent never writes storage, which is
+  # what lets this distro move independently of the gateway's collector line.
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.159.0
+
+extensions:
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.159.0
+  # filelog offset checkpoints survive agent restarts (no re-ingestion).
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.159.0
+  # Elects the one node that runs k8s_cluster.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/k8sleaderelector v0.159.0
+
+replaces:
+  # Security floor: CVE-2026-56854 (CRITICAL — golang.org/x/crypto/ssh
+  # authentication bypass, source-address restrictions not enforced). NO
+  # collector release carries the fix: 0.159.0 resolves v0.54.0 and the fix is
+  # in v0.55.0. This is the entire reason the node agent has a distro of its
+  # own. Drop it when a collector line ships v0.55.0+ by itself.
+  - golang.org/x/crypto => golang.org/x/crypto v0.55.0
+  # Security floor: CVE-2026-56864 / CVE-2026-56865 (HIGH — golang.org/x/mod,
+  # a malicious GOSUMDB serving arbitrary module content, and a tlog tile
+  # verification bypass). The 0.159.0 line resolves v0.38.0; the fix is v0.40.0.
+  # Reachable only through module-fetching code paths a collector does not run,
+  # but the scan gate is a decision point, not a judgement call. Drop on the
+  # first line that carries v0.40.0+.
+  - golang.org/x/mod => golang.org/x/mod v0.40.0
+  # Security floor: CVE-2026-84304 (HIGH — gRPC-Go). The 0.159.0 line resolves
+  # google.golang.org/grpc v1.83.0 and the fix is v1.83.1; the advisory landed
+  # after that collector line was cut, which is exactly the case a floor exists
+  # for. Drop on the first line that carries v1.83.1+.
+  - google.golang.org/grpc => google.golang.org/grpc v1.83.1

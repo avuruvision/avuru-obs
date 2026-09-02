@@ -1,6 +1,6 @@
 # Thin root dispatcher ONLY — build logic lives in each component
 # (agent_docs/development.md). Keep it that way.
-.PHONY: hub ui ui-image gateway-image check helm-check e2e e2e-compat e2e-helm e2e-ui dev dev-clean version version-set notices sync-hub-chart
+.PHONY: hub ui ui-image gateway-image agent-image check helm-check e2e e2e-compat e2e-helm e2e-ui dev dev-clean version version-set notices sync-hub-chart
 
 COMPOSE := docker compose -f deploy/compose/docker-compose.yaml
 
@@ -57,6 +57,9 @@ ui-image:
 
 gateway-image:
 	docker build -f gateway/Dockerfile -t avuru-obs-gateway:local .
+
+agent-image:
+	docker build -f sensor/agent/Dockerfile -t avuru-obs-agent:local .
 
 # Every in-repo gateway module is its own Go module (OCB resolves them via
 # `replaces`), so each needs building and testing explicitly — a module missing

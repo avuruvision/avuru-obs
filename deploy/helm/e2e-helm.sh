@@ -14,6 +14,7 @@ NS=avuruobs
 HUB_IMG=avuru-obs-hub:local
 UI_IMG=avuru-obs-ui:local
 GW_IMG=avuru-obs-gateway:local
+AGENT_IMG=avuru-obs-agent:local
 TDP_IMG=avuru-obs-tdp-estimator:local
 # Local port the hub is forwarded to. Overridable for dev machines where an
 # unrelated process holds 8080; the test binary follows via AVURUOBS_E2E_HUB_URL.
@@ -42,10 +43,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "==> building hub + ui + gateway + tdp-estimator images"
+echo "==> building hub + ui + gateway + agent + tdp-estimator images"
 docker build -t "$HUB_IMG" -f hub/Dockerfile .
 docker build -t "$UI_IMG" -f ui/Dockerfile .
 docker build -t "$GW_IMG" -f gateway/Dockerfile .
+docker build -t "$AGENT_IMG" -f sensor/agent/Dockerfile .
 docker build -t "$TDP_IMG" -f sensor/tdp-estimator/Dockerfile .
 
 echo "==> pre-building test + seed + compatsend binaries (toolchain time is not the product's clock)"
@@ -62,7 +64,7 @@ DEMO_IMGS=(nginx:1.29-alpine busybox:1.37)
 SENSOR_IMGS=(
   otel/ebpf-instrument:v0.12.2
   otel/opentelemetry-collector-contrib:0.159.0
-  otel/opentelemetry-collector-ebpf-profiler:0.155.0
+  otel/opentelemetry-collector-ebpf-profiler:0.159.0
 )
 # Explicit single platform: kind's ctr import rejects multi-arch manifest
 # lists whose foreign blobs aren't local ("content digest not found").
@@ -92,6 +94,7 @@ kubectl label node "${CLUSTER}-worker" topology.kubernetes.io/zone=zone-b --over
 kind load docker-image "$HUB_IMG" --name "$CLUSTER"
 kind load docker-image "$UI_IMG" --name "$CLUSTER"
 kind load docker-image "$GW_IMG" --name "$CLUSTER"
+kind load docker-image "$AGENT_IMG" --name "$CLUSTER"
 kind load docker-image "$TDP_IMG" --name "$CLUSTER"
 # Public images: docker's containerd store keeps multi-arch manifest lists,
 # which `kind load docker-image` can't import (foreign digests missing) —
@@ -170,6 +173,8 @@ helm install avuruobs deploy/helm/avuruobs -n "$NS" --create-namespace \
   --set sensor.obi.network.enabled=true \
   --set sensor.obi.network.interZone.enabled=true \
   --set modules.cost.enabled=true \
+  --set sensor.agent.image.repository=avuru-obs-agent \
+  --set sensor.agent.image.tag=local \
   --set sensor.agent.cluster.interval=15s \
   --set 'tags.labels.team=team' \
   --set "gateway.forward.otlp.signals={traces}"

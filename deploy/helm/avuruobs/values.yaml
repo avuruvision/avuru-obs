@@ -603,22 +603,22 @@ sensor:
   agent:
     enabled: true
     image:
-      # The agent needs filelog, kubeletstats, k8s_cluster and prometheus —
-      # none of them in the gateway's minimal OCB distro — so it runs the stock
-      # contrib image and tracks contrib's OWN line, no longer in lockstep with
-      # the gateway pin. It can: the agent's only exporter is otlphttp to the
-      # gateway, so it touches no ClickHouse DDL and moving it re-runs no
-      # contract freeze. Newer is the security position, measured rather than
-      # assumed — trivy --ignore-unfixed --severity HIGH,CRITICAL reports
-      # 1 CRITICAL + 14 HIGH on 0.154.0 and 1 CRITICAL + 2 HIGH on 0.159.0.
-      # Gone: x/net, x/text, grpc, stdlib. Left: golang.org/x/mod
-      # (CVE-2026-56864/56865, fixed in v0.40.0) — on both lines, and no
-      # collector release carries the fix yet. The CRITICAL (CVE-2026-56854,
-      # x/crypto) has no upstream fix either: 0.159.0 still resolves v0.54.0
-      # against the fixed v0.55.0. Only the OCB distro can pin those floors,
-      # which is why the gateway does and this image cannot.
-      repository: otel/opentelemetry-collector-contrib
-      tag: "0.159.0"
+      # FIRST-PARTY, like the gateway — and for one reason: CVE-2026-56854
+      # (CRITICAL, golang.org/x/crypto/ssh) is fixed in NO collector release,
+      # so the stock contrib image cannot be made clean by any version bump.
+      # A distro we build can pin the floor; see sensor/agent/ocb-manifest.yaml,
+      # whose component set is exactly what sensor-config.yaml renders.
+      #
+      # It tracks the CONTRIB line (0.159.0), not the gateway's 0.154.0: the
+      # agent's only exporter is otlphttp to the gateway, so it writes no
+      # ClickHouse and moving it re-runs no DDL contract freeze.
+      #
+      # The stock image still works as an override if you would rather run
+      # upstream — `otel/opentelemetry-collector-contrib:0.159.0` accepts this
+      # config unchanged. It scans 1 CRITICAL + 2 HIGH, which a registry with a
+      # block-on-critical policy will refuse to serve.
+      repository: ghcr.io/avuruvision/avuru-obs-agent
+      tag: "" # defaults to .Chart.AppVersion
     logs:
       enabled: true
     # Node/pod CPU, memory, network from the kubelet (Supporting signal tier).
@@ -654,7 +654,13 @@ sensor:
     enabled: false
     image:
       repository: otel/opentelemetry-collector-ebpf-profiler
-      tag: "0.155.0" # pin exact; hub's profilesadapter is pinned to the same line
+      # 0.159.0, not 0.155.0: the older image was Debian-based and scanned SIX
+      # Criticals, five of them with no upstream fix at all (perl,
+      # openssh-client, linux-libc-dev — packages a profiler never executes).
+      # Upstream rebased the image and 0.159.0 carries one: CVE-2026-56854
+      # (x/crypto), the same finding no collector release fixes. It is the only
+      # image the chart pulls that still has one, and it is off by default.
+      tag: "0.159.0" # pin exact; hub's profilesadapter is pinned to the same line
     # 19-29 Hz is the sane production band; higher = more detail, more CPU.
     samplesPerSecond: 20
     resources:
