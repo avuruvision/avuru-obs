@@ -2,7 +2,7 @@
 
 - **Date:** 2026-08-27
 - **Author(s):** Avuru Obs maintainers
-- **Status:** Draft
+- **Status:** Accepted — shipped in v0.11.
 
 ## Summary
 
@@ -214,4 +214,7 @@ Named here so the direction is recorded, each its own change:
 - [x] `GET /api/v1/traces/breakdown`
 - [x] Treemap, donut and exact-numbers table on a Breakdown tab
 - [x] Categorical palette, validated in both modes
-- [ ] Docs site: feature page + API reference (bilingual)
+- [ ] Docs site: feature page + API reference (bilingual). **EN only so far**:
+      `signals/traces.mdx` has no FR mirror, so the French site falls back to
+      English for it. Same gap on `logs`, `metrics` and `profiling` — the four
+      oldest signal pages are the four without a translation.

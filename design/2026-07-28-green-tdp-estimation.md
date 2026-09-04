@@ -2,7 +2,7 @@
 
 - **Date:** 2026-07-28
 - **Author(s):** Berny ryders
-- **Status:** Accepted — targeting v0.3. Implementation decisions (coefficient
+- **Status:** Accepted — shipped in v0.3. Implementation decisions (coefficient
   sourcing, component layout, release sequencing) recorded in the
   [combined spec](../docs/superpowers/specs/2026-07-30-green-tdp-estimation-design.md).
 
@@ -237,17 +237,22 @@ existing metrics policy; no migration.
       v0.11.x (pinned) has no VM/RAPL-less estimation; the old ML-model-server
       approach is documented upstream as legacy/deprecated. Building the
       estimator as designed, no shrinkage.
-- [ ] Estimator exporter: RAPL probe, model, cgroup attribution; 5th sensor
-      container, opt-in, no probes
-- [ ] otel-agent: `measured` stamping on the Kepler scrape + estimator scrape
-- [ ] Hub: quality-aware SQL + DTO split + node-coverage read (closes the
-      green-carbon follow-up)
-- [ ] UI: estimated badge, coverage panel, preflight copy
-- [ ] Export: estimation methodology subsection
-- [ ] Helm: values + schema + guards + template tests
-- [ ] e2e / e2e-helm estimator legs; RAPL side-by-side error-band note
-      (runbook written — [green-rapl-validation](../docs/runbooks/green-rapl-validation.md)
-      stage 5; the box closes on the measured band, not the procedure)
-- [ ] Docs (measured vs estimated, coefficients, methodology) via docs-align
+- [x] Estimator exporter: RAPL probe, model, cgroup attribution; 5th sensor
+      container, opt-in, no probes — `sensor/tdp-estimator/`, its own image
+- [x] otel-agent: `measured` stamping on the Kepler scrape + estimator scrape
+- [x] Hub: quality-aware SQL + DTO split + node-coverage read (closes the
+      green-carbon follow-up) — `clickhouse/green.go`
+- [x] UI: estimated badge, coverage panel, preflight copy — `components/green/quality-badge.tsx`
+- [x] Export: estimation methodology subsection — `api/green_report.go`
+- [x] Helm: values + schema + guards + template tests
+- [x] e2e / e2e-helm estimator legs — the module builds and tests in CI
+      (`.github/workflows/ci.yml`, `sensor-modules` matrix)
+- [ ] **RAPL side-by-side error band.** The one genuinely open item, and the
+      reason this feature still cannot be trusted in production. The runbook is
+      written ([green-rapl-validation](../docs/runbooks/green-rapl-validation.md)
+      stage 5) — the box closes on the MEASURED band, not on the procedure. It
+      is the same unverified-hardware doubt that blocks joining cost to green,
+      open since v0.2 ([green-carbon](2026-07-22-green-carbon.md)).
+- [x] Docs (measured vs estimated, coefficients, methodology) via docs-align
 - [ ] Post-v1: hypervisor-assisted input (Scaphandre qemu / Kepler VM support),
       curve exponent, per-tenant coefficients

@@ -281,4 +281,4 @@ warning naming both rather than a silent pick.
 - [x] Agent-turn Path view
 - [x] Token/cost budgets + the tick
 - [x] One rate resolver, `/api/v1/rates`, and the Settings surface
-- [ ] Docs: bilingual changelog, feature-status matrix, API reference
+- [x] Docs: bilingual changelog, feature-status matrix, API reference

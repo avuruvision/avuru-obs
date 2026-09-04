@@ -2,7 +2,7 @@
 
 - **Date:** 2026-08-13
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted — shipped in v0.5.
 
 > Narrows and supersedes the **API-token seam** section of
 > [2026-07-27 Additional clients](2026-07-27-clients-grafana-cli.md), which
@@ -218,9 +218,19 @@ identity to own a token.
 
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] `auth_token` store (migration, Store methods, fake, integration test)
-- [ ] Bearer branch in `requestIdentity` + resolution in the auth service
-- [ ] `GET/POST/DELETE /api/v1/tokens`, one-time secret, admin visibility
-- [ ] Settings → Access tokens panel
-- [ ] e2e, CHANGELOG, docs-align (EN + FR)
+- [x] AEP accepted
+- [x] `auth_token` store (migration, Store methods, fake, integration test) —
+      `0018_auth_tokens.sql`, `clickhouse/authtoken.go`,
+      `clickhouse/authtoken_integration_test.go`
+- [x] Bearer branch in `requestIdentity` + resolution in the auth service —
+      `api/auth_middleware.go`, `auth/apitoken.go`
+- [x] `GET/POST/DELETE /api/v1/tokens`, one-time secret, admin visibility
+- [x] Settings → Access tokens panel — `ui/src/components/settings/api-tokens-card.tsx`
+- [x] CHANGELOG, docs-align (EN + FR)
+- [ ] **e2e.** Still genuinely open, and worth naming rather than burying: the
+      feature shipped in v0.5 and has no end-to-end test on either side — no Go
+      case under `e2e/`, no Playwright spec. The panel already carries
+      `data-testid` hooks (`api-tokens-card`, `api-tokens-empty`,
+      `api-tokens-list`), so a spec was intended and never written. This matters
+      more since v0.12: the MCP server authenticates with these tokens, so they
+      are now the credential a whole client surface depends on.
