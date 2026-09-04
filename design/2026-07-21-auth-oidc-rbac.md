@@ -2,7 +2,7 @@
 
 - **Date:** 2026-07-21
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted — shipped in v0.2 (OIDC SSO, RBAC) and v0.3 (per-project ingest keys).
 
 ## Summary
 

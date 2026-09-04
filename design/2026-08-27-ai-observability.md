@@ -269,7 +269,7 @@ missing count is not a zero.
 - [x] Gateway content redaction — default on, ungated by the module
 - [x] Prices as chart values, absent by default
 - [x] UI: the AI screen, the content warning, the module gate
-- [ ] Docs site: feature page + setup note (bilingual)
+- [x] Docs site: feature page + setup note (bilingual) — `signals/ai.mdx`, EN + FR
 
 ## Follow-ups
 

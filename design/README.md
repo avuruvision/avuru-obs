@@ -46,19 +46,19 @@ only if the design needs to be pinned down before coding.
 | [2026-07-19](2026-07-19-alerting.md) | Alerting — webhook notifications on service-health transitions | Accepted |
 | [2026-07-19](2026-07-19-network-health.md) | Network health on the service map — per-edge RTT + connection failures | Accepted |
 | [2026-07-20](2026-07-20-endpoint-checks.md) | Endpoint checks — health when there is no traffic | Accepted |
-| [2026-07-21](2026-07-21-auth-oidc-rbac.md) | Authentication, RBAC and per-project ingest keys | Draft |
+| [2026-07-21](2026-07-21-auth-oidc-rbac.md) | Authentication, RBAC and per-project ingest keys | Accepted |
 | [2026-07-22](2026-07-22-green-carbon.md) | Green — per-service energy and carbon attribution (Kepler) | Accepted |
 | [2026-07-27](2026-07-27-projects-completion.md) | Projects completion — CRUD, per-project retention, status, chart toggles | Accepted |
-| [2026-07-27](2026-07-27-collection-control-plane.md) | Runtime collection control plane — switch collection from the UI | Draft |
+| [2026-07-27](2026-07-27-collection-control-plane.md) | Runtime collection control plane — switch collection from the UI | Accepted |
 | [2026-07-27](2026-07-27-wider-ingest-compat.md) | Wider ingest compatibility — Jaeger/Zipkin/Prometheus/Loki + forwarding | Accepted |
-| [2026-07-27](2026-07-27-auto-tagging.md) | Richer auto-tagging — K8s labels/annotations as business tags | Draft |
-| [2026-07-27](2026-07-27-clients-grafana-cli.md) | Additional clients — Grafana data source + CLI + API tokens | Draft |
-| [2026-07-28](2026-07-28-declared-service-metadata.md) | Declared service metadata — self-service tier, environment, and domain | Draft |
+| [2026-07-27](2026-07-27-auto-tagging.md) | Richer auto-tagging — K8s labels/annotations as business tags | Accepted |
+| [2026-07-27](2026-07-27-clients-grafana-cli.md) | Additional clients — Grafana data source + CLI + API tokens | Accepted |
+| [2026-07-28](2026-07-28-declared-service-metadata.md) | Declared service metadata — self-service tier, environment, and domain | Accepted |
 | [2026-07-28](2026-07-28-green-tdp-estimation.md) | Green TDP estimation — modeled energy for RAPL-less nodes | Accepted |
 | [2026-08-06](2026-08-06-users-crud-password.md) | Users CRUD completion — delete, password management, role editing | Accepted |
 | [2026-08-07](2026-08-07-service-groups-crud.md) | Service groups authored in the UI | Accepted |
-| [2026-08-13](2026-08-13-api-tokens.md) | API tokens — non-interactive access on the same identity | Draft |
-| [2026-08-18](2026-08-18-inter-zone-traffic.md) | Inter-zone traffic accounting — bytes by zone pair from kernel flows | Draft |
+| [2026-08-13](2026-08-13-api-tokens.md) | API tokens — non-interactive access on the same identity | Accepted |
+| [2026-08-18](2026-08-18-inter-zone-traffic.md) | Inter-zone traffic accounting — bytes by zone pair from kernel flows | Accepted |
 | [2026-08-23](2026-08-23-service-map-transport.md) | Transport workloads on the service map — stop drawing mesh hops as dependencies | Accepted |
 | [2026-08-23](2026-08-23-virtual-targets.md) | Virtual targets — databases, caches and brokers on the map | Accepted |
 | [2026-08-24](2026-08-24-map-encoding.md) | A map that carries more meaning — boundaries, edge volume, undetected peers | Accepted |
@@ -67,7 +67,7 @@ only if the design needs to be pinned down before coding.
 | [2026-08-26](2026-08-26-cost-and-waste.md) | Cost and waste — reserved versus used | Accepted |
 | [2026-08-26](2026-08-26-transport-from-labels.md) | Transport classified from Kubernetes labels | Accepted |
 | [2026-08-26](2026-08-26-control-plane-diagnosis.md) | Why the control plane is silent — three states, not one | Accepted |
-| [2026-08-27](2026-08-27-trace-analytics.md) | Trace analytics — grouped breakdowns over spans | Draft |
+| [2026-08-27](2026-08-27-trace-analytics.md) | Trace analytics — grouped breakdowns over spans | Accepted |
 | [2026-08-27](2026-08-27-ai-observability.md) | AI observability — the model calls you are already sending | Accepted |
 | [2026-08-30](2026-08-30-agents-budgets-and-rates.md) | Agents, budgets, and one rate table — the spend you can act on | Accepted |
 | [2026-09-01](2026-09-01-mcp-server.md) | A Model Context Protocol server — the estate an agent can read | Accepted |

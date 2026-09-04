@@ -235,5 +235,5 @@ cytoscape edge data.
       optional metric was taking traces and flows down with it. That is the
       third distinct way this feature has been wrong while looking right on
       paper, and the reason the caveat above was worth keeping open
-- [ ] Docs (service-map page, network-health config) via docs-align
+- [x] Docs (service-map page, network-health config) via docs-align
 - [ ] Later: per-reason failure breakdown, edge-health alerting (feeds the alerting module), `stats_tcp_io` byte counters if a use case justifies the event volume
