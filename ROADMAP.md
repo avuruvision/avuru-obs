@@ -254,7 +254,26 @@ one. And **root-cause summaries from a model** remain out, because they would
 be the first outbound network call in a product whose whole promise is that
 nothing leaves the cluster — a release-level decision, not a corner of one.
 
-## Beyond v0.12 (directional)
+## v0.13 — dependencies you can see — SHIPPED (v0.13.0)
+
+Not a themed line. v0.13 is what was ready, and the two things that were have
+nothing in common except being the follow-through on work an earlier line left
+standing.
+
+> **As a team we can see the shape around a service at a glance, and install
+> the product without a registry being told to ignore a vulnerability.**
+
+| Theme | Shipped |
+|---|---|
+| **A service's neighbourhood, drawn** | The service page has named callers and dependencies since v0.8, as two tables sorted by volume. A list cannot show shape — that one caller carries all of the traffic, that a single dependency is the one going red, that a hop exists only because the hub walked a trace across a mesh proxy. The Overview tab now opens on a fixed left-to-right diagram of the same edges the tables already held, each arrow labelled with that path's rate and caller-side p95, and it costs no extra request. Everything the tables refused to claim the diagram refuses too: a hop recovered across a proxy reads `via <proxy>`, an edge nobody timed carries no latency rather than `0ms`, and a peer that never sent a span is outlined rather than filled |
+| **No image an install pulls needs an allowlist** | v0.12 closed the gateway's Criticals with an OCB distro pinning floors upstream does not carry. The node agent could not follow: it needs contrib-only receivers, and CVE-2026-56854 (`x/crypto/ssh`) is fixed in no collector release. It gets a distro of its own, built the same way, carrying exactly the components its rendered config uses and nothing else. Every image the chart pulls by default now scans free of a fixable Critical or High, so the registry policy that blocks Criticals has nothing left to except — and the exceptions that remain are named in the values file rather than hidden in a registry |
+
+The line also repaired a link that had been quietly wrong since v0.8: "Show on
+the map" passed the service as a *filter*, which kept that one node and dropped
+every edge it had, landing the reader on an isolated dot on the one screen whose
+whole subject is connections.
+
+## Beyond v0.13 (directional)
 
 - **Read a second control plane**, once someone running one can say which of its
   signals answer the four questions the Istio card answers — and which of them
