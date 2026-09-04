@@ -6,6 +6,12 @@ lives in [`agent_docs/architecture.md`](agent_docs/architecture.md); this file
 is the human-readable summary for contributors and users. Larger items graduate
 into [Avuru Enhancement Proposals](design/README.md) before implementation.
 
+**How a section is written.** While a line is open its heading carries
+`— PLANNED` and its table column reads `Planned`. Cutting the release flips
+**both**: the heading to `— SHIPPED (vX.Y.0)` and the column to `Shipped`. They
+are one edit, not two — v0.12 shipped with its heading flipped and its column
+left saying `Planned`, which is the failure this note exists to prevent.
+
 ## North star
 
 > Fresh Kubernetes cluster → live service map in **under 5 minutes**, zero app
@@ -237,7 +243,7 @@ that turned out to be wrong.
 > **As a team we can see the shape of what our agents actually do, get told
 > when spend crosses a line we set, and write down what things cost once.**
 
-| Theme | Planned |
+| Theme | Shipped |
 |---|---|
 | **Tool calls are not model calls** | The release opens with a defect. The AI module decides what counts as a model call by testing that `gen_ai.operation.name` is *present*, never looking at its value — but `execute_tool`, `invoke_agent` and `create_agent` are legal values of that attribute too, so on an agent workload every tool execution is counted as a call to a model. Call counts inflate, latency quantiles mix a database lookup with a completion, the model resolves to nothing, and the "reported no usage" bucket — which exists to name an instrumentation gap honestly — fills with spans that were never model calls at all. Splitting the population by operation class restores all four — [AEP](design/2026-08-30-agents-budgets-and-rates.md) |
 | **An agent turn is a shape** | Once tools are told apart they are worth drawing. An agent turn is a small graph — a model call that decides, a fan-out to tools, results coming back, often another model call after — and the questions worth asking about it are graph questions: which tool is slow, which fails, how many hops before it converges, which one a retry loop is stuck on. The renderer already exists: the Path view weights each node by the time spent *inside* it, which is exactly right when the model-call span contains its tool spans. A tool a turn hit four times is one node with a count, because the loop is the thing worth seeing |
@@ -273,7 +279,52 @@ the map" passed the service as a *filter*, which kept that one node and dropped
 every edge it had, landing the reader on an isolated dot on the one screen whose
 whole subject is connections.
 
-## Beyond v0.13 (directional)
+## v0.14 — the estate an agent can reach — PLANNED
+
+v0.12 said an agent can read the estate, and it could — over a token a person
+had to mint and paste by hand, from a server nothing routed, describing a meshed
+cluster differently from the way the screens describe it. Every one of those is
+a gap between what the release claimed and what an operator got.
+
+The `Beyond` list below is not where this line comes from, and that is worth
+saying plainly: all six of its items are waiting on someone or something outside
+this tree. What is actually unblocked is the MCP server's own follow-through.
+
+> **As a team we can point our own assistant at this install, signed in the way
+> every other client signs in, and have it read the same dependencies — and the
+> same time — that our screens show.**
+
+| Theme | Planned |
+|---|---|
+| **Signed in like everything else** | The release-defining item: OAuth 2.1, so a hosted client can connect at all. Today `/mcp` takes a personal API token in a header, which serves Claude Code and the CLI and cannot serve a claude.ai connector — the client that the whole "off by default, because what an agent reads leaves your cluster" warning was written for. The hub becomes the authorization server: discovery metadata, dynamic client registration, authorization code with PKCE, short-lived tokens, and a consent screen backed by the existing login session that says in plain words which project is being shared and that log bodies leave the installation. Tokens stay opaque and audience-bound, so an MCP credential can never be replayed against the rest of the API — [AEP](design/2026-09-01-mcp-server.md) |
+| **The dependency behind the proxy, for an agent too** | v0.9's release-defining item taught the map to report the dependency underneath a mesh hop instead of the hop. `service_context` never learned it: it labels a transport counterpart rather than collapsing it, so on a meshed install an agent and a person asking the same question get different answers. The fix is not a second implementation — the collapse moves out of the map's handler into one place both callers use — [AEP](design/2026-09-01-mcp-server.md), [hop collapse](design/2026-08-25-transport-hop-collapse.md) |
+| **One answer to "where did the time go"** | The hub computes per-service self time for `get_trace`; the Path view computes the same thing again in the browser. Same weighting, two implementations, and they have already drifted — the hub's copy counts only a raw error status, while the UI and the hub's own SQL both treat an `Unset` span carrying 5xx as an error and name a third outcome, `refused`. One rollup, computed once, on the response the Path view already fetches — [AEP](design/2026-09-01-mcp-server.md) |
+
+The line also carries three repairs found while planning it, none big enough to
+be a theme. **`/mcp` reached nothing on a Helm install** — the Ingress routes
+`/api` and `/healthz` to the hub and everything else to the UI, and no rule
+covered the one path the protocol owns, so the endpoint v0.12 announced answered
+with the UI's 404 page for its whole life. **The v0.13 neighbourhood diagram
+drew a proxy as a caller**, taking the map's raw edge set without the view rule
+that decides between a recovered dependency and the hops it was recovered from.
+And **the release images are cross-compiled instead of emulated**: building a
+collector distro for arm64 under QEMU took 37 minutes for the gateway and over
+an hour for the node agent, which is what stood between a pushed tag and a
+published Release — and what made a patch release something to avoid.
+
+**Deliberately not in this list**, each for a reason that already exists in the
+tree. **Cost joined to green** stays blocked on the real-RAPL confirmation open
+since v0.2: green's Kepler read has never been checked against hardware, and
+joining it to cost's CI-proven numbers would launder that doubt rather than
+resolve it. **Reading a second control plane** still needs an operator running
+one to say which of its signals answer the questions the Istio card answers.
+**Scripted multi-step check journeys** were gated on demand appearing, and none
+has — there is not an open issue in the repository. **Root-cause summaries from
+a model** remain out, for the same release-level reason they were out of v0.12:
+they would be the first outbound network call in a product whose whole promise
+is that nothing leaves the cluster.
+
+## Beyond v0.14 (directional)
 
 - **Read a second control plane**, once someone running one can say which of its
   signals answer the four questions the Istio card answers — and which of them
