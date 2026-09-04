@@ -47,6 +47,19 @@ spec:
                 name: {{ include "avuruobs.fullname" . }}-hub
                 port:
                   number: 80
+          {{- /* MCP owns its path: an MCP client is configured with a server
+                 URL, so the protocol's endpoint cannot live under /api. Without
+                 this rule it falls through to the UI below and an agent gets
+                 the static export's 404 instead of the hub. */}}
+          {{- if .Values.modules.mcp.enabled }}
+          - path: /mcp
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "avuruobs.fullname" . }}-hub
+                port:
+                  number: 80
+          {{- end }}
           {{- end }}
           {{- if .Values.ui.enabled }}
           - path: /

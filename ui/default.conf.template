@@ -49,4 +49,17 @@ server {
     location = /healthz {
         proxy_pass http://${HUB_UPSTREAM};
     }
+
+    # MCP → hub. An MCP client is configured with a server URL, so the protocol
+    # owns its path and cannot sit under /api — without this it would fall into
+    # `location /` above and an agent would get the static export's 404. Exact
+    # match: /mcp is the whole endpoint, and nothing else hangs off it.
+    # Unconditional here, unlike the Ingress rule: with the module off the hub
+    # 404s, which is the honest answer, and nginx has no view of hub modules.
+    # Host is forwarded for the same CSRF reason as /api/ above.
+    location = /mcp {
+        proxy_pass http://${HUB_UPSTREAM};
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
 }
