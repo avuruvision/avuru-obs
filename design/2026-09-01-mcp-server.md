@@ -275,12 +275,10 @@ included. Three obligations ship with it, and none is optional:
 - [x] Module registered (born OFF) + protocol skeleton behind Bearer
 - [x] The six tools, bounded responses, and the audit line
 - [x] e2e case + chart template test
-- [ ] `service_context` recovers mesh-hidden dependencies. Today a transport
-      counterpart is LABELLED (`role: "transport"`) rather than collapsed back
-      into the app→app dependency the service map recovers
-      ([AEP](2026-08-25-transport-hop-collapse.md)). Reimplementing that merge
-      for this client would be a second set of semantics to keep in step with
-      the first, so it is a follow-up rather than part of the first server.
+- [x] `service_context` recovers mesh-hidden dependencies — and not as a second
+      set of semantics: the merge moved out of the service-map handler into
+      `hub/internal/topology`, so both surfaces call the same functions
+      ([AEP](2026-08-25-transport-hop-collapse.md)).
 - [ ] The Path view reads the hub's self-time instead of computing its own
 - [ ] OAuth 2.1 for claude.ai connectors (own PR, own review)
 - [x] Docs: bilingual changelog, feature-status matrix, API reference

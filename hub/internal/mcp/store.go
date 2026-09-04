@@ -13,6 +13,11 @@ import (
 type Store interface {
 	ListServices(ctx context.Context, q storage.ServiceQuery) ([]storage.ServiceStats, error)
 	ServiceEdges(ctx context.Context, q storage.ServiceQuery) ([]storage.ServiceEdge, error)
+	// CollapsedEdges recovers the app→app dependencies a service mesh hides,
+	// by walking each trace's ancestry across the proxies named in `transport`.
+	// The service map has read it since v0.9; service_context reads the same
+	// rows so the two surfaces describe a meshed estate identically.
+	CollapsedEdges(ctx context.Context, q storage.ServiceQuery, transport []string) ([]storage.ServiceEdge, error)
 	SearchTraces(ctx context.Context, q storage.TraceQuery) (storage.TracePage, error)
 	GetTrace(ctx context.Context, tenants []string, traceID string) (storage.Trace, error)
 	SearchLogs(ctx context.Context, q storage.LogQuery) (storage.LogPage, error)

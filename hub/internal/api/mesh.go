@@ -7,6 +7,7 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
+	"github.com/avuru/avuru-obs/hub/internal/topology"
 )
 
 // meshProxyDTO is one transport workload's own RED, plus the load it carries.
@@ -89,7 +90,7 @@ func (a *API) handleMeshProxies(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	cls := a.topologyClassifier().WithEvidence(labelledTransport(services))
+	cls := a.topologyClassifier().WithEvidence(topology.LabelledTransport(services))
 	in := map[string]uint64{}
 	out := map[string]uint64{}
 	for _, e := range edges {
