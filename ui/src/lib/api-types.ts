@@ -229,11 +229,22 @@ export interface Span {
   events?: SpanEvent[];
 }
 
+/** Where a trace's time went, per service — computed by the hub, not the browser. */
+export interface TraceServiceStats {
+  service: string;
+  selfTimeMs: number;
+  spanCount: number;
+  errorCount: number;
+  /** A server 4xx: the caller was turned away. Counted apart from errors. */
+  refusedCount: number;
+}
+
 export interface TraceResponse {
   traceId: string;
   startTime: string;
   durationMs: number;
   spans: Span[];
+  services: TraceServiceStats[];
 }
 
 export interface HeatmapCell {
