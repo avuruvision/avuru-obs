@@ -1320,4 +1320,26 @@ after="$(grep -c '^kind: Deployment' <<<"$out" || true)"
 [ "$before" = "$after" ] || fail "mcp added a Deployment ($before -> $after)"
 ok "module entry renders; component count unchanged"
 
+echo "== mcp: the endpoint is actually routed"
+# The regression this guards: /mcp is not under /api, so the hub-facing rules
+# do not cover it and it fell through to the UI. The e2e suite could not catch
+# it — compose publishes the hub directly, bypassing both the Ingress and the
+# UI's nginx.
+out="$(render --set ingress.enabled=true)"
+grep -q 'path: /mcp' <<<"$out" && fail "/mcp routed without modules.mcp.enabled"
+ok "no /mcp rule while the module is off"
+
+out="$(render --set ingress.enabled=true --set modules.mcp.enabled=true)"
+grep -q 'path: /mcp' <<<"$out" || fail "/mcp has no Ingress rule, so an agent gets the UI's 404"
+# It must reach the HUB, and it must be matched before the catch-all that sends
+# everything else to the UI.
+grep -A4 'path: /mcp' <<<"$out" | grep -q -- '-hub' || fail "/mcp is routed somewhere other than the hub"
+# Ingress rules only: the "- path:" list form. A bare "path: /" also appears in
+# every httpGet probe, which is not what is being ordered here.
+mcp_line="$(grep -n -- '- path: /mcp' <<<"$out" | head -1 | cut -d: -f1)"
+ui_line="$(grep -n -- '- path: /$' <<<"$out" | head -1 | cut -d: -f1)"
+[ -n "$ui_line" ] && [ "$mcp_line" -lt "$ui_line" ] \
+  || fail "/mcp is ordered after the UI catch-all ($mcp_line vs $ui_line)"
+ok "/mcp reaches the hub, ahead of the UI catch-all"
+
 echo "ALL TEMPLATE ASSERTIONS PASSED"

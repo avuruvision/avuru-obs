@@ -11,6 +11,26 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The MCP server is now reachable on a Helm install.** The server shipped in
+  v0.12 as one handler on the hub at `POST /mcp` — and nothing routed it. The
+  Ingress sends `/api` and `/healthz` to the hub and everything else to the UI,
+  and the UI's nginx proxies the same two prefixes, so `/mcp` fell through to
+  the static export and an agent got a 404 page instead of a tool list. The
+  endpoint cannot live under `/api`: an MCP client is configured with a server
+  URL, so the protocol owns its path.
+
+  Both layers now route it — the Ingress when `modules.mcp.enabled` is on, and
+  nginx unconditionally, so a port-forward or a single-service exposure works
+  too. With the module off the hub answers 404 itself, which is the honest
+  answer rather than a rule that hides one.
+
+  Nothing caught this because the one place MCP is tested end-to-end is the
+  compose stack, which publishes the hub directly and so bypasses both layers.
+  The template tests now assert that `/mcp` reaches the hub and is matched
+  ahead of the catch-all that serves the UI.
+
 ## [0.13.0] — 2026-09-04
 
 ### Added
