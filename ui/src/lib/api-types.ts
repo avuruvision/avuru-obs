@@ -1235,3 +1235,35 @@ export interface RatesResponse {
   updatedAt?: string;
   updatedBy?: string;
 }
+
+/** What the OAuth consent screen shows. Nothing here is verified except the
+ *  project list, which comes from the signed-in person's own grants. */
+export interface ConsentView {
+  clientId: string;
+  clientName: string;
+  /** Always false: a self-registered client's name cannot be verified. */
+  clientVerified: boolean;
+  /** The host the client will be sent back to — the one checkable fact. */
+  redirectHost: string;
+  firstUse: boolean;
+  scopes: string[];
+  projects: string[];
+  defaultProject: string;
+  resource: string;
+}
+
+/** One application a person has connected, in Settings → Access. */
+export interface OAuthGrant {
+  id: string;
+  clientId: string;
+  /** Self-declared at registration and never verified — shown because it is
+   *  what the person saw when they consented, not because it is trustworthy. */
+  clientName: string;
+  project: string;
+  scopes: string;
+  createdAt: string;
+}
+
+export interface OAuthGrantsResponse {
+  grants: OAuthGrant[];
+}

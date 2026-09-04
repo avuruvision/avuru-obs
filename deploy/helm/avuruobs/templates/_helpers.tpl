@@ -369,10 +369,25 @@ http://{{ include "avuruobs.fullname" . }}-hub:80/internal/v1/ingest-keys/valida
       name: {{ .Values.auth.oidc.existingSecret | default (printf "%s-oidc" (include "avuruobs.fullname" .)) }}
       key: oidc-client-secret
 {{- end }}
-{{- if .Values.auth.oidc.publicUrl }}
-- name: AVURUOBS_PUBLIC_URL
-  value: {{ .Values.auth.oidc.publicUrl | quote }}
 {{- end }}
+{{- end -}}
+
+{{/* The install's external base URL, from the top-level `publicUrl` with the
+     older `auth.oidc.publicUrl` still honoured.
+
+     It was only ever emitted inside oidcEnv, i.e. only when SSO was on — yet
+     the hub has always read it for trustedOrigins regardless, and the OAuth
+     authorization server must advertise absolute URLs whether or not this
+     install uses SSO. So it moves out of the OIDC block and is emitted
+     whenever it is set. */}}
+{{- define "avuruobs.publicUrl" -}}
+{{- default .Values.auth.oidc.publicUrl .Values.publicUrl | trim -}}
+{{- end -}}
+
+{{- define "avuruobs.publicUrlEnv" -}}
+{{- with (include "avuruobs.publicUrl" .) }}
+- name: AVURUOBS_PUBLIC_URL
+  value: {{ . | quote }}
 {{- end }}
 {{- end -}}
 
@@ -544,4 +559,35 @@ http://{{ include "avuruobs.fullname" . }}-hub:80/internal/v1/ingest-keys/valida
      guarantee the default is there to protect. */}}
 {{- define "avuruobs.ingestTenantStamp" -}}
 {{- if eq .Values.auth.ingest.mode "enforce" -}}true{{- end -}}
+{{- end -}}
+
+{{/* OAuth for the MCP server cannot half-work, so the impossible combinations
+     are refused at template time rather than producing an install that returns
+     404 or advertises a URL nobody can reach. Same shape as the ingress and
+     OIDC guards. */}}
+{{- define "avuruobs.mcpOAuthEnabled" -}}
+{{- if .Values.modules.mcp.oauth.enabled -}}
+{{- if not .Values.modules.mcp.enabled -}}
+{{- fail "modules.mcp.oauth.enabled=true but modules.mcp.enabled=false: OAuth exists to let a client reach the MCP server, and there is no MCP server to reach." -}}
+{{- end -}}
+{{- if not .Values.auth.enabled -}}
+{{- fail "modules.mcp.oauth.enabled=true but auth.enabled=false: the authorization server issues tokens that resolve a USER's permissions, and this install has no users." -}}
+{{- end -}}
+{{- if not (include "avuruobs.publicUrl" .) -}}
+{{- fail "modules.mcp.oauth.enabled=true but publicUrl is empty: OAuth metadata must advertise absolute URLs, and a client discovers this server by fetching them. Set publicUrl to the install's external base URL." -}}
+{{- end -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/* MCP OAuth env for the hub. Including this is also what RUNS the guards
+     above — a `define` that nothing includes never executes, so the impossible
+     combinations would render happily. */}}
+{{- define "avuruobs.mcpOAuthEnv" -}}
+{{- if include "avuruobs.mcpOAuthEnabled" . }}
+- name: AVURUOBS_MCP_OAUTH_ENABLED
+  value: "true"
+- name: AVURUOBS_MCP_OAUTH_DCR_ENABLED
+  value: {{ .Values.modules.mcp.oauth.dynamicRegistration | quote }}
+{{- end }}
 {{- end -}}

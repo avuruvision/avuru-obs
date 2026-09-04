@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/auth"
+	"github.com/avuru/avuru-obs/hub/internal/oauth"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
@@ -111,6 +113,18 @@ func (a *API) securedAdmin(fn func(http.ResponseWriter, *http.Request) error) ht
 // the only honest answer. (See design/2026-08-13-api-tokens.md, "The seam".)
 func (a *API) requestIdentity(w http.ResponseWriter, r *http.Request) (*auth.Identity, error) {
 	if raw, ok := bearerToken(r); ok {
+		// An OAuth access token is REFUSED here, on every route that uses this
+		// function — which is every route in the router except POST /mcp.
+		//
+		// Inverted on purpose. The rule is "an MCP credential works against the
+		// MCP resource and nothing else", and stating it as a refusal in the
+		// shared path means a route added next year is covered by default,
+		// whereas an allow-list would have to be remembered. The one function
+		// that accepts these tokens is requestIdentityForResource below, and it
+		// checks the audience before it returns.
+		if strings.HasPrefix(raw, auth.OAuthAccessPrefix) {
+			return nil, unauthorized()
+		}
 		id, err := a.cfg.Auth.IdentityFromAPIToken(r.Context(), raw)
 		if err == nil {
 			a.touchAPIToken(r.Context(), raw)
@@ -335,6 +349,21 @@ func (a *API) project(r *http.Request, min auth.Role) (string, error) {
 	if t == "" {
 		t = storage.DefaultTenant
 	}
+	// An OAuth token names the project its owner consented to, and that wins.
+	// A hosted MCP client cannot set X-Avuru-Tenant, so without this every
+	// connector would silently read the default project and be useless on a
+	// multi-project install. A header naming a DIFFERENT project is refused
+	// rather than quietly overridden: the token says what was consented to, and
+	// disagreeing with it is a caller error, not a preference.
+	//
+	// This narrows within the owner's live grants — the CanAccess check below
+	// still runs — so it is not a second authorization system to keep in step.
+	if b := oauthBindingFrom(r.Context()); b != nil && b.Project != "" {
+		if r.Header.Get("X-Avuru-Tenant") != "" && r.Header.Get("X-Avuru-Tenant") != b.Project {
+			return "", forbidden("this credential is scoped to project %q", b.Project)
+		}
+		t = b.Project
+	}
 	id := identityFrom(r.Context())
 	if id == nil {
 		return t, nil
@@ -359,4 +388,161 @@ func (a *API) projectTenants(r *http.Request, min auth.Role) (project string, te
 		return "", nil, err
 	}
 	return project, tenants, nil
+}
+
+// oauthKey carries the OAuth binding through the request context.
+//
+// Separate from identityKey on purpose: auth.Identity is the enterprise seam
+// and is serialized to every client by /auth/me, so an OAuth concept has no
+// business on it. Absent for a session or an API token, which is exactly what
+// makes "is this an OAuth request" answerable.
+type oauthKey struct{}
+
+func oauthBindingFrom(ctx context.Context) *auth.OAuthBinding {
+	b, _ := ctx.Value(oauthKey{}).(*auth.OAuthBinding)
+	return b
+}
+
+// requestIdentityForResource is the ONLY path that accepts an OAuth access
+// token, and it accepts one only for the resource it was minted for.
+//
+// Everything else — secured, authenticated, securedAdmin — goes through
+// requestIdentity, which refuses these tokens outright. A route is covered by
+// default; opting in is deliberate and visible.
+func (a *API) requestIdentityForResource(w http.ResponseWriter, r *http.Request, resource string) (*auth.Identity, *auth.OAuthBinding, error) {
+	raw, ok := bearerToken(r)
+	if !ok || !strings.HasPrefix(raw, auth.OAuthAccessPrefix) {
+		// Not an OAuth credential: fall back to the ordinary rules, so a
+		// personal API token and a browser session keep working exactly as
+		// they did before OAuth existed.
+		id, err := a.requestIdentity(w, r)
+		return id, nil, err
+	}
+	id, binding, err := a.cfg.Auth.IdentityFromOAuthToken(r.Context(), raw)
+	if err != nil {
+		// Same distinction every other branch draws: only ErrNotFound means
+		// the credential is bad. A store blip must read as 503, not as "go
+		// re-authenticate".
+		if !errors.Is(err, storage.ErrNotFound) {
+			return nil, nil, errStoreUnavailable
+		}
+		return nil, nil, unauthorized()
+	}
+	// The audience check. A token minted for one resource must not be
+	// replayable against another, and the comparison is against the row read
+	// this request rather than anything the caller supplied.
+	if binding.Resource != resource {
+		return nil, nil, unauthorized()
+	}
+	if !scopeAllows(binding.Scope, scopeMCPRead) {
+		return nil, nil, forbidden("this credential does not carry the %s scope", scopeMCPRead)
+	}
+	a.touchOAuthToken(r.Context(), raw)
+	return &id, &binding, nil
+}
+
+// scopeMCPRead is the only scope this server issues today. Read-only, and named
+// so that a wider one later is a visible addition rather than a silent widening.
+const scopeMCPRead = "mcp:read"
+
+// scopeAllows reports whether a space-delimited scope string contains want.
+func scopeAllows(scope, want string) bool {
+	for _, s := range strings.Fields(scope) {
+		if s == want {
+			return true
+		}
+	}
+	return false
+}
+
+// touchOAuthToken records last use through the same debounce API tokens use —
+// an access token is presented on every tool call, and a write per call would
+// turn a read path into a write path.
+func (a *API) touchOAuthToken(ctx context.Context, raw string) {
+	hash := auth.HashAPIToken(raw)
+	if !a.lastUsed.ShouldTouch(hash, time.Now()) {
+		return
+	}
+	st, err := a.store()
+	if err != nil {
+		return
+	}
+	if err := st.TouchOAuthToken(ctx, hash, time.Now()); err != nil {
+		slog.Debug("recording OAuth token last-use failed", "error", err)
+	}
+}
+
+// securedResource is secured() for a route that owns its own OAuth audience.
+// Only POST /mcp uses it.
+//
+// A 401 from here carries the RFC 9728 WWW-Authenticate challenge, which is how
+// an MCP client discovers where to authenticate: without it a connector sees a
+// bare 401 and has nowhere to go.
+func (a *API) securedResource(min auth.Role, resource func(*http.Request) string, fn func(http.ResponseWriter, *http.Request) error) http.Handler {
+	return guarded{minRole: min, Handler: handle(func(w http.ResponseWriter, r *http.Request) error {
+		if a.cfg.Auth == nil {
+			return fn(w, r)
+		}
+		if err := a.checkOrigin(r); err != nil {
+			return err
+		}
+		res := resource(r)
+		id, binding, err := a.requestIdentityForResource(w, r, res)
+		if err != nil {
+			// The RFC 9728 challenge goes on the 401 itself: it is how a client
+			// that has never seen this server discovers where to authenticate.
+			// Identified by status rather than by sentinel, because
+			// unauthorized() builds a fresh error each time.
+			var ae *apiError
+			if errors.As(err, &ae) && ae.status == http.StatusUnauthorized {
+				a.setResourceChallenge(w, res)
+			}
+			return err
+		}
+		if !holdsAnywhere(*id, min) {
+			return forbidden("requires %s on at least one project", min)
+		}
+		ctx := context.WithValue(r.Context(), identityKey{}, id)
+		if binding != nil {
+			ctx = context.WithValue(ctx, oauthKey{}, binding)
+		}
+		return fn(w, r.WithContext(ctx))
+	})}
+}
+
+// setResourceChallenge writes the RFC 9728 WWW-Authenticate challenge.
+//
+// This header is the entire discovery bootstrap: a client that has never seen
+// this server gets a 401, reads resource_metadata, fetches that document, finds
+// the authorization server and starts the flow. Without it a connector sees a
+// bare 401 and has nowhere to go — which is why it is set on the 401 rather
+// than only advertised somewhere a client would have to already know about.
+func (a *API) setResourceChallenge(w http.ResponseWriter, resource string) {
+	meta := a.protectedResourceMetadataURL(resource)
+	if meta == "" {
+		// No public URL configured, so there is no absolute document to point
+		// at. A challenge naming an unreachable URL is worse than none.
+		w.Header().Set("WWW-Authenticate", `Bearer realm="avuru-obs", error="invalid_token"`)
+		return
+	}
+	w.Header().Set("WWW-Authenticate", fmt.Sprintf(
+		`Bearer realm="avuru-obs", error="invalid_token", error_description=%q, resource_metadata=%q`,
+		"the credential is missing, expired, or not valid for this resource", meta))
+}
+
+// protectedResourceMetadataURL is where a client can read what this resource is
+// and who guards it. Empty when no public URL is configured: a challenge naming
+// a URL nobody can fetch is worse than a bare one.
+func (a *API) protectedResourceMetadataURL(resource string) string {
+	if a.cfg.PublicURL == "" || resource == "" {
+		return ""
+	}
+	return oauth.Issuer(a.cfg.PublicURL) + oauth.PathWellKnownPRMCP
+}
+
+// mcpResource is the audience POST /mcp guards. A single function so the
+// metadata document, the token's stored audience and this check are the same
+// string by construction.
+func (a *API) mcpResource(*http.Request) string {
+	return oauth.ResourceURI(a.cfg.PublicURL)
 }

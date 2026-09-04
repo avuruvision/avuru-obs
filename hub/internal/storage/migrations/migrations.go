@@ -51,6 +51,7 @@ var Ordered = []string{
 	"0019_project_retention.sql",
 	"0020_endpoint_checks.sql",
 	"0021_rates_overlay.sql",
+	"0022_oauth.sql",
 }
 
 // ByModule tags each migration with the module(s) whose schema it owns; the
@@ -108,6 +109,10 @@ var ByModule = map[string][]modules.Name{
 	// module can own it; created everywhere like collection_overlay (0014),
 	// with only the routes and the surfaces that read it gated.
 	"0021_rates_overlay.sql": {modules.Core},
+	// OAuth tables. Tagged MCP, not Core: only an install running the MCP
+	// server has a resource to protect. The routes are separately
+	// flag-gated, the same split 0014 makes between a table and its switch.
+	"0022_oauth.sql": {modules.MCP},
 }
 
 // Expected returns, in apply order, the versions that should exist on an

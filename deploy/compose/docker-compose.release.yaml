@@ -48,7 +48,12 @@ services:
       AVURUOBS_CLICKHOUSE_ADDR: clickhouse:9000
       AVURUOBS_CLICKHOUSE_USER: avuru
       AVURUOBS_CLICKHOUSE_PASSWORD: avuru
-      AVURUOBS_MODULES: "core,logs,infra-metrics,profiling,error-tracking"
+      AVURUOBS_MODULES: "core,logs,infra-metrics,profiling,error-tracking,mcp"
+      # mcp is listed because it OWNS SCHEMA as of 0022_oauth.sql. It owned
+      # none before, so it could be left out of this list while its API still
+      # worked; now leaving it out means the OAuth tables are never created.
+      # The Helm migrate Job derives its list from the enabled modules and is
+      # correct automatically — only hardcoded lists like this one need it.
       AVURUOBS_RETENTION_TRACES_DAYS: "7"
       AVURUOBS_RETENTION_LOGS_DAYS: "3"
       AVURUOBS_RETENTION_METRICS_DAYS: "7"

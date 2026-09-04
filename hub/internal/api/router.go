@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/ai"
 	"github.com/avuru/avuru-obs/hub/internal/alerting"
@@ -16,6 +17,7 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/green"
 	"github.com/avuru/avuru-obs/hub/internal/health"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
+	"github.com/avuru/avuru-obs/hub/internal/oauth"
 	"github.com/avuru/avuru-obs/hub/internal/rates"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 	"github.com/avuru/avuru-obs/hub/internal/topology"
@@ -32,6 +34,21 @@ type StoreProvider func() storage.Store
 
 // Config holds non-store handler settings (e.g. reported retention).
 type Config struct {
+	// PublicURL is the install's external base URL (AVURUOBS_PUBLIC_URL), e.g.
+	// "https://obs.example.com". Everything that must hand out an ABSOLUTE URL
+	// reads it. Empty on an install reached only in-cluster, which is why the
+	// OAuth surface refuses to start without it rather than advertising URLs
+	// nobody can fetch.
+	PublicURL string
+	// OAuthEnabled turns on the authorization server
+	// (modules.mcp.oauth.enabled). Separate from the mcp module: an install
+	// using only header-set API tokens should not expose an unauthenticated
+	// registration endpoint.
+	OAuthEnabled bool
+	// OAuthDynamicRegistration serves RFC 7591. claude.ai requires it; an
+	// operator can turn it off and pre-register instead.
+	OAuthDynamicRegistration bool
+
 	RetentionTracesDays   int
 	RetentionLogsDays     int
 	RetentionMetricsDays  int
@@ -171,6 +188,10 @@ type API struct {
 	// hands the SAME one to the budget evaluator, so a budget can never be
 	// measured against a different price than the screen displays.
 	rates *rates.Resolver
+	// registrar bounds unauthenticated OAuth client registration. Per-process,
+	// like the collection applier's mutex — see oauth.Registrar for why that is
+	// a bound rather than a guarantee, and why it is not the security boundary.
+	registrar *oauth.Registrar
 	// routes is every registered route with the guard it enforces, captured
 	// by routeIndex during Register and read only by the permissions matrix.
 	routes []routeGuard
@@ -203,6 +224,10 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 	}
 	a := &API{provider: provider, cfg: cfg, modules: active}
 	a.rates = cfg.Rates
+	// 10 registrations per address per hour. Generous for a real client,
+	// which registers once, and enough of a bound that abuse costs rows
+	// rather than access.
+	a.registrar = oauth.NewRegistrar(10, time.Hour)
 	if cfg.CollectionApplier != nil {
 		a.collectionApplier = cfg.CollectionApplier
 	} else {
@@ -426,7 +451,41 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		// reads in the UI. It also brings the CSRF origin check along, which
 		// costs a header-setting client nothing (it sends no Origin) and is
 		// what a browser-hosted client should be held to.
-		mux.Handle("POST /mcp", a.secured(auth.RoleViewer, a.handleMCP))
+		mux.Handle("POST /mcp", a.securedResource(auth.RoleViewer, a.mcpResource, a.handleMCP))
+		// OAuth discovery. Unauthenticated and at the ORIGIN ROOT, both
+		// required: a client fetches these before it has any credential, and
+		// RFC 8414/9728 fix the paths. Served only when the authorization
+		// server is on — advertising a flow this install does not run would
+		// send every connector down a dead end.
+		if a.cfg.OAuthEnabled {
+			mux.HandleFunc("GET "+oauth.PathWellKnownPR, a.handleProtectedResourceMetadata)
+			// RFC 9728 §3.1 inserts the resource's path into the well-known
+			// URL. Clients differ on which they try, so both are served.
+			mux.HandleFunc("GET "+oauth.PathWellKnownPRMCP, a.handleProtectedResourceMetadata)
+			mux.HandleFunc("GET "+oauth.PathWellKnownAS, a.handleAuthorizationServerMetadata)
+			// Registration is unauthenticated because a client that has never
+			// met this install has nothing to authenticate with. It grants
+			// NOTHING — see handleRegisterClient.
+			mux.Handle("POST "+oauth.PathRegister, handle(a.handleRegisterClient))
+			// /authorize resolves the browser session itself rather than going
+			// through secured(): an unauthenticated visitor must be sent to
+			// /login and brought back, not answered with a 401 a browser
+			// cannot act on.
+			mux.Handle("GET "+oauth.PathAuthorize, handle(a.handleAuthorize))
+			// The consent pair IS session-authenticated, and authenticated()
+			// brings the CSRF origin check with it — which is what stops a
+			// cross-origin page consenting on a signed-in person's behalf.
+			mux.Handle("GET "+oauth.PathConsent, a.authenticated(a.handleConsentView))
+			mux.Handle("POST "+oauth.PathConsent, a.authenticated(a.handleConsentDecide))
+			// Token and revoke are client-to-server, form-encoded, and carry
+			// their own proof (PKCE verifier, or the token itself).
+			mux.Handle("POST "+oauth.PathToken, handle(a.handleToken))
+			mux.Handle("POST "+oauth.PathRevoke, handle(a.handleRevoke))
+			// A consent a person can see and take back. Without this, granting
+			// is something you can do and cannot undo from the UI.
+			mux.Handle("GET /api/v1/auth/oauth/grants", a.authenticated(a.handleListGrants))
+			mux.Handle("DELETE /api/v1/auth/oauth/grants/{id}", a.authenticated(a.handleRevokeGrant))
+		}
 	}
 }
 

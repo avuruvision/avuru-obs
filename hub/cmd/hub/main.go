@@ -335,7 +335,25 @@ func run() error {
 	// Hub is API-only: the UI is a separate deployable (its own nginx pod),
 	// reached single-origin via the gateway/ingress. See agent_docs/architecture.md.
 	mux := http.NewServeMux()
+	// The OAuth authorization server must advertise ABSOLUTE URLs, so it cannot
+	// start without knowing this install's external address. Fail loud rather
+	// than serve metadata pointing at somewhere nobody can reach — the same
+	// stance a wrong OIDC issuer takes, and for the same reason.
+	publicURL := strings.TrimSuffix(strings.TrimSpace(os.Getenv("AVURUOBS_PUBLIC_URL")), "/")
+	oauthEnabled := envBoolOr("AVURUOBS_MCP_OAUTH_ENABLED", false)
+	if oauthEnabled {
+		if !active.Enabled(modules.MCP) {
+			return errors.New("AVURUOBS_MCP_OAUTH_ENABLED is set but the mcp module is not active: OAuth exists to let a client reach the MCP server")
+		}
+		if publicURL == "" {
+			return errors.New("AVURUOBS_MCP_OAUTH_ENABLED is set but AVURUOBS_PUBLIC_URL is empty: the authorization server's metadata must carry absolute URLs a client can fetch")
+		}
+	}
+
 	api.Register(mux, provider, api.Config{
+		PublicURL:                       publicURL,
+		OAuthEnabled:                    oauthEnabled,
+		OAuthDynamicRegistration:        envBoolOr("AVURUOBS_MCP_OAUTH_DCR_ENABLED", true),
 		RetentionTracesDays:             envIntOr("AVURUOBS_RETENTION_TRACES_DAYS", 7),
 		RetentionLogsDays:               envIntOr("AVURUOBS_RETENTION_LOGS_DAYS", 3),
 		RetentionMetricsDays:            envIntOr("AVURUOBS_RETENTION_METRICS_DAYS", 7),
@@ -645,6 +663,19 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// envBoolOr reads a boolean env var, defaulting when unset or unparseable.
+func envBoolOr(key string, def bool) bool {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return def
+	}
+	return b
 }
 
 func envIntOr(key string, def int) int {

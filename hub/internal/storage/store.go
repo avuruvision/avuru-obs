@@ -881,6 +881,87 @@ type AuthToken struct {
 	CreatedAt  time.Time
 }
 
+// OAuth token kinds. Access tokens authorize a request; refresh tokens buy a
+// new pair and can do nothing else.
+const (
+	OAuthTokenAccess  = "access"
+	OAuthTokenRefresh = "refresh"
+)
+
+// OAuthClient is a registration. Registering grants NOTHING — a client can do
+// nothing at all until a person consents. Name, ClientURI and LogoURI are
+// SELF-DECLARED by whoever registered and are never verified, which is why the
+// consent screen presents them as unverified and shows the redirect host too:
+// the host is the one fact a person can actually check.
+type OAuthClient struct {
+	ClientID        string
+	Name            string
+	RedirectURIs    []string
+	GrantTypes      []string
+	TokenAuthMethod string
+	SecretHash      string // "" = public client, PKCE only
+	Scope           string
+	SoftwareID      string
+	ClientURI       string
+	LogoURI         string
+	RegisteredIP    string
+	LastUsedAt      time.Time
+	Revoked         bool
+	CreatedAt       time.Time
+}
+
+// OAuthGrant is one consent, by one person, to one client, for one project.
+// It is the unit a user revokes in "connected applications", and revoking it
+// invalidates every token minted under it on the next request.
+type OAuthGrant struct {
+	GrantID   string
+	ClientID  string
+	UserID    string
+	Scope     string
+	Project   string
+	Resource  string
+	Revoked   bool
+	CreatedAt time.Time
+}
+
+// OAuthAuthCode is a one-shot authorization code. Bound to the client, the
+// exact redirect URI, the PKCE challenge and the resource, so a code observed
+// in transit cannot be redeemed anywhere else. The challenge METHOD is not
+// stored because only S256 is ever accepted.
+type OAuthAuthCode struct {
+	CodeHash    string
+	ClientID    string
+	UserID      string
+	GrantID     string
+	RedirectURI string
+	Resource    string
+	Scope       string
+	Project     string
+	Challenge   string
+	ExpiresAt   time.Time
+	Consumed    bool
+	CreatedAt   time.Time
+}
+
+// OAuthToken is an access or refresh token, stored only as a hash. Resource
+// lives here rather than in a signed claim so it is re-read on every request:
+// that is what makes an MCP token unusable against the rest of the API rather
+// than merely discouraged from it.
+type OAuthToken struct {
+	TokenHash  string
+	Kind       string
+	GrantID    string
+	ClientID   string
+	UserID     string
+	Resource   string
+	Scope      string
+	Project    string
+	ExpiresAt  time.Time
+	LastUsedAt time.Time
+	Revoked    bool
+	CreatedAt  time.Time
+}
+
 // CostQuery filters the cost module's reads. Reserved capacity is a
 // cluster-object fact and usage is a time series, so both halves are read over
 // the same window and the same tenant set — a mismatch there would report a
@@ -1381,6 +1462,44 @@ type Store interface {
 	GetAuthTokenByHash(ctx context.Context, tokenHash string) (AuthToken, error)
 	ListAuthTokens(ctx context.Context, userID string) ([]AuthToken, error)
 	RevokeAuthToken(ctx context.Context, userID, tokenHash string) error
+
+	// OAuth 2.1 authorization server (design/2026-09-01-mcp-server.md, step 2).
+	// Same tombstone shape as the credentials above. Everything an access token
+	// authorizes is read from these rows on every request rather than carried
+	// in a signed claim, so a revoked grant or a disabled user takes effect on
+	// the next call.
+	//
+	// GetOAuthClient / GetOAuthGrant / GetOAuthTokenByHash return ErrNotFound
+	// for unknown OR revoked rows. Expiry is decided one layer up, as it is for
+	// API tokens.
+	CreateOAuthClient(ctx context.Context, c OAuthClient) error
+	GetOAuthClient(ctx context.Context, clientID string) (OAuthClient, error)
+	ListOAuthClients(ctx context.Context) ([]OAuthClient, error)
+	RevokeOAuthClient(ctx context.Context, clientID string) error
+
+	CreateOAuthGrant(ctx context.Context, g OAuthGrant) error
+	GetOAuthGrant(ctx context.Context, grantID string) (OAuthGrant, error)
+	// ListOAuthGrants returns one user's live consents, newest first — the
+	// "connected applications" list they revoke from.
+	ListOAuthGrants(ctx context.Context, userID string) ([]OAuthGrant, error)
+	// RevokeOAuthGrant is scoped by userID: a person revokes their OWN consent,
+	// and passing the id alone would let one user revoke another's.
+	RevokeOAuthGrant(ctx context.Context, userID, grantID string) error
+
+	CreateOAuthAuthCode(ctx context.Context, c OAuthAuthCode) error
+	GetOAuthAuthCode(ctx context.Context, codeHash string) (OAuthAuthCode, error)
+	// ConsumeOAuthAuthCode marks a code used and returns ErrNotFound if it was
+	// already consumed. See the single-use note in the api package: under more
+	// than one replica this is a second line of defence, not the only one.
+	ConsumeOAuthAuthCode(ctx context.Context, codeHash string) error
+
+	CreateOAuthToken(ctx context.Context, t OAuthToken) error
+	GetOAuthTokenByHash(ctx context.Context, tokenHash string) (OAuthToken, error)
+	RevokeOAuthToken(ctx context.Context, tokenHash string) error
+	// RevokeOAuthTokensForGrant kills the whole family at once — what a
+	// detected refresh-token replay and an explicit revocation both need.
+	RevokeOAuthTokensForGrant(ctx context.Context, grantID string) error
+	TouchOAuthToken(ctx context.Context, tokenHash string, at time.Time) error
 	TouchAuthToken(ctx context.Context, tokenHash string, at time.Time) error
 }
 

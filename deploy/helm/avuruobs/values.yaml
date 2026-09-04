@@ -5,6 +5,16 @@
 nameOverride: ""
 fullnameOverride: ""
 
+# The install's external base URL, e.g. "https://obs.example.com" — scheme and
+# host, no trailing slash. Everything that has to hand out an ABSOLUTE URL reads
+# it: the OIDC redirect_uri, the CSRF trusted origin, and the OAuth 2.1 metadata
+# an MCP client discovers.
+#
+# It used to live at auth.oidc.publicUrl, which is still read for compatibility;
+# set it here instead, because none of those three are OIDC concerns. Leave empty
+# on an install reached only in-cluster or by port-forward.
+publicUrl: ""
+
 image:
   # Registry prefixed to every component repository (e.g. "harbor.example.com").
   # Empty = pull from the repository as-is (Docker Hub / GHCR style).
@@ -288,6 +298,26 @@ modules:
   # See design/2026-09-01-mcp-server.md.
   mcp:
     enabled: false
+    # OAuth 2.1 — what a hosted MCP client (a claude.ai connector) needs in
+    # order to sign in at all. Without it /mcp accepts only a personal API
+    # token in a header, which serves Claude Code and the CLI and nothing that
+    # runs on someone else's infrastructure.
+    #
+    # SEPARATE from mcp.enabled on purpose. Turning it on opens an
+    # unauthenticated dynamic-client-registration endpoint to whoever can reach
+    # this install, and it requires publicUrl and TLS to work at all. An install
+    # that only ever points Claude Code at its own hub should leave this off and
+    # keep using API tokens.
+    #
+    # Everything the mcp warning above says still applies, and applies MORE:
+    # consent is given by a person in a browser, to an application that named
+    # itself. The consent screen says so.
+    oauth:
+      enabled: false
+      # RFC 7591 dynamic client registration. claude.ai requires it — it has no
+      # way to be pre-registered. Turn it off to run registration-only-by-admin,
+      # at the cost of hosted connectors not working.
+      dynamicRegistration: true
 
 # Mesh control plane. Rendered into the GATEWAY's collector config, not the
 # sensor's: istiod is a single Deployment, and the sensor is a DaemonSet, so
