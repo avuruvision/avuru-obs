@@ -13,6 +13,25 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Fixed
 
+- **An agent now sees the dependency behind a mesh proxy, not the proxy.** The
+  service map has recovered `app → app` dependencies across mesh hops since
+  v0.9, by walking each trace's own ancestry over the proxies. The MCP server's
+  `service_context` tool did not: it labelled a transport counterpart instead,
+  so on a meshed install an agent asking what calls a service was told
+  "istio-ingressgateway", while a person reading the map was told the
+  application behind it. Two answers to one question.
+
+  It now applies the same collapse, through the same code the map uses rather
+  than a second implementation. A recovered dependency carries `viaTransport`
+  naming the proxies it was reconstructed across and `collapsedCalls` for the
+  portion that arrived that way — the same words the web client uses — so a
+  reconstructed edge still never reads as a directly observed one.
+
+  Unmeshed installs are unaffected and pay nothing: with no proxies there is no
+  query to run.
+
+### Fixed
+
 - **The MCP server is now reachable on a Helm install.** The server shipped in
   v0.12 as one handler on the hub at `POST /mcp` — and nothing routed it. The
   Ingress sends `/api` and `/healthz` to the hub and everything else to the UI,
