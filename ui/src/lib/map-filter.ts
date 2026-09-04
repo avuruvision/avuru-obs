@@ -75,12 +75,17 @@ export function withoutCollapsed(edges: ServiceEdge[]): ServiceEdge[] {
 // describe the SAME requests. Drawing both would treble the apparent traffic,
 // so the toggle SWAPS representations rather than accumulating them: hops
 // hidden → collapsed edges shown; hops shown → collapsed edges hidden.
+// `keep` exempts one service from being hidden. The service detail page needs
+// it: that page is ABOUT one node, and if that node is itself a proxy, hiding
+// transport would erase its whole neighbourhood — the subject along with it.
+// The map passes nothing and behaves exactly as before.
 export function splitInfrastructure(
   services: ServiceStats[],
   edges: ServiceEdge[],
   show: boolean,
+  keep?: string,
 ): { services: ServiceStats[]; edges: ServiceEdge[]; hidden: number } {
-  const transport = services.filter((s) => s.role === "transport");
+  const transport = services.filter((s) => s.role === "transport" && s.name !== keep);
   if (show) {
     // The mesh is on screen, so its hops are the truth being told — the
     // recovered calls would be drawn a second time as `app → app`.
@@ -96,7 +101,7 @@ export function splitInfrastructure(
   // connection.
   const removed = new Set(transport.map((s) => s.name));
   return {
-    services: services.filter((s) => s.role !== "transport"),
+    services: services.filter((s) => !removed.has(s.name)),
     edges: edges.filter((e) => !removed.has(e.source) && !removed.has(e.target)),
     hidden: transport.length,
   };

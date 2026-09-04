@@ -50,6 +50,31 @@ const MAP = {
   ],
 };
 
+// The same neighbourhood on a cluster where the proxy is itself reported — the
+// shape a real meshed install sends, and the one the stub above leaves out.
+// The hub reports the two hops AND the dependency it recovered from them: the
+// sixty calls are the same sixty, described twice.
+const MESHED = {
+  services: [
+    ...MAP.services,
+    {
+      name: "istio-proxy",
+      spanCount: 120,
+      ratePerSec: 2,
+      errorRate: 0,
+      p50Ms: 1,
+      p95Ms: 2,
+      p99Ms: 3,
+      role: "transport",
+    },
+  ],
+  edges: [
+    ...MAP.edges,
+    { source: "api-gateway", target: "istio-proxy", calls: 60, errorCount: 0, errorRate: 0, provenance: "trace", p50Ms: 5, p95Ms: 10 },
+    { source: "istio-proxy", target: FOCUS, calls: 60, errorCount: 0, errorRate: 0, provenance: "trace", p50Ms: 4, p95Ms: 8 },
+  ],
+};
+
 test.describe("service neighbourhood diagram", () => {
   test.beforeEach(async ({ page }) => {
     await page.route("**/api/v1/service-map*", (route) => route.fulfill({ json: MAP }));
@@ -143,5 +168,39 @@ test.describe("service neighbourhood diagram", () => {
     const diagram = page.getByTestId("service-neighbourhood");
     await expect(diagram).toContainText("No callers observed");
     await expect(diagram).toContainText(FOCUS);
+  });
+  test("counts a meshed caller once, not twice", async ({ page }) => {
+    await page.route("**/api/v1/service-map*", (route) => route.fulfill({ json: MESHED }));
+    await page.goto(`/services?service=${FOCUS}&range=15m`);
+
+    const diagram = page.getByTestId("service-neighbourhood");
+    await expect(diagram).toBeVisible();
+
+    // The regression: the page took the map's raw edge set, so it drew the
+    // recovered dependency AND the hop that produced it — one real caller
+    // shown as two, with the traffic counted twice. The proxy is transport,
+    // not a caller.
+    await expect(diagram).not.toContainText("istio-proxy card");
+    await expect(diagram.getByRole("button", { name: /^istio-proxy/ })).toHaveCount(0);
+    await expect(diagram).toContainText("api-gateway");
+    // Still labelled, because the dependency behind the proxy is exactly what
+    // is being drawn.
+    await expect(diagram).toContainText("via istio-proxy");
+
+    // One caller in, three dependencies out — the proxy is in neither count.
+    await expect(page.getByText("1 in · 3 out")).toBeVisible();
+  });
+
+  test("keeps the proxy when the page is about the proxy", async ({ page }) => {
+    await page.route("**/api/v1/service-map*", (route) => route.fulfill({ json: MESHED }));
+    await page.goto(`/services?service=istio-proxy&range=15m`);
+
+    // Hiding transport must not delete the subject of the page: a proxy has a
+    // neighbourhood too, and it is the one screen where its hops ARE the point.
+    const diagram = page.getByTestId("service-neighbourhood");
+    await expect(diagram).toBeVisible();
+    await expect(diagram).toContainText("api-gateway");
+    await expect(diagram).toContainText(FOCUS);
+    await expect(page.getByText("1 in · 1 out")).toBeVisible();
   });
 });

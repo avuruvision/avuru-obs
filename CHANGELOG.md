@@ -30,6 +30,21 @@ When a release is cut, that block is renamed to the version with its date.
   compose stack, which publishes the hub directly and so bypasses both layers.
   The template tests now assert that `/mcp` reaches the hub and is matched
   ahead of the catch-all that serves the UI.
+- **A meshed service no longer shows its proxy as a caller.** The
+  neighbourhood diagram and its tables took the service map's raw edge set,
+  which is not what the map itself draws. The hub reports both the mesh hops
+  (`app → proxy → app`) and the application dependency it recovered by walking
+  traces across them — the same requests, described two ways — and the map
+  picks one representation, because drawing both counts that traffic twice.
+  The service page drew both: one real caller appeared as two, the sidecar
+  among them, and the "N in · M out" line counted it.
+
+  It now applies the same rule the map applies by default, with one exemption:
+  the service the page is *about* is never hidden, so a proxy still has a
+  neighbourhood of its own.
+
+  Only meshed installs were affected, which is why nothing caught it — the demo
+  stack and every test fixture are unmeshed.
 
 ## [0.13.0] — 2026-09-04
 
