@@ -1,6 +1,8 @@
 package mcp
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -117,31 +119,106 @@ func TestServiceContextNamesWhatItCouldNotRead(t *testing.T) {
 	}
 }
 
-// A mesh proxy on a dependency list is a claimed relationship between services
-// that never talk to each other. It is reported with its role rather than
-// dropped: dropping it on a meshed install leaves an empty list, which reads
-// as "this service depends on nothing".
-func TestServiceContextLabelsTransportNeighbours(t *testing.T) {
+// The mesh collapse, for this client too.
+//
+// A proxy on a dependency list is a claimed relationship between services that
+// never talk to each other. The service map has reported the dependency
+// underneath the hop since v0.9; this tool labelled the proxy instead, so an
+// agent and a person asking the same question got different answers.
+func TestServiceContextCollapsesTransportNeighbours(t *testing.T) {
 	f := contextFake()
-	f.Services = append(f.Services, storage.ServiceStats{Name: "istio-ingressgateway", SpanCount: 7200})
-	f.Edges = append(f.Edges, storage.ServiceEdge{Source: "istio-ingressgateway", Target: "payment-api", Count: 100})
+	f.Services = append(f.Services,
+		storage.ServiceStats{Name: "istio-ingressgateway", SpanCount: 7200, TransportEvidence: true})
+	// The two halves of one hop, as the hub reports them.
+	f.Edges = append(f.Edges,
+		storage.ServiceEdge{Source: "checkout", Target: "istio-ingressgateway", Count: 100},
+		storage.ServiceEdge{Source: "istio-ingressgateway", Target: "payment-api", Count: 100})
+	// And the dependency the ancestry walk recovers from them.
+	f.Collapsed = []storage.ServiceEdge{{
+		Source: "checkout", Target: "payment-api", Count: 100,
+		CollapsedCount: 100, ViaTransport: []string{"istio-ingressgateway"},
+	}}
 	s := serverWith(f)
 	s.Topology = topology.New(topology.Default())
 
 	payload, _ := callTool(t, s, "service_context", `{"service":"payment-api"}`)
 	callers, _ := payload["callers"].([]any)
-	var gateway map[string]any
+
+	var checkout map[string]any
 	for _, c := range callers {
 		row, _ := c.(map[string]any)
 		if row["service"] == "istio-ingressgateway" {
-			gateway = row
+			t.Fatalf("the proxy is still reported as a caller: %v", row)
+		}
+		if row["service"] == "checkout" {
+			checkout = row
 		}
 	}
-	if gateway == nil {
-		t.Fatalf("the gateway is missing from callers: %v", callers)
+	if checkout == nil {
+		t.Fatalf("the dependency behind the proxy is missing: %v", callers)
 	}
-	if gateway["role"] != "transport" {
-		t.Errorf("role = %v, want transport", gateway["role"])
+	// A reconstructed edge must never read as a directly observed one.
+	via, _ := checkout["viaTransport"].([]any)
+	if len(via) != 1 || via[0] != "istio-ingressgateway" {
+		t.Errorf("viaTransport = %v, want the proxy named", checkout["viaTransport"])
+	}
+	if checkout["collapsedCalls"] != float64(100) {
+		t.Errorf("collapsedCalls = %v, want 100", checkout["collapsedCalls"])
+	}
+}
+
+// The classifier must run BEFORE the query: the ancestry walk needs to know
+// which workloads to step over. Mirrors the service map's own assertion.
+func TestServiceContextClassifiesBeforeItRecovers(t *testing.T) {
+	f := contextFake()
+	f.Services = append(f.Services,
+		storage.ServiceStats{Name: "istio-ingressgateway", SpanCount: 7200, TransportEvidence: true})
+	s := serverWith(f)
+	s.Topology = topology.New(topology.Default())
+
+	callTool(t, s, "service_context", `{"service":"payment-api"}`)
+	if len(f.LastCollapseTransport) != 1 || f.LastCollapseTransport[0] != "istio-ingressgateway" {
+		t.Fatalf("transport passed to the walk = %v, want the gateway", f.LastCollapseTransport)
+	}
+}
+
+// An unmeshed install must pay nothing and look exactly as it did: no proxies,
+// so no query, and no viaTransport anywhere in the answer.
+func TestServiceContextCostsNothingWithoutAMesh(t *testing.T) {
+	f := contextFake()
+	s := serverWith(f)
+	s.Topology = topology.New(topology.Default())
+
+	payload, _ := callTool(t, s, "service_context", `{"service":"payment-api"}`)
+	if len(f.LastCollapseTransport) != 0 {
+		t.Errorf("queried the walk with %v on an unmeshed install", f.LastCollapseTransport)
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte("viaTransport")) {
+		t.Errorf("viaTransport appeared without a mesh: %s", raw)
+	}
+}
+
+// The tool describes ONE service. If that service is itself a proxy, hiding
+// transport would empty the answer being asked for.
+func TestServiceContextKeepsTheProxyWhenItIsTheSubject(t *testing.T) {
+	f := contextFake()
+	f.Services = append(f.Services,
+		storage.ServiceStats{Name: "istio-ingressgateway", SpanCount: 7200, TransportEvidence: true})
+	f.Edges = append(f.Edges,
+		storage.ServiceEdge{Source: "checkout", Target: "istio-ingressgateway", Count: 100},
+		storage.ServiceEdge{Source: "istio-ingressgateway", Target: "payment-api", Count: 100})
+	s := serverWith(f)
+	s.Topology = topology.New(topology.Default())
+
+	payload, _ := callTool(t, s, "service_context", `{"service":"istio-ingressgateway"}`)
+	callers, _ := payload["callers"].([]any)
+	deps, _ := payload["dependencies"].([]any)
+	if len(callers) != 1 || len(deps) != 1 {
+		t.Fatalf("a proxy's own page lost its neighbourhood: callers=%v deps=%v", callers, deps)
 	}
 }
 

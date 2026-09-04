@@ -17,7 +17,9 @@ var serviceContextDef = toolDef{
 	Description: "Everything known about one service in a window, in a single call: request rate, error rate and " +
 		"latency percentiles; who calls it and what it depends on, each with call rate, error rate and client-side " +
 		"p95; its open error issues; and any alerts firing in this project. START HERE when investigating a " +
-		"service, then drill down with search_traces, search_logs or get_trace.",
+		"service, then drill down with search_traces, search_logs or get_trace. On a service mesh, a dependency " +
+		"reached through a proxy is reported as the APPLICATION it really is, with viaTransport naming the " +
+		"proxies it was recovered across — the proxies themselves are not listed as neighbours.",
 	InputSchema: inputSchema{
 		Type: "object",
 		Properties: withWindow(map[string]property{
@@ -34,14 +36,19 @@ type serviceContextArgs struct {
 
 type neighbourRow struct {
 	Service string `json:"service"`
-	// Role is "transport" for a mesh proxy or gateway, absent for an
-	// application. A proxy is reported rather than hidden: on a meshed install
-	// dropping it would leave an empty list, which reads as "this service
-	// depends on nothing".
-	Role        string  `json:"role,omitempty"`
-	Calls       uint64  `json:"calls"`
-	CallsPerSec float64 `json:"callsPerSec"`
-	ErrorRate   float64 `json:"errorRate"`
+	// ViaTransport names the proxies a dependency was recovered ACROSS, when
+	// the hub reconstructed it by walking a trace's ancestry over a mesh hop.
+	// Named as the web client names it (serviceEdgeDTO), so an agent and a
+	// person read the same word for the same thing. Absent on a directly
+	// observed edge — a reconstructed dependency must never read as one that
+	// was seen.
+	ViaTransport []string `json:"viaTransport,omitempty"`
+	// CollapsedCalls is how much of Calls arrived over those proxies. A pair
+	// can talk both ways at once, so this is a portion, not a total.
+	CollapsedCalls uint64  `json:"collapsedCalls,omitempty"`
+	Calls          uint64  `json:"calls"`
+	CallsPerSec    float64 `json:"callsPerSec"`
+	ErrorRate      float64 `json:"errorRate"`
 	// Client-side p95: what the CALLER experienced on this path, which is what
 	// makes a single slow route into an otherwise healthy service visible.
 	P95Ms float64 `json:"p95Ms,omitempty"`
@@ -95,14 +102,33 @@ func runServiceContext(ctx context.Context, s *Server, raw json.RawMessage) (any
 	// One classifier for the whole answer, carrying the mesh's own label
 	// evidence, exactly as the service map builds it — so the two cannot end
 	// up disagreeing about which workload is a proxy.
-	cls := s.Topology.WithEvidence(labelledTransport(all))
+	cls := s.Topology.WithEvidence(topology.LabelledTransport(all))
+
+	// Recover the app→app dependencies the mesh hides, then drop the hops they
+	// were recovered from. Same four steps, same order and the same functions
+	// the service map uses: an agent and a person asking what depends on this
+	// service must not get different answers.
+	//
+	// Free on an unmeshed install — `transport` is empty, so the store returns
+	// before it queries and HideTransport is a pass-through.
+	//
+	// `name` is exempt from hiding: this tool describes ONE service, and if that
+	// service is itself a proxy, hiding transport would empty the very answer
+	// being asked for.
+	transport := topology.TransportNames(cls, all)
+	collapsed, err := s.Store.CollapsedEdges(ctx, s.serviceQuery(tr), transport)
+	if err != nil {
+		return nil, fmt.Errorf("recovering mesh-hidden dependencies: %w", err)
+	}
+	edges = topology.MergeCollapsed(edges, collapsed)
+	edges = topology.HideTransport(all, edges, cls, name)
 
 	payload := serviceContextPayload{
 		Service:      name,
 		Window:       toWindowDTO(tr),
 		RED:          toServiceRow(stats, tr),
-		Callers:      neighbours(edges, name, tr, cls, inbound),
-		Dependencies: neighbours(edges, name, tr, cls, outbound),
+		Callers:      neighbours(edges, name, tr, inbound),
+		Dependencies: neighbours(edges, name, tr, outbound),
 	}
 
 	if s.Modules.Enabled(modules.ErrorTracking) {
@@ -186,15 +212,12 @@ const (
 // neighbours builds one side of the dependency picture, summing the edges that
 // touch `name` and reporting each counterpart once.
 //
-// Mesh-hidden hops are NOT recovered here: the service map collapses an
-// app→proxy→app path back into the app→app dependency it really is
-// (design/2026-08-25-transport-hop-collapse.md), and reimplementing that merge
-// for this client would be a second set of semantics to keep in step with the
-// first. What this does instead is LABEL a transport counterpart, so an agent
-// reading "istio-ingressgateway (transport)" knows it is looking at a hop
-// rather than at an application. Bringing the collapse itself here is a
-// follow-up, and a safe one.
-func neighbours(edges []storage.ServiceEdge, name string, tr storage.TimeRange, cls topology.Classifier, dir direction) []neighbourRow {
+// The edges arriving here have already been through the mesh collapse
+// (design/2026-08-25-transport-hop-collapse.md): an app→proxy→app path is the
+// app→app dependency it really is, and the hops are gone. So there is no
+// transport counterpart left to label — what a proxy contributed is recorded on
+// the dependency itself, as viaTransport.
+func neighbours(edges []storage.ServiceEdge, name string, tr storage.TimeRange, dir direction) []neighbourRow {
 	agg := map[string]*storage.ServiceEdge{}
 	for i := range edges {
 		e := edges[i]
@@ -222,6 +245,8 @@ func neighbours(edges []storage.ServiceEdge, name string, tr storage.TimeRange, 
 		}
 		cur.Count += e.Count
 		cur.ErrorCount += e.ErrorCount
+		cur.CollapsedCount += e.CollapsedCount
+		cur.ViaTransport = append(cur.ViaTransport, e.ViaTransport...)
 		if e.P95 > cur.P95 {
 			cur.P95 = e.P95
 		}
@@ -229,14 +254,13 @@ func neighbours(edges []storage.ServiceEdge, name string, tr storage.TimeRange, 
 	out := make([]neighbourRow, 0, len(agg))
 	for other, e := range agg {
 		row := neighbourRow{
-			Service:     other,
-			Calls:       e.Count,
-			CallsPerSec: perSec(e.Count, tr),
-			ErrorRate:   ratio(e.ErrorCount, e.Count),
-			P95Ms:       ms(e.P95),
-		}
-		if cls.IsTransport(other) {
-			row.Role = string(topology.RoleTransport)
+			Service:        other,
+			Calls:          e.Count,
+			CallsPerSec:    perSec(e.Count, tr),
+			ErrorRate:      ratio(e.ErrorCount, e.Count),
+			P95Ms:          ms(e.P95),
+			ViaTransport:   dedupe(e.ViaTransport),
+			CollapsedCalls: e.CollapsedCount,
 		}
 		out = append(out, row)
 	}
@@ -255,16 +279,21 @@ func neighbours(edges []storage.ServiceEdge, name string, tr storage.TimeRange, 
 	return out
 }
 
-// labelledTransport is the subset of services the MESH ITSELF identified, via
-// the labels it writes on its own data plane and the sensor carries on their
-// spans. Derived from the same rows this answer was built from, so the
-// evidence cannot describe a different set of services than the answer does.
-func labelledTransport(services []storage.ServiceStats) []string {
-	var out []string
-	for _, s := range services {
-		if s.TransportEvidence {
-			out = append(out, s.Name)
+// dedupe returns the distinct names in order of first appearance. A counterpart
+// reached over two proxies is summed from two edges, and the same proxy must
+// not be named twice in the result.
+func dedupe(names []string) []string {
+	if len(names) < 2 {
+		return names
+	}
+	seen := make(map[string]struct{}, len(names))
+	out := names[:0:0]
+	for _, n := range names {
+		if _, ok := seen[n]; ok {
+			continue
 		}
+		seen[n] = struct{}{}
+		out = append(out, n)
 	}
 	return out
 }
