@@ -232,3 +232,94 @@ func TestStoreFailureIsNotAnAuthFailure(t *testing.T) {
 		t.Fatalf("store failure = %d, want 503", w.Code)
 	}
 }
+
+// Discovery must work for a caller with NO credential — finding out where to
+// get one is its whole purpose.
+func TestDiscoveryMetadataIsUnauthenticated(t *testing.T) {
+	mux, _, _ := oauthMux(t, oauth.ScopeMCPRead, oauth.ResourceURI(testPublicURL))
+	for _, path := range []string{
+		oauth.PathWellKnownPR, oauth.PathWellKnownPRMCP, oauth.PathWellKnownAS,
+	} {
+		w := authDo(mux, "GET", path, nil, nil)
+		if w.Code != http.StatusOK {
+			t.Errorf("GET %s unauthenticated = %d, want 200", path, w.Code)
+		}
+		if !strings.Contains(w.Body.String(), testPublicURL) {
+			t.Errorf("GET %s does not carry the public URL: %s", path, w.Body.String())
+		}
+	}
+}
+
+// With the authorization server off, the documents are absent rather than
+// describing a flow this install does not run — which would send every
+// connector down a dead end.
+func TestDiscoveryMetadataAbsentWhenOAuthIsOff(t *testing.T) {
+	ctx := context.Background()
+	f := &storagetest.Fake{Tenants: []string{"prod"}}
+	svc := auth.NewService(func() storage.Store { return f }, time.Hour)
+	h, _ := auth.HashPassword("pw")
+	_ = f.SaveAuthUser(ctx, storage.AuthUser{ID: "u2", Email: "b@x.io", PasswordHash: h, Origin: "local"})
+
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return f }, Config{
+		Auth:      svc,
+		Modules:   modules.Set{modules.Core: true, modules.MCP: true},
+		PublicURL: testPublicURL,
+		// OAuthEnabled deliberately false.
+	})
+	for _, path := range []string{oauth.PathWellKnownPR, oauth.PathWellKnownAS} {
+		if w := authDo(mux, "GET", path, nil, nil); w.Code != http.StatusNotFound {
+			t.Errorf("GET %s with OAuth off = %d, want 404", path, w.Code)
+		}
+	}
+}
+
+// The step-1 guarantee: turning OAuth on must not disturb the credential the
+// MCP server already accepted.
+func TestAPITokenStillReachesMCPWithOAuthOn(t *testing.T) {
+	ctx := context.Background()
+	f := &storagetest.Fake{Tenants: []string{"prod"}}
+	svc := auth.NewService(func() storage.Store { return f }, time.Hour)
+	h, _ := auth.HashPassword("pw")
+	_ = f.SaveAuthUser(ctx, storage.AuthUser{ID: "u2", Email: "b@x.io", PasswordHash: h, Origin: "local"})
+	_ = f.ReplaceAuthGrants(ctx, "u2", []storage.AuthGrant{{UserID: "u2", Scope: "prod", Role: "editor"}})
+	raw, prefix, hash := auth.NewAPIToken()
+	_ = f.CreateAuthToken(ctx, storage.AuthToken{
+		TokenHash: hash, UserID: "u2", Name: "ci", Prefix: prefix, CreatedAt: time.Now()})
+
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return f }, Config{
+		Auth: svc, Modules: modules.Set{modules.Core: true, modules.MCP: true},
+		PublicURL: testPublicURL, OAuthEnabled: true,
+	})
+	// An API token carries no project of its own, so it names one the way it
+	// always has. (An OAuth token does not need this: the project it was
+	// consented to is pinned on the token, which is the point.)
+	w := mcpDo(mux, pingBody, map[string]string{
+		"Authorization": "Bearer " + raw, "X-Avuru-Tenant": "prod"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("an API token stopped working when OAuth was enabled: %d", w.Code)
+	}
+}
+
+// The project pin. A hosted client cannot set X-Avuru-Tenant, so without this
+// every connector would read the default project and be useless on a
+// multi-project install.
+func TestOAuthTokenReadsTheProjectItWasConsentedTo(t *testing.T) {
+	mux, _, raw := oauthMux(t, oauth.ScopeMCPRead, oauth.ResourceURI(testPublicURL))
+	// No tenant header at all: the token says "prod", and u2 can only read prod.
+	if w := mcpDo(mux, pingBody, map[string]string{"Authorization": "Bearer " + raw}); w.Code != http.StatusOK {
+		t.Fatalf("no header = %d, want 200 (the token's project should apply)", w.Code)
+	}
+	// Agreeing with the token is fine.
+	if w := mcpDo(mux, pingBody, map[string]string{
+		"Authorization": "Bearer " + raw, "X-Avuru-Tenant": "prod"}); w.Code != http.StatusOK {
+		t.Errorf("matching header = %d, want 200", w.Code)
+	}
+	// Disagreeing is refused rather than silently overridden: the token records
+	// what a person consented to, and a header cannot move it elsewhere.
+	if w := mcpDo(mux, pingBody, map[string]string{
+		"Authorization": "Bearer " + raw, "X-Avuru-Tenant": "payments"}); w.Code != http.StatusForbidden {
+		t.Errorf("conflicting header = %d, want 403", w.Code)
+	}
+}

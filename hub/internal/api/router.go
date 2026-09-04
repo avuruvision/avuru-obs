@@ -16,6 +16,7 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/green"
 	"github.com/avuru/avuru-obs/hub/internal/health"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
+	"github.com/avuru/avuru-obs/hub/internal/oauth"
 	"github.com/avuru/avuru-obs/hub/internal/rates"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 	"github.com/avuru/avuru-obs/hub/internal/topology"
@@ -442,6 +443,18 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		// costs a header-setting client nothing (it sends no Origin) and is
 		// what a browser-hosted client should be held to.
 		mux.Handle("POST /mcp", a.securedResource(auth.RoleViewer, a.mcpResource, a.handleMCP))
+		// OAuth discovery. Unauthenticated and at the ORIGIN ROOT, both
+		// required: a client fetches these before it has any credential, and
+		// RFC 8414/9728 fix the paths. Served only when the authorization
+		// server is on — advertising a flow this install does not run would
+		// send every connector down a dead end.
+		if a.cfg.OAuthEnabled {
+			mux.HandleFunc("GET "+oauth.PathWellKnownPR, a.handleProtectedResourceMetadata)
+			// RFC 9728 §3.1 inserts the resource's path into the well-known
+			// URL. Clients differ on which they try, so both are served.
+			mux.HandleFunc("GET "+oauth.PathWellKnownPRMCP, a.handleProtectedResourceMetadata)
+			mux.HandleFunc("GET "+oauth.PathWellKnownAS, a.handleAuthorizationServerMetadata)
+		}
 	}
 }
 
