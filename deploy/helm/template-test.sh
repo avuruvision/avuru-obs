@@ -1366,6 +1366,33 @@ after="$(grep -c '^kind: Deployment' <<<"$out" || true)"
 [ "$before" = "$after" ] || fail "oauth added a Deployment ($before -> $after)"
 ok "renders with a public URL; still no new component"
 
+echo "== mcp oauth: discovery is routed too, or the flow dies at its first step"
+# The same regression class as /mcp above, one layer over. RFC 8414/9728 fix
+# these documents at the ORIGIN ROOT, so no /api rule covers them and they fell
+# through to the UI catch-all — which answers 200 with HTML, and a client
+# parsing JSON fails deeper and more confusingly than it would on a 404. e2e
+# cannot catch it either: oauth_test.go fetches them off the hub URL directly,
+# the same blind spot that hid /mcp.
+out="$(render --set ingress.enabled=true --set modules.mcp.enabled=true)"
+grep -q 'well-known' <<<"$out" && fail "discovery routed while the authorization server is off"
+ok "no discovery rules without oauth"
+
+out="$(render --set ingress.enabled=true --set modules.mcp.enabled=true \
+  --set modules.mcp.oauth.enabled=true --set publicUrl=https://obs.example.com)"
+ui_line="$(grep -n -- '- path: /$' <<<"$out" | head -1 | cut -d: -f1)"
+# Anchored: /.well-known/oauth-protected-resource is a PREFIX of the /mcp
+# variant, so an unanchored match would let one rule satisfy both assertions.
+for p in /.well-known/oauth-authorization-server \
+         /.well-known/oauth-protected-resource \
+         /.well-known/oauth-protected-resource/mcp; do
+  grep -q -- "- path: $p\$" <<<"$out" || fail "$p has no Ingress rule: a client discovers the UI's HTML"
+  grep -A4 -- "- path: $p\$" <<<"$out" | grep -q -- '-hub' || fail "$p is routed somewhere other than the hub"
+  line="$(grep -n -- "- path: $p\$" <<<"$out" | head -1 | cut -d: -f1)"
+  [ -n "$ui_line" ] && [ "$line" -lt "$ui_line" ] \
+    || fail "$p is ordered after the UI catch-all ($line vs $ui_line)"
+done
+ok "all three discovery documents reach the hub, ahead of the UI catch-all"
+
 echo "== publicUrl: promoted out of the OIDC block, old key still honoured"
 # It was only emitted inside oidcEnv, so an install without SSO never got it —
 # yet the hub reads it for trusted origins regardless.

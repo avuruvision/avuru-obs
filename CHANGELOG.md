@@ -112,10 +112,20 @@ When a release is cut, that block is renamed to the version with its date.
   too. With the module off the hub answers 404 itself, which is the honest
   answer rather than a rule that hides one.
 
+  The OAuth discovery documents added in this release needed the same rule and
+  did not have it. RFC 8414 and RFC 9728 fix them at the **origin root**, so no
+  `/api` rule covers them either, and they are what a client fetches *before* it
+  holds any credential — a miss breaks the flow at its first step. Left
+  unrouted they answered `200` with the UI's HTML, which fails deeper in a
+  client than a clean 404 would. All three now reach the hub, alongside `/mcp`.
+  The ACME challenge path is deliberately left with the UI.
+
   Nothing caught this because the one place MCP is tested end-to-end is the
   compose stack, which publishes the hub directly and so bypasses both layers.
-  The template tests now assert that `/mcp` reaches the hub and is matched
-  ahead of the catch-all that serves the UI.
+  The template tests now assert that each of these paths reaches the hub and is
+  matched ahead of the catch-all that serves the UI, and the e2e suite gained
+  its first cases that go through the **front door** rather than straight to the
+  hub — the blind spot itself, closed.
 - **A meshed service no longer shows its proxy as a caller.** The
   neighbourhood diagram and its tables took the service map's raw edge set,
   which is not what the map itself draws. The hub reports both the mesh hops
