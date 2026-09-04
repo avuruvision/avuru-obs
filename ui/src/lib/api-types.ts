@@ -1235,3 +1235,19 @@ export interface RatesResponse {
   updatedAt?: string;
   updatedBy?: string;
 }
+
+/** What the OAuth consent screen shows. Nothing here is verified except the
+ *  project list, which comes from the signed-in person's own grants. */
+export interface ConsentView {
+  clientId: string;
+  clientName: string;
+  /** Always false: a self-registered client's name cannot be verified. */
+  clientVerified: boolean;
+  /** The host the client will be sent back to — the one checkable fact. */
+  redirectHost: string;
+  firstUse: boolean;
+  scopes: string[];
+  projects: string[];
+  defaultProject: string;
+  resource: string;
+}

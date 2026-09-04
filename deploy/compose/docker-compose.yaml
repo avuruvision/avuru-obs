@@ -39,7 +39,12 @@ services:
       # Modules this sandbox runs (empty/unset = all). Drop an entry to skip
       # its schema — the hub then 404s its API and the UI hides its entry.
       # alerting owns 0008_alerts.sql, so it must be listed for the tables.
-      AVURUOBS_MODULES: "core,logs,infra-metrics,profiling,error-tracking,alerting"
+      AVURUOBS_MODULES: "core,logs,infra-metrics,profiling,error-tracking,alerting,mcp"
+      # mcp is listed because it OWNS SCHEMA as of 0022_oauth.sql. It owned
+      # none before, so it could be left out of this list while its API still
+      # worked; now leaving it out means the OAuth tables are never created.
+      # The Helm migrate Job derives its list from the enabled modules and is
+      # correct automatically — only hardcoded lists like this one need it.
       AVURUOBS_RETENTION_TRACES_DAYS: "7"
       AVURUOBS_RETENTION_LOGS_DAYS: "3"
       AVURUOBS_RETENTION_METRICS_DAYS: "7"
@@ -95,6 +100,15 @@ services:
       # behavior: auth stays enabled, and the admin password is generated and
       # logged once at first boot.
       AVURUOBS_AUTH_ADMIN_PASSWORD: ${AVURUOBS_AUTH_ADMIN_PASSWORD:-}
+      # OAuth 2.1 for MCP clients. On in the sandbox so the flow is exercised
+      # end to end (e2e/oauth_test.go); OFF by default in the chart, where
+      # turning it on opens an unauthenticated registration endpoint.
+      #
+      # The public URL is this hub's own published address, because the
+      # authorization server has to advertise absolute URLs a client can fetch
+      # — the same reason the chart refuses to render without one.
+      AVURUOBS_PUBLIC_URL: http://localhost:18080
+      AVURUOBS_MCP_OAUTH_ENABLED: "true"
       # Green energy/carbon config: explicit factors (deterministic gCO2e for
       # e2e) + a budget over the seeded `payments` group, delivered via the
       # `sink` alerting channel. green is auto-active here (the hub sets no
