@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/ai"
 	"github.com/avuru/avuru-obs/hub/internal/alerting"
@@ -187,6 +188,10 @@ type API struct {
 	// hands the SAME one to the budget evaluator, so a budget can never be
 	// measured against a different price than the screen displays.
 	rates *rates.Resolver
+	// registrar bounds unauthenticated OAuth client registration. Per-process,
+	// like the collection applier's mutex — see oauth.Registrar for why that is
+	// a bound rather than a guarantee, and why it is not the security boundary.
+	registrar *oauth.Registrar
 	// routes is every registered route with the guard it enforces, captured
 	// by routeIndex during Register and read only by the permissions matrix.
 	routes []routeGuard
@@ -219,6 +224,10 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 	}
 	a := &API{provider: provider, cfg: cfg, modules: active}
 	a.rates = cfg.Rates
+	// 10 registrations per address per hour. Generous for a real client,
+	// which registers once, and enough of a bound that abuse costs rows
+	// rather than access.
+	a.registrar = oauth.NewRegistrar(10, time.Hour)
 	if cfg.CollectionApplier != nil {
 		a.collectionApplier = cfg.CollectionApplier
 	} else {
@@ -454,6 +463,10 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 			// URL. Clients differ on which they try, so both are served.
 			mux.HandleFunc("GET "+oauth.PathWellKnownPRMCP, a.handleProtectedResourceMetadata)
 			mux.HandleFunc("GET "+oauth.PathWellKnownAS, a.handleAuthorizationServerMetadata)
+			// Registration is unauthenticated because a client that has never
+			// met this install has nothing to authenticate with. It grants
+			// NOTHING — see handleRegisterClient.
+			mux.Handle("POST "+oauth.PathRegister, handle(a.handleRegisterClient))
 		}
 	}
 }

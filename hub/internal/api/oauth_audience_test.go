@@ -23,7 +23,22 @@ var errBoom = errors.New("clickhouse is down")
 
 // oauthMux builds a router with the MCP module on, OAuth on, and one live
 // access token belonging to u2 (editor on prod), minted for the MCP resource.
+// oauthMuxWith is oauthMux with the config adjusted — for the cases that are
+// about an operator's switch rather than a credential.
+func oauthMuxWith(t *testing.T, tweak func(*Config)) (*http.ServeMux, *storagetest.Fake, string) {
+	t.Helper()
+	return oauthMuxCfg(t, oauth.ScopeMCPRead, ResourceURIForTest(), tweak)
+}
+
+// ResourceURIForTest keeps the audience string in one place across the tests.
+func ResourceURIForTest() string { return oauth.ResourceURI(testPublicURL) }
+
 func oauthMux(t *testing.T, scope string, resource string) (*http.ServeMux, *storagetest.Fake, string) {
+	t.Helper()
+	return oauthMuxCfg(t, scope, resource, nil)
+}
+
+func oauthMuxCfg(t *testing.T, scope, resource string, tweak func(*Config)) (*http.ServeMux, *storagetest.Fake, string) {
 	t.Helper()
 	ctx := context.Background()
 	f := &storagetest.Fake{Tenants: []string{"payments", "prod"}}
@@ -45,13 +60,18 @@ func oauthMux(t *testing.T, scope string, resource string) (*http.ServeMux, *sto
 		UserID: "u2", Resource: resource, Scope: scope, Project: "prod",
 		ExpiresAt: time.Now().Add(time.Hour), CreatedAt: time.Now()})
 
+	cfg := Config{
+		Auth:                     svc,
+		Modules:                  modules.Set{modules.Core: true, modules.MCP: true},
+		PublicURL:                testPublicURL,
+		OAuthEnabled:             true,
+		OAuthDynamicRegistration: true,
+	}
+	if tweak != nil {
+		tweak(&cfg)
+	}
 	mux := http.NewServeMux()
-	Register(mux, func() storage.Store { return f }, Config{
-		Auth:         svc,
-		Modules:      modules.Set{modules.Core: true, modules.MCP: true},
-		PublicURL:    testPublicURL,
-		OAuthEnabled: true,
-	})
+	Register(mux, func() storage.Store { return f }, cfg)
 	return mux, f, raw
 }
 

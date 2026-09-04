@@ -61,8 +61,19 @@ func handle(fn func(w http.ResponseWriter, r *http.Request) error) http.HandlerF
 		}
 		status, msg := http.StatusInternalServerError, "internal error"
 		var ae *apiError
+		var oe *oauthAPIError
 		var mbe *http.MaxBytesError
 		switch {
+		// OAuth clients parse RFC 6749's {error, error_description} by name,
+		// so those routes answer in that shape rather than the hub's. Mapped
+		// here with everything else — one place, per the rule above — instead
+		// of writing the response inside the handler.
+		case errors.As(err, &oe):
+			writeJSON(w, oe.status, oauthErrorBody{
+				Error:            oe.err.Code,
+				ErrorDescription: oe.err.Description,
+			})
+			return
 		case errors.As(err, &ae):
 			status, msg = ae.status, ae.message
 		case errors.As(err, &mbe):
