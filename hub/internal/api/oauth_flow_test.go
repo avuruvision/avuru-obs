@@ -413,3 +413,52 @@ func approvedCode(t *testing.T) (*http.ServeMux, string, string) {
 	}
 	return mux, u.Query().Get("code"), clientID
 }
+
+// "*" is a role scope, not a project. Offering it would pin the token to a
+// tenant literally named "*", which reads nothing — and would defeat the point
+// of asking which project is being shared.
+func TestConsentNeverOffersTheWildcardAsAProject(t *testing.T) {
+	ctx := context.Background()
+	f := &storagetest.Fake{Tenants: []string{"prod", "payments"}}
+	svc := auth.NewService(func() storage.Store { return f }, time.Hour)
+	h, _ := auth.HashPassword("pw")
+	_ = f.SaveAuthUser(ctx, storage.AuthUser{
+		ID: "adm", Email: "adm@x.io", Name: "Adm", PasswordHash: h, Origin: "local"})
+	// A global admin: their only grant is the wildcard.
+	_ = f.ReplaceAuthGrants(ctx, "adm",
+		[]storage.AuthGrant{{UserID: "adm", Scope: "*", Role: "admin"}})
+	token, _, err := svc.Login(ctx, "adm@x.io", "pw", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return f }, Config{
+		Auth: svc, Modules: modules.Set{modules.Core: true, modules.MCP: true},
+		PublicURL: testPublicURL, OAuthEnabled: true, OAuthDynamicRegistration: true,
+		Projects: []string{"prod", "payments"},
+	})
+	cookie := &http.Cookie{Name: sessionCookieName, Value: token}
+	clientID := registerClient(t, mux)
+
+	w := getWith(mux, oauth.PathConsent+"?"+authorizeQuery(clientID).Encode(), cookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("consent view = %d: %s", w.Code, w.Body.String())
+	}
+	var view consentView
+	if err := json.Unmarshal(w.Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range view.Projects {
+		if p == "*" {
+			t.Fatalf("the wildcard was offered as a project: %v", view.Projects)
+		}
+	}
+	// A wildcard admin has no concrete grants, so the install's declared
+	// projects are the choices — an empty list would silently share "default".
+	if len(view.Projects) == 0 {
+		t.Fatal("a global admin was offered no project at all")
+	}
+	if view.DefaultProject == "*" {
+		t.Errorf("default project = %q", view.DefaultProject)
+	}
+}

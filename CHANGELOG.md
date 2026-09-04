@@ -11,6 +11,36 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **A hosted MCP client can now sign in.** The MCP server shipped in v0.12
+  accepting one credential: a personal API token in a header. That serves Claude
+  Code and the CLI, and it cannot serve a claude.ai connector — the client the
+  module's whole "what an agent reads leaves your cluster" warning was written
+  for, because a hosted client has no way to be handed a token you minted.
+
+  The hub can now act as an **OAuth 2.1 authorization server**: discovery
+  metadata, dynamic client registration, authorization code with PKCE,
+  short-lived access tokens and rotating refresh tokens, and a consent screen
+  backed by the session you already have. It is **off by default** and separate
+  from the `mcp` switch, because turning it on opens an unauthenticated
+  registration endpoint and needs a public URL and TLS to mean anything.
+
+  Tokens stay **opaque and audience-bound**. What a token may reach is read from
+  a row on every request rather than carried in a signed claim, so revoking a
+  consent or disabling a user takes effect on the next call — and an MCP
+  credential is refused on the rest of the API rather than merely discouraged
+  from it. Registering grants nothing at all: a client can read nothing until a
+  person consents to it by name.
+
+  The consent screen says what it costs, in the same words the values file uses
+  with an operator: approving lets that application pull traces and **log
+  bodies** out of your cluster and into whichever model provider is behind it.
+  It also says that the application's name is self-declared and unverified,
+  shows the host it will send you back to, and names the project being shared —
+  one project, from the ones you can already read. Settings → Access lists the
+  applications you have connected, so a consent can be taken back.
+
 ### Changed
 
 - **Release images are cross-compiled instead of emulated.** Every Go image —
@@ -36,7 +66,6 @@ When a release is cut, that block is renamed to the version with its date.
   There is now one rollup, and the Path view reads it from the response it was
   already fetching, so the screen costs no extra request and cannot disagree with
   what an agent is told about the same trace.
-
 ### Fixed
 
 - **An agent now sees the dependency behind a mesh proxy, not the proxy.** The

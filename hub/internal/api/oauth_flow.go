@@ -96,7 +96,7 @@ func (a *API) handleConsentView(w http.ResponseWriter, r *http.Request) error {
 	if u, err := url.Parse(req.RedirectURI); err == nil {
 		host = u.Host
 	}
-	projects := grantedProjects(id)
+	projects := a.grantedProjects(id)
 	first := true
 	if st, err := a.store(); err == nil {
 		if grants, err := st.ListOAuthGrants(r.Context(), id.UserID); err == nil {
@@ -147,7 +147,7 @@ func (a *API) handleConsentDecide(w http.ResponseWriter, r *http.Request) error 
 	id := identityFrom(r.Context())
 	project := strings.TrimSpace(dec.Project)
 	if project == "" {
-		project = defaultProject(grantedProjects(id))
+		project = defaultProject(a.grantedProjects(id))
 	}
 	// The consenting user must actually be able to read what they are sharing.
 	// Checked here rather than trusted from the page, because the page is a
@@ -256,18 +256,31 @@ func (a *API) sessionIdentity(r *http.Request) *auth.Identity {
 	return &id
 }
 
-func grantedProjects(id *auth.Identity) []string {
+// grantedProjects lists the CONCRETE projects this person may share.
+//
+// ProjectScopes already excludes the "*" wildcard, and that exclusion matters
+// here more than anywhere: "*" is a role scope, not a project. Offering it
+// would pin the token to a tenant literally named "*", which reads nothing —
+// and would defeat the point of asking which project is being shared.
+//
+// A wildcard admin has no concrete grants at all, so their choices come from
+// the install's declared projects instead. Without this they would be offered
+// an empty list and end up sharing "default" whatever they actually run.
+func (a *API) grantedProjects(id *auth.Identity) []string {
 	if id == nil {
 		return nil
 	}
-	var out []string
+	if out := id.ProjectScopes(); len(out) > 0 {
+		return out
+	}
 	seen := map[string]bool{}
-	for _, g := range id.Grants {
-		if g.Scope == "" || seen[g.Scope] {
-			continue
+	out := []string{storage.DefaultTenant}
+	seen[storage.DefaultTenant] = true
+	for _, p := range a.cfg.Projects {
+		if p != "" && !seen[p] {
+			seen[p] = true
+			out = append(out, p)
 		}
-		seen[g.Scope] = true
-		out = append(out, g.Scope)
 	}
 	return out
 }

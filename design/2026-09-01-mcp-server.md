@@ -284,6 +284,10 @@ included. Three obligations ship with it, and none is optional:
       view already fetched. Unifying them surfaced a real defect: `get_trace`
       counted only a raw `error` status, so an auto-instrumented 5xx was
       reported as a success.
-- [ ] OAuth 2.1 for claude.ai connectors (own PR, own review)
+- [x] OAuth 2.1 for claude.ai connectors — discovery metadata, RFC 7591
+      registration, authorization code with PKCE (S256 only), rotating
+      refresh tokens, opaque audience-bound access tokens, and a consent
+      screen that states what leaves the installation. Off by default and
+      behind its own switch, separate from the module's.
 - [x] Docs: bilingual changelog, feature-status matrix, API reference
 - [x] README: the capability line

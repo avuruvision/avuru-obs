@@ -1251,3 +1251,19 @@ export interface ConsentView {
   defaultProject: string;
   resource: string;
 }
+
+/** One application a person has connected, in Settings → Access. */
+export interface OAuthGrant {
+  id: string;
+  clientId: string;
+  /** Self-declared at registration and never verified — shown because it is
+   *  what the person saw when they consented, not because it is trustworthy. */
+  clientName: string;
+  project: string;
+  scopes: string;
+  createdAt: string;
+}
+
+export interface OAuthGrantsResponse {
+  grants: OAuthGrant[];
+}

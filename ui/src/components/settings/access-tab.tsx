@@ -9,6 +9,7 @@ import { apiGet } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import { usePermissions } from "@/hooks/use-permissions";
 import { ApiTokensCard } from "./api-tokens-card";
+import { ConnectedAppsCard } from "./connected-apps-card";
 import { OIDCMappingPanel } from "./oidc-mapping-panel";
 import type { AuthConfig, PermissionArea, PermissionRole } from "@/lib/api-types";
 
@@ -113,6 +114,9 @@ export function AccessTab() {
           every request is anonymous, so the card would only mint credentials
           that mean nothing. */}
       {data.authEnabled && <ApiTokensCard />}
+      {/* Renders nothing when no application is connected, which is every
+          install with OAuth off. */}
+      {data.authEnabled && <ConnectedAppsCard />}
 
       {ssoConfigured && <OIDCMappingPanel />}
     </div>

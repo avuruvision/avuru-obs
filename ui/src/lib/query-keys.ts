@@ -126,4 +126,5 @@ export const queryKeys = {
   // Personal API tokens — the hub scopes the list to the caller, so the key
   // carries no user element; a sign-in change clears the whole cache anyway.
   apiTokens: ["auth", "tokens"] as const,
+  oauthGrants: ["auth", "oauth-grants"] as const,
 };
