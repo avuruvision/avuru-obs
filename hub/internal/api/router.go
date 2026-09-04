@@ -467,6 +467,24 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 			// met this install has nothing to authenticate with. It grants
 			// NOTHING — see handleRegisterClient.
 			mux.Handle("POST "+oauth.PathRegister, handle(a.handleRegisterClient))
+			// /authorize resolves the browser session itself rather than going
+			// through secured(): an unauthenticated visitor must be sent to
+			// /login and brought back, not answered with a 401 a browser
+			// cannot act on.
+			mux.Handle("GET "+oauth.PathAuthorize, handle(a.handleAuthorize))
+			// The consent pair IS session-authenticated, and authenticated()
+			// brings the CSRF origin check with it — which is what stops a
+			// cross-origin page consenting on a signed-in person's behalf.
+			mux.Handle("GET "+oauth.PathConsent, a.authenticated(a.handleConsentView))
+			mux.Handle("POST "+oauth.PathConsent, a.authenticated(a.handleConsentDecide))
+			// Token and revoke are client-to-server, form-encoded, and carry
+			// their own proof (PKCE verifier, or the token itself).
+			mux.Handle("POST "+oauth.PathToken, handle(a.handleToken))
+			mux.Handle("POST "+oauth.PathRevoke, handle(a.handleRevoke))
+			// A consent a person can see and take back. Without this, granting
+			// is something you can do and cannot undo from the UI.
+			mux.Handle("GET /api/v1/auth/oauth/grants", a.authenticated(a.handleListGrants))
+			mux.Handle("DELETE /api/v1/auth/oauth/grants/{id}", a.authenticated(a.handleRevokeGrant))
 		}
 	}
 }
