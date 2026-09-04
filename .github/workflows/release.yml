@@ -55,6 +55,11 @@ jobs:
   images:
     needs: meta
     runs-on: ubuntu-latest
+    # A wedged image build blocks the release job, and with it the GitHub
+    # Release, the chart and every published tag. Cross-compiled these finish in
+    # minutes; 45 is generous enough to absorb a cold cache and short enough to
+    # fail loudly instead of sitting on GitHub's 6-hour default.
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write # push images to GHCR
@@ -80,9 +85,15 @@ jobs:
         with:
           ref: ${{ needs.meta.outputs.tag }}
       # arm64 is not optional: the sensor's eBPF stack and the gateway run on
-      # arm64 nodes, and an amd64-only image strands those clusters. QEMU is the
-      # baseline that needs no Dockerfile change; if build time becomes painful,
-      # cross-compile instead (--platform=$BUILDPLATFORM + GOARCH=$TARGETARCH).
+      # arm64 nodes, and an amd64-only image strands those clusters. Every Go
+      # image now CROSS-compiles (--platform=$BUILDPLATFORM + GOOS/GOARCH), so
+      # the arm64 leg is a native compile rather than a Go toolchain under QEMU.
+      # That was worth doing: emulated, the two OCB distros took 37 minutes and
+      # over an hour in v0.13.0, and they were the only thing standing between a
+      # tag push and a published Release.
+      #
+      # QEMU stays. It is what runs the RUN steps of any future non-Go image,
+      # and it costs nothing when no stage needs it.
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
       - uses: sigstore/cosign-installer@v3

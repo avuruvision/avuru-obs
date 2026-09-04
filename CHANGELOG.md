@@ -11,6 +11,23 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Changed
+
+- **Release images are cross-compiled instead of emulated.** Every Go image —
+  hub, gateway, node agent and tdp-estimator — built its `linux/arm64` half by
+  running the whole Go toolchain under QEMU. For the two OCB collector distros,
+  which compile a complete collector, that is the slowest thing in the repo: in
+  the v0.13.0 release the gateway's arm64 leg took 37 minutes and the node
+  agent's took over an hour, and because the release job waits on the entire
+  image matrix, that one build was all that stood between a pushed tag and a
+  published Release.
+
+  Each build stage is now pinned to the build platform and compiles for the
+  target architecture, so an arm64 image is produced by a native toolchain.
+  Nothing about the output changes: both architectures still build, and the
+  binaries are still static and CGO-free. The images job also gained a timeout,
+  so a wedged build fails loudly rather than sitting on the six-hour default.
+
 ### Fixed
 
 - **An agent now sees the dependency behind a mesh proxy, not the proxy.** The
@@ -29,8 +46,6 @@ When a release is cut, that block is renamed to the version with its date.
 
   Unmeshed installs are unaffected and pay nothing: with no proxies there is no
   query to run.
-
-### Fixed
 
 - **The MCP server is now reachable on a Helm install.** The server shipped in
   v0.12 as one handler on the hub at `POST /mcp` — and nothing routed it. The
@@ -63,9 +78,7 @@ When a release is cut, that block is renamed to the version with its date.
   neighbourhood of its own.
 
   Only meshed installs were affected, which is why nothing caught it — the demo
-  stack and every test fixture are unmeshed.
-
-## [0.13.0] — 2026-09-04
+  stack and every test fixture are unmeshed.## [0.13.0] — 2026-09-04
 
 ### Added
 
