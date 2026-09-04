@@ -32,6 +32,21 @@ type StoreProvider func() storage.Store
 
 // Config holds non-store handler settings (e.g. reported retention).
 type Config struct {
+	// PublicURL is the install's external base URL (AVURUOBS_PUBLIC_URL), e.g.
+	// "https://obs.example.com". Everything that must hand out an ABSOLUTE URL
+	// reads it. Empty on an install reached only in-cluster, which is why the
+	// OAuth surface refuses to start without it rather than advertising URLs
+	// nobody can fetch.
+	PublicURL string
+	// OAuthEnabled turns on the authorization server
+	// (modules.mcp.oauth.enabled). Separate from the mcp module: an install
+	// using only header-set API tokens should not expose an unauthenticated
+	// registration endpoint.
+	OAuthEnabled bool
+	// OAuthDynamicRegistration serves RFC 7591. claude.ai requires it; an
+	// operator can turn it off and pre-register instead.
+	OAuthDynamicRegistration bool
+
 	RetentionTracesDays   int
 	RetentionLogsDays     int
 	RetentionMetricsDays  int
@@ -426,7 +441,7 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		// reads in the UI. It also brings the CSRF origin check along, which
 		// costs a header-setting client nothing (it sends no Origin) and is
 		// what a browser-hosted client should be held to.
-		mux.Handle("POST /mcp", a.secured(auth.RoleViewer, a.handleMCP))
+		mux.Handle("POST /mcp", a.securedResource(auth.RoleViewer, a.mcpResource, a.handleMCP))
 	}
 }
 
