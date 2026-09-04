@@ -1342,4 +1342,37 @@ ui_line="$(grep -n -- '- path: /$' <<<"$out" | head -1 | cut -d: -f1)"
   || fail "/mcp is ordered after the UI catch-all ($mcp_line vs $ui_line)"
 ok "/mcp reaches the hub, ahead of the UI catch-all"
 
+echo "== mcp oauth: off by default, and refused where it cannot work"
+out="$(render --set modules.mcp.enabled=true)"
+grep -q 'AVURUOBS_MCP_OAUTH_ENABLED' <<<"$out" && fail "oauth env rendered without opting in"
+ok "no oauth surface with the module alone"
+
+# Each impossible combination is refused at TEMPLATE time rather than producing
+# an install that 404s or advertises a URL nobody can reach.
+render --set modules.mcp.oauth.enabled=true >/dev/null 2>&1 \
+  && fail "oauth without the mcp module rendered"
+render --set modules.mcp.enabled=true --set modules.mcp.oauth.enabled=true >/dev/null 2>&1 \
+  && fail "oauth without publicUrl rendered"
+render --set modules.mcp.enabled=true --set modules.mcp.oauth.enabled=true \
+  --set publicUrl=https://obs.example.com --set auth.enabled=false >/dev/null 2>&1 \
+  && fail "oauth without auth rendered"
+ok "three impossible combinations refused"
+
+out="$(render --set modules.mcp.enabled=true --set modules.mcp.oauth.enabled=true --set publicUrl=https://obs.example.com)"
+grep -q 'AVURUOBS_MCP_OAUTH_ENABLED' <<<"$out" || fail "oauth env missing when enabled"
+grep -q 'value: "https://obs.example.com"' <<<"$out" || fail "AVURUOBS_PUBLIC_URL missing"
+before="$(render | grep -c '^kind: Deployment' || true)"
+after="$(grep -c '^kind: Deployment' <<<"$out" || true)"
+[ "$before" = "$after" ] || fail "oauth added a Deployment ($before -> $after)"
+ok "renders with a public URL; still no new component"
+
+echo "== publicUrl: promoted out of the OIDC block, old key still honoured"
+# It was only emitted inside oidcEnv, so an install without SSO never got it —
+# yet the hub reads it for trusted origins regardless.
+out="$(render --set publicUrl=https://obs.example.com)"
+grep -q 'AVURUOBS_PUBLIC_URL' <<<"$out" || fail "publicUrl not emitted without SSO"
+out="$(render --set auth.oidc.publicUrl=https://legacy.example.com)"
+grep -q 'value: "https://legacy.example.com"' <<<"$out" || fail "auth.oidc.publicUrl no longer honoured"
+ok "top-level key works without SSO; the old key still resolves"
+
 echo "ALL TEMPLATE ASSERTIONS PASSED"

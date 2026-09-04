@@ -395,6 +395,31 @@
           "required": [
             "enabled"
           ]
+        },
+        "mcp": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "oauth": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "dynamicRegistration": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "enabled"
+              ]
+            }
+          },
+          "required": [
+            "enabled"
+          ]
         }
       },
       "required": [
@@ -1424,6 +1449,9 @@
           }
         }
       }
+    },
+    "publicUrl": {
+      "type": "string"
     }
   }
 }

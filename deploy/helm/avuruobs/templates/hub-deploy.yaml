@@ -1,5 +1,10 @@
 {{- /* Hub-owned: skipped entirely on a gateway-only (secondary cluster) install. */}}
 {{- if .Values.hub.enabled }}
+{{- /* Run the MCP OAuth guards HERE, not where the env is emitted: that block
+       sits inside `if .Values.auth.enabled`, so the very combination the guard
+       exists to refuse — OAuth on, auth off — would never reach it. Assigned to
+       a throwaway so the "true" it returns does not land in the manifest. */}}
+{{- $_ := include "avuruobs.mcpOAuthEnabled" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -162,6 +167,8 @@ spec:
                   key: demo-password
             {{- end }}
             {{- with include "avuruobs.oidcEnv" . }}{{ . | nindent 12 }}{{- end }}
+            {{- with include "avuruobs.publicUrlEnv" . }}{{ . | nindent 12 }}{{- end }}
+            {{- with include "avuruobs.mcpOAuthEnv" . }}{{ . | nindent 12 }}{{- end }}
             {{- end }}
           ports:
             - name: http
