@@ -30,8 +30,8 @@ light up — no SDK, no sidecars, no YAML archaeology.
 
 </details>
 
-> **Status: v0.10.0 released** (2026-08-26); `main` is under active development
-> toward v0.11. See [CHANGELOG.md](CHANGELOG.md) for what shipped,
+> **Status: v0.13.0 released** (2026-09-04); `main` is under active development
+> toward v0.14. See [CHANGELOG.md](CHANGELOG.md) for what shipped,
 > [ROADMAP.md](ROADMAP.md) for where it's headed and
 > [`agent_docs/architecture.md`](agent_docs/architecture.md) for the living
 > architecture.
@@ -161,6 +161,44 @@ Beyond the core signals, the day-2 layer:
   a mesh writes on its own data plane — Gateway API, Istio, Linkerd — and
   believes them. Labels only ever promote a workload to transport, never demote
   one, so an install with none of them classifies exactly as it did before.
+- **The model calls you are already sending** *(v0.11)* — an application
+  calling a model emits spans like any other client, so the AI screen is built
+  out of traces already in the store: which models the estate calls, how often,
+  how they fail, and what they cost — priced from rates you declare, because
+  there is no pricing API here and nothing leaves the cluster to produce the
+  figure. A call whose instrumentation reported no token usage is counted and
+  named rather than averaged in as zero, so the total is honestly a floor
+  instead of a confident wrong number. Prompt and completion text is dropped at
+  the gateway by default; the token counts survive.
+- **Spend with a line you set, and the shape of a turn** *(v0.12)* — monthly
+  budgets on tokens or money, per calling service or across the estate, firing
+  through the alerting that already exists rather than a second notification
+  path. A budget over models you have not priced is refused when the config is
+  parsed, since a threshold measured against a floor comes in under it by being
+  ignorant of half the spend. And an agent turn is drawn as the graph it is —
+  weighted by time spent *inside* each node, with a tool the turn hit four
+  times shown as one node and a count, because the loop is the thing worth
+  seeing.
+- **An agent can read the estate** *(v0.12)* — an MCP server at `POST /mcp`
+  with six read-only tools over the traces, logs, error issues and health this
+  install already stores, so a client investigates an incident instead of a
+  person reading a screen and retyping what they saw. It authenticates with the
+  personal tokens below, on the same permission model as every other endpoint.
+  **Off by default**: what an agent reads leaves the cluster for whichever model
+  provider you chose, and that is a decision to hand over rather than make for
+  you.
+- **A service's neighbourhood, drawn** *(v0.13)* — callers on the left, the
+  service in the middle, what it depends on on the right, each arrow labelled
+  with that path's rate and caller-side p95. It costs no extra request: the page
+  was already reading those edges to fill two tables. A hop recovered across a
+  mesh proxy reads `via <proxy>`, an edge nobody timed carries no latency rather
+  than `0ms`, and a peer that never sent a span is outlined rather than filled —
+  the picture claims nothing the tables would not.
+- **Images with nothing to allowlist** *(v0.13)* — the gateway and the node
+  agent are both first-party collector distros, carrying only the components
+  their rendered config uses and pinning security floors upstream releases do
+  not. Every image the chart pulls by default scans free of a fixable Critical
+  or High, so a registry policy that blocks Criticals has nothing to except.
 - **Personal API tokens** *(v0.5)* — scripts and CI call the API with
   `Authorization: Bearer avurut_…` instead of a scraped cookie: hashed at
   rest, shown once, resolving to the owner's live permissions, so disabling a
