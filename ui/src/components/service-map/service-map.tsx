@@ -75,6 +75,7 @@ export function ServiceMap({
   windowMs,
   health = EMPTY_HEALTH,
   handleRef,
+  focus,
   carbon = false,
   compact = false,
   healthEnabled = false,
@@ -90,6 +91,11 @@ export function ServiceMap({
    *  which leaves every ring neutral. */
   health?: Map<string, ServiceHealth>;
   handleRef?: React.Ref<ServiceMapHandle>;
+  // A service to open with its neighbourhood already lit — what "show on the
+  // map" from a service page means. Highlight only: the node set is decided by
+  // the caller's filters, so focusing never changes what is on screen, only
+  // what stands out on it.
+  focus?: string;
   // carbon (module green) turns on the gCO2e halo + node energy tooltip.
   // Default off: on a non-green install the map is byte-unchanged.
   carbon?: boolean;
@@ -160,6 +166,16 @@ export function ServiceMap({
     // animate:false, so positions are already final here.
     if (compact) cy.fit(undefined, fitPadding(compact));
 
+    // Arriving focused: light the neighbourhood and leave it lit, so the map
+    // opens on the answer instead of asking the reader to find the node and
+    // hover it. Same helper the hover uses — one definition of "neighbourhood".
+    const applyFocus = () => {
+      const el = focus ? cy.getElementById(focus) : null;
+      if (el?.nonempty()) focusNeighbourhood(cy, el as unknown as NodeSingular);
+      else clearFocus(cy);
+    };
+    applyFocus();
+
     cy.on("tap", "node", (e) => {
       // A virtual target has no service page to open: it never sent a span, so
       // there are no RED numbers, no dependencies of its own and no traces
@@ -222,7 +238,9 @@ export function ServiceMap({
       );
     });
     cy.on("mouseout", "node", () => {
-      clearFocus(cy);
+      // Back to the standing focus rather than to nothing: a map opened on one
+      // service must not lose its highlight to the first stray hover.
+      applyFocus();
       hideTip();
     });
 
@@ -243,6 +261,7 @@ export function ServiceMap({
     grouping,
     edgeLabels,
     onZoomPercent,
+    focus,
   ]);
 
   // Re-theme the graph when the user toggles light/dark.

@@ -11,6 +11,47 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **A service's dependencies are now a picture, not just a list.** The service
+  page could name what calls a service and what it calls — two tables, sorted by
+  volume — and that is where it stopped. A list cannot show shape: that one
+  caller carries all of the traffic, that a single dependency is the one going
+  red, that a hop exists only because the hub walked a trace across a mesh
+  proxy. The screen holding the most connective information in the product drew
+  no connections.
+
+  The Overview tab now opens on a **neighbourhood diagram**: callers on the
+  left, this service in the middle, what it depends on on the right, each arrow
+  labelled with the rate and the caller-side p95 of that exact path. Direction
+  is the entire claim, so the layout is fixed rather than simulated — unlike the
+  service map, which draws the whole estate and lets a force layout place it.
+  The tables are one click away and the choice rides in the URL (`?deps=table`),
+  so a plain link to a service still arrives on the picture.
+
+  It costs no request. The page was already reading the service map's response;
+  the diagram is the same edges the tables show, drawn.
+
+  Everything the tables refused to claim, the diagram refuses too. A dependency
+  recovered across a proxy is labelled `via <proxy>`, so a reconstructed edge
+  never reads as a directly observed one. An edge nobody timed carries no
+  latency rather than `0ms`, and a connection the kernel saw with no traced call
+  behind it shows bytes rather than a rate of zero. A database, a queue or a
+  workload that never sent a span is outlined rather than filled, says its
+  numbers were measured at the caller, and does not pretend to have a page to
+  open. Past eight peers a side the column stops and says how many are left —
+  the table is still the complete list, which is what makes stopping honest.
+
+### Fixed
+
+- **"Show on the map" no longer strands a service on an empty map.** The link
+  passed the service name as a *filter*, so the map kept that one node and
+  dropped every edge it had: the reader arrived on an isolated dot, on the one
+  screen whose whole subject is connections. It now passes `focus=<service>`,
+  which keeps the service and its one-hop neighbourhood, lights it with the same
+  highlight hovering a node already gives, and says what it is showing with a
+  way back to the whole estate.
+
 ### Security
 
 - **Every image an install pulls by default is now free of a fixable
@@ -51,7 +92,6 @@ When a release is cut, that block is renamed to the version with its date.
   v0.11.4 — off by default — scans 33 HIGH from its RHEL base. Neither is an
   image this project builds, and neither has a newer upstream tag to move to.
   ClickHouse 26.3 scans clean.
-
 
 ## [0.12.0] — 2026-09-01
 

@@ -7,7 +7,7 @@ const CALLER = "seed-gateway";
 const CALLEE = "seed-payments";
 
 test.describe("service detail", () => {
-  test("summarises one service and names both sides of its neighbourhood", async ({ page }) => {
+  test("summarises one service and draws its neighbourhood", async ({ page }) => {
     await page.goto(`/services?service=${CALLEE}`);
 
     await expect(page.getByRole("heading", { name: CALLEE })).toBeVisible();
@@ -16,17 +16,54 @@ test.describe("service detail", () => {
       await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
     }
 
+    // The diagram is the default view: callers on the left, this service in the
+    // middle. Unlike the service map it is SVG and HTML, not canvas, so what it
+    // claims is assertable here rather than only visible to a human.
+    const diagram = page.getByTestId("service-neighbourhood");
+    await expect(diagram).toBeVisible();
+    await expect(diagram.getByText(CALLER)).toBeVisible();
+    await expect(diagram.getByText(CALLEE)).toBeVisible();
+  });
+
+  test("the table view names both sides of the neighbourhood", async ({ page }) => {
+    await page.goto(`/services?service=${CALLEE}&deps=table`);
+
     // Callers and callees are shown apart: who is affected when this breaks,
     // against what could be breaking it.
     const calledBy = page.locator("div").filter({ hasText: /^Called by/ }).first();
     await expect(calledBy.getByText(CALLER)).toBeVisible();
   });
 
-  test("a caller in the list opens that service's own page", async ({ page }) => {
+  test("a caller in the diagram opens that service's own page", async ({ page }) => {
     await page.goto(`/services?service=${CALLEE}`);
+    await page
+      .getByTestId("service-neighbourhood")
+      .getByRole("button", { name: CALLER })
+      .click();
+    await expect(page).toHaveURL(new RegExp(`service=${CALLER}`));
+    await expect(page.getByRole("heading", { name: CALLER })).toBeVisible();
+  });
+
+  test("a caller in the table opens that service's own page", async ({ page }) => {
+    await page.goto(`/services?service=${CALLEE}&deps=table`);
     await page.getByRole("row").filter({ hasText: CALLER }).click();
     await expect(page).toHaveURL(new RegExp(`service=${CALLER}`));
     await expect(page.getByRole("heading", { name: CALLER })).toBeVisible();
+  });
+
+  test("the diagram/table choice is url state", async ({ page }) => {
+    await page.goto(`/services?service=${CALLEE}`);
+    await expect(page.getByTestId("service-neighbourhood")).toBeVisible();
+
+    await page.getByRole("button", { name: "Table" }).click();
+    await expect(page).toHaveURL(/deps=table/);
+    await expect(page.getByRole("row").filter({ hasText: CALLER })).toBeVisible();
+
+    // The diagram is the default, so choosing it CLEARS the param rather than
+    // writing deps=diagram — a plain link to a service still arrives on it.
+    await page.getByRole("button", { name: "Diagram" }).click();
+    await expect(page).not.toHaveURL(/deps=/);
+    await expect(page.getByTestId("service-neighbourhood")).toBeVisible();
   });
 
   test("the signal tabs are scoped to the service", async ({ page }) => {

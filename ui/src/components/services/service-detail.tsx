@@ -52,7 +52,10 @@ export function ServiceDetail({ service }: { service: string }) {
     () => map.data?.services.find((s) => s.name === service),
     [map.data, service],
   );
-  const edges = map.data?.edges ?? [];
+  // Memoized: these feed the neighbourhood layout, and a fresh [] on every
+  // render would rebuild it for nothing.
+  const services = useMemo(() => map.data?.services ?? [], [map.data]);
+  const edges = useMemo(() => map.data?.edges ?? [], [map.data]);
   const status = health.get(service);
   const points = red.data?.series.find((s) => s.service === service)?.points ?? [];
 
@@ -103,7 +106,7 @@ export function ServiceDetail({ service }: { service: string }) {
           )}
         </div>
         <Link
-          href={`/service-map?q=${encodeURIComponent(service)}`}
+          href={`/service-map?focus=${encodeURIComponent(service)}`}
           className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
         >
           <MapIcon className="h-3 w-3" aria-hidden /> show on the map
@@ -142,8 +145,11 @@ export function ServiceDetail({ service }: { service: string }) {
         <div className="flex flex-col gap-3">
           <ServiceDependencies
             service={service}
+            services={services}
             edges={edges}
             windowMs={windowMs}
+            health={health}
+            healthEnabled={healthOn}
             onSelect={openService}
           />
           <Card className="flex flex-col gap-3 p-4">

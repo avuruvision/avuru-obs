@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Map as MapIcon } from "lucide-react";
+import { Crosshair, Map as MapIcon } from "lucide-react";
 import { useTimeRange } from "@/hooks/use-time-range";
 import { useURLState } from "@/hooks/use-url-state";
 import { useServiceMapData } from "@/hooks/use-service-map-data";
@@ -59,6 +59,9 @@ export function ServiceMapScreen() {
       q: get("q"),
       problemsOnly: get("problems") === "true",
       group: get("group"),
+      // Arriving from a service page: keep that service and its neighbours,
+      // rather than filtering the map down to the one name.
+      focus: get("focus"),
     }),
     [get],
   );
@@ -122,6 +125,7 @@ export function ServiceMapScreen() {
       q: next.q || undefined,
       problems: next.problemsOnly ? "true" : undefined,
       group: next.group || undefined,
+      focus: next.focus || undefined,
     });
 
   if (isLoading) return <CenteredSpinner />;
@@ -172,6 +176,29 @@ export function ServiceMapScreen() {
         onRelayout={() => mapRef.current?.relayout()}
       />
 
+      {filters.focus && (
+        // A narrowed map has to say so, and say how to leave. Without this the
+        // reader has a map missing most of their estate and no way to tell
+        // whether that is a filter or the truth.
+        <div
+          data-testid="map-focus"
+          className="flex flex-wrap items-center gap-2 text-xs text-base-content/60"
+        >
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-base-200 px-2 py-0.5">
+            <Crosshair className="h-3 w-3 text-primary" aria-hidden />
+            Neighbourhood of{" "}
+            <span className="font-mono text-base-content">{filters.focus}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setMany({ focus: undefined })}
+            className="text-primary hover:underline"
+          >
+            show the whole map
+          </button>
+        </div>
+      )}
+
       <p data-testid="map-count" className="text-xs text-base-content/55">
         {shownApps} services · {callEdges} call edges
         {meshEdges > 0 && ` · ${meshEdges} through the mesh`}
@@ -209,6 +236,7 @@ export function ServiceMapScreen() {
           windowMs={windowMs}
           health={byService}
           handleRef={mapRef}
+          focus={filters.focus}
           carbon={carbon}
           healthEnabled={healthEnabled}
           grouping={grouping}
