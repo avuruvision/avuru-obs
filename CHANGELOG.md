@@ -123,9 +123,10 @@ When a release is cut, that block is renamed to the version with its date.
   Nothing caught this because the one place MCP is tested end-to-end is the
   compose stack, which publishes the hub directly and so bypasses both layers.
   The template tests now assert that each of these paths reaches the hub and is
-  matched ahead of the catch-all that serves the UI, and the e2e suite gained
-  its first cases that go through the **front door** rather than straight to the
-  hub — the blind spot itself, closed.
+  matched ahead of the catch-all that serves the UI, and the browser suite —
+  the one that already runs behind nginx — gained the first cases that assert
+  what the **front door** serves rather than what the hub serves. That is the
+  blind spot itself, closed, and not just today's instance of it.
 - **A meshed service no longer shows its proxy as a caller.** The
   neighbourhood diagram and its tables took the service map's raw edge set,
   which is not what the map itself draws. The hub reports both the mesh hops

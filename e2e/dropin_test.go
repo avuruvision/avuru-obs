@@ -26,10 +26,6 @@ var (
 	hubURL    = envOr("AVURUOBS_E2E_HUB_URL", "http://localhost:18080")
 	hotrodURL = envOr("AVURUOBS_E2E_HOTROD_URL", "http://localhost:8088")
 	chURL     = envOr("AVURUOBS_E2E_CH_URL", "http://localhost:8123")
-	// The UI's nginx (3001:80). Every other endpoint here reaches the hub
-	// DIRECTLY, which is precisely why two shipped routing bugs survived the
-	// suite — see frontdoor_test.go.
-	uiURL = envOr("AVURUOBS_E2E_UI_URL", "http://localhost:3001")
 )
 
 const seededTraceID = "aaaa1111bbbb2222cccc3333dddd4444"
