@@ -163,6 +163,19 @@ type Fake struct {
 	RevokedTokens   []string
 	TouchedTokens   []string
 
+	// OAuth fakes. Same shape again: keyed by id/hash, live rows only, so a
+	// revoke deletes the entry rather than flagging it. OAuthErr forces a store
+	// failure — the middleware must answer 503, never 401, when the database is
+	// the thing that is broken.
+	OAuthClients   map[string]storage.OAuthClient
+	OAuthGrants    map[string]storage.OAuthGrant
+	OAuthCodes     map[string]storage.OAuthAuthCode
+	OAuthTokens    map[string]storage.OAuthToken
+	OAuthErr       error
+	ConsumedCodes  []string
+	RevokedGrants  []string
+	RevokedOAuthTk []string
+
 	// Last*Query record the most recent inputs for asserting parameter parsing.
 	LastTraceQuery        storage.TraceQuery
 	LastServiceQuery      storage.ServiceQuery
@@ -961,5 +974,179 @@ func (f *Fake) TouchAuthToken(_ context.Context, tokenHash string, at time.Time)
 	}
 	t.LastUsedAt = at
 	f.AuthTokens[tokenHash] = t
+	return nil
+}
+
+// --- OAuth 2.1 authorization server ---------------------------------------
+
+func (f *Fake) CreateOAuthClient(_ context.Context, c storage.OAuthClient) error {
+	if f.OAuthErr != nil {
+		return f.OAuthErr
+	}
+	if f.OAuthClients == nil {
+		f.OAuthClients = map[string]storage.OAuthClient{}
+	}
+	f.OAuthClients[c.ClientID] = c
+	return nil
+}
+
+func (f *Fake) GetOAuthClient(_ context.Context, clientID string) (storage.OAuthClient, error) {
+	if f.OAuthErr != nil {
+		return storage.OAuthClient{}, f.OAuthErr
+	}
+	c, ok := f.OAuthClients[clientID]
+	if !ok {
+		return storage.OAuthClient{}, storage.ErrNotFound
+	}
+	return c, nil
+}
+
+func (f *Fake) ListOAuthClients(_ context.Context) ([]storage.OAuthClient, error) {
+	if f.OAuthErr != nil {
+		return nil, f.OAuthErr
+	}
+	out := make([]storage.OAuthClient, 0, len(f.OAuthClients))
+	for _, c := range f.OAuthClients {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ClientID < out[j].ClientID })
+	return out, nil
+}
+
+func (f *Fake) RevokeOAuthClient(_ context.Context, clientID string) error {
+	if _, ok := f.OAuthClients[clientID]; !ok {
+		return storage.ErrNotFound
+	}
+	delete(f.OAuthClients, clientID)
+	return nil
+}
+
+func (f *Fake) CreateOAuthGrant(_ context.Context, g storage.OAuthGrant) error {
+	if f.OAuthErr != nil {
+		return f.OAuthErr
+	}
+	if f.OAuthGrants == nil {
+		f.OAuthGrants = map[string]storage.OAuthGrant{}
+	}
+	f.OAuthGrants[g.GrantID] = g
+	return nil
+}
+
+func (f *Fake) GetOAuthGrant(_ context.Context, grantID string) (storage.OAuthGrant, error) {
+	if f.OAuthErr != nil {
+		return storage.OAuthGrant{}, f.OAuthErr
+	}
+	g, ok := f.OAuthGrants[grantID]
+	if !ok {
+		return storage.OAuthGrant{}, storage.ErrNotFound
+	}
+	return g, nil
+}
+
+func (f *Fake) ListOAuthGrants(_ context.Context, userID string) ([]storage.OAuthGrant, error) {
+	if f.OAuthErr != nil {
+		return nil, f.OAuthErr
+	}
+	var out []storage.OAuthGrant
+	for _, g := range f.OAuthGrants {
+		if g.UserID == userID {
+			out = append(out, g)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].GrantID < out[j].GrantID })
+	return out, nil
+}
+
+func (f *Fake) RevokeOAuthGrant(_ context.Context, userID, grantID string) error {
+	g, ok := f.OAuthGrants[grantID]
+	if !ok || g.UserID != userID {
+		return storage.ErrNotFound
+	}
+	delete(f.OAuthGrants, grantID)
+	f.RevokedGrants = append(f.RevokedGrants, grantID)
+	return nil
+}
+
+func (f *Fake) CreateOAuthAuthCode(_ context.Context, c storage.OAuthAuthCode) error {
+	if f.OAuthErr != nil {
+		return f.OAuthErr
+	}
+	if f.OAuthCodes == nil {
+		f.OAuthCodes = map[string]storage.OAuthAuthCode{}
+	}
+	f.OAuthCodes[c.CodeHash] = c
+	return nil
+}
+
+func (f *Fake) GetOAuthAuthCode(_ context.Context, codeHash string) (storage.OAuthAuthCode, error) {
+	if f.OAuthErr != nil {
+		return storage.OAuthAuthCode{}, f.OAuthErr
+	}
+	c, ok := f.OAuthCodes[codeHash]
+	if !ok {
+		return storage.OAuthAuthCode{}, storage.ErrNotFound
+	}
+	return c, nil
+}
+
+func (f *Fake) ConsumeOAuthAuthCode(_ context.Context, codeHash string) error {
+	c, ok := f.OAuthCodes[codeHash]
+	if !ok || c.Consumed {
+		return storage.ErrNotFound
+	}
+	c.Consumed = true
+	f.OAuthCodes[codeHash] = c
+	f.ConsumedCodes = append(f.ConsumedCodes, codeHash)
+	return nil
+}
+
+func (f *Fake) CreateOAuthToken(_ context.Context, t storage.OAuthToken) error {
+	if f.OAuthErr != nil {
+		return f.OAuthErr
+	}
+	if f.OAuthTokens == nil {
+		f.OAuthTokens = map[string]storage.OAuthToken{}
+	}
+	f.OAuthTokens[t.TokenHash] = t
+	return nil
+}
+
+func (f *Fake) GetOAuthTokenByHash(_ context.Context, tokenHash string) (storage.OAuthToken, error) {
+	if f.OAuthErr != nil {
+		return storage.OAuthToken{}, f.OAuthErr
+	}
+	t, ok := f.OAuthTokens[tokenHash]
+	if !ok {
+		return storage.OAuthToken{}, storage.ErrNotFound
+	}
+	return t, nil
+}
+
+func (f *Fake) RevokeOAuthToken(_ context.Context, tokenHash string) error {
+	if _, ok := f.OAuthTokens[tokenHash]; !ok {
+		return storage.ErrNotFound
+	}
+	delete(f.OAuthTokens, tokenHash)
+	f.RevokedOAuthTk = append(f.RevokedOAuthTk, tokenHash)
+	return nil
+}
+
+func (f *Fake) RevokeOAuthTokensForGrant(_ context.Context, grantID string) error {
+	for h, t := range f.OAuthTokens {
+		if t.GrantID == grantID {
+			delete(f.OAuthTokens, h)
+			f.RevokedOAuthTk = append(f.RevokedOAuthTk, h)
+		}
+	}
+	return nil
+}
+
+func (f *Fake) TouchOAuthToken(_ context.Context, tokenHash string, at time.Time) error {
+	t, ok := f.OAuthTokens[tokenHash]
+	if !ok {
+		return storage.ErrNotFound
+	}
+	t.LastUsedAt = at
+	f.OAuthTokens[tokenHash] = t
 	return nil
 }
