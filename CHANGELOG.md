@@ -28,6 +28,15 @@ When a release is cut, that block is renamed to the version with its date.
   binaries are still static and CGO-free. The images job also gained a timeout,
   so a wedged build fails loudly rather than sitting on the six-hour default.
 
+- **One answer to "where did the time go".** The hub computed per-service self
+  time for `get_trace`; the trace Path view computed the same thing again in the
+  browser. Same weighting, two implementations — and they had already drifted on
+  the error count above.
+
+  There is now one rollup, and the Path view reads it from the response it was
+  already fetching, so the screen costs no extra request and cannot disagree with
+  what an agent is told about the same trace.
+
 ### Fixed
 
 - **An agent now sees the dependency behind a mesh proxy, not the proxy.** The
@@ -47,6 +56,20 @@ When a release is cut, that block is renamed to the version with its date.
   Unmeshed installs are unaffected and pay nothing: with no proxies there is no
   query to run.
 
+- **`get_trace` now counts the errors a span actually reported.** The MCP
+  server's per-service rollup decided a span had failed by testing its OTel
+  status for the literal string "error" — but many SDK auto-instrumentations
+  leave that status `Unset` even on a failing HTTP call. A service returning
+  503s came back with `errorCount: 0`, so an agent investigating an incident was
+  told the failing service looked fine.
+
+  Both other places this rule lives — the browser's span classifier and the
+  hub's own SQL — already treated an `Unset` span carrying 5xx (or a client 4xx)
+  as an error, and both carry a comment saying to keep them in sync. The tool was
+  the one that did not. It now shares their classification and reports
+  `refusedCount` alongside: a server 4xx, kept out of the error count because the
+  fault is the caller's and folding it in would flood the figure with auth
+  challenges and crawler 404s.
 - **The MCP server is now reachable on a Helm install.** The server shipped in
   v0.12 as one handler on the hub at `POST /mcp` — and nothing routed it. The
   Ingress sends `/api` and `/healthz` to the hub and everything else to the UI,

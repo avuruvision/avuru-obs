@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/storage"
+	"github.com/avuru/avuru-obs/hub/internal/tracestats"
 )
 
 // Wire DTOs. Durations are float milliseconds; times are RFC3339 (UTC).
@@ -151,6 +152,24 @@ type traceResponse struct {
 	StartTime  time.Time `json:"startTime"`
 	DurationMs float64   `json:"durationMs"`
 	Spans      []spanDTO `json:"spans"`
+	// Services is where the time went, per service: each span's own duration
+	// minus what it spent waiting on its direct children. Carried on the
+	// response the trace views already fetch, so the Path view costs no extra
+	// request — and so the number it shows is the hub's, not a second
+	// implementation of the same arithmetic in the browser.
+	Services []traceServiceDTO `json:"services"`
+}
+
+// traceServiceDTO mirrors the MCP get_trace tool's rows field-for-field: both
+// read hub/internal/tracestats, and an agent and a person should not be given
+// different names for the same number.
+type traceServiceDTO struct {
+	Service    string  `json:"service"`
+	SelfTimeMs float64 `json:"selfTimeMs"`
+	SpanCount  int     `json:"spanCount"`
+	ErrorCount int     `json:"errorCount"`
+	// A server 4xx, reported apart from errors rather than folded into them.
+	RefusedCount int `json:"refusedCount"`
 }
 
 type heatmapCellDTO struct {
@@ -242,6 +261,15 @@ func toTraceSummaryDTO(t storage.TraceSummary) traceSummaryDTO {
 
 func toTraceResponse(t storage.Trace) traceResponse {
 	resp := traceResponse{TraceID: t.TraceID, Spans: make([]spanDTO, 0, len(t.Spans))}
+	for _, r := range tracestats.SelfTimeByService(t.Spans) {
+		resp.Services = append(resp.Services, traceServiceDTO{
+			Service:      r.Service,
+			SelfTimeMs:   ms(r.SelfTime),
+			SpanCount:    r.SpanCount,
+			ErrorCount:   r.ErrorCount,
+			RefusedCount: r.RefusedCount,
+		})
+	}
 	var end time.Time
 	for _, sp := range t.Spans {
 		dto := spanDTO{

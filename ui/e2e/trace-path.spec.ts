@@ -58,4 +58,28 @@ test.describe("trace path", () => {
     await canvas(page).getByText(CHILD_SERVICE, { exact: true }).click();
     await expect(page.getByText("Span detail", { exact: true })).toBeVisible();
   });
+  // The numbers on each card come from the HUB now, not from arithmetic in the
+  // browser. Before this the spec asserted only the shape of the graph, so the
+  // client-side rollup could have been deleted without anything noticing.
+  //
+  // The seeded multiservice trace is deterministic: seed-gateway keeps 100ms
+  // across 2 spans, and seed-payments 200ms across 1 — which is exactly what
+  // GET /api/v1/traces/{id} reports in its `services` rollup.
+  test("each service reports the time the hub says it spent", async ({ page }) => {
+    await page.goto(pathUrl(MULTI_TRACE_ID));
+
+    // Card text renders without separators ("100msself·2spansfocus"), so match
+    // the values rather than word-spaced phrases.
+    const root = canvas(page).getByTestId(`path-node-${ROOT_SERVICE}`);
+    await expect(root).toBeVisible();
+    await expect(root).toContainText("100ms");
+    await expect(root).toContainText("2");
+
+    const child = canvas(page).getByTestId(`path-node-${CHILD_SERVICE}`);
+    await expect(child).toContainText("200ms");
+
+    // Exact values rather than "non-zero": a broken hand-off renders 0ms and
+    // 0 spans, which these assertions already exclude — and a negative check
+    // for "0ms" would match "100ms" anyway.
+  });
 });

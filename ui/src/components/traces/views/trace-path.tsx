@@ -47,7 +47,14 @@ export function TracePath({
   // filtering a trace by a parent.
   const [focus, setFocus] = useState<string | null>(null);
 
-  const path = useMemo(() => buildTracePath(trace.spans), [trace.spans]);
+  const path = useMemo(
+    // `services` is the hub's per-service rollup, carried on this same
+    // response. `?? []` is a guard against a partial object, not a fallback:
+    // the browser no longer computes these numbers, so an empty list shows
+    // zeros rather than quietly recomputing a second answer.
+    () => buildTracePath(trace.spans, trace.services ?? []),
+    [trace.spans, trace.services],
+  );
 
   const visible = useMemo(
     () => (focus ? descendantsOf(path, focus) : null),
@@ -285,6 +292,7 @@ function ServiceCard({
   const bad = node.errorCount > 0;
   return (
     <div
+      data-testid={`path-node-${node.service}`}
       className={cn(
         "absolute flex flex-col justify-center gap-1 rounded-lg border bg-base-100 px-2 shadow-sm transition-colors",
         bad ? "border-error/60" : "border-neutral",

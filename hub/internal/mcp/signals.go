@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/storage"
+	"github.com/avuru/avuru-obs/hub/internal/tracestats"
 )
 
 // The window properties every tool's schema repeats. Declared once so the
@@ -284,6 +285,10 @@ type serviceSelfTime struct {
 	SelfTimeMs float64 `json:"selfTimeMs"`
 	SpanCount  int     `json:"spanCount"`
 	ErrorCount int     `json:"errorCount"`
+	// RefusedCount is a server 4xx: the caller was turned away. Reported apart
+	// from errors, never folded into them — the fault is the caller's, and
+	// counting it would flood the figure with auth challenges and crawler 404s.
+	RefusedCount int `json:"refusedCount,omitempty"`
 }
 
 type getTracePayload struct {
@@ -316,7 +321,7 @@ func runGetTrace(ctx context.Context, s *Server, raw json.RawMessage) (any, erro
 
 	// The rollup is computed over EVERY span, before the page is cut. Bounding
 	// what an agent reads must not quietly change what the totals mean.
-	services := selfTimeByService(trace.Spans)
+	services := toSelfTimeRows(tracestats.SelfTimeByService(trace.Spans))
 
 	spans := make([]spanRow, 0, len(trace.Spans))
 	for _, sp := range trace.Spans {
@@ -347,56 +352,20 @@ func runGetTrace(ctx context.Context, s *Server, raw json.RawMessage) (any, erro
 	}, nil
 }
 
-// selfTimeByService weights a trace by where the time actually WENT: each
-// span's own duration minus what it spent waiting on its direct children,
-// rolled up per service.
-//
-// This arithmetic already exists once, in the browser
-// (ui/src/components/traces/views/trace-path.tsx), where the Path view
-// computes it client-side — so the hub has nothing to hand over. Computing it
-// here rather than moving the UI's copy is a deliberate cost: unifying them
-// means touching a shipped screen, which would put a UI regression in the
-// blast radius of a change that otherwise adds nothing to any existing
-// surface. The follow-up — the screen reading this number instead — is a
-// separate and much safer change.
-func selfTimeByService(spans []storage.Span) []serviceSelfTime {
-	childTime := make(map[string]time.Duration, len(spans))
-	for _, sp := range spans {
-		if sp.ParentSpanID != "" {
-			childTime[sp.ParentSpanID] += sp.Duration
-		}
+// toSelfTimeRows maps the shared rollup onto this tool's payload. The
+// arithmetic lives in hub/internal/tracestats because the Path view reads the
+// same numbers — one implementation, two readers.
+func toSelfTimeRows(rows []tracestats.ServiceSelfTime) []serviceSelfTime {
+	out := make([]serviceSelfTime, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, serviceSelfTime{
+			Service:      r.Service,
+			SelfTimeMs:   ms(r.SelfTime),
+			SpanCount:    r.SpanCount,
+			ErrorCount:   r.ErrorCount,
+			RefusedCount: r.RefusedCount,
+		})
 	}
-	agg := make(map[string]*serviceSelfTime, 8)
-	for _, sp := range spans {
-		self := sp.Duration - childTime[sp.SpanID]
-		if self < 0 {
-			// Concurrent children can outlast their parent's own clock. Zero,
-			// not a negative: "this service waited" is the truth, and a
-			// negative number would corrupt the rollup it lands in.
-			self = 0
-		}
-		row, ok := agg[sp.Service]
-		if !ok {
-			row = &serviceSelfTime{Service: sp.Service}
-			agg[sp.Service] = row
-		}
-		row.SelfTimeMs += ms(self)
-		row.SpanCount++
-		if strings.EqualFold(sp.StatusCode, "error") {
-			row.ErrorCount++
-		}
-	}
-	out := make([]serviceSelfTime, 0, len(agg))
-	for _, r := range agg {
-		out = append(out, *r)
-	}
-	// Biggest first: "where did the time go" is answered by the first row.
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].SelfTimeMs != out[j].SelfTimeMs {
-			return out[i].SelfTimeMs > out[j].SelfTimeMs
-		}
-		return out[i].Service < out[j].Service
-	})
 	return out
 }
 

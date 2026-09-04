@@ -279,7 +279,11 @@ included. Three obligations ship with it, and none is optional:
       set of semantics: the merge moved out of the service-map handler into
       `hub/internal/topology`, so both surfaces call the same functions
       ([AEP](2026-08-25-transport-hop-collapse.md)).
-- [ ] The Path view reads the hub's self-time instead of computing its own
+- [x] The Path view reads the hub's self-time instead of computing its own —
+      one rollup in `hub/internal/tracestats`, on the REST trace response the
+      view already fetched. Unifying them surfaced a real defect: `get_trace`
+      counted only a raw `error` status, so an auto-instrumented 5xx was
+      reported as a success.
 - [ ] OAuth 2.1 for claude.ai connectors (own PR, own review)
 - [x] Docs: bilingual changelog, feature-status matrix, API reference
 - [x] README: the capability line
