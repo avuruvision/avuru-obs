@@ -39,7 +39,13 @@ test.describe("project switcher (seeded data)", () => {
     await expect(page).toHaveURL(/project=staging/);
 
     await page.reload();
-    await expect(page).toHaveURL(/project=staging/);
+    // Assert the SWITCHER before the URL. A reload lands on /logs with no
+    // param — the provider reads the stored project and re-materializes it —
+    // so checking the URL first races that rewrite and fails with a bare
+    // "/logs" whenever the boot is slower than the assertion's own timeout.
+    // The switcher settling is the signal that the provider has run at all;
+    // once it has, the URL assertion is about shareability, not timing.
     await expect(page.getByRole("button", { name: "Switch project" })).toContainText("staging");
+    await expect(page).toHaveURL(/project=staging/);
   });
 });
