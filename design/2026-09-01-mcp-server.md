@@ -2,7 +2,7 @@
 
 - **Date:** 2026-09-01
 - **Author(s):** Berny ryders
-- **Status:** Draft
+- **Status:** Accepted
 
 ## Summary
 
@@ -271,7 +271,7 @@ included. Three obligations ship with it, and none is optional:
 
 ## Roadmap
 
-- [ ] AEP accepted
+- [x] AEP accepted
 - [x] Module registered (born OFF) + protocol skeleton behind Bearer
 - [x] The six tools, bounded responses, and the audit line
 - [x] e2e case + chart template test
@@ -283,4 +283,5 @@ included. Three obligations ship with it, and none is optional:
       the first, so it is a follow-up rather than part of the first server.
 - [ ] The Path view reads the hub's self-time instead of computing its own
 - [ ] OAuth 2.1 for claude.ai connectors (own PR, own review)
-- [ ] Docs: bilingual changelog, feature-status matrix, API reference, README
+- [x] Docs: bilingual changelog, feature-status matrix, API reference
+- [x] README: the capability line
