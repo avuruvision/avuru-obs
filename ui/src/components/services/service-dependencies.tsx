@@ -13,8 +13,13 @@ import type { ServiceHealth } from "@/hooks/use-service-health-status";
 type DepsView = "diagram" | "table";
 
 // A service's neighbourhood, derived from the map's own edge set so the two
-// screens cannot disagree about what depends on what — the hop-collapse and
-// transport classification are already applied in that response.
+// screens cannot disagree about what depends on what.
+//
+// The caller passes edges that have been through splitInfrastructure. That
+// matters, and it is not something this component can assume: the hub applies
+// the hop collapse and the transport classification to the DATA, but choosing
+// between the recovered dependency and the hops it was recovered from is a VIEW
+// decision, and it is the caller that makes it.
 //
 // Two ways to read the same edges. The diagram answers "what shape is this" —
 // which caller carries the traffic, which dependency is going red, which hop

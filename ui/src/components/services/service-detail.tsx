@@ -16,6 +16,7 @@ import { useRedData } from "@/hooks/use-red-data";
 import { useServiceMapData } from "@/hooks/use-service-map-data";
 import { formatMs, formatPercent, formatRate } from "@/lib/format";
 import { statusDotClass, statusLabel, statusTone } from "@/lib/health-status";
+import { splitInfrastructure } from "@/lib/map-filter";
 import { useServiceHealthStatus } from "@/hooks/use-service-health-status";
 import { ServiceDependencies } from "./service-dependencies";
 import { ServiceSignals, type SignalTab } from "./service-signals";
@@ -54,8 +55,20 @@ export function ServiceDetail({ service }: { service: string }) {
   );
   // Memoized: these feed the neighbourhood layout, and a fresh [] on every
   // render would rebuild it for nothing.
-  const services = useMemo(() => map.data?.services ?? [], [map.data]);
-  const edges = useMemo(() => map.data?.edges ?? [], [map.data]);
+  //
+  // Through splitInfrastructure, because the hub reports BOTH the mesh hops and
+  // the app-to-app dependency recovered from them, and drawing both counts the
+  // same requests twice — the double-count rule that file owns. The map applies
+  // it because it has a toggle; this screen has none, so it takes the same
+  // default the map takes: hops hidden, collapsed dependencies shown.
+  //
+  // `service` is exempt: if this page is about a proxy, hiding transport would
+  // delete the very node the page is about.
+  const { services, edges } = useMemo(() => {
+    const all = map.data?.services ?? [];
+    const allEdges = map.data?.edges ?? [];
+    return splitInfrastructure(all, allEdges, false, service);
+  }, [map.data, service]);
   const status = health.get(service);
   const points = red.data?.series.find((s) => s.service === service)?.points ?? [];
 
