@@ -122,6 +122,39 @@ test.describe("oidc group mapping", () => {
     await expect(list.getByText(/projects: \*/)).toBeVisible();
   });
 
+  // The regression this guards: the Role dropdown lives inside a Card that
+  // carries `overflow-hidden`, and while its option list was absolutely
+  // positioned the list was painted and clipped — the control opened and could
+  // not be chosen from. The list is portalled now; a click on an option has to
+  // reach it and stick.
+  test("the role dropdown can be opened and chosen from inside the card", async ({
+    page,
+  }) => {
+    await stubAdmin(page);
+    await stubAuthConfig(page, ["oidc"]);
+    await stubPermissions(page);
+    await stubMapping(page, []);
+
+    await page.goto("/settings?tab=access");
+    await page.getByTestId("add-oidc-mapping").click();
+    await page.getByTestId("oidc-mapping-group").fill("release-managers");
+    await page.getByTestId("oidc-mapping-projects").fill("*");
+
+    const role = page.getByRole("button", { name: "Role" });
+    await expect(role).toContainText("viewer");
+    await role.click();
+
+    const admin = page.getByRole("option", { name: "admin", exact: true });
+    await expect(admin).toBeInViewport();
+    await admin.click();
+    await expect(role).toContainText("admin");
+
+    await page.getByTestId("oidc-mapping-save").click();
+    const list = page.getByTestId("oidc-mapping-list");
+    await expect(list.getByText("release-managers")).toBeVisible();
+    await expect(list.getByText("admin", { exact: true })).toBeVisible();
+  });
+
   test("a chart-declared rule is read-only", async ({ page }) => {
     await stubAdmin(page);
     await stubAuthConfig(page, ["local", "oidc"]);

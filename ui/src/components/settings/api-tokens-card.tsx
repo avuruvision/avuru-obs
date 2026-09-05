@@ -1,31 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { KeySquare, TriangleAlert } from "lucide-react";
+import { KeySquare } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CopyButton } from "@/components/ui/copy-button";
-import { Select } from "@/components/ui/select";
-import {
-  useApiTokens,
-  useCreateApiToken,
-  useRevokeApiToken,
-} from "@/hooks/use-api-tokens";
+import { useApiTokens, useRevokeApiToken } from "@/hooks/use-api-tokens";
 import { ApiError } from "@/lib/api";
-import type { ApiToken, CreateApiTokenResponse } from "@/lib/api-types";
+import { CreateTokenForm } from "./api-token-create-form";
+import type { ApiToken } from "@/lib/api-types";
 
-const inputClass =
-  "h-8 w-full rounded-lg border border-neutral bg-base-100 px-2.5 text-sm focus-visible:outline-2 focus-visible:outline-primary";
-
-// "Never" is a real expiry choice, not a missing one — the hub reads
-// expiresInDays 0/absent as no expiry.
-const EXPIRY_OPTIONS = [
-  { value: "0", label: "never expires" },
-  { value: "30", label: "expires in 30 days" },
-  { value: "90", label: "expires in 90 days" },
-  { value: "365", label: "expires in a year" },
-];
+const SOON_MS = 7 * 86_400_000;
 
 function errMessage(e: unknown, fallback: string): string {
   return e instanceof ApiError ? e.message : fallback;
@@ -38,6 +23,14 @@ function fmtDate(iso: string): string {
 
 function isExpired(t: ApiToken): boolean {
   return !!t.expiresAt && new Date(t.expiresAt).getTime() < Date.now();
+}
+
+// A token that dies next Tuesday is a pipeline that breaks next Tuesday. The
+// list says so a week ahead, while there is still time to rotate.
+function expiresSoon(t: ApiToken): boolean {
+  if (!t.expiresAt) return false;
+  const left = new Date(t.expiresAt).getTime() - Date.now();
+  return left > 0 && left <= SOON_MS;
 }
 
 // ApiTokensCard manages the CALLER's personal API tokens: list (prefix +
@@ -123,6 +116,11 @@ function TokenRow({ t }: { t: ApiToken }) {
               expired
             </Badge>
           )}
+          {!expired && expiresSoon(t) && (
+            <Badge tone="warning" title="Rotate this one before it takes a job down with it">
+              expires soon
+            </Badge>
+          )}
         </span>
         <span className="text-xs text-base-content/50">
           <span className="font-mono">{t.prefix}…</span> · created{" "}
@@ -167,113 +165,5 @@ function TokenRow({ t }: { t: ApiToken }) {
         </Button>
       )}
     </li>
-  );
-}
-
-function CreateTokenForm() {
-  const create = useCreateApiToken();
-  const [name, setName] = useState("");
-  const [expiry, setExpiry] = useState("0");
-  const [error, setError] = useState<string | null>(null);
-  const [revealed, setRevealed] = useState<CreateApiTokenResponse | null>(null);
-
-  async function submit() {
-    setError(null);
-    try {
-      const res = await create.mutateAsync({
-        name: name.trim(),
-        expiresInDays: Number(expiry),
-      });
-      setRevealed(res);
-      setName("");
-      setExpiry("0");
-    } catch (e) {
-      setError(errMessage(e, "Failed to create token"));
-    }
-  }
-
-  if (revealed) {
-    return <RevealPanel created={revealed} onDone={() => setRevealed(null)} />;
-  }
-
-  return (
-    <div className="flex flex-col gap-2 border-t border-neutral pt-3">
-      <label className="flex flex-col gap-1 text-sm">
-        New token name
-        <div className="flex flex-wrap gap-2">
-          <input
-            className={`${inputClass} max-w-64`}
-            value={name}
-            maxLength={200}
-            placeholder="ci-deploy"
-            onChange={(e) => setName(e.target.value)}
-            data-testid="api-token-name"
-          />
-          <Select
-            value={expiry}
-            options={EXPIRY_OPTIONS}
-            onChange={setExpiry}
-            ariaLabel="Token expiry"
-            className="h-8"
-          />
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            onClick={submit}
-            disabled={create.isPending || name.trim() === ""}
-            data-testid="create-api-token"
-          >
-            Create token
-          </Button>
-        </div>
-      </label>
-      {error && <p className="text-xs text-error">{error}</p>}
-    </div>
-  );
-}
-
-// RevealPanel shows the raw token ONCE. There is no way to see it again — the
-// hub stores only its hash — so the copy affordance and the warning are
-// prominent.
-function RevealPanel({
-  created,
-  onDone,
-}: {
-  created: CreateApiTokenResponse;
-  onDone: () => void;
-}) {
-  return (
-    <div className="flex flex-col gap-2 rounded-lg border border-warning/50 bg-warning/10 p-3">
-      <p className="flex items-start gap-2 text-xs text-base-content/80">
-        <TriangleAlert
-          className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning"
-          aria-hidden
-        />
-        Copy this token now — it is shown once and cannot be recovered. Send it
-        as <span className="font-mono">Authorization: Bearer …</span> on every
-        request.
-      </p>
-      <div className="flex items-center gap-2 rounded-lg border border-neutral bg-base-100 p-2">
-        <code
-          className="min-w-0 flex-1 truncate font-mono text-xs"
-          data-testid="api-token-secret"
-        >
-          {created.token}
-        </code>
-        <CopyButton value={created.token} label="Copy" ariaLabel="Copy API token" />
-      </div>
-      <div>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          onClick={onDone}
-          data-testid="api-token-secret-done"
-        >
-          Done
-        </Button>
-      </div>
-    </div>
   );
 }

@@ -66,7 +66,44 @@ When a release is cut, that block is renamed to the version with its date.
   There is now one rollup, and the Path view reads it from the response it was
   already fetching, so the screen costs no extra request and cannot disagree with
   what an agent is told about the same trace.
+
+- **Settings → Access reads as two questions instead of one long table.** The
+  permission matrix is grouped the way the sidebar is — Topology, Signals,
+  Operations, Infrastructure, Administration — with a filter box, a header that
+  stays put while the rows scroll, and a legend for the three states a cell can
+  hold. Twenty-six alphabetised rows answered "list every permission"; nobody
+  arrives with that question.
+
+  Creating an API token is a name and one click: lifetimes are presets, ninety
+  days is preselected, Enter submits, and the form says the date the token will
+  stop working before it is created. A custom day count is a click away — the
+  hub always accepted one, and only the UI could not express it. The panel that
+  reveals the secret now also hands over a ready-made request to try it with,
+  and a token expiring within the week is marked in the list, while there is
+  still time to rotate it.
+
 ### Fixed
+
+- **Dropdowns inside a card can be chosen from again.** Every themed dropdown —
+  the Select, the type-ahead Combobox and the action menu — positioned its
+  option list next to its trigger, inside the ordinary document flow. Every
+  settings card clips what overflows it. So on Settings → Access the token
+  expiry list, and any other list opened near the foot of a card, was painted
+  and cut off in the same frame: the control opened, showed a sliver, and there
+  was nothing to click. A dropdown that cannot be chosen from is a setting that
+  cannot be changed.
+
+  All three now render their list in a portal, positioned against the trigger's
+  place on screen, so no ancestor can clip it. A list with no room beneath it
+  opens upward, and it follows its trigger while the page scrolls.
+
+- **Six rows of the permission matrix said `ai`, `checks`, `mesh`, `network`,
+  `rates` and `tags`.** The matrix is derived from the routing table, and any
+  area without a written label falls back to its raw path segment — so adding a
+  feature silently added a row that asks the reader to know the API. Those six
+  are labelled, every area is filed under the part of the product it belongs
+  to, and a test now fails the build the next time an area arrives without a
+  label rather than leaving it to be noticed on screen.
 
 - **An agent now sees the dependency behind a mesh proxy, not the proxy.** The
   service map has recovered `app → app` dependencies across mesh hops since

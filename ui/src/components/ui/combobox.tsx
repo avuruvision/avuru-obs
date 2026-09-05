@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
+import { useAnchoredLayer } from "@/hooks/use-anchored-layer";
 
 const INPUT =
   "h-9 w-full rounded-lg border border-neutral bg-base-100 px-3 text-sm outline-none placeholder:text-base-content/40 focus:border-primary";
 
-// Free-text filter with type-ahead suggestions — an editable input plus an
-// absolutely-positioned listbox of matching options (same primitives as Select,
+// Free-text filter with type-ahead suggestions — an editable input plus a
+// portalled listbox of matching options (same primitives as Select,
 // no dependency). Because it's a filter, arbitrary text is allowed: it commits on
 // Enter (the highlighted option, or the raw text) and on option click. Blurring or
 // pressing Escape without committing reverts to the last applied value.
@@ -31,7 +33,6 @@ export function Combobox({
   const [text, setText] = useState(value);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const ref = useRef<HTMLDivElement>(null);
   const listId = useId();
 
   // Reflect external changes to the applied value (e.g. the Clear button, or a
@@ -49,17 +50,19 @@ export function Combobox({
     return list.slice(0, 50);
   }, [options, text]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setText(value); // discard uncommitted typing
-      }
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open, value]);
+  const dismiss = useCallback(() => {
+    setOpen(false);
+    setText(value); // discard uncommitted typing
+  }, [value]);
+  const { anchorRef, layerRef, style, reposition } = useAnchoredLayer<
+    HTMLInputElement,
+    HTMLUListElement
+  >({ open, onDismiss: dismiss });
+
+  const show = () => {
+    reposition();
+    setOpen(true);
+  };
 
   const commit = (v: string) => {
     const next = v.trim();
@@ -74,7 +77,7 @@ export function Combobox({
       setText(value);
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      if (!open) setOpen(true);
+      if (!open) show();
       else setActive((i) => Math.min(matches.length - 1, i + 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
@@ -86,8 +89,9 @@ export function Combobox({
   };
 
   return (
-    <div ref={ref} className={cn("relative", className)}>
+    <div className={cn("relative", className)}>
       <input
+        ref={anchorRef}
         type="text"
         role="combobox"
         aria-expanded={open}
@@ -99,44 +103,50 @@ export function Combobox({
         onChange={(e) => {
           setText(e.target.value);
           setActive(0);
-          setOpen(true);
+          show();
         }}
-        onFocus={() => setOpen(true)}
+        onFocus={show}
         onKeyDown={onKeyDown}
         className={INPUT}
       />
-      {open && (matches.length > 0 || loading) && (
-        <ul
-          role="listbox"
-          id={listId}
-          aria-label={ariaLabel}
-          className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-neutral bg-base-100 py-1 [box-shadow:var(--shadow-card-hover)]"
-        >
-          {loading && matches.length === 0 && (
-            <li className="px-3 py-1.5 text-sm text-base-content/50">Loading…</li>
-          )}
-          {matches.map((o, i) => (
-            <li
-              key={o}
-              role="option"
-              aria-selected={o === value}
-              onMouseEnter={() => setActive(i)}
-              // mousedown, not click: fire before the input's blur reverts the text
-              onMouseDown={(e) => {
-                e.preventDefault();
-                commit(o);
-              }}
-              className={cn(
-                "cursor-pointer truncate px-3 py-1.5 text-sm",
-                i === active && "bg-base-300",
-                o === value ? "text-primary" : "text-base-content",
-              )}
-            >
-              {o}
-            </li>
-          ))}
-        </ul>
-      )}
+      {open &&
+        style &&
+        (matches.length > 0 || loading) &&
+        createPortal(
+          <ul
+            ref={layerRef}
+            role="listbox"
+            id={listId}
+            aria-label={ariaLabel}
+            style={style}
+            className="z-50 overflow-auto rounded-lg border border-neutral bg-base-100 py-1 [box-shadow:var(--shadow-card-hover)]"
+          >
+            {loading && matches.length === 0 && (
+              <li className="px-3 py-1.5 text-sm text-base-content/50">Loading…</li>
+            )}
+            {matches.map((o, i) => (
+              <li
+                key={o}
+                role="option"
+                aria-selected={o === value}
+                onMouseEnter={() => setActive(i)}
+                // mousedown, not click: fire before the input's blur reverts the text
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  commit(o);
+                }}
+                className={cn(
+                  "cursor-pointer truncate px-3 py-1.5 text-sm",
+                  i === active && "bg-base-300",
+                  o === value ? "text-primary" : "text-base-content",
+                )}
+              >
+                {o}
+              </li>
+            ))}
+          </ul>,
+          document.body,
+        )}
     </div>
   );
 }
