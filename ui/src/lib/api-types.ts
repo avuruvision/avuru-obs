@@ -360,6 +360,8 @@ export interface PermissionRole {
 export interface PermissionArea {
   area: string;
   label: string;
+  /** Section of the product it belongs to — the hub sorts areas by it. */
+  group: string;
   /** Lowest role that can read it; absent when there is no such route. */
   read?: string;
   /** Lowest role that can change it; absent when the area is read-only. */

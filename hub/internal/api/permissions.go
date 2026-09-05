@@ -58,30 +58,63 @@ func (ri *routeIndex) record(pattern string, h http.Handler) {
 	ri.routes = append(ri.routes, g)
 }
 
-// areaLabels prettifies the path segment an area is derived from. Missing
-// entries fall back to the raw segment, so a new area appears in the matrix
-// under its own name rather than silently not appearing at all.
-var areaLabels = map[string]string{
-	"services":       "Services",
-	"service-map":    "Service map",
-	"service-groups": "Service groups",
-	"health":         "Service health",
-	"traces":         "Traces",
-	"logs":           "Logs",
-	"metrics":        "Metrics",
-	"profiles":       "Profiling",
-	"infra":          "Nodes & pods",
-	"errors":         "Error tracking",
-	"green":          "Energy & carbon",
-	"cost":           "Cost & waste",
-	"alerts":         "Alerting",
-	"projects":       "Projects",
-	"collection":     "Collection",
-	"system":         "System status",
-	"users":          "Users",
-	"agents":         "Agents",
-	"capabilities":   "Modules",
-	"status":         "Hub status",
+// areaMeta prettifies the path segment an area is derived from and files it
+// under the part of the product it belongs to — the same division the sidebar
+// uses, because a reader looking for "can an editor change alerts" looks where
+// Alerts lives, not down an alphabetical list of twenty-six rows. Missing
+// entries fall back to the raw segment under "Other", so a new area appears in
+// the matrix under its own name rather than silently not appearing at all;
+// TestEveryMatrixAreaIsDescribed fails the build before it can ship that way.
+type areaMeta struct {
+	label string
+	group string
+}
+
+// Group names, most-watched first. The matrix renders in this order.
+var areaGroupOrder = []string{
+	groupTopology, groupSignals, groupOperations, groupInfrastructure, groupAdministration, groupOther,
+}
+
+const (
+	groupTopology       = "Topology"
+	groupSignals        = "Signals"
+	groupOperations     = "Operations"
+	groupInfrastructure = "Infrastructure"
+	groupAdministration = "Administration"
+	groupOther          = "Other"
+)
+
+var areaLabels = map[string]areaMeta{
+	"services":       {"Services", groupTopology},
+	"service-map":    {"Service map", groupTopology},
+	"service-groups": {"Service groups", groupTopology},
+	"health":         {"Service health", groupTopology},
+
+	"traces":   {"Traces", groupSignals},
+	"logs":     {"Logs", groupSignals},
+	"metrics":  {"Metrics", groupSignals},
+	"profiles": {"Profiling", groupSignals},
+	"ai":       {"AI & LLM calls", groupSignals},
+	"tags":     {"Tags & labels", groupSignals},
+
+	"errors": {"Error tracking", groupOperations},
+	"alerts": {"Alerting", groupOperations},
+	"checks": {"Endpoint checks", groupOperations},
+
+	"infra":   {"Nodes & pods", groupInfrastructure},
+	"mesh":    {"Service mesh", groupInfrastructure},
+	"network": {"Network health", groupInfrastructure},
+	"green":   {"Energy & carbon", groupInfrastructure},
+	"cost":    {"Cost & waste", groupInfrastructure},
+	"agents":  {"Agents", groupInfrastructure},
+
+	"projects":     {"Projects", groupAdministration},
+	"users":        {"Users", groupAdministration},
+	"collection":   {"Collection", groupAdministration},
+	"capabilities": {"Modules", groupAdministration},
+	"rates":        {"AI model rates", groupAdministration},
+	"status":       {"Hub status", groupAdministration},
+	"system":       {"System status", groupAdministration},
 }
 
 // areaAliases fold a path segment into the area it belongs to. /spans/{id} is
@@ -103,6 +136,7 @@ type permissionRoleDTO struct {
 type permissionAreaDTO struct {
 	Area  string `json:"area"`
 	Label string `json:"label"`
+	Group string `json:"group"`
 	Read  string `json:"read,omitempty"`
 	Write string `json:"write,omitempty"`
 }
@@ -175,17 +209,36 @@ func (a *API) handlePermissions(w http.ResponseWriter, r *http.Request) error {
 	}
 	for _, area := range order {
 		e := byArea[area]
-		label, ok := areaLabels[area]
+		meta, ok := areaLabels[area]
 		if !ok {
-			label = area
+			meta = areaMeta{label: area, group: groupOther}
 		}
 		resp.Areas = append(resp.Areas, permissionAreaDTO{
-			Area: area, Label: label, Read: string(e.read), Write: string(e.write),
+			Area: area, Label: meta.label, Group: meta.group,
+			Read: string(e.read), Write: string(e.write),
 		})
 	}
-	sort.Slice(resp.Areas, func(i, j int) bool { return resp.Areas[i].Label < resp.Areas[j].Label })
+	// Group first, alphabetical within it — a stable order the UI can render
+	// section by section without re-sorting.
+	sort.Slice(resp.Areas, func(i, j int) bool {
+		gi, gj := groupRank(resp.Areas[i].Group), groupRank(resp.Areas[j].Group)
+		if gi != gj {
+			return gi < gj
+		}
+		return resp.Areas[i].Label < resp.Areas[j].Label
+	})
 	writeJSON(w, http.StatusOK, resp)
 	return nil
+}
+
+// groupRank orders a group by areaGroupOrder; anything unlisted sorts last.
+func groupRank(group string) int {
+	for i, g := range areaGroupOrder {
+		if g == group {
+			return i
+		}
+	}
+	return len(areaGroupOrder)
 }
 
 // areaOf reduces "/api/v1/projects/{id}/keys" to "projects". Only the versioned

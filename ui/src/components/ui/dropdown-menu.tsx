@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
+import { useAnchoredLayer } from "@/hooks/use-anchored-layer";
 
 export interface DropdownMenuItem {
   label: string;
@@ -9,8 +11,8 @@ export interface DropdownMenuItem {
 }
 
 // Minimal action menu — same no-dependency recipe as Select (field-styled
-// trigger + absolutely-positioned panel), but menu semantics: items run an
-// action instead of holding a selection.
+// trigger + portalled panel), but menu semantics: items run an action instead
+// of holding a selection.
 export function DropdownMenu({
   trigger,
   ariaLabel,
@@ -26,16 +28,17 @@ export function DropdownMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const ref = useRef<HTMLDivElement>(null);
+  const dismiss = useCallback(() => setOpen(false), []);
+  const { anchorRef, layerRef, style, reposition } = useAnchoredLayer<
+    HTMLButtonElement,
+    HTMLDivElement
+  >({ open, onDismiss: dismiss, align, width: "auto" });
 
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
+  const show = () => {
+    setActive(0);
+    reposition();
+    setOpen(true);
+  };
 
   const run = (item: DropdownMenuItem) => {
     setOpen(false);
@@ -47,8 +50,7 @@ export function DropdownMenu({
       setOpen(false);
     } else if (!open && (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ")) {
       e.preventDefault();
-      setActive(0);
-      setOpen(true);
+      show();
     } else if (open && e.key === "ArrowDown") {
       e.preventDefault();
       setActive((i) => Math.min(items.length - 1, i + 1));
@@ -63,45 +65,45 @@ export function DropdownMenu({
   };
 
   return (
-    <div ref={ref} className="relative inline-flex" onKeyDown={onKeyDown}>
+    <div className="relative inline-flex" onKeyDown={onKeyDown}>
       <button
+        ref={anchorRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={ariaLabel}
-        onClick={() => {
-          setActive(0);
-          setOpen((o) => !o);
-        }}
+        onClick={() => (open ? setOpen(false) : show())}
         className={triggerClassName}
       >
         {trigger}
       </button>
-      {open && (
-        <div
-          role="menu"
-          aria-label={ariaLabel}
-          className={cn(
-            "absolute top-full z-30 mt-1 min-w-44 rounded-lg border border-neutral bg-base-100 py-1 [box-shadow:var(--shadow-card-hover)]",
-            align === "end" ? "right-0" : "left-0",
-          )}
-        >
-          {items.map((item, i) => (
-            <button
-              key={item.label}
-              role="menuitem"
-              onMouseEnter={() => setActive(i)}
-              onClick={() => run(item)}
-              className={cn(
-                "block w-full px-3 py-1.5 text-left text-xs",
-                i === active ? "bg-base-300" : "text-base-content",
-              )}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {open &&
+        style &&
+        createPortal(
+          <div
+            ref={layerRef}
+            role="menu"
+            aria-label={ariaLabel}
+            style={style}
+            className="z-50 min-w-44 overflow-auto rounded-lg border border-neutral bg-base-100 py-1 [box-shadow:var(--shadow-card-hover)]"
+          >
+            {items.map((item, i) => (
+              <button
+                key={item.label}
+                role="menuitem"
+                onMouseEnter={() => setActive(i)}
+                onClick={() => run(item)}
+                className={cn(
+                  "block w-full px-3 py-1.5 text-left text-xs",
+                  i === active ? "bg-base-300" : "text-base-content",
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

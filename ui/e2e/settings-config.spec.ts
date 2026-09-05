@@ -65,14 +65,49 @@ async function stubPermissions(page: Page, authEnabled = true) {
           { role: "editor", label: "Editor", description: "Viewer plus operational writes." },
           { role: "viewer", label: "Viewer", description: "Reads granted projects." },
         ],
+        // Ordered by group then label, the way the hub sorts them — the
+        // matrix renders sections straight off this order.
         areas: [
-          { area: "traces", label: "Traces", read: "viewer" },
-          { area: "errors", label: "Error tracking", read: "viewer", write: "editor" },
-          { area: "users", label: "Users", read: "admin", write: "admin" },
+          { area: "services", label: "Services", group: "Topology", read: "viewer" },
+          { area: "traces", label: "Traces", group: "Signals", read: "viewer" },
+          {
+            area: "errors",
+            label: "Error tracking",
+            group: "Operations",
+            read: "viewer",
+            write: "editor",
+          },
+          { area: "users", label: "Users", group: "Administration", read: "admin", write: "admin" },
         ],
       },
     }),
   );
+}
+
+// The tokens card mounts whenever auth is on. A mutable list makes create and
+// revoke round-trip the way they would against the hub.
+async function stubApiTokens(page: Page) {
+  const created: Record<string, unknown>[] = [];
+  await page.route("**/api/v1/tokens", async (route) => {
+    if (route.request().method() === "POST") {
+      const body = route.request().postDataJSON() as {
+        name: string;
+        expiresInDays: number;
+      };
+      created.push(body);
+      return route.fulfill({
+        json: {
+          token: "avuru_pat_secret-shown-once",
+          name: body.name,
+          prefix: "avuru_pat",
+          tokenHash: "hash",
+          createdAt: new Date().toISOString(),
+        },
+      });
+    }
+    return route.fulfill({ json: { tokens: [] } });
+  });
+  return created;
 }
 
 test.describe("settings → storage", () => {
@@ -158,5 +193,89 @@ test.describe("settings → access", () => {
     await expect(page.getByText("auth.enabled=true")).toBeVisible();
     // The matrix still renders — it describes what would apply.
     await expect(page.getByTestId("permission-matrix")).toBeVisible();
+  });
+
+  // Twenty-six rows is a wall. Sections give the reader somewhere to look,
+  // and the filter answers the question people actually arrive with.
+  test("sections the matrix and filters it down to one area", async ({ page }) => {
+    await stubAdmin(page);
+    await stubPermissions(page);
+
+    await page.goto("/settings?tab=access");
+    const matrix = page.getByTestId("permission-matrix");
+    for (const group of ["Topology", "Signals", "Operations", "Administration"]) {
+      await expect(matrix.getByRole("columnheader", { name: group })).toBeVisible();
+    }
+
+    await page.getByTestId("permission-matrix-filter").fill("error");
+    await expect(page.getByTestId("cell-errors-editor")).toBeVisible();
+    await expect(page.getByTestId("cell-traces-viewer")).toHaveCount(0);
+    // The section a match belongs to survives; the empty ones do not.
+    await expect(matrix.getByRole("columnheader", { name: "Operations" })).toBeVisible();
+    await expect(matrix.getByRole("columnheader", { name: "Signals" })).toHaveCount(0);
+
+    await page.getByTestId("permission-matrix-filter").fill("nothing-by-that-name");
+    await expect(matrix.getByText(/No area matches/)).toBeVisible();
+  });
+});
+
+test.describe("settings → access → api tokens", () => {
+  // The whole form is one field and one click for the common case; the day
+  // count is there for the job that needs a different one.
+  test("creates a token with a preset lifetime and reveals it once", async ({ page }) => {
+    await stubAdmin(page);
+    await stubPermissions(page);
+    const created = await stubApiTokens(page);
+
+    await page.goto("/settings?tab=access");
+    await expect(page.getByTestId("api-tokens-empty")).toBeVisible();
+
+    // 90 days is preselected, and the form says the date it lands on.
+    await expect(page.getByTestId("api-token-expiry-preview")).toContainText(
+      /Stops working on/,
+    );
+
+    await page.getByTestId("api-token-name").fill("ci-deploy");
+    await page.getByTestId("api-token-expiry-30").click();
+    await page.getByTestId("create-api-token").click();
+
+    await expect(page.getByTestId("api-token-secret")).toContainText(
+      "avuru_pat_secret-shown-once",
+    );
+    // The next thing anyone does is check the token works.
+    await expect(page.getByTestId("api-token-curl")).toContainText(
+      "Authorization: Bearer avuru_pat_secret-shown-once",
+    );
+    expect(created).toEqual([{ name: "ci-deploy", expiresInDays: 30 }]);
+  });
+
+  test("a custom lifetime is reachable, and a bad one is refused before it is sent", async ({
+    page,
+  }) => {
+    await stubAdmin(page);
+    await stubPermissions(page);
+    const created = await stubApiTokens(page);
+
+    await page.goto("/settings?tab=access");
+    await page.getByTestId("api-token-name").fill("nightly-export");
+    await page.getByTestId("api-token-expiry-custom").click();
+
+    const days = page.getByTestId("api-token-custom-days");
+    await days.fill("99999");
+    await expect(page.getByTestId("api-token-expiry-preview")).toContainText(
+      /between 1 and 3650/,
+    );
+    await expect(page.getByTestId("create-api-token")).toBeDisabled();
+
+    await days.fill("180");
+    await expect(page.getByTestId("api-token-expiry-preview")).toContainText(
+      /Stops working on/,
+    );
+
+    // Enter in the name field submits — the form is a name and a lifetime, not
+    // a dialog to tab through.
+    await page.getByTestId("api-token-name").press("Enter");
+    await expect(page.getByTestId("api-token-secret")).toBeVisible();
+    expect(created).toEqual([{ name: "nightly-export", expiresInDays: 180 }]);
   });
 });

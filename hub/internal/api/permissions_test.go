@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/auth"
+	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 	"github.com/avuru/avuru-obs/hub/internal/storage/storagetest"
 )
@@ -165,5 +166,42 @@ func TestPermissionsMatrixReportsAuthDisabled(t *testing.T) {
 	}
 	if len(resp.Areas) == 0 {
 		t.Fatal("no areas: the matrix should still describe what would apply")
+	}
+}
+
+// A row labelled with its raw path segment — "ai", "rates", "tags" — is what a
+// forgotten areaLabels entry looks like in the product: the matrix still
+// renders, so nothing fails, and the screen quietly asks the reader to know
+// the routing table. Every area a fully-enabled install reports must carry a
+// written label and a group, and this fails the build when a new one does not.
+func TestEveryMatrixAreaIsDescribed(t *testing.T) {
+	mux, c := adminMuxWithConfigFor(t, &storagetest.Fake{}, func(cfg *Config) {
+		cfg.Modules = modules.AllSet()
+		cfg.CollectionRuntimeControlEnabled = true
+	})
+	for _, a := range permissions(t, mux, c).Areas {
+		if _, ok := areaLabels[a.Area]; !ok {
+			t.Errorf("area %q has no areaLabels entry: it renders as its raw path segment", a.Area)
+		}
+		if a.Group == "" || a.Group == groupOther {
+			t.Errorf("area %q is grouped %q — file it under a real section", a.Area, a.Group)
+		}
+	}
+}
+
+// Grouping is only useful if it is the order the client can render blind.
+func TestMatrixAreasAreOrderedByGroup(t *testing.T) {
+	mux, c := adminMuxWithConfigFor(t, &storagetest.Fake{}, func(cfg *Config) {
+		cfg.Modules = modules.AllSet()
+	})
+	areas := permissions(t, mux, c).Areas
+	for i := 1; i < len(areas); i++ {
+		prev, cur := areas[i-1], areas[i]
+		if groupRank(prev.Group) > groupRank(cur.Group) {
+			t.Fatalf("group %q sorted after %q", prev.Group, cur.Group)
+		}
+		if prev.Group == cur.Group && prev.Label > cur.Label {
+			t.Errorf("within %s: %q sorted after %q", cur.Group, prev.Label, cur.Label)
+		}
 	}
 }
