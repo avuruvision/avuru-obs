@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/golang/snappy v1.0.0
-	github.com/jaegertracing/jaeger-idl v0.11.1
+	github.com/jaegertracing/jaeger-idl v0.11.4
 	github.com/prometheus/prometheus v0.314.0
 	google.golang.org/grpc v1.83.2
 )
