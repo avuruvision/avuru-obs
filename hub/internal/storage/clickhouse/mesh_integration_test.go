@@ -55,6 +55,49 @@ func TestMeshControlPlaneIntegration(t *testing.T) {
 	if cp.LastSeen.IsZero() {
 		t.Error("no lastSeen on an available control plane")
 	}
+	// The optional series were not inserted, so they must come back nil. This
+	// is the install still running the shorter keep-list: healthy, and simply
+	// not publishing them.
+	if cp.PushP95Ms != nil || cp.WriteTimeouts != nil || cp.ConfigEvents != nil {
+		t.Errorf("optional metrics materialised from nothing: push=%v timeouts=%v events=%v",
+			cp.PushP95Ms, cp.WriteTimeouts, cp.ConfigEvents)
+	}
+}
+
+// The widened keep-list, on an install that collects it. The write-timeout case
+// is the one that matters: a measured ZERO must arrive as a present zero, or it
+// is indistinguishable from never having looked.
+func TestMeshControlPlaneOptionalSeries(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+	base := time.Now().UTC().Truncate(time.Minute).Add(-10 * time.Minute)
+	res := map[string]string{"service.name": "istiod"}
+
+	insertGauge(t, store, base.Add(1*time.Minute), "pilot_xds", res, 12)
+	insertSum(t, store, base.Add(1*time.Minute), "pilot_xds_write_timeout", res, map[string]string{}, 0)
+	insertSum(t, store, base.Add(1*time.Minute), "pilot_k8s_cfg_events", res, map[string]string{}, 40)
+	insertSum(t, store, base.Add(2*time.Minute), "pilot_k8s_cfg_events", res, map[string]string{}, 48)
+	// Same bucket shape as convergence: p95 first reached at bound 0.25s.
+	insertHistogram(t, store, base.Add(1*time.Minute), "pilot_xds_push_time", res,
+		map[string]string{}, []uint64{5, 10, 4, 1, 0}, []float64{0.05, 0.1, 0.25, 1})
+
+	tr := storage.TimeRange{Start: base, End: base.Add(6 * time.Minute)}
+	cp, err := store.MeshControlPlane(ctx, storage.ServiceQuery{Tenant: "default", Range: tr})
+	if err != nil {
+		t.Fatalf("MeshControlPlane: %v", err)
+	}
+	if cp.PushP95Ms == nil || *cp.PushP95Ms != 250 {
+		t.Errorf("push p95 = %v, want 250ms", cp.PushP95Ms)
+	}
+	if cp.WriteTimeouts == nil {
+		t.Fatal("a measured zero came back nil, which reads as 'not collected'")
+	}
+	if *cp.WriteTimeouts != 0 {
+		t.Errorf("write timeouts = %d, want 0", *cp.WriteTimeouts)
+	}
+	if cp.ConfigEvents == nil || *cp.ConfigEvents != 88 {
+		t.Errorf("config events = %v, want 88 summed", cp.ConfigEvents)
+	}
 }
 
 // Nothing scraped must come back as "not available", never as a healthy-looking

@@ -1,0 +1,80 @@
+{{- if .Values.modules.meshConfig.enabled }}
+{{- if not .Values.modules.mesh.enabled }}
+{{- fail "modules.meshConfig.enabled requires modules.mesh.enabled — the configuration half has no screen to appear on without it" }}
+{{- end }}
+{{/*
+  The ONLY cluster-wide grant this product asks for, and it is read-only:
+  get/list/watch, no create, no update, no delete, no write verb anywhere.
+
+  It is a separate module from mesh precisely so that this file renders only
+  when an operator asked for it by name. An upgrade must never be the thing that
+  starts reading a cluster.
+
+  Rendered for the HUB's service account: the hub holds the informers, because
+  validation is a join across objects and that belongs where the joining is, not
+  in the telemetry pipeline. See design/2026-09-07-mesh-configuration.md.
+*/}}
+{{- if not .Values.collection.runtimeControl.enabled }}
+{{/* The hub has no identity unless something asked for one. When collection
+     control is also on it already made this SA under its own name, and the two
+     features share it — a pod has one identity. */}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "avuruobs.hubServiceAccountName" . }}
+  labels:
+    {{- include "avuruobs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hub
+---
+{{- end }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "avuruobs.fullname" . }}-mesh-config
+  labels:
+    {{- include "avuruobs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hub
+rules:
+  # Core objects a route or policy can point AT. Without these, "this backendRef
+  # names a Service that does not exist" cannot be said.
+  - apiGroups: [""]
+    resources: ["namespaces", "services"]
+    verbs: ["get", "list", "watch"]
+  # Workloads, so a selector matching nothing can be reported as matching
+  # nothing, and so a namespace with no traffic still has a roster.
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  # Gateway API — how ambient expresses gateways AND waypoints.
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways", "httproutes", "grpcroutes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.istio.io"]
+    resources: ["virtualservices", "destinationrules", "serviceentries", "sidecars"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["security.istio.io"]
+    resources: ["peerauthentications", "authorizationpolicies"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["telemetry.istio.io"]
+    resources: ["telemetries"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions.istio.io"]
+    resources: ["wasmplugins"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "avuruobs.fullname" . }}-mesh-config
+  labels:
+    {{- include "avuruobs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hub
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "avuruobs.fullname" . }}-mesh-config
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "avuruobs.hubServiceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

@@ -203,3 +203,206 @@ func TestRecognisedControlPlaneNamesItself(t *testing.T) {
 		t.Errorf("kind = %q, want istio", resp.Kind)
 	}
 }
+
+// Role and namespace are what make a fleet of forty proxies readable. Both must
+// come from the reads the handler already does, and neither may be invented.
+func TestMeshProxiesCarryRoleAndNamespace(t *testing.T) {
+	fake := &storagetest.Fake{
+		Services: []storage.ServiceStats{
+			{Name: "ztunnel", SpanCount: 90},
+			{Name: "global-waypoint.istio-waypoint", SpanCount: 30},
+			{Name: "istio-ingressgateway-istio.istio-edge", SpanCount: 40},
+			// Named after neither the product nor its job: only the label the
+			// mesh wrote on it can say what this is.
+			{
+				Name:              "edge-front",
+				SpanCount:         20,
+				TransportEvidence: true,
+				TransportLabels:   map[string]string{"avuru.transport.istio_component": "IngressGateways"},
+			},
+		},
+		Labels: []storage.ServiceLabel{
+			{Service: "ztunnel", K8sNamespace: "istio-system"},
+			{Service: "global-waypoint.istio-waypoint", K8sNamespace: "istio-waypoint"},
+			{Service: "istio-ingressgateway-istio.istio-edge", K8sNamespace: "istio-edge"},
+			// edge-front declares no namespace anywhere.
+		},
+	}
+	rec := meshGet(t, fake, Config{Modules: modules.AllSet()}, "/api/v1/mesh/proxies")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	var resp meshProxiesResponse
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	byName := map[string]meshProxyDTO{}
+	for _, p := range resp.Proxies {
+		byName[p.Name] = p
+	}
+
+	for name, want := range map[string]string{
+		"ztunnel":                               "ztunnel",
+		"global-waypoint.istio-waypoint":        "waypoint",
+		"istio-ingressgateway-istio.istio-edge": "ingress-gateway",
+		"edge-front":                            "ingress-gateway",
+	} {
+		if got := byName[name].Role; got != want {
+			t.Errorf("%s role = %q, want %q", name, got, want)
+		}
+	}
+	if got := byName["global-waypoint.istio-waypoint"].Namespace; got != "istio-waypoint" {
+		t.Errorf("waypoint namespace = %q, want istio-waypoint", got)
+	}
+	// A proxy whose namespace nothing declares must arrive without the key at
+	// all, so the table renders a gap instead of the word "default".
+	if got := byName["edge-front"].Namespace; got != "" {
+		t.Errorf("edge-front namespace = %q, want empty", got)
+	}
+	if proxyJSON(t, body, "edge-front")["namespace"] != nil {
+		t.Error("an unknown namespace was serialized rather than omitted")
+	}
+	// Same rule for the role: unresolvable means absent.
+	if proxyJSON(t, body, "ztunnel")["role"] != "ztunnel" {
+		t.Error("ztunnel lost its role on the wire")
+	}
+}
+
+// proxyJSON returns one proxy object from the response as raw JSON, so a test
+// can assert a key is ABSENT — which a decode into meshProxyDTO cannot show,
+// since an omitted string and an empty one land in the same Go field.
+func proxyJSON(t *testing.T, body, name string) map[string]any {
+	t.Helper()
+	var raw struct {
+		Proxies []map[string]any `json:"proxies"`
+	}
+	if err := json.Unmarshal([]byte(body), &raw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for _, p := range raw.Proxies {
+		if p["name"] == name {
+			return p
+		}
+	}
+	t.Fatalf("proxy %q not in response", name)
+	return nil
+}
+
+// Bytes are what OBI measured on the wire, and their ABSENCE is a fact about
+// the install rather than a zero. A proxy reported as carrying 0 bytes is
+// indistinguishable from one that has stopped forwarding.
+func TestMeshProxiesReportBytesAndHealth(t *testing.T) {
+	fake := &storagetest.Fake{
+		Services: []storage.ServiceStats{{Name: "ztunnel", SpanCount: 10}},
+		NetEdges: []storage.ServiceEdge{
+			{Source: "checkout", Target: "ztunnel", Bytes: 4096},
+			{Source: "ztunnel", Target: "payments", Bytes: 2048},
+		},
+		NetEdgeHealth: []storage.NetworkEdgeHealth{
+			{Source: "checkout", Target: "ztunnel", RTTMs: 3, FailedConnections: 1, Retransmits: 5},
+			// The worse link must win: averaging it away is how a bad link
+			// stops being visible in a row that exists to show one.
+			{Source: "ztunnel", Target: "payments", RTTMs: 41, FailedConnections: 2},
+		},
+	}
+	rec := meshGet(t, fake, Config{Modules: modules.AllSet()}, "/api/v1/mesh/proxies")
+	body := rec.Body.String()
+	var resp meshProxiesResponse
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	p := resp.Proxies[0]
+	if p.BytesIn == nil || *p.BytesIn != 4096 {
+		t.Errorf("bytesIn = %v, want 4096", p.BytesIn)
+	}
+	if p.BytesOut == nil || *p.BytesOut != 2048 {
+		t.Errorf("bytesOut = %v, want 2048", p.BytesOut)
+	}
+	if p.RTTMs == nil || *p.RTTMs != 41 {
+		t.Errorf("rttMs = %v, want the worst link's 41", p.RTTMs)
+	}
+	if p.FailedConnections == nil || *p.FailedConnections != 3 {
+		t.Errorf("failedConnections = %v, want 3 summed", p.FailedConnections)
+	}
+	if p.Retransmits == nil || *p.Retransmits != 5 {
+		t.Errorf("retransmits = %v, want 5", p.Retransmits)
+	}
+}
+
+// Without infra-metrics there is no wire measurement at all, and the fields
+// must be missing rather than zero.
+func TestMeshProxiesOmitBytesWithoutInfraMetrics(t *testing.T) {
+	fake := &storagetest.Fake{
+		Services: []storage.ServiceStats{{Name: "ztunnel", SpanCount: 10}},
+		// Present in the fake, and unreachable: the handler must not query the
+		// metrics tables at all on an install that has none.
+		NetEdges: []storage.ServiceEdge{{Source: "checkout", Target: "ztunnel", Bytes: 4096}},
+	}
+	active := modules.Set{modules.Core: true, modules.Mesh: true}
+	rec := meshGet(t, fake, Config{Modules: active}, "/api/v1/mesh/proxies")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	row := proxyJSON(t, rec.Body.String(), "ztunnel")
+	for _, key := range []string{"bytesIn", "bytesOut", "rttMs", "failedConnections", "retransmits"} {
+		if _, present := row[key]; present {
+			t.Errorf("%s was serialized on an install that measures no flows", key)
+		}
+	}
+	// The trace-derived half is unaffected: it never needed the module.
+	if row["ratePerSec"] == nil {
+		t.Error("the call-derived RED disappeared with the metrics module")
+	}
+}
+
+// The widened keep-list is optional: an install still on the shorter one has a
+// perfectly healthy control plane that publishes none of these. Nil and 0 are
+// opposite answers for a write timeout — "we are not looking" against "no proxy
+// missed its config" — so the absent case must stay absent on the wire.
+func TestControlPlaneOptionalMetricsAreAbsentNotZero(t *testing.T) {
+	t.Run("not collected", func(t *testing.T) {
+		fake := &storagetest.Fake{ControlPlane: storage.MeshControlPlane{
+			Available: true, State: storage.MeshControlPlaneOK, Kind: "istio",
+			ConnectedProxies: 12,
+		}}
+		rec := meshGet(t, fake, Config{Modules: modules.AllSet()}, "/api/v1/mesh/control-plane")
+		for _, key := range []string{"pushP95Ms", "writeTimeouts", "configEvents"} {
+			if jsonHasKey(t, rec.Body.String(), key) {
+				t.Errorf("%s was serialized on an install that does not collect it", key)
+			}
+		}
+	})
+
+	t.Run("collected and zero", func(t *testing.T) {
+		var (
+			push     = 4.5
+			timeouts = uint64(0)
+			events   = uint64(88)
+		)
+		fake := &storagetest.Fake{ControlPlane: storage.MeshControlPlane{
+			Available: true, State: storage.MeshControlPlaneOK, Kind: "istio",
+			ConnectedProxies: 12,
+			PushP95Ms:        &push,
+			WriteTimeouts:    &timeouts,
+			ConfigEvents:     &events,
+		}}
+		rec := meshGet(t, fake, Config{Modules: modules.AllSet()}, "/api/v1/mesh/control-plane")
+		body := rec.Body.String()
+		// A measured zero MUST survive: it is the good news, and omitting it
+		// would be indistinguishable from never having looked.
+		if !jsonHasKey(t, body, "writeTimeouts") {
+			t.Error("a measured zero was omitted, which reads as 'not collected'")
+		}
+		var resp meshControlPlaneResponse
+		if err := json.Unmarshal([]byte(body), &resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if resp.WriteTimeouts == nil || *resp.WriteTimeouts != 0 {
+			t.Errorf("writeTimeouts = %v, want a present 0", resp.WriteTimeouts)
+		}
+		if resp.PushP95Ms == nil || *resp.PushP95Ms != 4.5 {
+			t.Errorf("pushP95Ms = %v, want 4.5", resp.PushP95Ms)
+		}
+	})
+}

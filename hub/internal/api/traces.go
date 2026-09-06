@@ -154,19 +154,32 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 // boundary, which is the truth, rather than collecting unrelated services into
 // an invented bucket.
 func stampServiceNamespaces(labels []storage.ServiceLabel, services []serviceDTO) {
-	byService := make(map[string]storage.ServiceLabel, len(labels))
-	for _, l := range labels {
-		byService[l.Service] = l
-	}
+	ns := serviceNamespaces(labels)
 	for i := range services {
-		l := byService[services[i].Name]
-		switch {
-		case l.K8sNamespace != "":
-			services[i].Namespace = l.K8sNamespace
-		case l.ServiceNamespace != "":
-			services[i].Namespace = l.ServiceNamespace
+		if n := ns[services[i].Name]; n != "" {
+			services[i].Namespace = n
 		}
 	}
+}
+
+// serviceNamespaces resolves service name → namespace once, so every surface
+// that needs the answer gets the SAME answer. The mesh screen facets on it and
+// the map draws boundaries with it; two resolution orders would eventually put
+// one workload in two places and there would be no way to tell which was right.
+//
+// A service declaring neither key is absent from the map, not present with an
+// empty string: callers must be able to tell "no namespace" from "namespace ”".
+func serviceNamespaces(labels []storage.ServiceLabel) map[string]string {
+	out := make(map[string]string, len(labels))
+	for _, l := range labels {
+		switch {
+		case l.K8sNamespace != "":
+			out[l.Service] = l.K8sNamespace
+		case l.ServiceNamespace != "":
+			out[l.Service] = l.ServiceNamespace
+		}
+	}
+	return out
 }
 
 // stampServiceRoles labels each map node with its topology role, leaving

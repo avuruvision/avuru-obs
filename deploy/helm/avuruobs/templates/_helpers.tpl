@@ -87,6 +87,7 @@ otel
 {{- if .Values.modules.serviceHealth.enabled -}}{{- $mods = append $mods "service-health" -}}{{- end -}}
 {{- if .Values.modules.alerting.enabled -}}{{- $mods = append $mods "alerting" -}}{{- end -}}
 {{- if .Values.modules.mesh.enabled -}}{{- $mods = append $mods "mesh" -}}{{- end -}}
+{{- if .Values.modules.meshConfig.enabled -}}{{- $mods = append $mods "mesh-config" -}}{{- end -}}
 {{- if .Values.modules.green.enabled -}}{{- $mods = append $mods "green" -}}{{- end -}}
 {{- if .Values.modules.cost.enabled -}}{{- $mods = append $mods "cost" -}}{{- end -}}
 {{- if .Values.modules.ai.enabled -}}{{- $mods = append $mods "ai" -}}{{- end -}}
@@ -144,6 +145,31 @@ otel
      the hub lives elsewhere and hub.external.url says where — component-toggles
      .yaml refuses the combination without it, so this never renders an empty
      host. */}}
+{{/* The ServiceAccount the HUB POD runs as.
+
+     A pod has exactly one identity, and two independent features may need it:
+     runtime collection control (ConfigMap/DaemonSet writes, namespaced) and
+     mesh configuration (cluster-wide reads). So there is one name, decided
+     here, and each feature binds its own role to whatever this returns.
+
+     Collection control wins the naming when both are on, because that SA
+     already exists on installs using it and renaming it would recreate the
+     identity under an upgrade. A default install still gets no
+     serviceAccountName at all and stays on the namespace default with no API
+     rights, exactly as before. */}}
+{{- define "avuruobs.hubServiceAccountName" -}}
+{{- if .Values.collection.runtimeControl.enabled -}}
+{{ include "avuruobs.fullname" . }}-collection-control
+{{- else -}}
+{{ include "avuruobs.fullname" . }}-mesh-config
+{{- end -}}
+{{- end -}}
+
+{{/* True when the hub pod needs an identity at all. */}}
+{{- define "avuruobs.hubNeedsServiceAccount" -}}
+{{- if or .Values.collection.runtimeControl.enabled .Values.modules.meshConfig.enabled -}}true{{- end -}}
+{{- end -}}
+
 {{- define "avuruobs.hubValidateUrl" -}}
 {{- if .Values.hub.enabled -}}
 http://{{ include "avuruobs.fullname" . }}-hub:80/internal/v1/ingest-keys/validate

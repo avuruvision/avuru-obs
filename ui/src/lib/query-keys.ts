@@ -42,6 +42,12 @@ export const queryKeys = {
     [p, "ai", "tools", { ...t, service }] as const,
   meshControlPlane: (p: string, t: TimeParams) =>
     [p, "mesh", "control-plane", { ...t }] as const,
+  meshNamespaces: (p: string, t: TimeParams) =>
+    [p, "mesh", "namespaces", { ...t }] as const,
+  // Configuration is cluster state, not a time series: the key carries no
+  // window, so changing the range does not refetch objects that cannot differ.
+  meshConfig: (p: string, kind?: string, namespace?: string, name?: string) =>
+    [p, "mesh", "config", { kind, namespace, name }] as const,
   traceOverview: (
     p: string,
     t: TimeParams,

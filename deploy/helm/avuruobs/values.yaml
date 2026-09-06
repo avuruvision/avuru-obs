@@ -260,6 +260,19 @@ modules:
   # otel_metrics_* tables) — a chart guard enforces it.
   mesh:
     enabled: false
+  # Mesh configuration: the Kubernetes and Istio OBJECTS behind the mesh —
+  # namespace enrolment, waypoint bindings, gateways, routes and policies — and
+  # whether they are coherent. It answers what traffic cannot: a workload with
+  # no traffic does not exist to a telemetry-only tool, and the most common
+  # ambient misconfiguration produces no traffic at all.
+  #
+  # REQUIRES modules.mesh, and is separate from it for ONE reason: this is the
+  # only module that asks for cluster-wide READ. Folding it into mesh would
+  # silently grant that to every install that has already switched mesh on,
+  # which is not something an upgrade may do. Enabling it renders a read-only
+  # ClusterRole (get/list/watch, never write) — see meshconfig-rbac.yaml.
+  meshConfig:
+    enabled: false
   green:
     enabled: false
   # Cost: what each workload RESERVED against what it actually used — the
@@ -346,12 +359,22 @@ mesh:
     jobName: istiod
     scrapeInterval: 30s
     metrics:
-      # istiod exposes hundreds of series; this surface asks four questions.
-      # pilot_xds = proxies connected, pilot_xds_pushes = pushes attempted,
-      # pilot_proxy_convergence_time = how long config takes to arrive,
-      # pilot_total_xds_rejects = config the proxies REFUSED — the one signal
-      # nothing else in the product can produce.
-      keep: "pilot_xds|pilot_xds_pushes|pilot_proxy_convergence_time.*|pilot_total_xds_rejects"
+      # istiod exposes hundreds of series; this surface asks a handful of
+      # questions. pilot_xds = proxies connected, pilot_xds_pushes = pushes
+      # attempted, pilot_proxy_convergence_time = how long config takes to
+      # arrive, pilot_total_xds_rejects = config the proxies REFUSED — the one
+      # signal nothing else in the product can produce.
+      #
+      # Then three that separate WHICH side is slow or broken, and which the hub
+      # treats as optional so an install still on the shorter list stays healthy
+      # rather than reporting zeros: pilot_xds_push_time = istiod's own send
+      # latency (convergence includes the proxies acking; this does not),
+      # pilot_xds_write_timeout = pushes that never landed, pilot_k8s_cfg_events
+      # = how much config churn istiod is reacting to.
+      #
+      # The regex is fully anchored by Prometheus, so "pilot_xds" matches only
+      # itself, and the histograms need ".*" for their _bucket/_sum/_count.
+      keep: "pilot_xds|pilot_xds_pushes|pilot_proxy_convergence_time.*|pilot_total_xds_rejects|pilot_xds_push_time.*|pilot_xds_write_timeout|pilot_k8s_cfg_events"
 
 # Cost. Rates are yours to declare: this product makes no outbound call, so
 # there is no pricing API to look them up, and inventing a number would be

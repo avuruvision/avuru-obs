@@ -36,7 +36,7 @@ func TestCapabilitiesDefaultAllModules(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	want := []string{"core", "logs", "infra-metrics", "profiling", "error-tracking", "service-health", "alerting", "mesh", "green", "cost", "ai", "mcp"}
+	want := []string{"core", "logs", "infra-metrics", "profiling", "error-tracking", "service-health", "alerting", "mesh", "mesh-config", "green", "cost", "ai", "mcp"}
 	if !reflect.DeepEqual(resp.Modules, want) {
 		t.Errorf("modules = %v, want %v", resp.Modules, want)
 	}

@@ -16,13 +16,31 @@ import (
 // row: a sidecar with traffic arriving and none leaving is failing to forward,
 // which its own error rate may not show at all.
 type meshProxyDTO struct {
-	Name       string  `json:"name"`
+	Name string `json:"name"`
+	// Namespace and Role are omitted rather than defaulted when unknown. A
+	// proxy filed under "default" or under a guessed role is worse than one
+	// filed under neither, because a guess in a table is read as a fact.
+	Namespace string `json:"namespace,omitempty"`
+	// Role is the topology.MeshRole: which KIND of proxy this is. A ztunnel
+	// carrying everything its node sends and a waypoint that only sees traffic
+	// routed to it fail differently and are read differently.
+	Role       string  `json:"role,omitempty"`
 	RatePerSec float64 `json:"ratePerSec"`
 	ErrorRate  float64 `json:"errorRate"`
 	P50Ms      float64 `json:"p50Ms"`
 	P95Ms      float64 `json:"p95Ms"`
 	CallsIn    uint64  `json:"callsIn"`
 	CallsOut   uint64  `json:"callsOut"`
+	// Bytes and connection health are what OBI measured on the wire, and they
+	// are POINTERS because their absence is a fact about the install, not a
+	// zero. A proxy reported as carrying 0 bytes is indistinguishable from one
+	// that has failed; an install without the infra-metrics module must get no
+	// field at all and render a gap.
+	BytesIn           *uint64  `json:"bytesIn,omitempty"`
+	BytesOut          *uint64  `json:"bytesOut,omitempty"`
+	RTTMs             *float64 `json:"rttMs,omitempty"`
+	FailedConnections *uint64  `json:"failedConnections,omitempty"`
+	Retransmits       *uint64  `json:"retransmits,omitempty"`
 }
 
 type meshProxiesResponse struct {
@@ -52,6 +70,13 @@ type meshControlPlaneResponse struct {
 	Pushes           uint64     `json:"pushes,omitempty"`
 	RejectedConfigs  uint64     `json:"rejectedConfigs,omitempty"`
 	ConvergenceP95Ms float64    `json:"convergenceP95Ms,omitempty"`
+	// Pointers, because these come from a widened scrape keep-list and an
+	// install on an older chart publishes none of them while being perfectly
+	// healthy. For WriteTimeouts especially, nil and 0 are opposite answers:
+	// "we are not looking" versus "no proxy missed its config".
+	PushP95Ms     *float64 `json:"pushP95Ms,omitempty"`
+	WriteTimeouts *uint64  `json:"writeTimeouts,omitempty"`
+	ConfigEvents  *uint64  `json:"configEvents,omitempty"`
 }
 
 // handleMeshProxies lists the mesh's own workloads with their RED and the call
@@ -91,6 +116,30 @@ func (a *API) handleMeshProxies(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	cls := a.topologyClassifier().WithEvidence(topology.LabelledTransport(services))
+
+	// Best-effort, exactly as the map treats it: a namespace is how you find a
+	// proxy among forty, not what tells you it is broken. Losing the lookup
+	// costs a facet; failing the request costs the screen.
+	var namespaces map[string]string
+	if labels, lerr := store.ServiceLabels(r.Context(), q); lerr == nil {
+		namespaces = serviceNamespaces(labels)
+	}
+
+	// The wire view, when this install collects one. Same gate the map uses:
+	// otel_metrics_* exists only with infra-metrics, so querying it otherwise
+	// errors rather than returning nothing.
+	var flows []storage.ServiceEdge
+	var health []storage.NetworkEdgeHealth
+	if a.modules.Enabled(modules.InfraMetrics) {
+		if flows, err = store.NetworkEdges(r.Context(), q); err != nil {
+			return err
+		}
+		if health, err = store.NetworkEdgeHealth(r.Context(), q); err != nil {
+			return err
+		}
+	}
+	measured := meshFlows(cls, flows, health)
+
 	in := map[string]uint64{}
 	out := map[string]uint64{}
 	for _, e := range edges {
@@ -109,15 +158,30 @@ func (a *API) handleMeshProxies(w http.ResponseWriter, r *http.Request) error {
 			continue
 		}
 		d := toServiceDTO(s, window)
-		resp.Proxies = append(resp.Proxies, meshProxyDTO{
-			Name:       d.Name,
+		row := meshProxyDTO{
+			Name:      d.Name,
+			Namespace: namespaces[s.Name],
+			// The labels ride on ServiceStats, so the role is decided from the
+			// same rows the RED came from — one read, one set of workloads.
+			Role:       string(cls.MeshRole(s.Name, s.TransportLabels)),
 			RatePerSec: d.RatePerSec,
 			ErrorRate:  d.ErrorRate,
 			P50Ms:      d.P50Ms,
 			P95Ms:      d.P95Ms,
 			CallsIn:    in[s.Name],
 			CallsOut:   out[s.Name],
-		})
+		}
+		if f := measured[s.Name]; f != nil {
+			if f.measuredBytes {
+				row.BytesIn, row.BytesOut = &f.bytesIn, &f.bytesOut
+			}
+			if f.measuredHealth {
+				row.RTTMs = &f.rttMs
+				row.FailedConnections = &f.failedConnections
+				row.Retransmits = &f.retransmits
+			}
+		}
+		resp.Proxies = append(resp.Proxies, row)
 	}
 	writeJSON(w, http.StatusOK, resp)
 	return nil
@@ -173,6 +237,9 @@ func (a *API) handleMeshControlPlane(w http.ResponseWriter, r *http.Request) err
 		Pushes:           cp.Pushes,
 		RejectedConfigs:  cp.RejectedConfigs,
 		ConvergenceP95Ms: cp.ConvergenceP95Ms,
+		PushP95Ms:        cp.PushP95Ms,
+		WriteTimeouts:    cp.WriteTimeouts,
+		ConfigEvents:     cp.ConfigEvents,
 	})
 	return nil
 }

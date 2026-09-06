@@ -13,6 +13,66 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **The Mesh screen became a mesh console.** It answered two questions — are
+  the proxies healthy, is the control plane still pushing config — and on an
+  ambient cluster that is two rows and four numbers. Everything that would
+  actually explain a mesh was either collected and never read, or never
+  collected.
+
+  **Every proxy now has a role and a namespace.** Control plane, ingress and
+  egress gateway, waypoint, ztunnel, sidecar — filterable, so "show me the
+  waypoints" is a click rather than a squint at a name column. The sensor has
+  been stamping the labels a mesh writes on its own data plane for two releases
+  and storage was reducing them to a yes/no; the values were already there.
+
+  **Two columns stopped lying.** "Carried in"/"Carried out" rendered call
+  counts under headings that claim bytes. They now read **Calls in**/**Calls
+  out**, and bytes have columns of their own — real bytes, from the kernel
+  flows the map already measures, alongside the round-trip time, failed
+  connections and retransmits of the links each proxy moved them over. An
+  install that measures none of it gets no column rather than a zero.
+
+  **A proxy opens.** Its own rate, errors and latency over time, and — the part
+  nothing else could answer — *what it carries*: the real `app → app`
+  dependencies recovered through it, with how many proxies each one crossed.
+  That is the v0.9 hop collapse read from the other end, and it needed no new
+  query. A **Graph** tab draws the mesh with those hops left in, which is
+  exactly what the service map exists to take out.
+
+  **The control plane says more.** Push latency distinct from convergence, the
+  pushes that never landed because a proxy was too slow to receive them, and
+  how much configuration churn the control plane is absorbing.
+
+- **The mesh's configuration, and what is wrong with it.** A new **`mesh-config`**
+  module reads Istio and Gateway API objects from the cluster, read-only, and
+  judges them.
+
+  It is a **separate module, born off**, and that is the design decision rather
+  than an accident of packaging: `mesh` needs no cluster permissions at all, and
+  folding a ClusterRole into it would have granted a cluster-wide read to every
+  install that already runs the mesh screen, on their next upgrade. The grant is
+  `get`, `list` and `watch` and nothing else, on its own ServiceAccount, and the
+  chart fails to render if a write verb is ever added to it.
+
+  **Namespaces now include the ones telemetry cannot show you.** A namespace
+  enrolled in the mesh with nothing behind it emits no traffic, so it had no row
+  anywhere in this product — and a namespace that is enrolled and silent is the
+  most common way an ambient mesh is misconfigured. It is listed now, with its
+  data-plane mode, its waypoint, its mTLS mode and its problems.
+
+  **Six checks, aimed at breakage that emits nothing.** A route pointing at a
+  Service or a port that does not exist; a route naming a gateway that does not
+  exist; a gateway nothing attaches to; a host matching no service; a policy
+  disabling TLS underneath a strict one; a workload sent to a waypoint that is
+  not there. Each finding says what is wrong, what to do about it, and which
+  object to open — findings roll up per namespace, so the list of namespaces is
+  scannable rather than a wall.
+
+  Every way this can fail reads differently and names its own fix: the module
+  off, the permission not granted, the CRDs absent, the hub running outside a
+  cluster, or a cluster large enough that the snapshot was capped — which says
+  so rather than quietly returning a short list.
+
 - **A hosted MCP client can now sign in.** The MCP server shipped in v0.12
   accepting one credential: a personal API token in a header. That serves Claude
   Code and the CLI, and it cannot serve a claude.ai connector — the client the

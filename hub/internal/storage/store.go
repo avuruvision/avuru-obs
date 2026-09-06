@@ -53,6 +53,18 @@ type ServiceStats struct {
 	// pod and wears the application's labels, so there is nothing to read. It
 	// must never be taken as evidence that a workload is an application.
 	TransportEvidence bool
+	// TransportLabels are the avuru.transport.* resource attributes this
+	// service's spans carried, values included — the same evidence
+	// TransportEvidence reduces to a bool, kept whole so the mesh screen can
+	// tell a control plane from a gateway.
+	//
+	// Extracted BY PREFIX, never by a named key list: the chart curates which
+	// labels are collected, and a hub that restated that list would drift from
+	// it silently the first time either side moved. Readers name the keys they
+	// understand and ignore the rest (see topology.MeshRole).
+	//
+	// Nil for every workload the mesh did not label, which is most of them.
+	TransportLabels map[string]string
 }
 
 // ServiceEdge is a service→service edge on the topology map. It can be derived
@@ -215,6 +227,24 @@ type MeshControlPlane struct {
 	RejectedConfigs uint64
 	// ConvergenceP95Ms is how long a config change takes to reach the proxies.
 	ConvergenceP95Ms float64
+	// The three below are POINTERS, unlike everything above them, and the
+	// difference is deliberate. They arrive only from a widened scrape
+	// keep-list, so an install running an older chart has a control plane that
+	// is genuinely available and simply does not publish them. Nil means "this
+	// install does not collect it"; zero would mean "collected, and it was
+	// zero" — which for WriteTimeouts is the difference between "no proxy
+	// missed its config" and "we are not looking".
+	//
+	// PushP95Ms is istiod's own send latency, distinct from convergence: one is
+	// how long the control plane took, the other includes the proxies acking.
+	// Together they say WHICH side is slow.
+	PushP95Ms *float64
+	// WriteTimeouts are pushes that never landed — a proxy too slow or too gone
+	// to receive its configuration.
+	WriteTimeouts *uint64
+	// ConfigEvents is how much Kubernetes config churn istiod is reacting to.
+	// High and rising is a control plane thrashing rather than converging.
+	ConfigEvents *uint64
 }
 
 // ZoneTraffic is the byte volume exchanged between two availability zones over

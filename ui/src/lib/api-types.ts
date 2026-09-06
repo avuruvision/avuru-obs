@@ -13,6 +13,7 @@ export type ModuleName =
   | "service-health"
   | "alerting"
   | "mesh"
+  | "mesh-config"
   | "green"
   | "cost"
   | "ai"
@@ -92,12 +93,27 @@ export interface ServiceEdge {
 // is a proxy failing to forward, which its own error rate need not show.
 export interface MeshProxy {
   name: string;
+  // Where the workload runs, and which kind of proxy it is. Both are absent
+  // when unresolved rather than defaulted — a role guessed wrong is read as a
+  // fact, and "default" is a real namespace someone may actually be using.
+  namespace?: string;
+  // A plain string, not a union: a hub predating this sends none, and a role
+  // added later must not break the build. Unknown values render verbatim.
+  role?: string;
   ratePerSec: number;
   errorRate: number;
   p50Ms: number;
   p95Ms: number;
   callsIn: number;
   callsOut: number;
+  // Measured on the wire by the flow metrics, and absent entirely on an install
+  // that does not collect them. Optional because "not measured" and "zero" are
+  // different answers and only one of them is a number.
+  bytesIn?: number;
+  bytesOut?: number;
+  rttMs?: number;
+  failedConnections?: number;
+  retransmits?: number;
 }
 
 export interface MeshProxiesResponse {
@@ -123,6 +139,71 @@ export interface MeshControlPlane {
   pushes?: number;
   rejectedConfigs?: number;
   convergenceP95Ms?: number;
+  // From a widened scrape keep-list, so absent on an install running an older
+  // chart — which is healthy, not broken. Rendered only when present: a
+  // "0 write timeouts" from a scrape that never collected them would be the
+  // same reassuring lie the whole card exists to avoid.
+  pushP95Ms?: number;
+  writeTimeouts?: number;
+  configEvents?: number;
+}
+
+// One namespace's mesh membership, read from LABELS rather than traffic — which
+// is why a namespace with no telemetry at all still has a row here.
+export interface MeshNamespace {
+  name: string;
+  // "ambient", "sidecar", or absent for out of mesh. Absent is a real answer.
+  dataplaneMode?: string;
+  waypoint?: string;
+  // Only sent when it differs from the namespace's own name.
+  waypointNamespace?: string;
+  // Effective PeerAuthentication mode. Absent means no policy applies and the
+  // mesh default governs — which the hub did not read and will not guess.
+  mtlsMode?: string;
+  services: number;
+  errors: number;
+  warnings: number;
+}
+
+export interface MeshNamespacesResponse {
+  // Leads for the same reason `available` leads on the control plane: every row
+  // below is meaningless if the cluster could not be read.
+  state: string;
+  reason?: string;
+  syncedAt?: string;
+  missingKinds?: string[];
+  truncated?: boolean;
+  namespaces: MeshNamespace[];
+}
+
+// One problem with one configuration object. message says what is wrong, hint
+// says what to do — separate because a finding that only states the problem
+// sends the reader looking.
+export interface MeshFinding {
+  code: string;
+  severity: string;
+  message: string;
+  hint?: string;
+  // The object the finding is ABOUT, when that differs from the one it was
+  // found on — the Service a route cannot reach, so it can be searched for.
+  ref?: string;
+}
+
+export interface MeshConfigObject {
+  kind: string;
+  namespace?: string;
+  name: string;
+  // Sent only for a single-object request; a list never carries specs.
+  spec?: Record<string, unknown>;
+  findings?: MeshFinding[];
+}
+
+export interface MeshConfigResponse {
+  state: string;
+  reason?: string;
+  missingKinds?: string[];
+  truncated?: boolean;
+  objects: MeshConfigObject[];
 }
 
 export interface ServiceMapResponse {
