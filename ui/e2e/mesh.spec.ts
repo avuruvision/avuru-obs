@@ -191,4 +191,39 @@ test.describe("mesh screen", () => {
     await expect(table).toContainText("Calls out");
     await expect(table).not.toContainText("Carried");
   });
+
+  // Bytes come from the flow metrics. On an install that collects them the
+  // columns appear; on one that does not they must be absent rather than a
+  // row of dashes, which would read as a fleet moving nothing.
+  test("shows wire bytes only where something measured them", async ({ page }) => {
+    const MEASURED = {
+      proxies: [
+        {
+          ...PROXIES.proxies[0],
+          bytesIn: 4096,
+          bytesOut: 2048,
+          rttMs: 41,
+          failedConnections: 3,
+          retransmits: 5,
+        },
+      ],
+    };
+    await page.route("**/api/v1/mesh/control-plane*", (r) =>
+      r.fulfill({ json: { available: false, state: "unconfigured" } }),
+    );
+
+    await page.route("**/api/v1/mesh/proxies*", (r) => r.fulfill({ json: MEASURED }));
+    await page.goto("/mesh");
+    const table = page.getByTestId("mesh-proxies");
+    await expect(table).toContainText("Bytes in");
+    await expect(table).toContainText("Link p95");
+    await expect(table).toContainText("4.0 KB");
+
+    // Same screen, an install without the flow metrics: the columns go away.
+    await page.route("**/api/v1/mesh/proxies*", (r) => r.fulfill({ json: PROXIES }));
+    await page.reload();
+    await expect(table).toContainText("Calls in");
+    await expect(table).not.toContainText("Bytes in");
+    await expect(table).not.toContainText("Link p95");
+  });
 });

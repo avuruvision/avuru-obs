@@ -288,3 +288,70 @@ func proxyJSON(t *testing.T, body, name string) map[string]any {
 	t.Fatalf("proxy %q not in response", name)
 	return nil
 }
+
+// Bytes are what OBI measured on the wire, and their ABSENCE is a fact about
+// the install rather than a zero. A proxy reported as carrying 0 bytes is
+// indistinguishable from one that has stopped forwarding.
+func TestMeshProxiesReportBytesAndHealth(t *testing.T) {
+	fake := &storagetest.Fake{
+		Services: []storage.ServiceStats{{Name: "ztunnel", SpanCount: 10}},
+		NetEdges: []storage.ServiceEdge{
+			{Source: "checkout", Target: "ztunnel", Bytes: 4096},
+			{Source: "ztunnel", Target: "payments", Bytes: 2048},
+		},
+		NetEdgeHealth: []storage.NetworkEdgeHealth{
+			{Source: "checkout", Target: "ztunnel", RTTMs: 3, FailedConnections: 1, Retransmits: 5},
+			// The worse link must win: averaging it away is how a bad link
+			// stops being visible in a row that exists to show one.
+			{Source: "ztunnel", Target: "payments", RTTMs: 41, FailedConnections: 2},
+		},
+	}
+	rec := meshGet(t, fake, Config{Modules: modules.AllSet()}, "/api/v1/mesh/proxies")
+	body := rec.Body.String()
+	var resp meshProxiesResponse
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	p := resp.Proxies[0]
+	if p.BytesIn == nil || *p.BytesIn != 4096 {
+		t.Errorf("bytesIn = %v, want 4096", p.BytesIn)
+	}
+	if p.BytesOut == nil || *p.BytesOut != 2048 {
+		t.Errorf("bytesOut = %v, want 2048", p.BytesOut)
+	}
+	if p.RTTMs == nil || *p.RTTMs != 41 {
+		t.Errorf("rttMs = %v, want the worst link's 41", p.RTTMs)
+	}
+	if p.FailedConnections == nil || *p.FailedConnections != 3 {
+		t.Errorf("failedConnections = %v, want 3 summed", p.FailedConnections)
+	}
+	if p.Retransmits == nil || *p.Retransmits != 5 {
+		t.Errorf("retransmits = %v, want 5", p.Retransmits)
+	}
+}
+
+// Without infra-metrics there is no wire measurement at all, and the fields
+// must be missing rather than zero.
+func TestMeshProxiesOmitBytesWithoutInfraMetrics(t *testing.T) {
+	fake := &storagetest.Fake{
+		Services: []storage.ServiceStats{{Name: "ztunnel", SpanCount: 10}},
+		// Present in the fake, and unreachable: the handler must not query the
+		// metrics tables at all on an install that has none.
+		NetEdges: []storage.ServiceEdge{{Source: "checkout", Target: "ztunnel", Bytes: 4096}},
+	}
+	active := modules.Set{modules.Core: true, modules.Mesh: true}
+	rec := meshGet(t, fake, Config{Modules: active}, "/api/v1/mesh/proxies")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	row := proxyJSON(t, rec.Body.String(), "ztunnel")
+	for _, key := range []string{"bytesIn", "bytesOut", "rttMs", "failedConnections", "retransmits"} {
+		if _, present := row[key]; present {
+			t.Errorf("%s was serialized on an install that measures no flows", key)
+		}
+	}
+	// The trace-derived half is unaffected: it never needed the module.
+	if row["ratePerSec"] == nil {
+		t.Error("the call-derived RED disappeared with the metrics module")
+	}
+}

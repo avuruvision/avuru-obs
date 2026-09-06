@@ -105,6 +105,14 @@ export interface MeshProxy {
   p95Ms: number;
   callsIn: number;
   callsOut: number;
+  // Measured on the wire by the flow metrics, and absent entirely on an install
+  // that does not collect them. Optional because "not measured" and "zero" are
+  // different answers and only one of them is a number.
+  bytesIn?: number;
+  bytesOut?: number;
+  rttMs?: number;
+  failedConnections?: number;
+  retransmits?: number;
 }
 
 export interface MeshProxiesResponse {
