@@ -3,23 +3,62 @@ package meshconfig
 import (
 	"context"
 	"sort"
+	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
 )
 
+// snapshotTTL is how long a snapshot is reused when nothing changed. Every
+// screen on the mesh console asks for one, and several ask at once; a cluster
+// that is not changing should not be re-read and re-judged for each of them.
+const snapshotTTL = 2 * time.Second
+
 // Snapshot reads the caches. It never calls the API server: that is the point
 // of the informers, and it is what lets every screen ask freely.
+//
+// The answer is memoised for snapshotTTL, and only while it is still true: an
+// event on any kind since the memo was taken invalidates it, so the TTL bounds
+// how much work a burst of requests costs rather than how stale an answer may
+// be.
 func (r *K8sReader) Snapshot(context.Context) Snapshot {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
+	now := r.now()
+	if r.memo != nil && now.Sub(r.memoAt) < snapshotTTL && !r.changedSince(r.memoAt) {
+		return *r.memo
+	}
+	snap := r.build()
+	r.memo = &snap
+	r.memoAt = now
+	return snap
+}
+
+// changedSince reports whether any kind saw an event at or after t. "At" is
+// deliberate: a change stamped the same instant as the memo may or may not be
+// in it, and re-reading is the cheap side of that doubt.
+func (r *K8sReader) changedSince(t time.Time) bool {
+	for _, at := range r.lastChange {
+		if !at.Before(t) {
+			return true
+		}
+	}
+	return false
+}
+
+// build assembles a snapshot from the caches. Called with mu held.
+func (r *K8sReader) build() Snapshot {
 	snap := Snapshot{
-		State:        r.state,
-		Reason:       Reason(r.state, r.clusterRole),
-		SyncedAt:     r.syncedAt,
-		MissingKinds: append([]string(nil), r.missing...),
+		State:          r.state,
+		Reason:         Reason(r.state, r.clusterRole),
+		SyncedAt:       r.syncedAt,
+		MissingReasons: map[string]string{},
+	}
+	for kind, why := range r.missing {
+		snap.MissingKinds = append(snap.MissingKinds, kind)
+		snap.MissingReasons[kind] = why
 	}
 	sort.Strings(snap.MissingKinds)
 	if r.state != StateOK {
@@ -36,6 +75,12 @@ func (r *K8sReader) Snapshot(context.Context) Snapshot {
 			continue
 		}
 		items := listSorted(lister)
+		ks := KindSync{
+			Kind:         w.kind,
+			Count:        len(items),
+			SyncedAt:     r.syncedAtByKind[w.kind],
+			LastChangeAt: r.lastChange[w.kind],
+		}
 		switch w.kind {
 		case KindNamespace:
 			for _, u := range items {
@@ -44,7 +89,7 @@ func (r *K8sReader) Snapshot(context.Context) Snapshot {
 		case KindPod:
 			for _, u := range items {
 				if len(snap.Pods) >= maxPods {
-					snap.PodsTruncated = true
+					snap.PodsTruncated, ks.Truncated = true, true
 					break
 				}
 				snap.Pods = append(snap.Pods, podFromUnstructured(u))
@@ -59,12 +104,13 @@ func (r *K8sReader) Snapshot(context.Context) Snapshot {
 					peerAuths = append(peerAuths, o)
 				}
 				if len(snap.Objects) >= maxObjects {
-					snap.Truncated = true
+					snap.Truncated, ks.Truncated = true, true
 					continue
 				}
 				snap.Objects = append(snap.Objects, o)
 			}
 		}
+		snap.Kinds = append(snap.Kinds, ks)
 	}
 	snap.Namespaces = NamespacesFrom(namespaces, peerAuths, r.rootNamespace)
 
@@ -81,6 +127,7 @@ func (r *K8sReader) Snapshot(context.Context) Snapshot {
 		}
 		return a.Name < b.Name
 	})
+	sort.Slice(snap.Kinds, func(i, j int) bool { return snap.Kinds[i].Kind < snap.Kinds[j].Kind })
 	sortPods(snap.Pods)
 	// Judged after the snapshot is whole and ordered: every check is a JOIN
 	// across objects, so none of them can run while the set is still being

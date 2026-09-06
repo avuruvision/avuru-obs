@@ -192,4 +192,16 @@ func TestK8sReaderTruncatesPodsSeparately(t *testing.T) {
 	if len(snap.Objects) != 3 {
 		t.Errorf("objects = %d, want the 3 services untouched", len(snap.Objects))
 	}
+	for _, k := range snap.Kinds {
+		switch k.Kind {
+		case KindPod:
+			if !k.Truncated || k.Count != maxPods+1 {
+				t.Errorf("Pod sync = %+v, want truncated with the full count", k)
+			}
+		case KindService:
+			if k.Truncated {
+				t.Error("Service reported truncated")
+			}
+		}
+	}
 }

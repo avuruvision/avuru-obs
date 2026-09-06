@@ -102,6 +102,17 @@ type Pod struct {
 	Phase          string
 }
 
+// KindSync is one kind's cache, described so staleness is visible rather than
+// assumed: when the cache was warm, when it last changed, how much it holds and
+// whether the snapshot had to cut it.
+type KindSync struct {
+	Kind         string
+	Count        int
+	SyncedAt     time.Time
+	LastChangeAt time.Time
+	Truncated    bool
+}
+
 // Snapshot is the whole readable state at one moment, plus WHY it is as small
 // as it is.
 type Snapshot struct {
@@ -115,12 +126,19 @@ type Snapshot struct {
 	// Kinds that could not be read at all, by name, so one missing CRD costs
 	// its own row rather than the whole screen.
 	MissingKinds []string
+	// MissingReasons says, per missing kind, why it is missing — refused,
+	// absent from the cluster, or a cache that never warmed — because those
+	// are three different fixes.
+	MissingReasons map[string]string
 	// Truncated says a cluster was too large to snapshot whole. A short list
 	// that does not say so is a lie about the cluster.
 	Truncated bool
 	// PodsTruncated is the same statement about pods, which are capped on
 	// their own: a cluster with many pods must not cost it its configuration.
 	PodsTruncated bool
+	// Kinds describes every kind that was read, sorted by kind, so a screen
+	// can say which cache is stale and which one was cut.
+	Kinds []KindSync
 
 	Namespaces []Namespace
 	Objects    []Object

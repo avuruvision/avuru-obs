@@ -68,17 +68,35 @@ var watched = []struct {
 	{"StatefulSet", schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "statefulsets"}},
 }
 
+// Why a kind is missing. Three causes, three fixes, so each one is named.
+const (
+	reasonForbidden = "the ClusterRole does not grant reading it"
+	reasonNoType    = "this cluster does not have the type"
+	reasonNotWarm   = "its cache did not warm in time"
+)
+
 // K8sReader keeps a live view of the cluster's mesh configuration in informer
 // caches, and answers Snapshot from them.
 type K8sReader struct {
 	rootNamespace string
 	clusterRole   string
+	// now is the clock, injectable so the memo and the sync stamps can be
+	// tested without waiting.
+	now func() time.Time
 
-	mu       sync.RWMutex
+	mu       sync.Mutex
 	listers  map[string]cache.GenericLister
-	missing  []string
+	missing  map[string]string // kind -> reason
 	state    State
 	syncedAt time.Time
+	// Per kind: when its cache warmed, and when it last saw an event. Exposed
+	// on the snapshot so staleness is visible rather than assumed, and used to
+	// tell whether the memoised snapshot is still the truth.
+	syncedAtByKind map[string]time.Time
+	lastChange     map[string]time.Time
+
+	memo   *Snapshot
+	memoAt time.Time
 }
 
 // NewK8sReader probes each resource, starts informers for the ones this cluster
@@ -91,15 +109,29 @@ type K8sReader struct {
 func NewK8sReader(
 	ctx context.Context, client dynamic.Interface, rootNamespace, clusterRole string,
 ) *K8sReader {
+	return newK8sReader(ctx, client, rootNamespace, clusterRole, time.Now)
+}
+
+func newK8sReader(
+	ctx context.Context, client dynamic.Interface, rootNamespace, clusterRole string, now func() time.Time,
+) *K8sReader {
 	r := &K8sReader{
-		rootNamespace: rootNamespace,
-		clusterRole:   clusterRole,
-		listers:       map[string]cache.GenericLister{},
-		state:         StateOK,
+		rootNamespace:  rootNamespace,
+		clusterRole:    clusterRole,
+		now:            now,
+		listers:        map[string]cache.GenericLister{},
+		missing:        map[string]string{},
+		state:          StateOK,
+		syncedAtByKind: map[string]time.Time{},
+		lastChange:     map[string]time.Time{},
 	}
 	factory := dynamicinformer.NewDynamicSharedInformerFactory(client, resyncPeriod)
 
-	var started []cache.InformerSynced
+	type pending struct {
+		kind   string
+		synced cache.InformerSynced
+	}
+	var started []pending
 	forbidden := 0
 	for _, w := range watched {
 		_, err := client.Resource(w.gvr).List(ctx, metav1.ListOptions{Limit: 1})
@@ -108,22 +140,33 @@ func NewK8sReader(
 			// Reachable: watch it.
 		case apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err):
 			forbidden++
-			r.missing = append(r.missing, w.kind)
+			r.missing[w.kind] = reasonForbidden
 			continue
 		case apierrors.IsNotFound(err) || meta.IsNoMatchError(err):
 			// The cluster does not have this type. A real answer, and only
 			// this kind is lost — not the screen.
-			r.missing = append(r.missing, w.kind)
+			r.missing[w.kind] = reasonNoType
 			continue
 		default:
-			r.missing = append(r.missing, w.kind)
+			r.missing[w.kind] = err.Error()
 			continue
 		}
 
 		inf := factory.ForResource(w.gvr)
 		_ = inf.Informer().SetTransform(transformFor(w.kind))
+		// Stamping every event is what lets a snapshot be memoised honestly:
+		// the memo is returned only while no kind has changed since it was
+		// taken. The registration's HasSynced, rather than the informer's, is
+		// what is waited on below — it turns true only once the initial list
+		// has been DELIVERED to this handler, so a warm cache never has adds
+		// still in flight.
+		reg, err := inf.Informer().AddEventHandler(r.stamper(w.kind))
+		if err != nil {
+			r.missing[w.kind] = err.Error()
+			continue
+		}
 		r.listers[w.kind] = inf.Lister()
-		started = append(started, inf.Informer().HasSynced)
+		started = append(started, pending{w.kind, reg.HasSynced})
 	}
 
 	switch {
@@ -133,14 +176,39 @@ func NewK8sReader(
 		r.state = StateNoCRDs
 	default:
 		factory.Start(ctx.Done())
-		for _, synced := range started {
+		for _, p := range started {
 			warm, cancel := context.WithTimeout(ctx, warmTimeout)
-			cache.WaitForCacheSync(warm.Done(), synced)
+			ok := cache.WaitForCacheSync(warm.Done(), p.synced)
 			cancel()
+			r.mu.Lock()
+			if ok {
+				r.syncedAtByKind[p.kind] = r.now()
+			} else {
+				// A cache that is not warm would answer with part of the
+				// cluster and no way to say which part. Missing, and said so.
+				delete(r.listers, p.kind)
+				r.missing[p.kind] = reasonNotWarm
+			}
+			r.mu.Unlock()
 		}
-		r.syncedAt = time.Now()
+		r.syncedAt = r.now()
 	}
 	return r
+}
+
+// stamper records that a kind changed. The handler runs on the informer's
+// goroutine, so the stamp is the only thing it does.
+func (r *K8sReader) stamper(kind string) cache.ResourceEventHandler {
+	touch := func() {
+		r.mu.Lock()
+		r.lastChange[kind] = r.now()
+		r.mu.Unlock()
+	}
+	return cache.ResourceEventHandlerFuncs{
+		AddFunc:    func(any) { touch() },
+		UpdateFunc: func(any, any) { touch() },
+		DeleteFunc: func(any) { touch() },
+	}
 }
 
 // transformFor picks what the informer keeps of each object. Pods are
