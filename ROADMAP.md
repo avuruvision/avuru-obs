@@ -325,7 +325,35 @@ a model** remain out, for the same release-level reason they were out of v0.12:
 they would be the first outbound network call in a product whose whole promise
 is that nothing leaves the cluster.
 
-## Beyond v0.14 (directional)
+## v0.15 — what the mesh was told, and what it did — PLANNED
+
+v0.14 gave the mesh a console and a reader for its configuration, and left one
+sentence standing in an AEP: the data plane's own account of its traffic was
+"deferred, not rejected — revisit once the telemetry-only views are in front of
+an operator". They are, and the questions they cannot answer are the ones an
+operator asks first: is this traffic actually encrypted, why did that proxy
+refuse, and which workloads are really in the mesh. Every one of them needs a
+source the product did not read: the proxies themselves, and the pods.
+
+> **As a team we can say, for every namespace, workload and edge, what the mesh
+> was told to do and what it actually did — and the two are on the same row.**
+
+| Theme | Planned |
+|---|---|
+| **Declared vs observed** | The release-defining item. The sensor reads what ztunnel and the Envoy proxies report about themselves — per request and per connection, mutual TLS or plaintext — on each node, from the proxies on that node, discovered through the annotations the mesh already writes. The hub joins that to the PeerAuthentication that actually governs each workload: mesh-wide, namespace, or the selector-scoped policy the v0.14 reader skipped. Every namespace, workload and map edge gets a lock; "permissive with plaintext callers" names the callers; "declared strict, observed plaintext" — a policy that is not applied — becomes a finding instead of a silence. Under the mesh module, on by default: the module is the consent, and there is no endpoint to type — [AEP](design/2026-09-08-mesh-declared-vs-observed.md) |
+| **Every workload, in or out** | The configuration reader adds pods, read-only, projected to a dozen fields and capped on their own. A Workloads tab lists every workload the cluster runs — traffic or not — with whether a sidecar is in the pod, whether the node agent captured it, which waypoint binds it, which policies cover it, and the mTLS mode that applies with the policy that decided it. A waypoint proxy lists what it serves |
+| **Checks for what fails silently or looks safe** | Six checks become seventeen: the waypoint check v0.14 declared and never emitted; the two it held back for lack of pods; and the ones a security posture needs — HTTP-level policy in an ambient namespace with no waypoint, a sidecar where the namespace is ambient, a route to a subset nobody defined, two objects claiming one host, a gateway no pod serves, listeners that conflict, an authorization rule naming a service account nothing uses. Every pod-dependent check goes silent and says so when the pod list was cut, so an empty issues column is never a clean bill |
+| **The proxy explains its failures** | A proxy's requests by response flag — circuit breaker open, retries exhausted, no route, upstream timeout — and by destination version, on the proxy page. Envoy's per-upstream counters are named as not collected, with the setting that exposes them, rather than rendered as zero. A ztunnel row says how many workloads it carries and how many are still waiting |
+| **The graph reads by role** | Waypoint, ztunnel, gateway and control plane drawn as different things on the mesh graph; a marker at the caller end of every edge that was measured, on the map and the mesh graph alike, for all-encrypted, mixed, and plaintext |
+
+**Deliberately not in this list.** Per-proxy effective configuration stays a
+debugger's job. Envoy's per-upstream statistics are not collected: a default
+mesh does not expose them, and a screen that renders their absence as zero would
+be worse than one that names the setting. Posture history and alerting on
+posture wait until the verdicts have been trusted on real clusters. Reading a
+second control plane still waits on an operator running one.
+
+## Beyond v0.15 (directional)
 
 - **Read a second control plane**, once someone running one can say which of its
   signals answer the four questions the Istio card answers — and which of them

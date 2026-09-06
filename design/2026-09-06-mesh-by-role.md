@@ -152,7 +152,8 @@ listener conflicts (`pilot_conflict_*`) and queue backpressure ahead of converge
   bytes and connections per workload, and mTLS state — and it fits the existing sensor-side
   DaemonSet scrape precedent exactly. It is also new collection and new install friction
   for a screen we are about to change substantially. Deferred, not rejected: revisit once
-  the telemetry-only views are in front of an operator.
+  the telemetry-only views are in front of an operator. **Reversed by
+  [what the mesh was told, and what it did](./2026-09-08-mesh-declared-vs-observed.md).**
 - **A `/api/v1/mesh/proxies/{name}` detail endpoint.** Convenient, and it would let the
   proxy page disagree with the map about the same edges. Rejected in favour of composing.
 
