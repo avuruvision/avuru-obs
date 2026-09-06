@@ -203,3 +203,88 @@ func TestRecognisedControlPlaneNamesItself(t *testing.T) {
 		t.Errorf("kind = %q, want istio", resp.Kind)
 	}
 }
+
+// Role and namespace are what make a fleet of forty proxies readable. Both must
+// come from the reads the handler already does, and neither may be invented.
+func TestMeshProxiesCarryRoleAndNamespace(t *testing.T) {
+	fake := &storagetest.Fake{
+		Services: []storage.ServiceStats{
+			{Name: "ztunnel", SpanCount: 90},
+			{Name: "global-waypoint.istio-waypoint", SpanCount: 30},
+			{Name: "istio-ingressgateway-istio.istio-edge", SpanCount: 40},
+			// Named after neither the product nor its job: only the label the
+			// mesh wrote on it can say what this is.
+			{
+				Name:              "edge-front",
+				SpanCount:         20,
+				TransportEvidence: true,
+				TransportLabels:   map[string]string{"avuru.transport.istio_component": "IngressGateways"},
+			},
+		},
+		Labels: []storage.ServiceLabel{
+			{Service: "ztunnel", K8sNamespace: "istio-system"},
+			{Service: "global-waypoint.istio-waypoint", K8sNamespace: "istio-waypoint"},
+			{Service: "istio-ingressgateway-istio.istio-edge", K8sNamespace: "istio-edge"},
+			// edge-front declares no namespace anywhere.
+		},
+	}
+	rec := meshGet(t, fake, Config{Modules: modules.AllSet()}, "/api/v1/mesh/proxies")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	var resp meshProxiesResponse
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	byName := map[string]meshProxyDTO{}
+	for _, p := range resp.Proxies {
+		byName[p.Name] = p
+	}
+
+	for name, want := range map[string]string{
+		"ztunnel":                               "ztunnel",
+		"global-waypoint.istio-waypoint":        "waypoint",
+		"istio-ingressgateway-istio.istio-edge": "ingress-gateway",
+		"edge-front":                            "ingress-gateway",
+	} {
+		if got := byName[name].Role; got != want {
+			t.Errorf("%s role = %q, want %q", name, got, want)
+		}
+	}
+	if got := byName["global-waypoint.istio-waypoint"].Namespace; got != "istio-waypoint" {
+		t.Errorf("waypoint namespace = %q, want istio-waypoint", got)
+	}
+	// A proxy whose namespace nothing declares must arrive without the key at
+	// all, so the table renders a gap instead of the word "default".
+	if got := byName["edge-front"].Namespace; got != "" {
+		t.Errorf("edge-front namespace = %q, want empty", got)
+	}
+	if proxyJSON(t, body, "edge-front")["namespace"] != nil {
+		t.Error("an unknown namespace was serialized rather than omitted")
+	}
+	// Same rule for the role: unresolvable means absent.
+	if proxyJSON(t, body, "ztunnel")["role"] != "ztunnel" {
+		t.Error("ztunnel lost its role on the wire")
+	}
+}
+
+// proxyJSON returns one proxy object from the response as raw JSON, so a test
+// can assert a key is ABSENT — which a decode into meshProxyDTO cannot show,
+// since an omitted string and an empty one land in the same Go field.
+func proxyJSON(t *testing.T, body, name string) map[string]any {
+	t.Helper()
+	var raw struct {
+		Proxies []map[string]any `json:"proxies"`
+	}
+	if err := json.Unmarshal([]byte(body), &raw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for _, p := range raw.Proxies {
+		if p["name"] == name {
+			return p
+		}
+	}
+	t.Fatalf("proxy %q not in response", name)
+	return nil
+}

@@ -20,9 +20,30 @@ import (
 // `any` over the window, not `all` — a proxy is transport from its first span,
 // and a service whose newest spans arrived before an upgrade added the label is
 // not suddenly an application.
-const transportEvidenceExpr = `maxIf(1, arrayExists(
-        k -> startsWith(k, 'avuru.transport.'),
-        mapKeys(ResourceAttributes))) = 1`
+const transportLabelPrefix = `'avuru.transport.'`
+
+// hasTransportLabelExpr is the per-span predicate both readings below share, so
+// the evidence bool and the labels themselves can never disagree about which
+// spans count.
+const hasTransportLabelExpr = `arrayExists(
+        k -> startsWith(k, ` + transportLabelPrefix + `),
+        mapKeys(ResourceAttributes))`
+
+const transportEvidenceExpr = `maxIf(1, ` + hasTransportLabelExpr + `) = 1`
+
+// transportLabelsExpr keeps the label VALUES, which the evidence bool discards.
+// The mesh screen needs them to tell a control plane from a gateway
+// (topology.MeshRole).
+//
+// argMaxIf, not argMax: the newest span of a workload need not be one that
+// carried the labels, and picking the latest span that DID keeps this reading
+// on the same "any span in the window" footing as the evidence bool. Latest
+// rather than dominant because a workload's own identity is a current fact, not
+// a vote.
+const transportLabelsExpr = `argMaxIf(
+        mapFilter((k, v) -> startsWith(k, ` + transportLabelPrefix + `), ResourceAttributes),
+        Timestamp,
+        ` + hasTransportLabelExpr + `)`
 
 func (s *Store) ListServices(ctx context.Context, q storage.ServiceQuery) ([]storage.ServiceStats, error) {
 	query := `
@@ -31,7 +52,8 @@ SELECT
     count()                                         AS spans,
     countIf(` + errorSpanExpr("") + `)              AS errors,
     quantiles(0.5, 0.95, 0.99)(toFloat64(Duration)) AS qs,
-    ` + transportEvidenceExpr + `                   AS transport
+    ` + transportEvidenceExpr + `                   AS transport,
+    ` + transportLabelsExpr + `                     AS transport_labels
 FROM otel_traces
 WHERE Tenant IN (?)
   AND Timestamp >= ? AND Timestamp < ?
@@ -56,7 +78,7 @@ ORDER BY spans DESC`
 			st    storage.ServiceStats
 			quant []float64
 		)
-		if err := rows.Scan(&st.Name, &st.SpanCount, &st.ErrorCount, &quant, &st.TransportEvidence); err != nil {
+		if err := rows.Scan(&st.Name, &st.SpanCount, &st.ErrorCount, &quant, &st.TransportEvidence, &st.TransportLabels); err != nil {
 			return nil, fmt.Errorf("scanning service row: %w", err)
 		}
 		st.P50, st.P95, st.P99 = nsQuantiles(quant)

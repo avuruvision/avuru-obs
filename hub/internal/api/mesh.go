@@ -16,7 +16,15 @@ import (
 // row: a sidecar with traffic arriving and none leaving is failing to forward,
 // which its own error rate may not show at all.
 type meshProxyDTO struct {
-	Name       string  `json:"name"`
+	Name string `json:"name"`
+	// Namespace and Role are omitted rather than defaulted when unknown. A
+	// proxy filed under "default" or under a guessed role is worse than one
+	// filed under neither, because a guess in a table is read as a fact.
+	Namespace string `json:"namespace,omitempty"`
+	// Role is the topology.MeshRole: which KIND of proxy this is. A ztunnel
+	// carrying everything its node sends and a waypoint that only sees traffic
+	// routed to it fail differently and are read differently.
+	Role       string  `json:"role,omitempty"`
 	RatePerSec float64 `json:"ratePerSec"`
 	ErrorRate  float64 `json:"errorRate"`
 	P50Ms      float64 `json:"p50Ms"`
@@ -91,6 +99,15 @@ func (a *API) handleMeshProxies(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	cls := a.topologyClassifier().WithEvidence(topology.LabelledTransport(services))
+
+	// Best-effort, exactly as the map treats it: a namespace is how you find a
+	// proxy among forty, not what tells you it is broken. Losing the lookup
+	// costs a facet; failing the request costs the screen.
+	var namespaces map[string]string
+	if labels, lerr := store.ServiceLabels(r.Context(), q); lerr == nil {
+		namespaces = serviceNamespaces(labels)
+	}
+
 	in := map[string]uint64{}
 	out := map[string]uint64{}
 	for _, e := range edges {
@@ -110,7 +127,11 @@ func (a *API) handleMeshProxies(w http.ResponseWriter, r *http.Request) error {
 		}
 		d := toServiceDTO(s, window)
 		resp.Proxies = append(resp.Proxies, meshProxyDTO{
-			Name:       d.Name,
+			Name:      d.Name,
+			Namespace: namespaces[s.Name],
+			// The labels ride on ServiceStats, so the role is decided from the
+			// same rows the RED came from — one read, one set of workloads.
+			Role:       string(cls.MeshRole(s.Name, s.TransportLabels)),
 			RatePerSec: d.RatePerSec,
 			ErrorRate:  d.ErrorRate,
 			P50Ms:      d.P50Ms,

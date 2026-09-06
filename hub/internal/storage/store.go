@@ -53,6 +53,18 @@ type ServiceStats struct {
 	// pod and wears the application's labels, so there is nothing to read. It
 	// must never be taken as evidence that a workload is an application.
 	TransportEvidence bool
+	// TransportLabels are the avuru.transport.* resource attributes this
+	// service's spans carried, values included — the same evidence
+	// TransportEvidence reduces to a bool, kept whole so the mesh screen can
+	// tell a control plane from a gateway.
+	//
+	// Extracted BY PREFIX, never by a named key list: the chart curates which
+	// labels are collected, and a hub that restated that list would drift from
+	// it silently the first time either side moved. Readers name the keys they
+	// understand and ignore the rest (see topology.MeshRole).
+	//
+	// Nil for every workload the mesh did not label, which is most of them.
+	TransportLabels map[string]string
 }
 
 // ServiceEdge is a service→service edge on the topology map. It can be derived
