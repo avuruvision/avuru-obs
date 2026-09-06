@@ -287,4 +287,44 @@ test.describe("mesh screen", () => {
     await page.goto("/mesh?proxy=long-gone");
     await expect(page.getByText("No proxy named long-gone in this window")).toBeVisible();
   });
+
+  // The service map takes the hops OUT — that is its job. This tab is the only
+  // place the mesh itself is drawn, scoped to the proxies and one step around
+  // them so a large estate does not bury them.
+  test("draws the mesh with its hops left in", async ({ page }) => {
+    await page.route("**/api/v1/mesh/proxies*", (r) => r.fulfill({ json: PROXIES }));
+    await page.route("**/api/v1/mesh/control-plane*", (r) =>
+      r.fulfill({ json: { available: false, state: "unconfigured" } }),
+    );
+    await page.route("**/api/v1/service-map*", (r) =>
+      r.fulfill({
+        json: {
+          services: [
+            { name: "checkout", spanCount: 100, ratePerSec: 2, errorRate: 0, p50Ms: 1, p95Ms: 2, p99Ms: 3, namespace: "shop" },
+            { name: "payments", spanCount: 90, ratePerSec: 2, errorRate: 0, p50Ms: 1, p95Ms: 2, p99Ms: 3, namespace: "shop" },
+            { name: "global-waypoint.istio-waypoint", spanCount: 80, ratePerSec: 4, errorRate: 0, p50Ms: 1, p95Ms: 2, p99Ms: 3, role: "transport", namespace: "istio-waypoint" },
+            // Touches no proxy: must stay out of a mesh graph.
+            { name: "batch-loader", spanCount: 10, ratePerSec: 0.1, errorRate: 0, p50Ms: 1, p95Ms: 2, p99Ms: 3, namespace: "jobs" },
+          ],
+          edges: [
+            { source: "checkout", target: "global-waypoint.istio-waypoint", calls: 210, errorCount: 0, errorRate: 0 },
+            { source: "global-waypoint.istio-waypoint", target: "payments", calls: 208, errorCount: 0, errorRate: 0 },
+            // The recovered dependency: drawn on the map, and NOT here, or the
+            // same requests would be counted twice.
+            { source: "checkout", target: "payments", calls: 210, errorCount: 0, errorRate: 0, collapsedCalls: 210, viaTransport: ["global-waypoint.istio-waypoint"] },
+          ],
+        },
+      }),
+    );
+    await page.goto("/mesh");
+
+    await page.getByRole("tab", { name: "Graph" }).click();
+    await expect(page).toHaveURL(/view=graph/);
+    await expect(page.getByTestId("mesh-graph")).toBeVisible();
+
+    // Back to the table, and the tab state goes with it.
+    await page.getByRole("tab", { name: "Proxies" }).click();
+    await expect(page.getByTestId("mesh-proxies")).toBeVisible();
+    await expect(page).not.toHaveURL(/view=graph/);
+  });
 });

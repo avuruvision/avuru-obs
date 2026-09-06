@@ -9,9 +9,12 @@ import { CenteredSpinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
+import { Tabs } from "@/components/ui/tabs";
 import { ControlPlaneCard } from "./control-plane-card";
 import { ProxiesTable } from "./proxies-table";
 import { ProxyDetail } from "./proxy-detail";
+import { MeshGraph } from "./mesh-graph";
+import { useServiceMapData } from "@/hooks/use-service-map-data";
 import { namespacesPresent, roleLabel, rolesPresent } from "./mesh-roles";
 
 // The mesh's own screen.
@@ -21,16 +24,26 @@ import { namespacesPresent, roleLabel, rolesPresent } from "./mesh-roles";
 // right call for the map and the wrong final word: on a cluster where the mesh
 // IS the network, a proxy dropping requests or a control plane that has stopped
 // pushing config is the outage.
+type MeshView = "proxies" | "graph";
+const VIEWS: { value: MeshView; label: string }[] = [
+  { value: "proxies", label: "Proxies" },
+  { value: "graph", label: "Graph" },
+];
+
 export function MeshScreen() {
-  const { time } = useTimeRange();
+  const { time, windowMs } = useTimeRange();
   const { get, setMany } = useURLState();
   const query = get("q") ?? "";
   const namespace = get("ns") ?? "";
   const role = get("role") ?? "";
   const selected = get("proxy") ?? "";
+  const view: MeshView = get("view") === "graph" ? "graph" : "proxies";
 
   const proxies = useMeshProxies(time);
   const controlPlane = useMeshControlPlane(time);
+  // Only fetched for the graph: the proxy table needs none of it, and the map
+  // read is the most expensive one on the screen.
+  const map = useServiceMapData(time);
 
   const list = useMemo(() => proxies.data?.proxies ?? [], [proxies.data]);
 
@@ -70,10 +83,8 @@ export function MeshScreen() {
     return <ProxyDetail proxy={proxy} onBack={() => setMany({ proxy: undefined })} />;
   }
 
-  return (
-    <div className="flex flex-col gap-4">
-      <ControlPlaneCard data={controlPlane.data} loading={controlPlane.isLoading} />
-
+  const table = (
+    <>
       {list.length === 0 ? (
         <EmptyState icon={Waypoints} title="No mesh workloads in this window">
           Nothing here is classified as transport — no sidecars, waypoints or
@@ -130,6 +141,22 @@ export function MeshScreen() {
             </p>
           )}
         </Card>
+      )}
+    </>
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      <ControlPlaneCard data={controlPlane.data} loading={controlPlane.isLoading} />
+      <Tabs items={VIEWS} value={view} onChange={(v) => setMany({ view: v === "proxies" ? undefined : v })} />
+      {view === "graph" ? (
+        <MeshGraph
+          services={map.data?.services ?? []}
+          edges={map.data?.edges ?? []}
+          windowMs={windowMs}
+        />
+      ) : (
+        table
       )}
     </div>
   );
