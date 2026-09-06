@@ -32,6 +32,13 @@ type ServiceQuery struct {
 	// falls back to the chart's default, so a hub that was never told does not
 	// report a configured control plane as unconfigured.
 	MeshScrapeJob string
+	// MeshDataplaneJob is the job name the proxy scrape runs under (chart:
+	// mesh.dataPlane.jobName). Read only by the data-plane reads (MeshSecurity
+	// and its siblings), which find the scrape-report series by it exactly as
+	// MeshControlPlane finds the control plane's. A separate field rather than
+	// a shared one because the two scrapes are two jobs: an install can run
+	// either without the other, and each must be diagnosed on its own.
+	MeshDataplaneJob string
 }
 
 // ServiceStats aggregates RED metrics for one service over entry spans.
@@ -245,6 +252,125 @@ type MeshControlPlane struct {
 	// ConfigEvents is how much Kubernetes config churn istiod is reacting to.
 	// High and rising is a control plane thrashing rather than converging.
 	ConfigEvents *uint64
+}
+
+// MeshScrapeState is the control-plane diagnosis reused for the data plane:
+// the same three silences (nobody scraping, target not answering, target
+// answering with nothing recognised) apply to a proxy scrape, and they have
+// the same three fixes. One type, so a screen showing both reads them alike.
+type MeshScrapeState = MeshControlPlaneState
+
+// MeshSecurityCounts is how much traffic reached a destination under each
+// transport security policy the proxy reported, over the window.
+//
+// Requests and connections are kept apart because they are different units: a
+// request is one HTTP/gRPC exchange, a connection is one TCP session that may
+// carry thousands of them or none. Adding them would produce a number nobody
+// can act on. Unknown is the proxy's own word for "could not tell" (Istio
+// reports it for traffic it saw but did not terminate), and it is NOT
+// plaintext: folding it into either side would invent a certainty the proxy
+// declined to claim.
+type MeshSecurityCounts struct {
+	MTLSRequests, PlaintextRequests, UnknownRequests          uint64
+	MTLSConnections, PlaintextConnections, UnknownConnections uint64
+}
+
+// MeshCaller is one workload that sent traffic to a destination. Units are
+// requests for HTTP/gRPC callers and connections for TCP callers — the number
+// ranks callers so the loudest plaintext one is first; it does not measure
+// them, and MeshSecurityCounts is where the measurement lives.
+type MeshCaller struct {
+	Namespace, Workload string
+	Units               uint64
+}
+
+// MeshWorkloadSecurity is what one destination workload's proxy said about the
+// traffic it received: how much came over mTLS, how much in the clear, and who
+// sent the clear part. A workload with series in the window and zero traffic
+// is still listed — observed and idle is a fact, and dropping it would make an
+// idle workload look unmeshed.
+type MeshWorkloadSecurity struct {
+	Namespace, Workload string
+	// Reporter is which proxy's account these numbers come from, after the
+	// preference rule: destination beats waypoint beats source. A destination's
+	// own sidecar knows whether the connection it accepted was mTLS; the
+	// caller's sidecar only knows what it tried to send. Both report the same
+	// edge, and summing them would count every request twice — so exactly one
+	// side is kept per destination, and this field says which.
+	Reporter         string
+	Counts           MeshSecurityCounts
+	PlaintextCallers []MeshCaller
+	LastSeen         time.Time
+}
+
+// MeshEdgeSecurity is MeshWorkloadSecurity resolved to one (caller, destination)
+// pair: the same counts, the same reporter preference, kept per edge so the
+// map can colour a link by the security policy its own traffic used.
+type MeshEdgeSecurity struct {
+	SourceNamespace, Source, TargetNamespace, Target string
+	Reporter                                         string
+	Counts                                           MeshSecurityCounts
+}
+
+// MeshSecurity is the data plane's own account of its traffic over the window:
+// per destination workload and per edge, how much was encrypted.
+//
+// Available carries the same weight it carries on MeshControlPlane: a data
+// plane nobody scrapes reports zero plaintext requests, which reads as a fully
+// encrypted mesh — the exact lie this surface exists to prevent. State says why
+// nothing arrived. Targets are the scrape's own report of which proxies it
+// reached, so a fleet of thirty proxies with four unreachable is stated rather
+// than silently under-counted.
+type MeshSecurity struct {
+	Available bool
+	State     MeshScrapeState
+	LastSeen  time.Time
+	// TargetsUp / TargetsTotal are from the scrape-report series, one target
+	// per proxy pod. TargetsDown names up to ten of the unreached ones as
+	// "namespace/pod": enough to act on, bounded so a dead fleet does not
+	// return the whole cluster.
+	TargetsUp, TargetsTotal uint64
+	TargetsDown             []string
+	Workloads               []MeshWorkloadSecurity
+	Edges                   []MeshEdgeSecurity
+}
+
+// MeshCallerOutcome is one caller's requests to a destination and how many of
+// them the destination answered with a 5xx — the split that says whether a
+// failing workload is failing for everyone or for one client.
+type MeshCallerOutcome struct {
+	Namespace, Workload string
+	Requests, Errors5xx uint64
+}
+
+// MeshRequestBreakdown is one destination workload's requests over the window,
+// by the dimensions the proxy attaches to each: the response flag (the proxy's
+// own reason for an outcome — upstream reset, no healthy upstream, circuit
+// broken — which no application span carries), the destination version the
+// request landed on, and the caller with its error count.
+//
+// Measured, not Available: the whole data plane's availability is
+// MeshSecurity's to state; this says only whether THIS workload had any
+// request series in the window. Flags and versions arrive verbatim from the
+// proxy: "-" is its word for "no flag" and "unknown" for "no version label",
+// and rewriting either would hide that the proxy said it.
+type MeshRequestBreakdown struct {
+	Measured            bool
+	Reporter            string
+	ResponseFlags       map[string]uint64
+	DestinationVersions map[string]uint64
+	Callers             []MeshCallerOutcome
+}
+
+// MeshZtunnelHealth is the node proxy's own count of its work: how many
+// workloads each ztunnel pod is carrying, how many it has been told about and
+// not yet wired, and how often its connection to the control plane was cut.
+// Active and pending are gauges summed across pods at their latest value;
+// terminations are a counter's delta over the window. Pods is how many ztunnel
+// instances reported, so a cluster of five nodes showing three is visible.
+type MeshZtunnelHealth struct {
+	Measured                                                           bool
+	ActiveWorkloads, PendingWorkloads, XDSConnectionTerminations, Pods uint64
 }
 
 // ZoneTraffic is the byte volume exchanged between two availability zones over
@@ -1299,6 +1425,16 @@ type Store interface {
 	// window. Reads the metrics tables (the scrape lands there), so the same
 	// infra-metrics gating as NetworkEdges applies on top of the mesh module.
 	MeshControlPlane(ctx context.Context, q ServiceQuery) (MeshControlPlane, error)
+	// MeshSecurity is the data plane's own account of its traffic: per
+	// destination and per edge, how much went over mTLS and who sent the rest.
+	// Same tables, same gating as MeshControlPlane.
+	MeshSecurity(ctx context.Context, q ServiceQuery) (MeshSecurity, error)
+	// MeshRequestBreakdown is one destination workload's requests by response
+	// flag, destination version, and caller outcome, over the window.
+	MeshRequestBreakdown(ctx context.Context, q ServiceQuery, namespace, workload string) (MeshRequestBreakdown, error)
+	// MeshZtunnelHealth is the node proxies' own count of their work, summed
+	// across the ztunnel pods that reported in the window.
+	MeshZtunnelHealth(ctx context.Context, q ServiceQuery) (MeshZtunnelHealth, error)
 	// RecordCheckResult appends one endpoint probe's outcome. Append-only: a
 	// check that flapped is a fact worth keeping, not state to overwrite.
 	//
