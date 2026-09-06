@@ -8,6 +8,8 @@ const PROXIES = {
   proxies: [
     {
       name: "istio-ingressgateway-istio.istio-edge",
+      namespace: "istio-edge",
+      role: "ingress-gateway",
       ratePerSec: 12,
       errorRate: 0.02,
       p50Ms: 3,
@@ -19,6 +21,8 @@ const PROXIES = {
       // Traffic arriving, nothing forwarded: a proxy that has stopped doing the
       // one thing it exists to do, with a success rate that looks fine.
       name: "global-waypoint.istio-waypoint",
+      namespace: "istio-waypoint",
+      role: "waypoint",
       ratePerSec: 4,
       errorRate: 0,
       p50Ms: 1,
@@ -131,5 +135,60 @@ test.describe("mesh screen", () => {
     await page.getByRole("searchbox", { name: "Filter proxies" }).fill("waypoint");
     await expect(page.getByTestId("mesh-proxies")).not.toContainText("ingressgateway");
     await expect(page).toHaveURL(/q=waypoint/);
+  });
+
+  // A role and a namespace are what make a fleet of forty proxies readable, so
+  // both must survive the trip to the screen and both must be filterable.
+  test("facets by role and namespace, and keeps them in the URL", async ({ page }) => {
+    await page.route("**/api/v1/mesh/proxies*", (r) => r.fulfill({ json: PROXIES }));
+    await page.route("**/api/v1/mesh/control-plane*", (r) =>
+      r.fulfill({ json: { available: false, state: "unconfigured" } }),
+    );
+    await page.goto("/mesh");
+
+    const table = page.getByTestId("mesh-proxies");
+    await expect(table).toContainText("Waypoint");
+    await expect(table).toContainText("istio-waypoint");
+
+    await page.getByRole("button", { name: "Filter by role" }).click();
+    await page.getByRole("option", { name: "Waypoint" }).click();
+
+    await expect(page).toHaveURL(/role=waypoint/);
+    await expect(table).toContainText("global-waypoint.istio-waypoint");
+    await expect(table).not.toContainText("istio-ingressgateway-istio.istio-edge");
+  });
+
+  // Sorting is the whole reason to prefer a table to the map here: one click
+  // must put the worst proxy on top and say so to assistive tech.
+  test("sorts by a column the reader picks", async ({ page }) => {
+    await page.route("**/api/v1/mesh/proxies*", (r) => r.fulfill({ json: PROXIES }));
+    await page.route("**/api/v1/mesh/control-plane*", (r) =>
+      r.fulfill({ json: { available: false, state: "unconfigured" } }),
+    );
+    await page.goto("/mesh");
+
+    const rows = page.getByTestId("mesh-proxies").locator("tbody tr");
+    // Worst success first is the default, so the 2% error gateway leads.
+    await expect(rows.first()).toContainText("istio-ingressgateway-istio.istio-edge");
+
+    await page.getByRole("button", { name: "Calls out" }).click();
+    await expect(rows.first()).toContainText("istio-ingressgateway-istio.istio-edge");
+    await page.getByRole("button", { name: "Calls out" }).click();
+    // Ascending: the waypoint forwarding nothing is now top.
+    await expect(rows.first()).toContainText("global-waypoint.istio-waypoint");
+  });
+
+  // The columns said "Carried" while rendering call counts for two releases.
+  test("names the call-count columns as counts", async ({ page }) => {
+    await page.route("**/api/v1/mesh/proxies*", (r) => r.fulfill({ json: PROXIES }));
+    await page.route("**/api/v1/mesh/control-plane*", (r) =>
+      r.fulfill({ json: { available: false, state: "unconfigured" } }),
+    );
+    await page.goto("/mesh");
+
+    const table = page.getByTestId("mesh-proxies");
+    await expect(table).toContainText("Calls in");
+    await expect(table).toContainText("Calls out");
+    await expect(table).not.toContainText("Carried");
   });
 });

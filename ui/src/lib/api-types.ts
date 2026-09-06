@@ -92,6 +92,13 @@ export interface ServiceEdge {
 // is a proxy failing to forward, which its own error rate need not show.
 export interface MeshProxy {
   name: string;
+  // Where the workload runs, and which kind of proxy it is. Both are absent
+  // when unresolved rather than defaulted — a role guessed wrong is read as a
+  // fact, and "default" is a real namespace someone may actually be using.
+  namespace?: string;
+  // A plain string, not a union: a hub predating this sends none, and a role
+  // added later must not break the build. Unknown values render verbatim.
+  role?: string;
   ratePerSec: number;
   errorRate: number;
   p50Ms: number;
