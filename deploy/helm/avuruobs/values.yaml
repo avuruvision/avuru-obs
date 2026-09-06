@@ -372,9 +372,40 @@ mesh:
       # pilot_xds_write_timeout = pushes that never landed, pilot_k8s_cfg_events
       # = how much config churn istiod is reacting to.
       #
+      # And two more from the same scrape, one values line apart: pilot_conflict_*
+      # = listener conflicts (two services claiming one port, which istiod
+      # resolves by dropping one and saying so only here), pilot_proxy_queue_time
+      # = how long a push waited in istiod's queue before it was even sent —
+      # backpressure that shows up ahead of convergence, not inside it.
+      #
       # The regex is fully anchored by Prometheus, so "pilot_xds" matches only
       # itself, and the histograms need ".*" for their _bucket/_sum/_count.
-      keep: "pilot_xds|pilot_xds_pushes|pilot_proxy_convergence_time.*|pilot_total_xds_rejects|pilot_xds_push_time.*|pilot_xds_write_timeout|pilot_k8s_cfg_events"
+      keep: "pilot_xds|pilot_xds_pushes|pilot_proxy_convergence_time.*|pilot_total_xds_rejects|pilot_xds_push_time.*|pilot_xds_write_timeout|pilot_k8s_cfg_events|pilot_conflict_.*|pilot_proxy_queue_time.*"
+  # The DATA plane: what the proxies themselves report — every request's
+  # security (mutual TLS or plaintext), the response flags that name a circuit
+  # breaker or an exhausted retry budget, and ztunnel's own count of the
+  # workloads it carries. Scraped by the sensor on EACH node, from the proxies
+  # on that node only, discovered through the prometheus.io/* annotations the
+  # mesh already writes — so, unlike controlPlane, there is no endpoint to type.
+  #
+  # Live when modules.mesh AND modules.infraMetrics AND sensor.agent are on.
+  # Default true for that reason: the module is the consent, and this is what
+  # the module is for. Set false to keep the mesh screen without the scrape.
+  dataPlane:
+    enabled: true
+    # The Prometheus job name. It is ALSO what the hub looks the scrape-report
+    # series up by (same discipline as controlPlane.jobName): one value, both ends.
+    jobName: mesh-dataplane
+    scrapeInterval: 30s
+    metrics:
+      # Fully anchored by Prometheus. The request counter and the four TCP
+      # counters carry connection_security_policy; the three ztunnel series say
+      # whether ztunnel is carrying what it was told to carry.
+      keep: "istio_requests_total|istio_tcp_connections_opened_total|istio_tcp_connections_closed_total|istio_tcp_sent_bytes_total|istio_tcp_received_bytes_total|workload_manager_active_proxy_count|workload_manager_pending_proxy_count|istio_xds_connection_terminations_total"
+      # Request series from the CALLING side duplicate the ones the called side
+      # reports. Kept only from gateways, which have no called side to report
+      # for them; the hub prefers the destination's report when both exist.
+      sourceReporterFromGatewaysOnly: true
 
 # Cost. Rates are yours to declare: this product makes no outbound call, so
 # there is no pricing API to look them up, and inventing a number would be
