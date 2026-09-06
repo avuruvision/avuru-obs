@@ -70,7 +70,20 @@ type Namespace struct {
 	WaypointNamespace string
 	// MTLSMode is the effective PeerAuthentication mode: STRICT, PERMISSIVE,
 	// DISABLE, or "" when no policy applies and the mesh default governs.
-	MTLSMode string
+	// MTLSSource says which scope decided it — "namespace" or "mesh"; a
+	// namespace has no workload scope — and MTLSPolicy names the policy, as
+	// "namespace/name", so a mode can be traced to the object that set it.
+	MTLSMode   string
+	MTLSSource string
+	MTLSPolicy string
+	// Workloads counts the workloads running here, and Enrolled how many of
+	// them the mesh actually has — captured or injected. The gap between the
+	// two is the number no label can show.
+	Workloads int
+	Enrolled  int
+	// Findings are the namespace's own — a waypoint it names that is not
+	// deployed, an ambient label nothing honours. Attached by the validator.
+	Findings []Finding
 }
 
 // Pod is one pod, projected to what enrolment needs and nothing else.

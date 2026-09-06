@@ -63,9 +63,9 @@ var watched = []struct {
 	{KindSidecar, schema.GroupVersionResource{Group: "networking.istio.io", Version: "v1", Resource: "sidecars"}},
 	{KindTelemetry, schema.GroupVersionResource{Group: "telemetry.istio.io", Version: "v1", Resource: "telemetries"}},
 	{KindWasmPlugin, schema.GroupVersionResource{Group: "extensions.istio.io", Version: "v1alpha1", Resource: "wasmplugins"}},
-	{"Deployment", schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}},
-	{"DaemonSet", schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "daemonsets"}},
-	{"StatefulSet", schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "statefulsets"}},
+	{KindDeployment, schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}},
+	{KindDaemonSet, schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "daemonsets"}},
+	{KindStatefulSet, schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "statefulsets"}},
 }
 
 // Why a kind is missing. Three causes, three fixes, so each one is named.
