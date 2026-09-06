@@ -279,7 +279,7 @@ the map" passed the service as a *filter*, which kept that one node and dropped
 every edge it had, landing the reader on an isolated dot on the one screen whose
 whole subject is connections.
 
-## v0.14 — the estate an agent can reach — PLANNED
+## v0.14 — the estate an agent can reach — SHIPPED (v0.14.0)
 
 v0.12 said an agent can read the estate, and it could — over a token a person
 had to mint and paste by hand, from a server nothing routed, describing a meshed
@@ -294,7 +294,7 @@ this tree. What is actually unblocked is the MCP server's own follow-through.
 > every other client signs in, and have it read the same dependencies — and the
 > same time — that our screens show.**
 
-| Theme | Planned |
+| Theme | Shipped |
 |---|---|
 | **Signed in like everything else** | The release-defining item: OAuth 2.1, so a hosted client can connect at all. Today `/mcp` takes a personal API token in a header, which serves Claude Code and the CLI and cannot serve a claude.ai connector — the client that the whole "off by default, because what an agent reads leaves your cluster" warning was written for. The hub becomes the authorization server: discovery metadata, dynamic client registration, authorization code with PKCE, short-lived tokens, and a consent screen backed by the existing login session that says in plain words which project is being shared and that log bodies leave the installation. Tokens stay opaque and audience-bound, so an MCP credential can never be replayed against the rest of the API — [AEP](design/2026-09-01-mcp-server.md) |
 | **The dependency behind the proxy, for an agent too** | v0.9's release-defining item taught the map to report the dependency underneath a mesh hop instead of the hop. `service_context` never learned it: it labels a transport counterpart rather than collapsing it, so on a meshed install an agent and a person asking the same question get different answers. The fix is not a second implementation — the collapse moves out of the map's handler into one place both callers use — [AEP](design/2026-09-01-mcp-server.md), [hop collapse](design/2026-08-25-transport-hop-collapse.md) |

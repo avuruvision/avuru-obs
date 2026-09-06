@@ -11,6 +11,8 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-09-06
+
 ### Added
 
 - **The Mesh screen became a mesh console.** It answered two questions — are
@@ -238,7 +240,9 @@ When a release is cut, that block is renamed to the version with its date.
   neighbourhood of its own.
 
   Only meshed installs were affected, which is why nothing caught it — the demo
-  stack and every test fixture are unmeshed.## [0.13.0] — 2026-09-04
+  stack and every test fixture are unmeshed.
+
+## [0.13.0] — 2026-09-04
 
 ### Added
 
