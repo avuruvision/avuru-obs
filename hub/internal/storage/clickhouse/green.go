@@ -15,15 +15,11 @@ import (
 // / network-health precedent — no owned tables, no rollup jobs. Storage
 // returns Wh only; carbon factors never enter SQL (AEP: gCO2e is query-time
 // math in the green module).
-
-// greenSeriesID isolates one exported counter series: metric name plus the
-// full attribute AND resource-attribute identity. Deltas are computed per
-// series FIRST and summed after, so multi-zone / multi-container / multi-
-// metric series can never cross-cancel each other's max−min. mapSort: a Map
-// column preserves insertion order and writers don't guarantee a stable pair
-// order, so hashing must be order-insensitive or one series splits into many
-// (every delta collapsing to 0).
-const greenSeriesID = "cityHash64(MetricName, toString(mapSort(Attributes)), toString(mapSort(ResourceAttributes)))"
+//
+// The series identity (seriesIDExpr, series.go) was written for this module
+// first: deltas are computed per series and summed after, so multi-zone /
+// multi-container / multi-metric series can never cross-cancel each other's
+// max−min.
 
 // greenBucket resolves the series bucket width: the caller's interval, or the
 // infra default (Range/defaultSeriesPoints), floored at one second.
@@ -47,7 +43,7 @@ func inList(n int) string {
 // per-service Wh totals + bucketed series, heaviest first.
 //
 // series_deltas: max(Value)−min(Value) joules per unique series
-// (greenSeriesID) per bucket. Counter-reset containment comes from the
+// (seriesIDExpr) per bucket. Counter-reset containment comes from the
 // PER-BUCKET grouping, not the clamp: each bucket's delta is computed
 // independently, so a reset corrupts at most its own bucket — and a reset
 // WITHIN a bucket OVERCOUNTS by up to the pre-reset value (max stays the
@@ -99,7 +95,7 @@ FROM series_deltas AS d
 LEFT JOIN pod_workloads AS w ON d.pod = w.pod AND d.ns = w.ns
 GROUP BY service, quality, t
 ORDER BY service, quality, t`,
-		int(bucket.Seconds()), greenSeriesID, inList(len(q.PodEnergyMetrics)), workloadExpr)
+		int(bucket.Seconds()), seriesIDExpr, inList(len(q.PodEnergyMetrics)), workloadExpr)
 
 	// Both CTEs filter on the SAME resolved set: energy rows and the
 	// pod→workload map must cover the same tenants or the join drops energy
@@ -185,7 +181,7 @@ FROM (
 )
 GROUP BY node, quality, t
 ORDER BY node, quality, t`,
-		int(bucket.Seconds()), greenSeriesID, inList(len(q.NodeEnergyMetrics)))
+		int(bucket.Seconds()), seriesIDExpr, inList(len(q.NodeEnergyMetrics)))
 
 	args := []any{tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
 	for _, m := range q.NodeEnergyMetrics {
