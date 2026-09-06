@@ -13,8 +13,8 @@ func TestParse(t *testing.T) {
 		want    []string
 		wantErr bool
 	}{
-		{"empty means all", "", []string{"core", "logs", "infra-metrics", "profiling", "error-tracking", "service-health", "alerting", "mesh", "green", "cost", "ai", "mcp"}, false},
-		{"whitespace means all", "  ", []string{"core", "logs", "infra-metrics", "profiling", "error-tracking", "service-health", "alerting", "mesh", "green", "cost", "ai", "mcp"}, false},
+		{"empty means all", "", []string{"core", "logs", "infra-metrics", "profiling", "error-tracking", "service-health", "alerting", "mesh", "mesh-config", "green", "cost", "ai", "mcp"}, false},
+		{"whitespace means all", "  ", []string{"core", "logs", "infra-metrics", "profiling", "error-tracking", "service-health", "alerting", "mesh", "mesh-config", "green", "cost", "ai", "mcp"}, false},
 		{"explicit subset", "core,logs", []string{"core", "logs"}, false},
 		{"core is forced on", "logs", []string{"core", "logs"}, false},
 		{"spaces and blanks tolerated", " logs , profiling ,", []string{"core", "logs", "profiling"}, false},
@@ -65,5 +65,22 @@ func TestEnabled(t *testing.T) {
 	}
 	if set.Enabled(Profiling) || set.Enabled(InfraMetrics) {
 		t.Errorf("profiling/infra-metrics should be disabled: %v", set.Names())
+	}
+}
+
+// mesh-config is the only module that asks for cluster-wide read, and it is
+// meaningless without the screen it appears on. A deploy that asks for one
+// without the other must fail loudly rather than start with a permission it
+// cannot use.
+func TestMeshConfigRequiresMesh(t *testing.T) {
+	if _, err := Parse("core,mesh-config"); err == nil {
+		t.Error("mesh-config without mesh was accepted")
+	}
+	s, err := Parse("core,mesh,mesh-config")
+	if err != nil {
+		t.Fatalf("mesh-config with mesh: %v", err)
+	}
+	if !s.Enabled(MeshConfig) {
+		t.Error("mesh-config not enabled when asked for alongside mesh")
 	}
 }

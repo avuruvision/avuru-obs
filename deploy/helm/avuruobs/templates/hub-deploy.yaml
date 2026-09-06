@@ -24,11 +24,13 @@ spec:
         {{- include "avuruobs.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: hub
     spec:
-      {{- if .Values.collection.runtimeControl.enabled }}
-      {{- /* Only the runtime-collection opt-in gives the hub pod an identity:
-             the default install stays on the namespace's default SA with no
-             API rights at all (see collection-rbac.yaml). */}}
-      serviceAccountName: {{ include "avuruobs.fullname" . }}-collection-control
+      {{- if include "avuruobs.hubNeedsServiceAccount" . }}
+      {{- /* Only an opt-in gives the hub pod an identity: runtime collection
+             control (namespaced writes) or the mesh-config module (cluster-wide
+             reads). A default install stays on the namespace's default SA with
+             no API rights at all — see collection-rbac.yaml and
+             meshconfig-rbac.yaml. */}}
+      serviceAccountName: {{ include "avuruobs.hubServiceAccountName" . }}
       {{- end }}
       {{- with .Values.image.pullSecrets }}
       imagePullSecrets:

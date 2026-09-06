@@ -13,6 +13,7 @@ export type ModuleName =
   | "service-health"
   | "alerting"
   | "mesh"
+  | "mesh-config"
   | "green"
   | "cost"
   | "ai"

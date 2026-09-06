@@ -1375,4 +1375,35 @@ out="$(render --set auth.oidc.publicUrl=https://legacy.example.com)"
 grep -q 'value: "https://legacy.example.com"' <<<"$out" || fail "auth.oidc.publicUrl no longer honoured"
 ok "top-level key works without SSO; the old key still resolves"
 
+echo "== mesh-config: the only cluster-wide grant, and only when asked for by name"
+# The whole reason this is a separate module: an upgrade must never be the
+# thing that starts reading a cluster.
+out="$(render)"
+grep -q 'mesh-config' <<<"$out" && fail "mesh-config resources rendered on a default install"
+out="$(render --set modules.mesh.enabled=true)"
+grep -q 'mesh-config' <<<"$out" && fail "the mesh module alone rendered a ClusterRole"
+ok "no cluster-wide grant without the module"
+
+render --set modules.meshConfig.enabled=true >/dev/null 2>&1 \
+  && fail "meshConfig without mesh rendered"
+ok "meshConfig without mesh is refused"
+
+out="$(render --set modules.mesh.enabled=true --set modules.meshConfig.enabled=true)"
+grep -q 'kind: ClusterRole' <<<"$out" || fail "no ClusterRole with the module on"
+# Read-only, forever. A write verb here would be a different product.
+awk '/name: test-avuruobs-mesh-config/,/^---/' <<<"$out" \
+  | grep -E 'verbs:' | grep -qE '"(create|update|patch|delete|deletecollection)"' \
+  && fail "the mesh-config ClusterRole carries a write verb"
+ok "the grant is get/list/watch only"
+
+# A pod has one identity: with collection control also on, both features must
+# share its ServiceAccount rather than fight over serviceAccountName.
+out="$(render --set modules.mesh.enabled=true --set modules.meshConfig.enabled=true \
+  --set collection.runtimeControl.enabled=true --set auth.enabled=true)"
+[ "$(grep -c 'serviceAccountName: test-avuruobs-collection-control' <<<"$out")" -ge 1 ] \
+  || fail "the hub lost its collection-control identity"
+awk '/kind: ClusterRoleBinding/,/^---/' <<<"$out" | grep -q 'name: test-avuruobs-collection-control' \
+  || fail "the mesh-config binding does not target the SA the hub actually runs as"
+ok "both features share one hub ServiceAccount"
+
 echo "ALL TEMPLATE ASSERTIONS PASSED"

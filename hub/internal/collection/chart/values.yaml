@@ -260,6 +260,19 @@ modules:
   # otel_metrics_* tables) — a chart guard enforces it.
   mesh:
     enabled: false
+  # Mesh configuration: the Kubernetes and Istio OBJECTS behind the mesh —
+  # namespace enrolment, waypoint bindings, gateways, routes and policies — and
+  # whether they are coherent. It answers what traffic cannot: a workload with
+  # no traffic does not exist to a telemetry-only tool, and the most common
+  # ambient misconfiguration produces no traffic at all.
+  #
+  # REQUIRES modules.mesh, and is separate from it for ONE reason: this is the
+  # only module that asks for cluster-wide READ. Folding it into mesh would
+  # silently grant that to every install that has already switched mesh on,
+  # which is not something an upgrade may do. Enabling it renders a read-only
+  # ClusterRole (get/list/watch, never write) — see meshconfig-rbac.yaml.
+  meshConfig:
+    enabled: false
   green:
     enabled: false
   # Cost: what each workload RESERVED against what it actually used — the

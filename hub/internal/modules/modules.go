@@ -80,10 +80,24 @@ const (
 	// switch has to be theirs to throw.
 	// See design/2026-09-01-mcp-server.md.
 	MCP Name = "mcp"
+	// MeshConfig reads the Kubernetes and Istio objects that DEFINE the mesh —
+	// namespace enrolment, waypoint bindings, gateways, routes and policies —
+	// and validates them against each other. It answers the one class of
+	// question a telemetry-only product structurally cannot: a workload with no
+	// traffic does not exist to us, and the most common ambient
+	// misconfiguration produces no traffic at all.
+	//
+	// Requires Mesh, and is separate from it for one reason: this is the only
+	// module that asks for CLUSTER-WIDE READ. Folding it into Mesh would
+	// silently escalate every install that has already switched Mesh on, which
+	// is not something an upgrade may do. Born OFF, like every module that
+	// changes what the install can see.
+	// See design/2026-09-07-mesh-configuration.md.
+	MeshConfig Name = "mesh-config"
 )
 
 // All lists every known module in registry (display) order.
-var All = []Name{Core, Logs, InfraMetrics, Profiling, ErrorTracking, ServiceHealth, Alerting, Mesh, Green, Cost, AI, MCP}
+var All = []Name{Core, Logs, InfraMetrics, Profiling, ErrorTracking, ServiceHealth, Alerting, Mesh, MeshConfig, Green, Cost, AI, MCP}
 
 // Set is a resolved active-module set; Core is always present.
 type Set map[Name]bool
@@ -142,6 +156,11 @@ func Parse(v string) (Set, error) {
 		if s[m] && !s[InfraMetrics] {
 			return nil, fmt.Errorf("module %q requires %q — add it to AVURUOBS_MODULES", m, InfraMetrics)
 		}
+	}
+	// MeshConfig is the mesh's configuration half; without the mesh module
+	// there is no screen for it to appear on.
+	if s[MeshConfig] && !s[Mesh] {
+		return nil, fmt.Errorf("module %q requires %q — add it to AVURUOBS_MODULES", MeshConfig, Mesh)
 	}
 	return s, nil
 }
