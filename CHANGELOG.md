@@ -11,6 +11,35 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **The proxies now say what they carried, and how.** The mesh screen read the
+  control plane through one scrape and the data plane through the spans your
+  applications already send — which answers how fast and how often, and cannot
+  answer what every proxy knows about itself: whether a request travelled under
+  mutual TLS or in plaintext, whether a response flag names a circuit breaker
+  or an exhausted retry budget, and whether ztunnel is carrying the workloads it
+  was told to carry. None of that is in a span.
+
+  The sensor now scrapes the proxies on its own node — sidecars, waypoints,
+  gateways and ztunnel — discovered through the annotations the mesh already
+  writes on them, so there is no endpoint to type. Each node scrapes only its
+  own proxies, so a cluster of any size reaches every proxy exactly once. The
+  keep-list is eight series; the calling side's copy of a request is kept only
+  from gateways, which have no called side to report for them. The scrape's own
+  `up` is kept per proxy, so the screen can tell "nobody is scraping" from "the
+  proxies are not answering". Namespaces excluded from collection are excluded
+  at both ends of a series, not just where the reporting proxy happens to live.
+
+  **This is on by default for installs that run the mesh module**, and it starts
+  collecting at upgrade: the module is the consent, and this is what it is for.
+  Budget roughly 20–100 series per proxy per 30-second scrape, in the
+  infra-metrics tables. Keep the mesh screen without the scrape with
+  `mesh.dataPlane.enabled=false`; installs without the mesh module are
+  untouched. The control-plane scrape also keeps two more families from the
+  same request — listener conflicts, and how long a push waited in the queue
+  before it was sent.
+
 ## [0.14.0] — 2026-09-06
 
 ### Added
