@@ -71,6 +71,9 @@ only if the design needs to be pinned down before coding.
 | [2026-08-27](2026-08-27-ai-observability.md) | AI observability — the model calls you are already sending | Accepted |
 | [2026-08-30](2026-08-30-agents-budgets-and-rates.md) | Agents, budgets, and one rate table — the spend you can act on | Accepted |
 | [2026-09-01](2026-09-01-mcp-server.md) | A Model Context Protocol server — the estate an agent can read | Accepted |
+| [2026-09-06](2026-09-06-mesh-by-role.md) | The mesh, by role — roles, bytes, what a proxy carries | Accepted |
+| [2026-09-07](2026-09-07-mesh-configuration.md) | Reading the mesh's configuration — inventory and validation, read-only | Accepted |
+| [2026-09-08](2026-09-08-mesh-declared-vs-observed.md) | What the mesh was told, and what it did — data-plane scrape, workloads, posture | Accepted |
 
 ## Conventions
 
