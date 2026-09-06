@@ -73,6 +73,35 @@ type Namespace struct {
 	MTLSMode string
 }
 
+// Pod is one pod, projected to what enrolment needs and nothing else.
+//
+// A pod is where mesh membership actually happens: the sidecar is a container
+// in it, and ambient capture is an annotation the node agent writes on it. It
+// is also, by a wide margin, the most numerous and the largest object in a
+// cluster — so the reader keeps a dozen fields per pod rather than the pod, and
+// this struct is the whole of what it keeps.
+type Pod struct {
+	Namespace string
+	Name      string
+	Labels    map[string]string
+	// Annotations holds only the four the mesh writes: ambient redirection,
+	// sidecar injection and status, and the revision. Everything else a pod
+	// carries was dropped before it was stored.
+	Annotations map[string]string
+	// OwnerKind and OwnerName are the first controller ownerReference, which is
+	// how a pod is joined back to the workload that made it.
+	OwnerKind      string
+	OwnerName      string
+	ServiceAccount string
+	NodeName       string
+	HostNetwork    bool
+	// Containers and InitContainers are NAMES only — enough to see istio-proxy
+	// or istio-init among them, which is what a sidecar looks like.
+	Containers     []string
+	InitContainers []string
+	Phase          string
+}
+
 // Snapshot is the whole readable state at one moment, plus WHY it is as small
 // as it is.
 type Snapshot struct {
@@ -89,9 +118,15 @@ type Snapshot struct {
 	// Truncated says a cluster was too large to snapshot whole. A short list
 	// that does not say so is a lie about the cluster.
 	Truncated bool
+	// PodsTruncated is the same statement about pods, which are capped on
+	// their own: a cluster with many pods must not cost it its configuration.
+	PodsTruncated bool
 
 	Namespaces []Namespace
 	Objects    []Object
+	// Pods are kept apart from Objects: they are not configuration, they are
+	// what configuration acts on, and they never count against its cap.
+	Pods []Pod
 }
 
 // Reader returns the current view of the cluster's mesh configuration.

@@ -1422,6 +1422,12 @@ awk '/name: test-avuruobs-mesh-config/,/^---/' <<<"$out" \
   | grep -E 'verbs:' | grep -qE '"(create|update|patch|delete|deletecollection)"' \
   && fail "the mesh-config ClusterRole carries a write verb"
 ok "the grant is get/list/watch only"
+# Pods are in the grant: enrolment is a fact about a pod (the sidecar is a
+# container in it; ambient capture is an annotation on it), and a reader that
+# cannot see pods can only report what was asked for, never what happened.
+awk '/name: test-avuruobs-mesh-config/,/^---/' <<<"$out" | grep -q '"pods"' \
+  || fail "the mesh-config ClusterRole cannot read pods"
+ok "pods are readable, under the same read-only verbs"
 
 # A pod has one identity: with collection control also on, both features must
 # share its ServiceAccount rather than fight over serviceAccountName.

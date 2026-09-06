@@ -264,7 +264,10 @@ modules:
   # namespace enrolment, waypoint bindings, gateways, routes and policies — and
   # whether they are coherent. It answers what traffic cannot: a workload with
   # no traffic does not exist to a telemetry-only tool, and the most common
-  # ambient misconfiguration produces no traffic at all.
+  # ambient misconfiguration produces no traffic at all. It also reads pods,
+  # because enrolment is a fact about a pod (the sidecar is a container in it,
+  # ambient capture is an annotation on it); the hub keeps a dozen fields of
+  # each pod rather than the pod, and caps them separately from configuration.
   #
   # REQUIRES modules.mesh, and is separate from it for ONE reason: this is the
   # only module that asks for cluster-wide READ. Folding it into mesh would
