@@ -16,6 +16,7 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/collection"
 	"github.com/avuru/avuru-obs/hub/internal/green"
 	"github.com/avuru/avuru-obs/hub/internal/health"
+	"github.com/avuru/avuru-obs/hub/internal/meshconfig"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/oauth"
 	"github.com/avuru/avuru-obs/hub/internal/rates"
@@ -155,6 +156,11 @@ type Config struct {
 	// CollectionApplier pushes an accepted overlay to the cluster. nil
 	// defaults to collection.NoopApplier{} in Register.
 	CollectionApplier collection.Applier
+	// MeshConfigReader serves the mesh's configuration half. Never nil in
+	// practice — the module-off and not-in-cluster cases are a NoopReader that
+	// explains itself, not an absent one that would need a nil check at every
+	// call site.
+	MeshConfigReader meshconfig.Reader
 	// Topology returns the current service-map topology configuration
 	// (hot-reloaded, like Groups): which workload names are transport
 	// infrastructure rather than applications. nil → topology.Default().
@@ -423,6 +429,12 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		// so the screen either exists whole or not at all.
 		mux.Handle("GET /api/v1/mesh/proxies", a.secured(auth.RoleViewer, a.handleMeshProxies))
 		mux.Handle("GET /api/v1/mesh/control-plane", a.secured(auth.RoleViewer, a.handleMeshControlPlane))
+	}
+	// The configuration half is a module of its own because it is the only
+	// cluster-wide READ this product asks for — see the AEP. Its routes are
+	// absent without it, like every other module's.
+	if active.Enabled(modules.MeshConfig) {
+		mux.Handle("GET /api/v1/mesh/namespaces", a.secured(auth.RoleViewer, a.handleMeshNamespaces))
 	}
 	if active.Enabled(modules.Green) {
 		mux.Handle("GET /api/v1/green/summary", a.secured(auth.RoleViewer, a.handleGreenSummary))

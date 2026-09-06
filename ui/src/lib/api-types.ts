@@ -148,6 +148,34 @@ export interface MeshControlPlane {
   configEvents?: number;
 }
 
+// One namespace's mesh membership, read from LABELS rather than traffic — which
+// is why a namespace with no telemetry at all still has a row here.
+export interface MeshNamespace {
+  name: string;
+  // "ambient", "sidecar", or absent for out of mesh. Absent is a real answer.
+  dataplaneMode?: string;
+  waypoint?: string;
+  // Only sent when it differs from the namespace's own name.
+  waypointNamespace?: string;
+  // Effective PeerAuthentication mode. Absent means no policy applies and the
+  // mesh default governs — which the hub did not read and will not guess.
+  mtlsMode?: string;
+  services: number;
+  errors: number;
+  warnings: number;
+}
+
+export interface MeshNamespacesResponse {
+  // Leads for the same reason `available` leads on the control plane: every row
+  // below is meaningless if the cluster could not be read.
+  state: string;
+  reason?: string;
+  syncedAt?: string;
+  missingKinds?: string[];
+  truncated?: boolean;
+  namespaces: MeshNamespace[];
+}
+
 export interface ServiceMapResponse {
   services: ServiceStats[];
   edges: ServiceEdge[];

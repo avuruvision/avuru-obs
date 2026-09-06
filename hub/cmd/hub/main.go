@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/avuru/avuru-obs/hub/internal/checks"
 	"github.com/avuru/avuru-obs/hub/internal/collection"
 	"github.com/avuru/avuru-obs/hub/internal/health"
+	"github.com/avuru/avuru-obs/hub/internal/meshconfig"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/rates"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
@@ -383,6 +385,7 @@ func run() error {
 		StorageConnection:               storageConnection(),
 		CollectionRuntimeControlEnabled: collectionRuntimeControlEnabled,
 		CollectionApplier:               collectionApplier(collectionRuntimeControlEnabled),
+		MeshConfigReader:                meshConfigReader(ctx, active.Enabled(modules.MeshConfig)),
 	})
 
 	// Per-project retention: a background sweep, not a table TTL (see
@@ -717,6 +720,43 @@ func collectionApplier(enabled bool) collection.Applier {
 	slog.Info("collection runtime control: cluster applier active",
 		"namespace", ns, "release", release, "fullname", fullname)
 	return &collection.K8sApplier{Client: client, Namespace: ns, ReleaseName: release, Fullname: fullname}
+}
+
+// meshConfigReader builds the mesh-configuration reader, or a NoopReader that
+// says why it is empty.
+//
+// Same shape as collectionApplier, and for the same reason: the hub must boot
+// under compose, on a laptop and in every test that is not about Kubernetes.
+// The difference is what a failure means here — a hub that cannot read the
+// cluster must SAY so, because an empty snapshot rendered as "your mesh has no
+// configuration" is a confident lie rather than a gap.
+func meshConfigReader(ctx context.Context, enabled bool) meshconfig.Reader {
+	if !enabled {
+		return meshconfig.NoopReader{}
+	}
+	cfg, err := rest.InClusterConfig()
+	if err != nil {
+		slog.Warn("mesh-config module enabled but not running in-cluster — no configuration will be read", "error", err)
+		return meshconfig.NoopReader{}
+	}
+	client, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		slog.Warn("mesh-config: building the dynamic client failed", "error", err)
+		return meshconfig.NoopReader{}
+	}
+	root := os.Getenv("AVURUOBS_MESH_ROOT_NAMESPACE")
+	if root == "" {
+		// Istio's own default. A mesh-wide PeerAuthentication lives here, and
+		// reading the wrong namespace would silently lose every namespace's
+		// default mTLS mode.
+		root = "istio-system"
+	}
+	role := os.Getenv("AVURUOBS_MESH_CONFIG_ROLE")
+	if role == "" {
+		role = "avuruobs-mesh-config"
+	}
+	slog.Info("mesh-config: reading cluster configuration", "rootNamespace", root)
+	return meshconfig.NewK8sReader(ctx, client, root, role)
 }
 
 // originCheckMode reads AVURUOBS_AUTH_ORIGIN_CHECK (enforce | log | off).

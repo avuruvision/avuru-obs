@@ -14,6 +14,9 @@ import { ControlPlaneCard } from "./control-plane-card";
 import { ProxiesTable } from "./proxies-table";
 import { ProxyDetail } from "./proxy-detail";
 import { MeshGraph } from "./mesh-graph";
+import { NamespacesTable } from "./namespaces-table";
+import { useMeshNamespaces } from "@/hooks/use-mesh-data";
+import { useCapabilities } from "@/hooks/use-capabilities";
 import { useServiceMapData } from "@/hooks/use-service-map-data";
 import { namespacesPresent, roleLabel, rolesPresent } from "./mesh-roles";
 
@@ -24,11 +27,14 @@ import { namespacesPresent, roleLabel, rolesPresent } from "./mesh-roles";
 // right call for the map and the wrong final word: on a cluster where the mesh
 // IS the network, a proxy dropping requests or a control plane that has stopped
 // pushing config is the outage.
-type MeshView = "proxies" | "graph";
-const VIEWS: { value: MeshView; label: string }[] = [
+type MeshView = "proxies" | "graph" | "namespaces";
+const BASE_VIEWS: { value: MeshView; label: string }[] = [
   { value: "proxies", label: "Proxies" },
   { value: "graph", label: "Graph" },
 ];
+// Namespaces come from the cluster, not from traffic, so the tab appears only
+// where the module that reads the cluster is on.
+const NAMESPACES_VIEW = { value: "namespaces" as MeshView, label: "Namespaces" };
 
 export function MeshScreen() {
   const { time, windowMs } = useTimeRange();
@@ -37,13 +43,23 @@ export function MeshScreen() {
   const namespace = get("ns") ?? "";
   const role = get("role") ?? "";
   const selected = get("proxy") ?? "";
-  const view: MeshView = get("view") === "graph" ? "graph" : "proxies";
+  const { data: caps } = useCapabilities();
+  const configOn = caps?.modules.includes("mesh-config") ?? false;
+  const requested = get("view");
+  const view: MeshView =
+    requested === "graph"
+      ? "graph"
+      : requested === "namespaces" && configOn
+        ? "namespaces"
+        : "proxies";
+  const views = configOn ? [...BASE_VIEWS, NAMESPACES_VIEW] : BASE_VIEWS;
 
   const proxies = useMeshProxies(time);
   const controlPlane = useMeshControlPlane(time);
   // Only fetched for the graph: the proxy table needs none of it, and the map
   // read is the most expensive one on the screen.
   const map = useServiceMapData(time);
+  const nsConfig = useMeshNamespaces(time, configOn);
 
   const list = useMemo(() => proxies.data?.proxies ?? [], [proxies.data]);
 
@@ -148,13 +164,19 @@ export function MeshScreen() {
   return (
     <div className="flex flex-col gap-4">
       <ControlPlaneCard data={controlPlane.data} loading={controlPlane.isLoading} />
-      <Tabs items={VIEWS} value={view} onChange={(v) => setMany({ view: v === "proxies" ? undefined : v })} />
+      <Tabs items={views} value={view} onChange={(v) => setMany({ view: v === "proxies" ? undefined : v })} />
       {view === "graph" ? (
         <MeshGraph
           services={map.data?.services ?? []}
           edges={map.data?.edges ?? []}
           windowMs={windowMs}
         />
+      ) : view === "namespaces" ? (
+        nsConfig.isLoading ? (
+          <CenteredSpinner />
+        ) : nsConfig.data ? (
+          <NamespacesTable data={nsConfig.data} />
+        ) : null
       ) : (
         table
       )}

@@ -42,6 +42,8 @@ export const queryKeys = {
     [p, "ai", "tools", { ...t, service }] as const,
   meshControlPlane: (p: string, t: TimeParams) =>
     [p, "mesh", "control-plane", { ...t }] as const,
+  meshNamespaces: (p: string, t: TimeParams) =>
+    [p, "mesh", "namespaces", { ...t }] as const,
   traceOverview: (
     p: string,
     t: TimeParams,
