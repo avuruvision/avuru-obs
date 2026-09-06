@@ -43,7 +43,13 @@ const BYTES_IN: SortColumn<SortKey> = { key: "bytesIn", label: "Bytes in", numer
 const BYTES_OUT: SortColumn<SortKey> = { key: "bytesOut", label: "Bytes out", numeric: true };
 const RTT: SortColumn<SortKey> = { key: "rttMs", label: "Link p95", numeric: true };
 
-export function ProxiesTable({ proxies }: { proxies: MeshProxy[] }) {
+export function ProxiesTable({
+  proxies,
+  onSelect,
+}: {
+  proxies: MeshProxy[];
+  onSelect: (name: string) => void;
+}) {
   // The wire columns appear only when something measured them. Rendering them
   // full of dashes on an install without the flow metrics would read as a fleet
   // moving no bytes, which is the exact failure the pointers exist to prevent.
@@ -82,7 +88,12 @@ export function ProxiesTable({ proxies }: { proxies: MeshProxy[] }) {
         </thead>
         <tbody>
           {rows.map((p) => (
-            <ProxyRow key={p.name} proxy={p} measured={measured} />
+            <ProxyRow
+              key={p.name}
+              proxy={p}
+              measured={measured}
+              onSelect={() => onSelect(p.name)}
+            />
           ))}
         </tbody>
       </table>
@@ -90,14 +101,31 @@ export function ProxiesTable({ proxies }: { proxies: MeshProxy[] }) {
   );
 }
 
-function ProxyRow({ proxy, measured }: { proxy: SortableProxy; measured: boolean }) {
+function ProxyRow({
+  proxy,
+  measured,
+  onSelect,
+}: {
+  proxy: SortableProxy;
+  measured: boolean;
+  onSelect: () => void;
+}) {
   // Traffic in with none coming out is a proxy that stopped forwarding — a
   // failure its own error rate can miss entirely, which is why the two numbers
   // sit side by side rather than being summed into "throughput".
   const stalled = proxy.callsIn > 0 && proxy.callsOut === 0;
   return (
-    <tr className="border-b border-neutral/50 last:border-0">
-      <td className="font-medium">{proxy.name}</td>
+    <tr
+      onClick={onSelect}
+      className="cursor-pointer border-b border-neutral/50 last:border-0 hover:bg-base-300/40"
+    >
+      <td className="font-medium">
+        {/* A button, not a link: the detail view is a query-param state of this
+            same screen, and the row must stay reachable by keyboard. */}
+        <button type="button" className="text-left hover:text-primary hover:underline">
+          {proxy.name}
+        </button>
+      </td>
       <td className="text-base-content/70">{proxy.namespace ?? "—"}</td>
       <td>
         {proxy.role ? (

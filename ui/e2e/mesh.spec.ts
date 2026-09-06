@@ -226,4 +226,65 @@ test.describe("mesh screen", () => {
     await expect(table).not.toContainText("Bytes in");
     await expect(table).not.toContainText("Link p95");
   });
+
+  // The table says which proxy is unhealthy and then stops. This is the step
+  // that was missing: what the proxy carries, and who loses it when it fails.
+  test("opens a proxy and names the dependencies it carries", async ({ page }) => {
+    await page.route("**/api/v1/mesh/proxies*", (r) => r.fulfill({ json: PROXIES }));
+    await page.route("**/api/v1/mesh/control-plane*", (r) =>
+      r.fulfill({ json: { available: false, state: "unconfigured" } }),
+    );
+    await page.route("**/api/v1/service-map*", (r) =>
+      r.fulfill({
+        json: {
+          services: [],
+          edges: [
+            {
+              source: "checkout",
+              target: "payments",
+              calls: 210,
+              errorCount: 0,
+              errorRate: 0,
+              p95Ms: 42,
+              // Ambient's normal path: client ztunnel, waypoint, server ztunnel.
+              viaTransport: ["ztunnel", "global-waypoint.istio-waypoint", "ztunnel"],
+            },
+            {
+              // Carried by a different proxy — must not appear on this page.
+              source: "search",
+              target: "catalog",
+              calls: 99,
+              errorCount: 0,
+              errorRate: 0,
+              viaTransport: ["istio-ingressgateway-istio.istio-edge"],
+            },
+          ],
+        },
+      }),
+    );
+    await page.goto("/mesh");
+
+    await page.getByRole("button", { name: "global-waypoint.istio-waypoint" }).click();
+    await expect(page).toHaveURL(/proxy=global-waypoint/);
+
+    const carried = page.getByTestId("mesh-carried");
+    await expect(carried).toContainText("checkout");
+    await expect(carried).toContainText("payments");
+    // 3 hops, because on ambient the dependency crosses ztunnel twice.
+    await expect(carried).toContainText("3");
+    await expect(carried).not.toContainText("catalog");
+
+    await page.getByRole("button", { name: "All proxies" }).click();
+    await expect(page.getByTestId("mesh-proxies")).toBeVisible();
+  });
+
+  // A stale link must say what happened rather than render an empty page.
+  test("says so when a linked proxy is not in the window", async ({ page }) => {
+    await page.route("**/api/v1/mesh/proxies*", (r) => r.fulfill({ json: PROXIES }));
+    await page.route("**/api/v1/mesh/control-plane*", (r) =>
+      r.fulfill({ json: { available: false, state: "unconfigured" } }),
+    );
+    await page.goto("/mesh?proxy=long-gone");
+    await expect(page.getByText("No proxy named long-gone in this window")).toBeVisible();
+  });
 });

@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { ControlPlaneCard } from "./control-plane-card";
 import { ProxiesTable } from "./proxies-table";
+import { ProxyDetail } from "./proxy-detail";
 import { namespacesPresent, roleLabel, rolesPresent } from "./mesh-roles";
 
 // The mesh's own screen.
@@ -26,6 +27,7 @@ export function MeshScreen() {
   const query = get("q") ?? "";
   const namespace = get("ns") ?? "";
   const role = get("role") ?? "";
+  const selected = get("proxy") ?? "";
 
   const proxies = useMeshProxies(time);
   const controlPlane = useMeshControlPlane(time);
@@ -52,6 +54,21 @@ export function MeshScreen() {
   }, [list, query, namespace, role]);
 
   if (proxies.isLoading) return <CenteredSpinner />;
+
+  if (selected) {
+    const proxy = list.find((p) => p.name === selected);
+    // A name with no proxy behind it in this window: a stale link, or a proxy
+    // that stopped reporting. Say which rather than rendering an empty page.
+    if (!proxy) {
+      return (
+        <EmptyState icon={Waypoints} title={`No proxy named ${selected} in this window`}>
+          It may have been removed, renamed, or simply sent no telemetry in the
+          selected range. Widen the time range, or go back to the full list.
+        </EmptyState>
+      );
+    }
+    return <ProxyDetail proxy={proxy} onBack={() => setMany({ proxy: undefined })} />;
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -103,7 +120,10 @@ export function MeshScreen() {
               />
             </div>
           </div>
-          <ProxiesTable proxies={visible} />
+          <ProxiesTable
+            proxies={visible}
+            onSelect={(name) => setMany({ proxy: name })}
+          />
           {visible.length === 0 && (
             <p className="px-4 py-3 text-xs text-base-content/55">
               No proxy matches those filters.
