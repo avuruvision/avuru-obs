@@ -22,6 +22,7 @@ const (
 // Kinds this package reads, as they appear on Object.Kind.
 const (
 	KindNamespace           = "Namespace"
+	KindPod                 = "Pod"
 	KindService             = "Service"
 	KindGateway             = "Gateway"
 	KindHTTPRoute           = "HTTPRoute"

@@ -37,8 +37,14 @@ metadata:
 rules:
   # Core objects a route or policy can point AT. Without these, "this backendRef
   # names a Service that does not exist" cannot be said.
+  #
+  # Pods, because enrolment is a fact about a pod: the sidecar is a container
+  # in it, and ambient capture is an annotation the node agent writes on it. A
+  # namespace label says what was asked for; only the pod says what happened.
+  # Still get/list/watch — and the hub keeps a dozen fields of each, not the
+  # pod.
   - apiGroups: [""]
-    resources: ["namespaces", "services"]
+    resources: ["namespaces", "services", "pods"]
     verbs: ["get", "list", "watch"]
   # Workloads, so a selector matching nothing can be reported as matching
   # nothing, and so a namespace with no traffic still has a roster.
