@@ -70,6 +70,13 @@ type meshControlPlaneResponse struct {
 	Pushes           uint64     `json:"pushes,omitempty"`
 	RejectedConfigs  uint64     `json:"rejectedConfigs,omitempty"`
 	ConvergenceP95Ms float64    `json:"convergenceP95Ms,omitempty"`
+	// Pointers, because these come from a widened scrape keep-list and an
+	// install on an older chart publishes none of them while being perfectly
+	// healthy. For WriteTimeouts especially, nil and 0 are opposite answers:
+	// "we are not looking" versus "no proxy missed its config".
+	PushP95Ms     *float64 `json:"pushP95Ms,omitempty"`
+	WriteTimeouts *uint64  `json:"writeTimeouts,omitempty"`
+	ConfigEvents  *uint64  `json:"configEvents,omitempty"`
 }
 
 // handleMeshProxies lists the mesh's own workloads with their RED and the call
@@ -230,6 +237,9 @@ func (a *API) handleMeshControlPlane(w http.ResponseWriter, r *http.Request) err
 		Pushes:           cp.Pushes,
 		RejectedConfigs:  cp.RejectedConfigs,
 		ConvergenceP95Ms: cp.ConvergenceP95Ms,
+		PushP95Ms:        cp.PushP95Ms,
+		WriteTimeouts:    cp.WriteTimeouts,
+		ConfigEvents:     cp.ConfigEvents,
 	})
 	return nil
 }

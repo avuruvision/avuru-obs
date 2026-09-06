@@ -355,3 +355,54 @@ func TestMeshProxiesOmitBytesWithoutInfraMetrics(t *testing.T) {
 		t.Error("the call-derived RED disappeared with the metrics module")
 	}
 }
+
+// The widened keep-list is optional: an install still on the shorter one has a
+// perfectly healthy control plane that publishes none of these. Nil and 0 are
+// opposite answers for a write timeout — "we are not looking" against "no proxy
+// missed its config" — so the absent case must stay absent on the wire.
+func TestControlPlaneOptionalMetricsAreAbsentNotZero(t *testing.T) {
+	t.Run("not collected", func(t *testing.T) {
+		fake := &storagetest.Fake{ControlPlane: storage.MeshControlPlane{
+			Available: true, State: storage.MeshControlPlaneOK, Kind: "istio",
+			ConnectedProxies: 12,
+		}}
+		rec := meshGet(t, fake, Config{Modules: modules.AllSet()}, "/api/v1/mesh/control-plane")
+		for _, key := range []string{"pushP95Ms", "writeTimeouts", "configEvents"} {
+			if jsonHasKey(t, rec.Body.String(), key) {
+				t.Errorf("%s was serialized on an install that does not collect it", key)
+			}
+		}
+	})
+
+	t.Run("collected and zero", func(t *testing.T) {
+		var (
+			push     = 4.5
+			timeouts = uint64(0)
+			events   = uint64(88)
+		)
+		fake := &storagetest.Fake{ControlPlane: storage.MeshControlPlane{
+			Available: true, State: storage.MeshControlPlaneOK, Kind: "istio",
+			ConnectedProxies: 12,
+			PushP95Ms:        &push,
+			WriteTimeouts:    &timeouts,
+			ConfigEvents:     &events,
+		}}
+		rec := meshGet(t, fake, Config{Modules: modules.AllSet()}, "/api/v1/mesh/control-plane")
+		body := rec.Body.String()
+		// A measured zero MUST survive: it is the good news, and omitting it
+		// would be indistinguishable from never having looked.
+		if !jsonHasKey(t, body, "writeTimeouts") {
+			t.Error("a measured zero was omitted, which reads as 'not collected'")
+		}
+		var resp meshControlPlaneResponse
+		if err := json.Unmarshal([]byte(body), &resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if resp.WriteTimeouts == nil || *resp.WriteTimeouts != 0 {
+			t.Errorf("writeTimeouts = %v, want a present 0", resp.WriteTimeouts)
+		}
+		if resp.PushP95Ms == nil || *resp.PushP95Ms != 4.5 {
+			t.Errorf("pushP95Ms = %v, want 4.5", resp.PushP95Ms)
+		}
+	})
+}

@@ -327,4 +327,38 @@ test.describe("mesh screen", () => {
     await expect(page.getByTestId("mesh-proxies")).toBeVisible();
     await expect(page).not.toHaveURL(/view=graph/);
   });
+
+  // The widened istiod keep-list is optional. An install still on the shorter
+  // one is healthy and publishes none of it — so the extra figures must be
+  // absent rather than zero, and present when they were actually measured.
+  test("shows the deeper control-plane figures only where they were scraped", async ({ page }) => {
+    await page.route("**/api/v1/mesh/proxies*", (r) => r.fulfill({ json: PROXIES }));
+
+    const base = {
+      available: true,
+      kind: "istio",
+      lastSeen: new Date().toISOString(),
+      connectedProxies: 18,
+      pushes: 400,
+      rejectedConfigs: 0,
+      convergenceP95Ms: 250,
+    };
+    await page.route("**/api/v1/mesh/control-plane*", (r) => r.fulfill({ json: base }));
+    await page.goto("/mesh");
+
+    const card = page.getByTestId("mesh-control-plane");
+    await expect(card).toContainText("Connected proxies");
+    await expect(card).not.toContainText("Write timeouts");
+    await expect(card).not.toContainText("Push p95");
+
+    // Now an install that collects them, including a measured ZERO — the good
+    // news, which must still be shown.
+    await page.route("**/api/v1/mesh/control-plane*", (r) =>
+      r.fulfill({ json: { ...base, pushP95Ms: 12, writeTimeouts: 0, configEvents: 88 } }),
+    );
+    await page.reload();
+    await expect(card).toContainText("Push p95");
+    await expect(card).toContainText("Write timeouts");
+    await expect(card).toContainText("Config events");
+  });
 });

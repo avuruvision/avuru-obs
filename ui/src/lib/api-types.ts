@@ -138,6 +138,13 @@ export interface MeshControlPlane {
   pushes?: number;
   rejectedConfigs?: number;
   convergenceP95Ms?: number;
+  // From a widened scrape keep-list, so absent on an install running an older
+  // chart — which is healthy, not broken. Rendered only when present: a
+  // "0 write timeouts" from a scrape that never collected them would be the
+  // same reassuring lie the whole card exists to avoid.
+  pushP95Ms?: number;
+  writeTimeouts?: number;
+  configEvents?: number;
 }
 
 export interface ServiceMapResponse {

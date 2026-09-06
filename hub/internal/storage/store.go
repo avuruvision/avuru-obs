@@ -227,6 +227,24 @@ type MeshControlPlane struct {
 	RejectedConfigs uint64
 	// ConvergenceP95Ms is how long a config change takes to reach the proxies.
 	ConvergenceP95Ms float64
+	// The three below are POINTERS, unlike everything above them, and the
+	// difference is deliberate. They arrive only from a widened scrape
+	// keep-list, so an install running an older chart has a control plane that
+	// is genuinely available and simply does not publish them. Nil means "this
+	// install does not collect it"; zero would mean "collected, and it was
+	// zero" — which for WriteTimeouts is the difference between "no proxy
+	// missed its config" and "we are not looking".
+	//
+	// PushP95Ms is istiod's own send latency, distinct from convergence: one is
+	// how long the control plane took, the other includes the proxies acking.
+	// Together they say WHICH side is slow.
+	PushP95Ms *float64
+	// WriteTimeouts are pushes that never landed — a proxy too slow or too gone
+	// to receive its configuration.
+	WriteTimeouts *uint64
+	// ConfigEvents is how much Kubernetes config churn istiod is reacting to.
+	// High and rising is a control plane thrashing rather than converging.
+	ConfigEvents *uint64
 }
 
 // ZoneTraffic is the byte volume exchanged between two availability zones over

@@ -93,7 +93,38 @@ export function ControlPlaneCard({
         <Stat
           label="Convergence p95"
           value={data.convergenceP95Ms ? formatMs(data.convergenceP95Ms) : "—"}
+          hint="Time for a config change to reach the proxies, including their acknowledgement"
         />
+        {/* Optional series, from a widened keep-list. Absent means this install
+            does not collect them — not that they are zero. Rendering a 0 write
+            timeout from a scrape that never asked for it would be exactly the
+            reassuring lie this card exists to prevent. */}
+        {data.pushP95Ms !== undefined && (
+          <Stat
+            label="Push p95"
+            value={formatMs(data.pushP95Ms)}
+            hint="How long istiod itself takes to send a config. Convergence minus this is the proxies."
+          />
+        )}
+        {data.writeTimeouts !== undefined && (
+          <Stat
+            label="Write timeouts"
+            value={data.writeTimeouts.toLocaleString()}
+            tone={data.writeTimeouts > 0 ? "warning" : undefined}
+            hint={
+              data.writeTimeouts > 0
+                ? "Pushes that never landed — a proxy too slow or too gone to receive its configuration"
+                : undefined
+            }
+          />
+        )}
+        {data.configEvents !== undefined && (
+          <Stat
+            label="Config events"
+            value={data.configEvents.toLocaleString()}
+            hint="Kubernetes config churn istiod is reacting to"
+          />
+        )}
       </dl>
     </Card>
   );

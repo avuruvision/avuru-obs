@@ -21,6 +21,13 @@ const (
 	meshConvergenceMetric      = "pilot_proxy_convergence_time" // histogram, seconds
 	meshRejectsMetric          = "pilot_total_xds_rejects"      // counter: config the proxies REFUSED
 	meshPushesMetric           = "pilot_xds_pushes"             // counter: pushes attempted
+
+	// Added later, and therefore OPTIONAL: they arrive only from a widened
+	// keep-list, so an install on an older chart publishes none of them while
+	// being perfectly healthy. Their readers must distinguish nil from zero.
+	meshPushTimeMetric     = "pilot_xds_push_time"     // histogram, seconds: istiod's own send latency
+	meshWriteTimeoutMetric = "pilot_xds_write_timeout" // counter: pushes that never landed
+	meshConfigEventsMetric = "pilot_k8s_cfg_events"    // counter: Kubernetes config churn
 )
 
 // meshKindIstio names the one control plane whose metrics are understood.
@@ -82,6 +89,8 @@ WHERE Tenant IN (?) AND MetricName = ? AND TimeUnix >= ? AND TimeUnix < ?`
 	}{
 		{meshRejectsMetric, func(v uint64) { out.RejectedConfigs = v }},
 		{meshPushesMetric, func(v uint64) { out.Pushes = v }},
+		{meshWriteTimeoutMetric, func(v uint64) { out.WriteTimeouts = &v }},
+		{meshConfigEventsMetric, func(v uint64) { out.ConfigEvents = &v }},
 	} {
 		const sumQuery = `
 SELECT toUInt64(sum(Value)) AS total, max(TimeUnix) AS newest, count() AS rows
@@ -109,33 +118,22 @@ WHERE Tenant IN (?) AND MetricName = ? AND TimeUnix >= ? AND TimeUnix < ?`
 	// Convergence p95 from the merged histogram, the same bucket walk
 	// NetworkEdgeHealth uses for RTT: sum bucket counts element-wise, then take
 	// the upper bound where the cumulative count first reaches 95%.
-	const histQuery = `
-SELECT
-    arrayElement(bounds, least(greatest(
-        arrayFirstIndex(c -> c >= 0.95 * arraySum(buckets), arrayCumSum(buckets)), 1),
-        length(bounds))) * 1000 AS p95_ms
-FROM (
-    SELECT sumForEach(BucketCounts) AS buckets, any(ExplicitBounds) AS bounds
-    FROM otel_metrics_histogram
-    WHERE Tenant IN (?) AND MetricName = ? AND TimeUnix >= ? AND TimeUnix < ?
-)
-WHERE length(bounds) > 0 AND arraySum(buckets) > 0`
-	rows, err := s.conn.Query(ctx, histQuery, tenants, meshConvergenceMetric, q.Range.Start, q.Range.End)
+	convergence, err := s.meshHistogramP95(ctx, tenants, meshConvergenceMetric, q)
 	if err != nil {
-		return out, fmt.Errorf("mesh convergence: %w", err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var p95 float64
-		if err := rows.Scan(&p95); err != nil {
-			return out, fmt.Errorf("scanning convergence row: %w", err)
-		}
-		out.ConvergenceP95Ms = p95
-		out.Available = true
-	}
-	if err := rows.Err(); err != nil {
 		return out, err
 	}
+	if convergence != nil {
+		out.ConvergenceP95Ms = *convergence
+		out.Available = true
+	}
+	// Push time is optional (widened keep-list), so it stays a pointer and it
+	// does NOT make an otherwise-silent control plane look available.
+	pushP95, err := s.meshHistogramP95(ctx, tenants, meshPushTimeMetric, q)
+	if err != nil {
+		return out, err
+	}
+	out.PushP95Ms = pushP95
+
 	if out.Available {
 		out.State = storage.MeshControlPlaneOK
 		out.Kind = meshKindIstio
@@ -152,6 +150,43 @@ WHERE length(bounds) > 0 AND arraySum(buckets) > 0`
 	}
 	out.State = state
 	return out, nil
+}
+
+// meshHistogramP95 walks one merged histogram to its 95th percentile, in
+// milliseconds, or returns nil when the window holds no such series.
+//
+// nil rather than 0 because these metrics are the difference between "nothing
+// took any time" and "nothing measured it", and two different callers here need
+// to tell those apart.
+func (s *Store) meshHistogramP95(
+	ctx context.Context, tenants []string, metric string, q storage.ServiceQuery,
+) (*float64, error) {
+	const histQuery = `
+SELECT
+    arrayElement(bounds, least(greatest(
+        arrayFirstIndex(c -> c >= 0.95 * arraySum(buckets), arrayCumSum(buckets)), 1),
+        length(bounds))) * 1000 AS p95_ms
+FROM (
+    SELECT sumForEach(BucketCounts) AS buckets, any(ExplicitBounds) AS bounds
+    FROM otel_metrics_histogram
+    WHERE Tenant IN (?) AND MetricName = ? AND TimeUnix >= ? AND TimeUnix < ?
+)
+WHERE length(bounds) > 0 AND arraySum(buckets) > 0`
+	rows, err := s.conn.Query(ctx, histQuery, tenants, metric, q.Range.Start, q.Range.End)
+	if err != nil {
+		return nil, fmt.Errorf("mesh %s: %w", metric, err)
+	}
+	defer rows.Close()
+	var out *float64
+	for rows.Next() {
+		var p95 float64
+		if err := rows.Scan(&p95); err != nil {
+			return nil, fmt.Errorf("scanning %s row: %w", metric, err)
+		}
+		v := p95
+		out = &v
+	}
+	return out, rows.Err()
 }
 
 // meshScrapeState reads Prometheus's synthetic `up` series for the
