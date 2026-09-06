@@ -81,6 +81,7 @@ export function ServiceMap({
   healthEnabled = false,
   grouping = "none",
   edgeLabels = false,
+  meshRoles,
   onZoomPercent,
 }: {
   services: ServiceStats[];
@@ -113,6 +114,11 @@ export function ServiceMap({
   // Label every edge with its volume. Default off: the compact overview has no
   // room for it, and on a dense graph it is a label too many.
   edgeLabels?: boolean;
+  // service name → mesh role, so a transport node can take its role's shape.
+  // Only the mesh screen has roles; the map passes nothing and draws every
+  // proxy as the plain diamond. An effect dependency, so a caller must hand
+  // over a memoised object or the graph rebuilds on every render.
+  meshRoles?: Record<string, string>;
   // Reports the current zoom as a whole percentage, and only when that
   // percentage changes. Deliberately not the raw zoom: an animated layout emits
   // `zoom` every frame, and pushing a float into React state each time would
@@ -155,6 +161,7 @@ export function ServiceMap({
         carbon,
         healthEnabled,
         grouping,
+        meshRoles,
       }),
       layout: layoutOptions(false, compact),
       minZoom: 0.3,
@@ -260,6 +267,7 @@ export function ServiceMap({
     healthEnabled,
     grouping,
     edgeLabels,
+    meshRoles,
     onZoomPercent,
     focus,
   ]);

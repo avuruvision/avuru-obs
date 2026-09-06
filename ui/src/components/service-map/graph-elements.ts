@@ -138,6 +138,9 @@ export interface BuildOptions {
   carbon: boolean;
   healthEnabled: boolean;
   grouping?: MapGrouping;
+  // service name → mesh role, for the transport nodes whose role the mesh
+  // screen knows. Absent everywhere else: the map itself has no roles.
+  meshRoles?: Record<string, string>;
 }
 
 // Builds the cytoscape element list. Every derived string lives here so the
@@ -150,6 +153,7 @@ export function buildElements({
   carbon,
   healthEnabled,
   grouping = "none",
+  meshRoles,
 }: BuildOptions): ElementDefinition[] {
   const windowMinutes = Math.max(windowMs / 60_000, 1 / 60);
   const names = new Set(services.map((s) => s.name));
@@ -221,6 +225,11 @@ export function buildElements({
         // Only mesh/gateway nodes carry `transport`, and only when the user
         // asked to see them — an application node's data is unchanged.
         ...(s.role === "transport" ? { transport: 1 } : {}),
+        // The role's shape (graph-style.ts). Only when a caller knows it — a
+        // guessed role would be read as a fact, so an unknown one is no field.
+        ...(s.role === "transport" && meshRoles?.[s.name]
+          ? { meshRole: meshRoles[s.name] }
+          : {}),
         // Carbon fields are added ONLY under the overlay, so a non-green node
         // carries the exact same data as before.
         ...(carbon && s.gco2e !== undefined

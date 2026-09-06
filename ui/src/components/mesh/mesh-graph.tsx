@@ -5,8 +5,10 @@ import { Waypoints } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ServiceMap } from "@/components/service-map/service-map";
+import { roleShapeWord } from "@/components/service-map/role-shapes";
 import { splitInfrastructure } from "@/lib/map-filter";
-import type { ServiceEdge, ServiceStats } from "@/lib/api-types";
+import type { MeshProxy, ServiceEdge, ServiceStats } from "@/lib/api-types";
+import { roleLabel, rolesPresent } from "./mesh-roles";
 
 // The mesh as a graph, with its hops left IN.
 //
@@ -23,10 +25,14 @@ export function MeshGraph({
   services,
   edges,
   windowMs,
+  proxies,
 }: {
   services: ServiceStats[];
   edges: ServiceEdge[];
   windowMs: number;
+  // The proxy rows, for their roles: the map's own data has none, and the
+  // graph draws each role as its own shape (service-map/role-shapes.ts).
+  proxies: MeshProxy[];
 }) {
   const scoped = useMemo(() => {
     // show=true keeps the transport nodes AND drops the collapsed app-to-app
@@ -52,6 +58,23 @@ export function MeshGraph({
     };
   }, [services, edges]);
 
+  // name → role, memoised: it is a dependency of the graph's build effect.
+  // A proxy with no role gets no entry, so its node keeps the plain diamond.
+  const meshRoles = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const p of proxies) if (p.role) m[p.name] = p.role;
+    return m;
+  }, [proxies]);
+
+  // Legend lines for the roles actually DRAWN — a role in the proxy list whose
+  // node is not on this graph would explain a shape nobody can see.
+  const legend = useMemo(() => {
+    const drawn = new Set(
+      scoped.services.filter((s) => s.role === "transport").map((s) => s.name),
+    );
+    return rolesPresent(proxies.filter((p) => drawn.has(p.name)));
+  }, [scoped.services, proxies]);
+
   if (scoped.services.length === 0) {
     return (
       <EmptyState icon={Waypoints} title="Nothing to draw for this mesh">
@@ -71,8 +94,22 @@ export function MeshGraph({
           windowMs={windowMs}
           grouping="namespace"
           edgeLabels
+          meshRoles={meshRoles}
         />
       </div>
+      {legend.length > 0 && (
+        <div
+          data-testid="mesh-graph-legend"
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-neutral px-4 py-2 text-xs text-base-content/55"
+        >
+          <span className="text-base-content/45">shape:</span>
+          {legend.map((r) => (
+            <span key={r}>
+              {roleShapeWord(r)} = {roleLabel(r)}
+            </span>
+          ))}
+        </div>
+      )}
     </Card>
   );
 }
