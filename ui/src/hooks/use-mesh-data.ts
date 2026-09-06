@@ -5,6 +5,7 @@ import { apiGet } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { queryKeys, type TimeParams } from "@/lib/query-keys";
 import type {
+  MeshConfigResponse,
   MeshControlPlane,
   MeshNamespacesResponse,
   MeshProxiesResponse,
@@ -43,5 +44,22 @@ export function useMeshNamespaces(time: TimeParams, enabled: boolean) {
     queryKey: queryKeys.meshNamespaces(project, time),
     queryFn: () =>
       apiGet<MeshNamespacesResponse>("/api/v1/mesh/namespaces", { ...time }, { project }),
+  });
+}
+
+// Mesh configuration objects. No time window in the key: this is current
+// cluster state, and refetching it because someone moved the range would be
+// asking a question whose answer cannot have changed.
+export function useMeshConfig(
+  enabled: boolean,
+  filters: { kind?: string; namespace?: string; name?: string } = {},
+) {
+  const { project } = useProject();
+  const { kind, namespace, name } = filters;
+  return useQuery({
+    enabled,
+    queryKey: queryKeys.meshConfig(project, kind, namespace, name),
+    queryFn: () =>
+      apiGet<MeshConfigResponse>("/api/v1/mesh/config", { kind, namespace, name }, { project }),
   });
 }

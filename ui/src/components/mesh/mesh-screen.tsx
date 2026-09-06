@@ -15,6 +15,7 @@ import { ProxiesTable } from "./proxies-table";
 import { ProxyDetail } from "./proxy-detail";
 import { MeshGraph } from "./mesh-graph";
 import { NamespacesTable } from "./namespaces-table";
+import { ConfigBrowser } from "./config-browser";
 import { useMeshNamespaces } from "@/hooks/use-mesh-data";
 import { useCapabilities } from "@/hooks/use-capabilities";
 import { useServiceMapData } from "@/hooks/use-service-map-data";
@@ -27,14 +28,17 @@ import { namespacesPresent, roleLabel, rolesPresent } from "./mesh-roles";
 // right call for the map and the wrong final word: on a cluster where the mesh
 // IS the network, a proxy dropping requests or a control plane that has stopped
 // pushing config is the outage.
-type MeshView = "proxies" | "graph" | "namespaces";
+type MeshView = "proxies" | "graph" | "namespaces" | "config";
 const BASE_VIEWS: { value: MeshView; label: string }[] = [
   { value: "proxies", label: "Proxies" },
   { value: "graph", label: "Graph" },
 ];
 // Namespaces come from the cluster, not from traffic, so the tab appears only
 // where the module that reads the cluster is on.
-const NAMESPACES_VIEW = { value: "namespaces" as MeshView, label: "Namespaces" };
+const CONFIG_VIEWS: { value: MeshView; label: string }[] = [
+  { value: "namespaces", label: "Namespaces" },
+  { value: "config", label: "Configuration" },
+];
 
 export function MeshScreen() {
   const { time, windowMs } = useTimeRange();
@@ -49,10 +53,10 @@ export function MeshScreen() {
   const view: MeshView =
     requested === "graph"
       ? "graph"
-      : requested === "namespaces" && configOn
-        ? "namespaces"
+      : configOn && (requested === "namespaces" || requested === "config")
+        ? (requested as MeshView)
         : "proxies";
-  const views = configOn ? [...BASE_VIEWS, NAMESPACES_VIEW] : BASE_VIEWS;
+  const views = configOn ? [...BASE_VIEWS, ...CONFIG_VIEWS] : BASE_VIEWS;
 
   const proxies = useMeshProxies(time);
   const controlPlane = useMeshControlPlane(time);
@@ -171,6 +175,8 @@ export function MeshScreen() {
           edges={map.data?.edges ?? []}
           windowMs={windowMs}
         />
+      ) : view === "config" ? (
+        <ConfigBrowser />
       ) : view === "namespaces" ? (
         nsConfig.isLoading ? (
           <CenteredSpinner />

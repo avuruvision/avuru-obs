@@ -176,6 +176,36 @@ export interface MeshNamespacesResponse {
   namespaces: MeshNamespace[];
 }
 
+// One problem with one configuration object. message says what is wrong, hint
+// says what to do — separate because a finding that only states the problem
+// sends the reader looking.
+export interface MeshFinding {
+  code: string;
+  severity: string;
+  message: string;
+  hint?: string;
+  // The object the finding is ABOUT, when that differs from the one it was
+  // found on — the Service a route cannot reach, so it can be searched for.
+  ref?: string;
+}
+
+export interface MeshConfigObject {
+  kind: string;
+  namespace?: string;
+  name: string;
+  // Sent only for a single-object request; a list never carries specs.
+  spec?: Record<string, unknown>;
+  findings?: MeshFinding[];
+}
+
+export interface MeshConfigResponse {
+  state: string;
+  reason?: string;
+  missingKinds?: string[];
+  truncated?: boolean;
+  objects: MeshConfigObject[];
+}
+
 export interface ServiceMapResponse {
   services: ServiceStats[];
   edges: ServiceEdge[];

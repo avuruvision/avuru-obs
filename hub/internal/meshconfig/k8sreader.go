@@ -206,7 +206,10 @@ func (r *K8sReader) Snapshot(context.Context) Snapshot {
 		return a.Name < b.Name
 	})
 	sort.Strings(snap.MissingKinds)
-	return snap
+	// Judged after the snapshot is whole and ordered: every check is a JOIN
+	// across objects, so none of them can run while the set is still being
+	// built.
+	return Validate(snap)
 }
 
 func toObject(kind string, u *unstructured.Unstructured) Object {

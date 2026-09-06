@@ -109,3 +109,91 @@ func TestMeshNamespacesRouteNeedsItsOwnModule(t *testing.T) {
 		t.Errorf("status %d, want 404 with mesh-config off", rec.Code)
 	}
 }
+
+// The config browser: a list stays a list, and only a single-object request
+// carries the spec. A list of two hundred objects with their specs inlined is a
+// payload nobody reads.
+func TestMeshConfigSendsSpecOnlyForOneObject(t *testing.T) {
+	reader := stubReader{snap: meshconfig.Snapshot{
+		State:    meshconfig.StateOK,
+		SyncedAt: time.Now(),
+		Objects: []meshconfig.Object{
+			{Kind: "HTTPRoute", Namespace: "shop", Name: "web", Spec: map[string]any{"rules": []any{}},
+				Findings: []meshconfig.Finding{{
+					Code: meshconfig.CodeRouteBackendMissing, Severity: meshconfig.SeverityError,
+					Message: "backendRef names Service shop/payments, which does not exist",
+					Hint:    "create the Service or fix the reference", Ref: "shop/payments",
+				}}},
+			{Kind: "Gateway", Namespace: "istio-edge", Name: "public", Spec: map[string]any{"gatewayClassName": "istio"}},
+		},
+	}}
+	cfg := Config{Modules: modules.AllSet(), MeshConfigReader: reader}
+
+	rec := meshGet(t, &storagetest.Fake{}, cfg, "/api/v1/mesh/config")
+	var list meshConfigResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(list.Objects) != 2 {
+		t.Fatalf("objects = %d, want 2", len(list.Objects))
+	}
+	for _, o := range list.Objects {
+		if o.Spec != nil {
+			t.Errorf("%s/%s carried its spec in a list response", o.Kind, o.Name)
+		}
+	}
+	// Findings ride the list: they are what makes it scannable.
+	var withFindings int
+	for _, o := range list.Objects {
+		withFindings += len(o.Findings)
+	}
+	if withFindings != 1 {
+		t.Errorf("findings in list = %d, want 1", withFindings)
+	}
+
+	rec = meshGet(t, &storagetest.Fake{}, cfg,
+		"/api/v1/mesh/config?kind=HTTPRoute&namespace=shop&name=web")
+	var one meshConfigResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &one); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(one.Objects) != 1 {
+		t.Fatalf("objects = %d, want the one asked for", len(one.Objects))
+	}
+	if one.Objects[0].Spec == nil {
+		t.Error("a single-object request came back without its spec")
+	}
+	f := one.Objects[0].Findings
+	if len(f) != 1 || f[0].Hint == "" {
+		t.Errorf("findings = %+v — a finding without a hint sends the reader looking", f)
+	}
+}
+
+// Findings roll up onto the namespace rows, which is what makes a long
+// namespace list scannable: the row that needs attention says so.
+func TestNamespaceRowsCountTheirFindings(t *testing.T) {
+	reader := stubReader{snap: meshconfig.Snapshot{
+		State:      meshconfig.StateOK,
+		SyncedAt:   time.Now(),
+		Namespaces: []meshconfig.Namespace{{Name: "shop", DataplaneMode: "ambient"}},
+		Objects: []meshconfig.Object{
+			{Kind: "HTTPRoute", Namespace: "shop", Name: "a", Findings: []meshconfig.Finding{
+				{Code: meshconfig.CodeRouteBackendMissing, Severity: meshconfig.SeverityError},
+				{Code: meshconfig.CodeHostUnresolved, Severity: meshconfig.SeverityWarning},
+			}},
+			{Kind: "Gateway", Namespace: "shop", Name: "b", Findings: []meshconfig.Finding{
+				{Code: meshconfig.CodeGatewayNoRoutes, Severity: meshconfig.SeverityWarning},
+			}},
+		},
+	}}
+	cfg := Config{Modules: modules.AllSet(), MeshConfigReader: reader}
+
+	rec := meshGet(t, &storagetest.Fake{}, cfg, "/api/v1/mesh/namespaces")
+	var resp meshNamespacesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got := resp.Namespaces[0]; got.Errors != 1 || got.Warnings != 2 {
+		t.Errorf("shop findings = %d errors / %d warnings, want 1/2", got.Errors, got.Warnings)
+	}
+}

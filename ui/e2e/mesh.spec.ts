@@ -361,4 +361,109 @@ test.describe("mesh screen", () => {
     await expect(card).toContainText("Write timeouts");
     await expect(card).toContainText("Config events");
   });
+
+  // Namespaces come from LABELS, not traffic. The row that only exists because
+  // of that is the one for a namespace which has sent nothing.
+  test("lists namespaces the cluster defines, including silent ones", async ({ page }) => {
+    await page.route("**/api/v1/mesh/proxies*", (r) => r.fulfill({ json: PROXIES }));
+    await page.route("**/api/v1/mesh/control-plane*", (r) =>
+      r.fulfill({ json: { available: false, state: "unconfigured" } }),
+    );
+    await page.route("**/api/v1/mesh/namespaces*", (r) =>
+      r.fulfill({
+        json: {
+          state: "ok",
+          syncedAt: new Date().toISOString(),
+          namespaces: [
+            { name: "shop", dataplaneMode: "ambient", waypoint: "global-waypoint", waypointNamespace: "istio-waypoint", mtlsMode: "STRICT", services: 4, errors: 1, warnings: 0 },
+            { name: "quiet", dataplaneMode: "ambient", mtlsMode: "STRICT", services: 0, errors: 0, warnings: 0 },
+            { name: "outside", services: 2, errors: 0, warnings: 0 },
+          ],
+        },
+      }),
+    );
+    await page.goto("/mesh");
+
+    await page.getByRole("tab", { name: "Namespaces" }).click();
+    await expect(page).toHaveURL(/view=namespaces/);
+
+    const table = page.getByTestId("mesh-namespaces");
+    await expect(table).toContainText("shop");
+    await expect(table).toContainText("global-waypoint");
+    await expect(table).toContainText("STRICT");
+    // The whole point: enrolled and silent still has a row.
+    await expect(table).toContainText("quiet");
+    // Out of mesh is a stated answer, not a blank.
+    await expect(table).toContainText("out of mesh");
+  });
+
+  // A cluster we may not read must say so, and name the fix.
+  test("says why the cluster could not be read", async ({ page }) => {
+    await page.route("**/api/v1/mesh/proxies*", (r) => r.fulfill({ json: PROXIES }));
+    await page.route("**/api/v1/mesh/control-plane*", (r) =>
+      r.fulfill({ json: { available: false, state: "unconfigured" } }),
+    );
+    await page.route("**/api/v1/mesh/namespaces*", (r) =>
+      r.fulfill({
+        json: {
+          state: "forbidden",
+          reason: "the hub may not read mesh configuration — grant the avuruobs-mesh-config ClusterRole",
+          namespaces: [],
+        },
+      }),
+    );
+    await page.goto("/mesh?view=namespaces");
+
+    await expect(page.getByText("Not allowed to read the cluster")).toBeVisible();
+    await expect(page.getByText(/avuruobs-mesh-config/)).toBeVisible();
+    // An empty table would have reported a mesh with no configuration.
+    await expect(page.getByTestId("mesh-namespaces")).toHaveCount(0);
+  });
+
+  // The findings are the reason to read configuration at all: this breakage
+  // emits no telemetry, so nothing else in the product can see it.
+  test("shows a configuration object and what is wrong with it", async ({ page }) => {
+    await page.route("**/api/v1/mesh/proxies*", (r) => r.fulfill({ json: PROXIES }));
+    await page.route("**/api/v1/mesh/control-plane*", (r) =>
+      r.fulfill({ json: { available: false, state: "unconfigured" } }),
+    );
+    await page.route("**/api/v1/mesh/config*", (r) => {
+      const url = new URL(r.request().url());
+      const object = {
+        kind: "HTTPRoute",
+        namespace: "shop",
+        name: "web",
+        findings: [
+          {
+            code: "MESH_ROUTE_BACKEND_MISSING",
+            severity: "error",
+            message: "backendRef names Service shop/payments, which does not exist",
+            hint: "every request matching this rule is dropped, and no span is emitted for it",
+            ref: "shop/payments",
+          },
+        ],
+      };
+      // Only a single-object request carries the spec.
+      if (url.searchParams.get("name")) {
+        return r.fulfill({ json: { state: "ok", objects: [{ ...object, spec: { rules: [] } }] } });
+      }
+      return r.fulfill({
+        json: { state: "ok", objects: [object, { kind: "Gateway", namespace: "istio-edge", name: "public" }] },
+      });
+    });
+    await page.goto("/mesh?view=config");
+
+    const table = page.getByTestId("mesh-config");
+    await expect(table).toContainText("HTTPRoute");
+    await expect(table).toContainText("web");
+
+    await page.getByRole("button", { name: "web" }).click();
+    await expect(page).toHaveURL(/object=HTTPRoute/);
+
+    const findings = page.getByTestId("mesh-findings");
+    await expect(findings).toContainText("shop/payments");
+    // The fix, not just the fault.
+    await expect(findings).toContainText("no span is emitted");
+    await expect(findings).toContainText("MESH_ROUTE_BACKEND_MISSING");
+  });
 });

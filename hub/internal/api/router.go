@@ -435,6 +435,7 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 	// absent without it, like every other module's.
 	if active.Enabled(modules.MeshConfig) {
 		mux.Handle("GET /api/v1/mesh/namespaces", a.secured(auth.RoleViewer, a.handleMeshNamespaces))
+		mux.Handle("GET /api/v1/mesh/config", a.secured(auth.RoleViewer, a.handleMeshConfig))
 	}
 	if active.Enabled(modules.Green) {
 		mux.Handle("GET /api/v1/green/summary", a.secured(auth.RoleViewer, a.handleGreenSummary))

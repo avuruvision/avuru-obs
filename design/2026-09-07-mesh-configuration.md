@@ -2,7 +2,7 @@
 
 - **Date:** 2026-09-07
 - **Author(s):** Avuru Obs maintainers
-- **Status:** Draft
+- **Status:** Accepted
 
 ## Summary
 
@@ -178,9 +178,14 @@ the thing to change. The same discipline, five states:
 
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] `mesh-config` module + ClusterRole + `NoopReader` + honest absence
-- [ ] Informers + snapshot, no screens
-- [ ] Namespace and workload inventory, joined to telemetry
-- [ ] Configuration browser
-- [ ] Validation engine + findings surfaced per object and per namespace
+- [x] AEP accepted
+- [x] `mesh-config` module + ClusterRole + `NoopReader` + honest absence
+- [x] Informers + snapshot, no screens
+- [x] Namespace inventory, joined to telemetry
+- [ ] Workload inventory (services and workloads with no traffic)
+- [x] Configuration browser
+- [x] Validation engine + findings surfaced per object and per namespace
+- [ ] The two checks held back from v1: selector-matches-no-workload (needs pod
+      labels, and a false "this policy protects nothing" is worse than no check)
+      and ambient-enrolled-but-not-behind-ztunnel (needs the telemetry join,
+      which a pure validator cannot do)
