@@ -11,6 +11,23 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **The `mesh-config` module now reads pods.** Enrolment is a fact about a pod:
+  the sidecar is a container in it, and ambient capture is an annotation the
+  node agent writes on it. A namespace label says what was asked for; only the
+  pod says what happened, and until now the module could not see one. The grant
+  stays `get`, `list` and `watch` — the chart still refuses a write verb.
+
+  A pod is also the largest and most numerous object a cluster has, so the hub
+  keeps a dozen fields of each — name, labels, the four annotations the mesh
+  writes, owner, service account, node, container names, phase — and drops the
+  rest before it is stored. Pods are capped on their own, apart from
+  configuration, so a large cluster is bounded and the snapshot says which list
+  it cut. Every kind now also reports when its cache last warmed and last
+  changed, and a cache that never warms is named as missing rather than served
+  half-full.
+
 ## [0.14.0] — 2026-09-06
 
 ### Added
