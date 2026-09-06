@@ -2,7 +2,7 @@
 
 - **Date:** 2026-09-06
 - **Author(s):** Avuru Obs maintainers
-- **Status:** Draft
+- **Status:** Accepted
 
 ## Summary
 
@@ -171,11 +171,13 @@ listener conflicts (`pilot_conflict_*`) and queue backpressure ahead of converge
 
 ## Roadmap
 
-- [ ] AEP accepted
-- [ ] `MeshRole` + `TransportLabels` through storage and the proxies DTO
-- [ ] Sortable, faceted proxy table; honest column names
-- [ ] Bytes + connection health, `infra-metrics` gated, absent when unmeasured
-- [ ] Per-proxy detail composed from the existing map read
-- [ ] Mesh graph tab with hops intact
-- [ ] Widened istiod keep-list + control-plane card
+- [x] AEP accepted
+- [x] `MeshRole` + `TransportLabels` through storage and the proxies DTO
+- [x] Sortable, faceted proxy table; honest column names
+- [x] Bytes + connection health, `infra-metrics` gated, absent when unmeasured
+- [x] Per-proxy detail composed from the existing map read
+- [x] Mesh graph tab with hops intact
+- [x] Widened istiod keep-list + control-plane card
+- [ ] Listener conflicts (`pilot_conflict_*`) and queue time — same scrape, not yet asked for
+- [ ] Per-role node styling on the mesh graph (waypoint vs ztunnel vs gateway)
 - [ ] Configuration inventory and validation — separate AEP, separate module
