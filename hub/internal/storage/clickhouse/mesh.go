@@ -144,7 +144,11 @@ WHERE Tenant IN (?) AND MetricName = ? AND TimeUnix >= ? AND TimeUnix < ?`
 	// nobody is scraping, because the target did not answer, or because it
 	// answered with something we cannot read — three problems with three
 	// different fixes, which "not available" could never tell apart.
-	state, err := s.meshScrapeState(ctx, tenants, q)
+	job := q.MeshScrapeJob
+	if job == "" {
+		job = defaultMeshScrapeJob
+	}
+	state, err := s.meshScrapeState(ctx, tenants, job, q.Range)
 	if err != nil {
 		return out, err
 	}
@@ -189,8 +193,9 @@ WHERE length(bounds) > 0 AND arraySum(buckets) > 0`
 	return out, rows.Err()
 }
 
-// meshScrapeState reads Prometheus's synthetic `up` series for the
-// control-plane scrape job.
+// meshScrapeState reads Prometheus's synthetic `up` series for one scrape job
+// — the control plane's, or the data plane's, which is why the job arrives as
+// a value and the default is the caller's to apply.
 //
 // It exists because those series BYPASS metric_relabel_configs by design: the
 // keep-list that drops everything but pilot_* cannot drop them, so they are
@@ -205,12 +210,8 @@ WHERE length(bounds) > 0 AND arraySum(buckets) > 0`
 // the exporter's business and nothing else in the product reads it on the
 // metrics tables. Reading what we know is set beats reading what we assume is.
 func (s *Store) meshScrapeState(
-	ctx context.Context, tenants []string, q storage.ServiceQuery,
+	ctx context.Context, tenants []string, job string, tr storage.TimeRange,
 ) (storage.MeshControlPlaneState, error) {
-	job := q.MeshScrapeJob
-	if job == "" {
-		job = defaultMeshScrapeJob
-	}
 	const upQuery = `
 SELECT argMax(Value, TimeUnix) AS latest, count() AS rows
 FROM otel_metrics_gauge
@@ -221,7 +222,7 @@ WHERE Tenant IN (?) AND MetricName = 'up'
 		latest float64
 		points uint64
 	)
-	if err := s.conn.QueryRow(ctx, upQuery, tenants, job, q.Range.Start, q.Range.End).
+	if err := s.conn.QueryRow(ctx, upQuery, tenants, job, tr.Start, tr.End).
 		Scan(&latest, &points); err != nil {
 		return storage.MeshControlPlaneUnconfigured, fmt.Errorf("mesh scrape state: %w", err)
 	}
