@@ -62,4 +62,26 @@ server {
         proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
+
+    # OAuth discovery → hub. RFC 8414 and RFC 9728 FIX these paths at the
+    # origin root, so like /mcp they cannot live under /api — and unlike /mcp
+    # they are what a client fetches BEFORE it holds any credential, so getting
+    # them wrong breaks the flow at its first step. Without this rule they fall
+    # into `location /` and a client parsing JSON receives the static export's
+    # HTML with a 200, which fails deeper and more confusingly than a 404.
+    #
+    # Scoped to the `oauth-` prefix, not to /.well-known/: an ACME HTTP-01
+    # challenge lives at /.well-known/acme-challenge/ and is served by the
+    # ingress controller or by this static root, never by the hub. `^~` stops
+    # nginx evaluating regex locations for these, so nothing later can reclaim
+    # them.
+    #
+    # Unconditional, for the reason /mcp is: with OAuth off the hub registers
+    # no such route and answers 404, which is the honest reply and a better one
+    # than a page of HTML.
+    location ^~ /.well-known/oauth- {
+        proxy_pass http://${HUB_UPSTREAM};
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
 }

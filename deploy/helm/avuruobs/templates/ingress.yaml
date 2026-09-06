@@ -59,6 +59,26 @@ spec:
                 name: {{ include "avuruobs.fullname" . }}-hub
                 port:
                   number: 80
+          {{- /* OAuth discovery. RFC 8414/9728 fix these at the ORIGIN ROOT,
+                 and a client fetches them before it holds any credential — so
+                 they cannot live under /api, and a miss here breaks the flow at
+                 its very first step rather than at the end. Enumerated one by
+                 one because Ingress `Prefix` matches whole path SEGMENTS: the
+                 prefix `/.well-known/oauth-` matches none of them. Only when
+                 the authorization server is actually on — the hub registers no
+                 such route otherwise, so routing them would trade the UI's HTML
+                 for the hub's 404 and change nothing else. */}}
+          {{- if .Values.modules.mcp.oauth.enabled }}
+          {{- range $p := list "/.well-known/oauth-authorization-server" "/.well-known/oauth-protected-resource" "/.well-known/oauth-protected-resource/mcp" }}
+          - path: {{ $p }}
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "avuruobs.fullname" $ }}-hub
+                port:
+                  number: 80
+          {{- end }}
+          {{- end }}
           {{- end }}
           {{- end }}
           {{- if .Values.ui.enabled }}
