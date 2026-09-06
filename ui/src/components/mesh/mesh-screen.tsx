@@ -174,6 +174,7 @@ export function MeshScreen() {
           services={map.data?.services ?? []}
           edges={map.data?.edges ?? []}
           windowMs={windowMs}
+          proxies={list}
         />
       ) : view === "config" ? (
         <ConfigBrowser />

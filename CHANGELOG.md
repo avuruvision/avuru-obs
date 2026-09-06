@@ -11,6 +11,17 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **The mesh graph tells its proxies apart.** It drew every hop as the same
+  diamond, so a waypoint, a ztunnel and the ingress gateway next to it were
+  three identical shapes with three different jobs. Each role now has its own —
+  a star for the control plane, a tag for a gateway pointing in and its mirror
+  for one pointing out, a chevron for ztunnel, a double ring for a waypoint —
+  and a legend under the graph names only the shapes actually on it. The
+  service map is unchanged: it has no roles to draw, and it still takes the hops
+  out.
+
 ## [0.14.0] — 2026-09-06
 
 ### Added

@@ -1,4 +1,5 @@
 import type { Core } from "cytoscape";
+import { MESH_ROLE_SHAPES } from "./role-shapes";
 
 // Resolve Avuru Gold tokens from the live theme (daisyUI CSS vars) so the graph
 // follows light/dark — never hardcode hex (agent_docs/ui_patterns.md).
@@ -112,7 +113,18 @@ export function applyStyle(cy: Core, carbon = false, compact = false, edgeLabels
     // Transport (mesh sidecar / waypoint / ingress gateway). Shape and fill,
     // not the ring — the ring is health's channel and a proxy has health too.
     .selector("node[transport > 0]")
-    .style({ shape: "round-diamond", "background-color": c.neutral, "background-opacity": 0.85 })
+    .style({ shape: "round-diamond", "background-color": c.neutral, "background-opacity": 0.85 });
+
+  // Per-role transport shapes (role-shapes.ts owns the table and the why).
+  // After the generic transport rule so each one overrides only what it names
+  // — shape, or for the waypoint the border style — and inherits the neutral
+  // fill. Only nodes buildElements stamped with `meshRole` match, and it stamps
+  // nothing when the role is unknown, so the map without roles is untouched.
+  for (const [role, { style }] of Object.entries(MESH_ROLE_SHAPES)) {
+    withNodes.selector(`node[transport > 0][meshRole = "${role}"]`).style(style);
+  }
+
+  withNodes
     // Virtual target (database / cache / broker). Same rule as transport:
     // SHAPE and fill, never the ring. A barrel drawn PORTRAIT is the nearest
     // thing in cytoscape's shape set to the cylinder that means "datastore"

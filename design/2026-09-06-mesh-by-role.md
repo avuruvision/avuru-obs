@@ -180,5 +180,5 @@ listener conflicts (`pilot_conflict_*`) and queue backpressure ahead of converge
 - [x] Mesh graph tab with hops intact
 - [x] Widened istiod keep-list + control-plane card
 - [ ] Listener conflicts (`pilot_conflict_*`) and queue time — same scrape, not yet asked for
-- [ ] Per-role node styling on the mesh graph (waypoint vs ztunnel vs gateway)
+- [x] Per-role node styling on the mesh graph (waypoint vs ztunnel vs gateway)
 - [ ] Configuration inventory and validation — separate AEP, separate module
