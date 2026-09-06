@@ -53,6 +53,13 @@
 {{- if and .Values.sensor.enabled (include "avuruobs.collectGreen" .) (not .Values.sensor.green.kepler.enabled) (not .Values.sensor.green.estimation.enabled) }}
 {{- fail "sensor.green.enabled with sensor.green.kepler.enabled=false requires sensor.green.estimation.enabled — dropping Kepler leaves the estimator as the only energy source; with both off nothing collects, so turn sensor.green.enabled off instead." }}
 {{- end }}
+{{- /* The data-plane scrape keeps only what its keep-list names, and the
+       receiver accepts an empty regex without complaint — the scrape would run
+       on every node, hit every proxy, and store nothing. Scoped like the green
+       guards so values that render nothing never fail an install. */}}
+{{- if and .Values.sensor.enabled (include "avuruobs.collectMeshDataplane" .) (not .Values.mesh.dataPlane.metrics.keep) }}
+{{- fail "mesh.dataPlane.metrics.keep is empty — an empty keep-list keeps nothing, so the scrape would run and store no series. Restore the default list or set mesh.dataPlane.enabled=false." }}
+{{- end }}
 {{- /* $mode is read unconditionally (like the guards above) so it stays in
        scope for the data block below, which now sits under its own
        conditional — the resource itself may render as a placeholder. */}}
@@ -252,7 +259,7 @@ data:
 {{- end }}
 {{- /* The agent needs >=1 active pipeline or the collector crash-loops. A
        module gates its own collection (see avuruobs.collect* helpers). */}}
-{{- $agentActive := and .Values.sensor.enabled .Values.sensor.agent.enabled (or (include "avuruobs.collectLogs" .) (include "avuruobs.collectInfraMetrics" .) (include "avuruobs.collectGreen" .) (include "avuruobs.collectCost" .)) }}
+{{- $agentActive := and .Values.sensor.enabled .Values.sensor.agent.enabled (or (include "avuruobs.collectLogs" .) (include "avuruobs.collectInfraMetrics" .) (include "avuruobs.collectGreen" .) (include "avuruobs.collectCost" .) (include "avuruobs.collectMeshDataplane" .)) }}
 {{- if or $agentActive (include "avuruobs.collectionPlaceholders" .) }}
 ---
 apiVersion: v1
@@ -357,6 +364,94 @@ data:
                   action: keep
               {{- end }}
     {{- end }}
+    {{- if include "avuruobs.collectMeshDataplane" . }}
+      # The mesh's DATA plane: the proxies on THIS node, and only those — the
+      # field selector keeps the API watch to one node's pods, so a DaemonSet
+      # of these scrapes every proxy exactly once. Discovery is what the mesh
+      # already writes: the prometheus.io/* annotations on every proxy pod.
+      # Prometheus's scrape-report series bypass metric_relabel_configs —
+      # filter/mesh-dataplane below drops the scrape_* ones and keeps `up`.
+      prometheus/mesh-dataplane:
+        config:
+          scrape_configs:
+            - job_name: {{ .Values.mesh.dataPlane.jobName | quote }}
+              scrape_interval: {{ .Values.mesh.dataPlane.scrapeInterval }}
+              kubernetes_sd_configs:
+                - role: pod
+                  selectors:
+                    - role: pod
+                      field: spec.nodeName=${env:K8S_NODE_NAME}
+              relabel_configs:
+                # The CONTAINER name is the one identity that survives every
+                # Istio version and both data-plane modes: sidecars, waypoints
+                # and gateways all run an `istio-proxy`; ambient nodes run a
+                # `ztunnel`. Pod labels change with the install method; this
+                # does not. Also what drops init containers and the app itself.
+                - source_labels: [__meta_kubernetes_pod_container_name]
+                  regex: istio-proxy|ztunnel
+                  action: keep
+                # An operator who wrote scrape=false on a proxy meant it.
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                  regex: "false"
+                  action: drop
+                # Pod IP + the annotated port when there is one (the merged
+                # Envoy/agent port, 15020, on every proxy Istio injects) …
+                - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  regex: (.+);(\d+)
+                  replacement: $1:$2
+                  target_label: __address__
+                # … and 15020 anyway when the annotation is missing.
+                - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  regex: (.+);
+                  replacement: $1:15020
+                  target_label: __address__
+                # Envoy proxies annotate /stats/prometheus; ztunnel does not
+                # and serves /metrics, which is the receiver's default.
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+                  regex: (.+)
+                  target_label: __metrics_path__
+                # Pod identity, so the pipeline can hand the series to
+                # k8sattributes and the collection guardrails (see
+                # transform/mesh-dataplane).
+                - source_labels: [__meta_kubernetes_namespace]
+                  target_label: k8s_namespace_name
+                - source_labels: [__meta_kubernetes_pod_name]
+                  target_label: k8s_pod_name
+                - source_labels: [__meta_kubernetes_pod_node_name]
+                  target_label: k8s_node_name
+                # What KIND of proxy answered: ztunnel by container; a gateway
+                # by the `istio: ingressgateway|egressgateway` label of the
+                # classic install or the `gateway.istio.io/managed` label the
+                # Gateway API controller stamps. (Prometheus writes `/`, `.`
+                # and `-` in a label name as `_`.) Sidecars and waypoints get
+                # no kind — the reporter rule below needs only the gateways.
+                - source_labels: [__meta_kubernetes_pod_container_name]
+                  regex: ztunnel
+                  replacement: ztunnel
+                  target_label: avuru_mesh_kind
+                - source_labels: [__meta_kubernetes_pod_label_istio]
+                  regex: (ingress|egress)gateway
+                  replacement: gateway
+                  target_label: avuru_mesh_kind
+                - source_labels: [__meta_kubernetes_pod_label_gateway_istio_io_managed]
+                  regex: 'istio\.io-gateway-controller'
+                  replacement: gateway
+                  target_label: avuru_mesh_kind
+              metric_relabel_configs:
+                - source_labels: [__name__]
+                  regex: {{ .Values.mesh.dataPlane.metrics.keep | quote }}
+                  action: keep
+                {{- if .Values.mesh.dataPlane.metrics.sourceReporterFromGatewaysOnly }}
+                # destination and waypoint reports from anyone; source reports
+                # only from gateways, which have no called side to report for
+                # them; and series with no reporter at all, which are ztunnel's
+                # own health series.
+                - source_labels: [reporter, avuru_mesh_kind]
+                  separator: ";"
+                  regex: (destination|waypoint);.*|source;gateway|;.*
+                  action: keep
+                {{- end }}
+    {{- end }}
     processors:
       memory_limiter:
         check_interval: 1s
@@ -396,11 +491,13 @@ data:
           - sources:
               - from: resource_attribute
                 name: k8s.pod.uid
-          {{- if include "avuruobs.collectGreen" . }}
+          {{- if or (include "avuruobs.collectGreen" .) (include "avuruobs.collectMeshDataplane" .) }}
           # Kepler energy carries no pod UID — associate on its promoted
           # k8s.pod.name/k8s.namespace.name (see groupbyattrs/green) so the
           # opt-out label reaches energy too. Ordered AFTER the UID rule, which
           # still wins for logs/kubeletstats (the first full match is used).
+          # The data-plane scrape promotes the same two keys
+          # (groupbyattrs/mesh-dataplane) and rides the same rule.
           - sources:
               - from: resource_attribute
                 name: k8s.namespace.name
@@ -501,6 +598,50 @@ data:
             value: ${env:K8S_NODE_NAME}
             action: upsert
       {{- end }}
+      {{- if include "avuruobs.collectMeshDataplane" . }}
+      # Prometheus's scrape-report series are generated AFTER the receiver's
+      # metric_relabel_configs, so the keep-list cannot touch them. Drop the
+      # scrape_* ones here. Unlike filter/green this KEEPS `up`: it is one
+      # gauge per proxy per scrape, and it is how the hub tells "nobody is
+      # scraping" from "the proxies are not answering".
+      #
+      # The collection guardrails apply to BOTH ends of a series, not to the
+      # pod that reported it: a ztunnel lives in istio-system and reports
+      # traffic in some other namespace, so an excluded namespace has to be
+      # excluded whether it was the caller or the called.
+      filter/mesh-dataplane:
+        error_mode: ignore
+        metrics:
+          metric:
+            - IsMatch(name, "^scrape_.+$")
+          {{- if .Values.sensor.collection.excludeNamespaces }}
+          datapoint:
+          {{- range .Values.sensor.collection.excludeNamespaces }}
+            - attributes["destination_workload_namespace"] == {{ . | quote }}
+            - attributes["source_workload_namespace"] == {{ . | quote }}
+          {{- end }}
+          {{- end }}
+      # The relabel rules stamp the reporting pod on every datapoint under
+      # Prometheus-safe names; copy them to the standard k8s.* keys so the
+      # shared k8sattributes and filter/collection govern a proxy's series the
+      # way they govern its logs. The originals stay for the hub read.
+      transform/mesh-dataplane:
+        error_mode: ignore
+        metric_statements:
+          - context: datapoint
+            statements:
+              - set(attributes["k8s.pod.name"], attributes["k8s_pod_name"]) where attributes["k8s_pod_name"] != nil
+              - set(attributes["k8s.namespace.name"], attributes["k8s_namespace_name"]) where attributes["k8s_namespace_name"] != nil
+              - set(attributes["k8s.node.name"], attributes["k8s_node_name"]) where attributes["k8s_node_name"] != nil
+      # Promote the standard keys to resource attributes so k8sattributes can
+      # associate the pod and filter/collection can match the namespace — one
+      # resource per proxy, which is also the unit the hub reads `up` by.
+      groupbyattrs/mesh-dataplane:
+        keys:
+          - k8s.pod.name
+          - k8s.namespace.name
+          - k8s.node.name
+      {{- end }}
       batch:
         send_batch_size: 2048
         timeout: 2s
@@ -567,6 +708,16 @@ data:
           # path. No new tables; the hub aggregates Wh/gCO2e at query time.
           receivers: [prometheus/green]
           processors: [memory_limiter, filter/green, transform/green, transform/green_quality, groupbyattrs/green, resource/green, k8sattributes{{ if $collectionFilter }}, filter/collection{{ end }}, batch]
+          exporters: [otlphttp]
+    {{- end }}
+    {{- if include "avuruobs.collectMeshDataplane" . }}
+        metrics/mesh-dataplane:
+          # The proxies' own series on their OWN pipeline, like green's: scrape
+          # → drop the scrape meta, keep `up` → standard-key shaping → shared
+          # k8sattributes + collection guardrails → gateway, onto the existing
+          # otel_metrics_* path. No new tables; the hub reads them by job name.
+          receivers: [prometheus/mesh-dataplane]
+          processors: [memory_limiter, filter/mesh-dataplane, transform/mesh-dataplane, groupbyattrs/mesh-dataplane, k8sattributes{{ if $collectionFilter }}, filter/collection{{ end }}, batch]
           exporters: [otlphttp]
     {{- end }}
 {{- else }}
