@@ -228,11 +228,11 @@ stylistic checks. The check set stays small, and stays aimed.
 ## Roadmap
 
 - [x] AEP accepted
-- [ ] Data-plane scrape in the sensor chart
-- [ ] Pods in the configuration reader, projected and capped
-- [ ] Storage reads: security, request breakdown, ztunnel health
-- [ ] Workload and service inventory; effective mTLS with its source
-- [ ] The eleven checks
-- [ ] Workloads and waypoint routes; posture and security routes; the join
-- [ ] Workloads tab, Security tab, proxy page breakdown, map lock marker, per-role graph styling
-- [ ] Docs aligned
+- [x] Data-plane scrape in the sensor chart
+- [x] Pods in the configuration reader, projected and capped
+- [x] Storage reads: security, request breakdown, ztunnel health
+- [x] Workload and service inventory; effective mTLS with its source
+- [x] The eleven checks
+- [x] Workloads and waypoint routes; posture and security routes; the join
+- [x] Workloads tab, Security tab, proxy page breakdown, map lock marker, per-role graph styling
+- [x] Docs aligned

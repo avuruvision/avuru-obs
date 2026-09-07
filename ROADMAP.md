@@ -325,7 +325,7 @@ a model** remain out, for the same release-level reason they were out of v0.12:
 they would be the first outbound network call in a product whose whole promise
 is that nothing leaves the cluster.
 
-## v0.15 — what the mesh was told, and what it did — PLANNED
+## v0.15 — what the mesh was told, and what it did — SHIPPED (v0.15.0)
 
 v0.14 gave the mesh a console and a reader for its configuration, and left one
 sentence standing in an AEP: the data plane's own account of its traffic was
@@ -338,7 +338,7 @@ source the product did not read: the proxies themselves, and the pods.
 > **As a team we can say, for every namespace, workload and edge, what the mesh
 > was told to do and what it actually did — and the two are on the same row.**
 
-| Theme | Planned |
+| Theme | Shipped |
 |---|---|
 | **Declared vs observed** | The release-defining item. The sensor reads what ztunnel and the Envoy proxies report about themselves — per request and per connection, mutual TLS or plaintext — on each node, from the proxies on that node, discovered through the annotations the mesh already writes. The hub joins that to the PeerAuthentication that actually governs each workload: mesh-wide, namespace, or the selector-scoped policy the v0.14 reader skipped. Every namespace, workload and map edge gets a lock; "permissive with plaintext callers" names the callers; "declared strict, observed plaintext" — a policy that is not applied — becomes a finding instead of a silence. Under the mesh module, on by default: the module is the consent, and there is no endpoint to type — [AEP](design/2026-09-08-mesh-declared-vs-observed.md) |
 | **Every workload, in or out** | The configuration reader adds pods, read-only, projected to a dozen fields and capped on their own. A Workloads tab lists every workload the cluster runs — traffic or not — with whether a sidecar is in the pod, whether the node agent captured it, which waypoint binds it, which policies cover it, and the mTLS mode that applies with the policy that decided it. A waypoint proxy lists what it serves |

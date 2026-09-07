@@ -11,6 +11,8 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-09-07
+
 ### Added
 
 - **The two halves meet on the workload row.** The Workloads tab starts from
