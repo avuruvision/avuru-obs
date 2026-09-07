@@ -54,6 +54,18 @@ When a release is cut, that block is renamed to the version with its date.
   changed, and a cache that never warms is named as missing rather than served
   half-full.
 
+- **Every workload the cluster runs now exists in the snapshot, enrolled or
+  not.** Pods are grouped into the workload that made them — the Deployment
+  confirmed from the template hash, without watching ReplicaSets — and each
+  one says whether a sidecar was actually injected or the node agent actually
+  captured it, beside the mode its labels asked for. It carries the waypoint
+  that binds it, the policies that cover it, the Services that select it, and
+  the mTLS mode that applies with the PeerAuthentication that decided it —
+  including the selector-scoped policies v0.14 skipped, which read a workload
+  under its own `DISABLE` as `STRICT`. Namespace rows now say where their mode
+  came from and how many of their workloads the mesh actually has. The screens
+  that show this come in a later release.
+
 ## [0.14.0] — 2026-09-06
 
 ### Added
