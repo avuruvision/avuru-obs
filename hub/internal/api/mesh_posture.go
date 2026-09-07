@@ -25,35 +25,22 @@ type declaredMTLS interface {
 	Declared() bool
 }
 
-// snapshotDeclared adapts a configuration snapshot to declaredMTLS.
-//
-// On this branch the snapshot resolves policy per NAMESPACE only, so the scope
-// is reported as "namespace" whenever a mode is set: a mesh-wide default and a
-// namespace policy cannot be told apart here. A sibling change adds
-// Snapshot.EffectiveMTLS with workload selectors and the real scope; when it
-// lands, this adapter shrinks to that one call.
-type snapshotDeclared struct {
-	snap       meshconfig.Snapshot
-	namespaces map[string]meshconfig.Namespace
-}
+// snapshotDeclared adapts a configuration snapshot to declaredMTLS: the
+// inventory already resolved which PeerAuthentication governs each workload —
+// selector policy, namespace, or mesh-wide — so the adapter is one call.
+type snapshotDeclared struct{ snap meshconfig.Snapshot }
 
 func newSnapshotDeclared(snap meshconfig.Snapshot) snapshotDeclared {
-	byName := make(map[string]meshconfig.Namespace, len(snap.Namespaces))
-	for _, ns := range snap.Namespaces {
-		byName[ns.Name] = ns
-	}
-	return snapshotDeclared{snap: snap, namespaces: byName}
+	return snapshotDeclared{snap: snap}
 }
 
-func (d snapshotDeclared) EffectiveMTLS(namespace, _ string) (mode, scope string) {
-	if m := d.namespaces[namespace].MTLSMode; m != "" {
-		return m, "namespace"
-	}
-	return "", ""
+func (d snapshotDeclared) EffectiveMTLS(namespace, workload string) (mode, scope string) {
+	m := d.snap.EffectiveMTLS(namespace, workload)
+	return m.Mode, m.Source
 }
 
 func (d snapshotDeclared) DataplaneMode(namespace string) string {
-	return d.namespaces[namespace].DataplaneMode
+	return d.snap.DataplaneMode(namespace)
 }
 
 func (d snapshotDeclared) Declared() bool { return d.snap.State == meshconfig.StateOK }

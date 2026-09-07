@@ -175,7 +175,7 @@ func TestSnapshotDeclaredAdapter(t *testing.T) {
 	d := newSnapshotDeclared(meshconfig.Snapshot{
 		State: meshconfig.StateOK,
 		Namespaces: []meshconfig.Namespace{
-			{Name: "shop", DataplaneMode: "ambient", MTLSMode: "STRICT"},
+			{Name: "shop", DataplaneMode: "ambient", MTLSMode: "STRICT", MTLSSource: meshconfig.SourceNamespace},
 			{Name: "legacy", DataplaneMode: "sidecar"},
 		},
 	})

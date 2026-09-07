@@ -13,6 +13,18 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **The two halves meet on the workload row.** The Workloads tab starts from
+  what the cluster declared and the Security tab from what the proxies saw, and
+  until now only the second could say which was true. Every workload row and
+  page now carries the observed mutual-TLS share beside the declared lock, and
+  the same verdict the Security tab draws — the one fold, run once, so the two
+  screens cannot disagree about one workload. The namespace list counts what
+  the join found beside what the validator found, and the Security tab reads
+  the policy the inventory resolved per workload rather than the namespace's.
+  A workload the proxies did not report is called "not carried" only when the
+  data plane was actually read: nobody looking is not the same as nothing
+  there. The sentence about skipped checks is now the validator's own.
+
 - **The proxies now say what they carried, and how.** The mesh screen read the
   control plane through one scrape and the data plane through the spans your
   applications already send — which answers how fast and how often, and cannot

@@ -41,7 +41,7 @@ func strictShop() stubReader {
 	return stubReader{snap: meshconfig.Snapshot{
 		State: meshconfig.StateOK, SyncedAt: time.Now(),
 		Namespaces: []meshconfig.Namespace{
-			{Name: "shop", DataplaneMode: "ambient", MTLSMode: "STRICT"},
+			{Name: "shop", DataplaneMode: "ambient", MTLSMode: "STRICT", MTLSSource: meshconfig.SourceNamespace},
 			{Name: "legacy", DataplaneMode: "sidecar", MTLSMode: "PERMISSIVE"},
 		},
 	}}

@@ -126,6 +126,11 @@ func (a *API) handleMeshNamespaces(w http.ResponseWriter, r *http.Request) error
 	}
 
 	findings := findingCounts(snap)
+	for ns, c := range a.observedWorkloads(r).postureCounts(snap, a.workloadTraffic(r)) {
+		f := findings[ns]
+		f.errors, f.warnings = f.errors+c.errors, f.warnings+c.warnings
+		findings[ns] = f
+	}
 	podsOK := podsReadable(snap)
 	for _, ns := range snap.Namespaces {
 		row := meshNamespaceDTO{
@@ -194,11 +199,12 @@ func podsReadable(snap meshconfig.Snapshot) bool {
 
 // checksSkipped says why the pod-dependent checks did not run, and what to do.
 //
-// Composed here from the snapshot's own flags: the validator does not yet skip
-// checks on its own, and when it does its sentence replaces this one. Until
-// then the two states an operator can meet are named, each with its fix.
+// The validator's own sentence names the checks it skipped; the two fallbacks
+// below cover a snapshot that never reached it.
 func checksSkipped(snap meshconfig.Snapshot) string {
 	switch {
+	case snap.ChecksSkipped != "":
+		return snap.ChecksSkipped
 	case !podsReadable(snap):
 		return "pods are not readable — grant pods get/list/watch in the mesh-config ClusterRole"
 	case snap.PodsTruncated:
