@@ -713,8 +713,8 @@ sensor:
       # key=value, or the usual upper-case token (`… DEBUG [main] …`, `[INFO]`,
       # `ERROR:`) — and sets the OTel severity number and text, so severity
       # filters and the error issues built from logs work for plain-stdout
-      # apps. Records that already carry a level (OTLP from SDKs) are left
-      # alone. Numeric JSON levels (pino's 30/40/50) are not mapped.
+      # apps. pino's numeric levels (10..60) are read too. Records that
+      # already carry a level (OTLP from SDKs) are left alone.
       parseSeverity: true
     # Node/pod CPU, memory, network from the kubelet (Supporting signal tier).
     kubeletstats:

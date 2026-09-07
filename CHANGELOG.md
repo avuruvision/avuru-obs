@@ -19,8 +19,8 @@ When a release is cut, that block is renamed to the version with its date.
   node agent now reads the level off the line — a JSON `level`/`severity`/`lvl`
   field, a `level=warn` key=value, or the usual upper-case token (`… DEBUG
   [main] …`, `[INFO]`, `ERROR:`) — and sets the OTel severity number and text.
-  Records that already carry a level are left alone; numeric JSON levels are
-  not mapped. On by default, off with `sensor.agent.logs.parseSeverity=false`.
+  pino's numeric levels are read too. Records that already carry a level are
+  left alone. On by default, off with `sensor.agent.logs.parseSeverity=false`.
   Rows ingested before the upgrade keep their empty level until they age out.
 
 ## [0.16.0] — 2026-09-07

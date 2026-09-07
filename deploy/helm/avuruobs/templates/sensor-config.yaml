@@ -551,8 +551,8 @@ data:
       # upper-case and delimited so "user info updated" is not an INFO. The
       # number follows the OTel log data model; the text is the app's own
       # word, upper-cased. `cache` is scratch and never leaves the agent.
-      # log15's short forms (dbug, eror, crit) are mapped too. Numeric JSON
-      # levels (pino) fail ToUpperCase and stay unparsed.
+      # log15's short forms (dbug, eror, crit) are mapped too, and pino's
+      # numeric levels (10..60) get the name pino gives them.
       transform/log_severity:
         error_mode: ignore
         log_statements:
@@ -564,6 +564,12 @@ data:
               - set(cache["level"], cache["json"]["level"]) where cache["json"]["level"] != nil
               - set(cache["level"], cache["json"]["severity"]) where cache["level"] == nil and cache["json"]["severity"] != nil
               - set(cache["level"], cache["json"]["lvl"]) where cache["level"] == nil and cache["json"]["lvl"] != nil
+              - set(cache["level"], "TRACE") where cache["level"] == 10
+              - set(cache["level"], "DEBUG") where cache["level"] == 20
+              - set(cache["level"], "INFO") where cache["level"] == 30
+              - set(cache["level"], "WARN") where cache["level"] == 40
+              - set(cache["level"], "ERROR") where cache["level"] == 50
+              - set(cache["level"], "FATAL") where cache["level"] == 60
               - set(cache["kv"], ExtractPatterns(body, "(?:^|[\\s,;])(?:level|lvl|severity)=\"?(?P<level>[A-Za-z]+)")) where cache["level"] == nil
               - set(cache["level"], cache["kv"]["level"]) where cache["level"] == nil and cache["kv"]["level"] != nil
               - set(cache["tok"], ExtractPatterns(body, "(?:^|[\\s\\[|(])(?P<level>TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL|CRITICAL|PANIC)(?:[\\s\\]|:),]|$)")) where cache["level"] == nil
