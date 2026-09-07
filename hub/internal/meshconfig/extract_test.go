@@ -87,14 +87,18 @@ func TestMTLSModeScoping(t *testing.T) {
 	for _, r := range rows {
 		byName[r.Name] = r
 	}
-	if byName["shop"].MTLSMode != "STRICT" {
-		t.Errorf("shop = %q, want the mesh-wide STRICT", byName["shop"].MTLSMode)
-	}
-	if byName["web"].MTLSMode != "PERMISSIVE" {
-		t.Errorf("web = %q, want its own PERMISSIVE", byName["web"].MTLSMode)
-	}
-	if byName["batch"].MTLSMode != "STRICT" {
-		t.Errorf("batch = %q: a workload-scoped policy overrode the namespace", byName["batch"].MTLSMode)
+	for name, want := range map[string]DeclaredMTLS{
+		"shop": {Mode: "STRICT", Source: SourceMesh, Policy: "istio-system/default"},
+		"web":  {Mode: "PERMISSIVE", Source: SourceNamespace, Policy: "web/default"},
+		// The workload-scoped policy must not override the namespace: the row
+		// keeps the mesh-wide mode, and says so.
+		"batch": {Mode: "STRICT", Source: SourceMesh, Policy: "istio-system/default"},
+	} {
+		row := byName[name]
+		got := DeclaredMTLS{Mode: row.MTLSMode, Source: row.MTLSSource, Policy: row.MTLSPolicy}
+		if got != want {
+			t.Errorf("%s = %+v, want %+v", name, got, want)
+		}
 	}
 }
 
@@ -102,8 +106,8 @@ func TestMTLSModeScoping(t *testing.T) {
 // it. Empty is honest; naming a mode would be a guess.
 func TestNoPolicyLeavesModeUnstated(t *testing.T) {
 	rows := NamespacesFrom([]Object{ns("shop", nil)}, nil, "istio-system")
-	if rows[0].MTLSMode != "" {
-		t.Errorf("mode = %q, want empty when no policy applies", rows[0].MTLSMode)
+	if rows[0].MTLSMode != "" || rows[0].MTLSSource != "" || rows[0].MTLSPolicy != "" {
+		t.Errorf("row = %+v, want no mode, source or policy when nothing applies", rows[0])
 	}
 }
 

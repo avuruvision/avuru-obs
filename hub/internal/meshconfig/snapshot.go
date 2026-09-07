@@ -113,6 +113,14 @@ func (r *K8sReader) build() Snapshot {
 		snap.Kinds = append(snap.Kinds, ks)
 	}
 	snap.Namespaces = NamespacesFrom(namespaces, peerAuths, r.rootNamespace)
+	sortPods(snap.Pods)
+	// The workload and service lists are derived from pods and objects, with
+	// every PeerAuthentication in reach whether or not it fit in the object
+	// list — for the same reason the namespace rows get them all.
+	configured := withPeerAuths(snap.Objects, peerAuths)
+	snap.Services = ServicesFrom(configured, snap.Pods, snap.Namespaces)
+	snap.Workloads = WorkloadsFrom(snap.Pods, snap.Namespaces, configured, r.rootNamespace)
+	countWorkloads(snap.Namespaces, snap.Workloads)
 
 	// Deterministic order: these lists are rendered, diffed and paged, and
 	// anything else would reshuffle them on every request.
@@ -128,11 +136,24 @@ func (r *K8sReader) build() Snapshot {
 		return a.Name < b.Name
 	})
 	sort.Slice(snap.Kinds, func(i, j int) bool { return snap.Kinds[i].Kind < snap.Kinds[j].Kind })
-	sortPods(snap.Pods)
 	// Judged after the snapshot is whole and ordered: every check is a JOIN
 	// across objects, so none of them can run while the set is still being
 	// built.
 	return Validate(snap)
+}
+
+// withPeerAuths is the object list with every PeerAuthentication in it,
+// including the ones the cap cut. Objects is the list a screen pages; this is
+// the list a resolver reads, and a workload's mTLS mode must not depend on
+// how many routes the cluster has.
+func withPeerAuths(objects, peerAuths []Object) []Object {
+	out := make([]Object, 0, len(objects)+len(peerAuths))
+	for _, o := range objects {
+		if o.Kind != KindPeerAuthentication {
+			out = append(out, o)
+		}
+	}
+	return append(out, peerAuths...)
 }
 
 // listSorted reads one cache in namespace/name order. The cache's own order is

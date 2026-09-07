@@ -10,6 +10,7 @@ import (
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -213,3 +214,58 @@ func TestSnapshotIsMemoisedUntilSomethingChanges(t *testing.T) {
 		t.Error("a fully readable cluster reports missing kinds")
 	}
 }
+
+// A read cluster yields the inventory below the namespace: workloads joined to
+// their Deployment, their Services and the policy that decided their mTLS,
+// and namespace rows that count them.
+func TestSnapshotCarriesWorkloadsAndServices(t *testing.T) {
+	client := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), listKinds())
+	seed(t, client, gvrNamespaces, u("v1", "Namespace", "", "shop", map[string]string{labelDataplaneMode: "ambient"}, nil))
+	seed(t, client, gvrPeerAuths,
+		u("security.istio.io/v1", "PeerAuthentication", "istio-system", "default", nil,
+			map[string]any{"mtls": map[string]any{"mode": "STRICT"}}))
+	seed(t, client, gvrServices, u("v1", "Service", "shop", "shop", nil,
+		map[string]any{"selector": map[string]any{"app": "shop"}, "ports": []any{map[string]any{"name": "http", "port": int64(80)}}}))
+	seed(t, client, schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"},
+		u("apps/v1", "Deployment", "shop", "shop", nil, nil))
+	pod := fullPod("shop", "shop-abc123-x")
+	pod.SetOwnerReferences([]metav1.OwnerReference{{Kind: KindReplicaSet, Name: "shop-abc123", Controller: ptr(true)}})
+	seed(t, client, gvrPods, pod)
+
+	snap := NewK8sReader(context.Background(), client, "istio-system", "role").Snapshot(context.Background())
+
+	if snap.State != StateOK {
+		t.Fatalf("state = %q (%s)", snap.State, snap.Reason)
+	}
+	if len(snap.Workloads) != 1 || len(snap.Services) != 1 {
+		t.Fatalf("workloads = %d, services = %d, want one each", len(snap.Workloads), len(snap.Services))
+	}
+	w := snap.Workloads[0]
+	if w.Kind != KindDeployment || w.Name != "shop" || !w.Captured || !w.Injected {
+		t.Errorf("workload = %+v", w)
+	}
+	if !reflect.DeepEqual(w.Services, []string{"shop/shop"}) || !reflect.DeepEqual(snap.Services[0].Workloads, []string{"shop/shop"}) {
+		t.Errorf("cross-link: workload services %v, service workloads %v", w.Services, snap.Services[0].Workloads)
+	}
+	if w.DeclaredMode != DataplaneAmbient || w.DataplaneMode != DataplaneAmbient {
+		t.Errorf("modes = declared %q effective %q", w.DeclaredMode, w.DataplaneMode)
+	}
+	if snap.Namespaces[0].Workloads != 1 || snap.Namespaces[0].Enrolled != 1 {
+		t.Errorf("namespace counts = %+v", snap.Namespaces[0])
+	}
+	if snap.Namespaces[0].MTLSSource != SourceMesh {
+		t.Errorf("namespace mTLS source = %q, want mesh", snap.Namespaces[0].MTLSSource)
+	}
+	mesh := DeclaredMTLS{Mode: "STRICT", Source: SourceMesh, Policy: "istio-system/default"}
+	if got := snap.EffectiveMTLS("shop", "shop"); got != mesh {
+		t.Errorf("known workload = %+v, want %+v", got, mesh)
+	}
+	if got := snap.EffectiveMTLS("shop", "unknown"); got != mesh {
+		t.Errorf("unknown workload = %+v, want the namespace's %+v", got, mesh)
+	}
+	if got := snap.EffectiveMTLS("nowhere", "shop"); got != (DeclaredMTLS{}) {
+		t.Errorf("unknown namespace = %+v, want nothing", got)
+	}
+}
+
+func ptr[T any](v T) *T { return &v }

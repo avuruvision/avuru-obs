@@ -35,6 +35,12 @@ const (
 	KindAuthorizationPolicy = "AuthorizationPolicy"
 	KindTelemetry           = "Telemetry"
 	KindWasmPlugin          = "WasmPlugin"
+	KindDeployment          = "Deployment"
+	KindDaemonSet           = "DaemonSet"
+	KindStatefulSet         = "StatefulSet"
+	// KindReplicaSet is never watched; it is what a pod names as its owner
+	// when its Deployment could not be confirmed.
+	KindReplicaSet = "ReplicaSet"
 )
 
 // NamespacesFrom turns raw namespace objects into mesh membership rows.
@@ -48,26 +54,6 @@ const (
 // a default install). A mesh-wide policy is the fallback for every namespace
 // that does not set its own.
 func NamespacesFrom(namespaces, peerAuths []Object, rootNamespace string) []Namespace {
-	meshWide := ""
-	byNamespace := map[string]string{}
-	for _, pa := range peerAuths {
-		mode := peerAuthMode(pa)
-		if mode == "" {
-			continue
-		}
-		// A PeerAuthentication with a selector targets specific workloads, not
-		// the namespace. Attributing it to the namespace would report a mode
-		// most of the namespace does not have.
-		if hasSelector(pa) {
-			continue
-		}
-		if pa.Namespace == rootNamespace {
-			meshWide = mode
-			continue
-		}
-		byNamespace[pa.Namespace] = mode
-	}
-
 	out := make([]Namespace, 0, len(namespaces))
 	for _, ns := range namespaces {
 		row := Namespace{
@@ -85,13 +71,12 @@ func NamespacesFrom(namespaces, peerAuths []Object, rootNamespace string) []Name
 				row.WaypointNamespace = ns.Name
 			}
 		}
-		if mode, ok := byNamespace[ns.Name]; ok {
-			row.MTLSMode = mode
-		} else {
-			// Empty when nothing applies: the mesh default governs, and naming
-			// a mode we did not read would be a guess.
-			row.MTLSMode = meshWide
-		}
+		// The same resolver the workloads use, asked with no labels: only
+		// scope-wide policies can answer for a namespace, and a selector
+		// policy attributed here would report a mode most of the namespace
+		// does not have.
+		mtls := DeclaredMTLSFor(nil, ns.Name, peerAuths, rootNamespace)
+		row.MTLSMode, row.MTLSSource, row.MTLSPolicy = mtls.Mode, mtls.Source, mtls.Policy
 		out = append(out, row)
 	}
 	return out
@@ -124,17 +109,6 @@ func peerAuthMode(o Object) string {
 	}
 	mode, _ := mtls["mode"].(string)
 	return mode
-}
-
-// hasSelector reports whether a policy targets specific workloads rather than
-// everything in its scope.
-func hasSelector(o Object) bool {
-	sel, ok := o.Spec["selector"].(map[string]any)
-	if !ok {
-		return false
-	}
-	labels, ok := sel["matchLabels"].(map[string]any)
-	return ok && len(labels) > 0
 }
 
 // IsWaypoint reports whether a Gateway object is an ambient waypoint rather
