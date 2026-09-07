@@ -483,14 +483,16 @@ rm -f "$CHECKS_VALUES"
 
 echo "== mesh: off by default, whole surface absent"
 out="$(render)"
-grep -q 'prometheus/mesh' <<<"$out" && fail "the mesh control-plane scrape rendered on a default install"
+# `prometheus/mesh[]:]`: the control-plane receiver's key or its pipeline
+# reference, and not the sensor-side prometheus/mesh-dataplane asserted below.
+grep -qE 'prometheus/mesh[]:]' <<<"$out" && fail "the mesh control-plane scrape rendered on a default install"
 grep -q ',mesh' <<<"$out" && fail "the mesh module is in AVURUOBS_MODULES by default"
 ok "no mesh module, no istiod scrape"
 
 echo "== mesh: the module alone adds the surface but no collection"
 out="$(render --set modules.mesh.enabled=true)"
 grep -q ',mesh' <<<"$out" || fail "modules.mesh.enabled did not reach AVURUOBS_MODULES"
-grep -q 'prometheus/mesh' <<<"$out" && fail "the scrape rendered without mesh.controlPlane.enabled"
+grep -qE 'prometheus/mesh[]:]' <<<"$out" && fail "the scrape rendered without mesh.controlPlane.enabled"
 ok "module on, scrape still opt-in"
 
 echo "== mesh: the control-plane scrape lands in the GATEWAY, not the sensor"
@@ -536,6 +538,91 @@ fi
 render --set modules.mesh.enabled=true --set mesh.controlPlane.enabled=true --set gateway.enabled=false >/dev/null 2>&1 \
   || fail "mesh values failed an install with no gateway to scrape from"
 ok "both guards fire; a gateway-less install is unaffected"
+
+echo "== mesh data plane: off by default, whole surface absent"
+out="$(render)"
+grep -q 'prometheus/mesh-dataplane' <<<"$out" && fail "the data-plane scrape rendered on a default install"
+grep -q 'AVURUOBS_MESH_DATAPLANE_JOB' <<<"$out" && fail "the data-plane job name reached the hub with the mesh module off"
+ok "no mesh module, no proxy scrape"
+
+echo "== mesh data plane: the module is the consent — the scrape lands in the SENSOR, not the gateway"
+# The opposite placement from the control plane, for the opposite reason: a
+# proxy is a per-node fact, and a DaemonSet scraping only its own node's pods
+# is the one topology that reaches every proxy exactly once.
+# Counted rather than `grep -q` on the full render — see the istiod block.
+out="$(render --set modules.mesh.enabled=true)"
+agent="$(awk '/^  name: .*-sensor-agent$/,/^---$/' <<<"$out")"
+recv_hits="$(grep -c 'prometheus/mesh-dataplane:' <<<"$agent" || true)"
+[ "${recv_hits:-0}" -gt 0 ] || fail "prometheus/mesh-dataplane receiver missing from the sensor agent config"
+gw_hits="$(awk '/^  name: .*-gateway$/,/^---$/' <<<"$out" | grep -c 'mesh-dataplane' || true)"
+[ "${gw_hits:-0}" = "0" ] || fail "the data-plane scrape rendered into the gateway — it belongs beside the proxies, one node each"
+pipe_hits="$(grep -c 'metrics/mesh-dataplane:' <<<"$agent" || true)"
+[ "${pipe_hits:-0}" -gt 0 ] || fail "metrics/mesh-dataplane pipeline missing"
+proc_hits="$(grep -cF 'processors: [memory_limiter, filter/mesh-dataplane, transform/mesh-dataplane, groupbyattrs/mesh-dataplane, k8sattributes, filter/collection, batch]' <<<"$agent" || true)"
+[ "${proc_hits:-0}" -gt 0 ] || fail "metrics/mesh-dataplane processors diverged (shaping, guardrails, or their order)"
+sel_hits="$(grep -cF 'field: spec.nodeName=${env:K8S_NODE_NAME}' <<<"$agent" || true)"
+[ "${sel_hits:-0}" -gt 0 ] || fail "the pod discovery is not pinned to this node — every sensor would scrape every proxy"
+keep_hits="$(grep -cF 'regex: "istio_requests_total|istio_tcp_connections_opened_total|istio_tcp_connections_closed_total|istio_tcp_sent_bytes_total|istio_tcp_received_bytes_total|workload_manager_active_proxy_count|workload_manager_pending_proxy_count|istio_xds_connection_terminations_total"' <<<"$agent" || true)"
+[ "${keep_hits:-0}" -gt 0 ] || fail "the data-plane keep-list diverged from the values default"
+rep_hits="$(grep -cF 'regex: (destination|waypoint);.*|source;gateway|;.*' <<<"$agent" || true)"
+[ "${rep_hits:-0}" -gt 0 ] || fail "the reporter rule is missing — source-side reports would double every request"
+# Scrape-report series bypass metric_relabel_configs; the pipeline drops the
+# scrape_* ones and KEEPS `up` — one gauge per proxy per scrape, and the only
+# way to tell "nobody is scraping" from "the proxies are not answering".
+dp_filter="$(awk '/^      filter\/mesh-dataplane:/,/^      transform\/mesh-dataplane:/' <<<"$agent")"
+[ -n "$dp_filter" ] || fail "could not isolate the filter/mesh-dataplane block"
+scrape_hits="$(grep -cF 'IsMatch(name, "^scrape_.+$")' <<<"$dp_filter" || true)"
+[ "${scrape_hits:-0}" -gt 0 ] || fail "scrape-meta drop condition (filter/mesh-dataplane) missing"
+up_hits="$(grep -cE '\(up\||"up"|\^up' <<<"$dp_filter" || true)"
+[ "${up_hits:-0}" = "0" ] || fail "filter/mesh-dataplane drops up — the hub loses the per-proxy scrape health"
+env_hits="$(grep -A1 'AVURUOBS_MESH_DATAPLANE_JOB' <<<"$out" | grep -c '"mesh-dataplane"' || true)"
+[ "${env_hits:-0}" -gt 0 ] || fail "the hub was not told the data-plane job name"
+ok "receiver + pipeline in the sensor only; node-pinned discovery; keep-list, reporter rule, scrape meta dropped, up kept; hub env"
+
+echo "== mesh data plane: the job name is ONE value, reaching the scrape and the hub"
+out="$(render --set modules.mesh.enabled=true --set mesh.dataPlane.jobName=dp)"
+job_hits="$(grep -c 'job_name: "dp"' <<<"$out" || true)"
+[ "${job_hits:-0}" -gt 0 ] || fail "the configured data-plane job name did not reach the scrape config"
+val_hits="$(grep -A1 'AVURUOBS_MESH_DATAPLANE_JOB' <<<"$out" | grep -c '"dp"' || true)"
+[ "${val_hits:-0}" -gt 0 ] || fail "the hub was told a different job name than the sensor scrapes under"
+ok "one value, both ends"
+
+echo "== mesh data plane: the control-plane keep-list grew on the same scrape"
+out="$(render --set modules.mesh.enabled=true --set mesh.controlPlane.enabled=true)"
+cp_hits="$(grep -c 'pilot_conflict_' <<<"$out" || true)"
+[ "${cp_hits:-0}" -gt 0 ] || fail "pilot_conflict_ is not in the control-plane keep-list"
+ok "listener conflicts and queue time ride the istiod scrape"
+
+echo "== mesh data plane: every switch that turns it off, and what still renders"
+# mesh without infra-metrics was a valid install before this scrape existed and
+# must stay one: the screen still reads spans. It renders, minus the receiver.
+out="$(render --set modules.mesh.enabled=true --set modules.infraMetrics.enabled=false)" \
+  || fail "mesh without infra-metrics stopped rendering — a previously valid install now fails"
+grep -q 'prometheus/mesh-dataplane' <<<"$out" && fail "the data-plane scrape rendered with no infra-metrics tables to land in"
+out="$(render --set modules.mesh.enabled=true --set mesh.dataPlane.enabled=false)"
+grep -q 'prometheus/mesh-dataplane' <<<"$out" && fail "the data-plane scrape rendered with mesh.dataPlane.enabled=false"
+out="$(render --set modules.mesh.enabled=true --set sensor.agent.enabled=false)"
+grep -q 'prometheus/mesh-dataplane' <<<"$out" && fail "the data-plane scrape rendered with no agent container to run it"
+out="$(render --set modules.mesh.enabled=true --set mesh.dataPlane.metrics.sourceReporterFromGatewaysOnly=false)"
+grep -qF 'source;gateway' <<<"$out" && fail "the reporter rule rendered with sourceReporterFromGatewaysOnly=false"
+ok "infra-metrics off (still renders), dataPlane off, agent off, reporter rule off"
+
+echo "== mesh data plane: the collection guardrails apply to BOTH ends of a series"
+# A ztunnel lives in istio-system and reports traffic in some other namespace,
+# so the exclusion has to match the caller and the called, not the reporter.
+out="$(render --set modules.mesh.enabled=true --set 'sensor.collection.excludeNamespaces={kube-system}')"
+dst_hits="$(grep -cF 'attributes["destination_workload_namespace"] == "kube-system"' <<<"$out" || true)"
+[ "${dst_hits:-0}" -gt 0 ] || fail "excluded namespace not applied to the destination side"
+src_hits="$(grep -cF 'attributes["source_workload_namespace"] == "kube-system"' <<<"$out" || true)"
+[ "${src_hits:-0}" -gt 0 ] || fail "excluded namespace not applied to the source side"
+ok "excludeNamespaces reaches destination and source"
+
+echo "== mesh data plane: an empty keep-list fails at template time rather than scraping nothing"
+if err="$(render --set modules.mesh.enabled=true --set mesh.dataPlane.metrics.keep="" 2>&1)"; then
+  fail "an empty mesh.dataPlane.metrics.keep rendered — the scrape would run and store no series"
+fi
+grep -q 'an empty keep-list keeps nothing' <<<"$err" || fail "the empty keep-list guard fired with the wrong message"
+ok "guard fires and says what to do"
 
 echo "== cost: off by default, nothing watched, nothing granted"
 out="$(render)"

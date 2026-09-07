@@ -301,6 +301,8 @@ http://{{ include "avuruobs.fullname" . }}-hub:80/internal/v1/ingest-keys/valida
 {{- if .Values.modules.mesh.enabled }}
 - name: AVURUOBS_MESH_SCRAPE_JOB
   value: {{ .Values.mesh.controlPlane.jobName | quote }}
+- name: AVURUOBS_MESH_DATAPLANE_JOB
+  value: {{ .Values.mesh.dataPlane.jobName | quote }}
 {{- end }}
 {{- end -}}
 
@@ -499,6 +501,18 @@ http://{{ include "avuruobs.fullname" . }}-hub:80/internal/v1/ingest-keys/valida
      compare to "false". */}}
 {{- define "avuruobs.collectCost" -}}
 {{- if and .Values.modules.cost.enabled .Values.sensor.agent.cluster.enabled -}}true{{- end -}}
+{{- end -}}
+
+{{/* True when the node collector scrapes the mesh's DATA plane — the proxies on
+     its own node. The mesh module is the consent, infra-metrics owns the
+     otel_metrics_* tables the series land in, mesh.dataPlane is the per-scrape
+     switch, and the agent is the container the prometheus receiver lives in.
+     Unlike controlPlane there is no {{ fail }} for mesh-without-infra-metrics:
+     that pair renders today (the screen still reads spans) and must go on
+     rendering, just without this scrape. Same true/"" contract as the sibling
+     collect* helpers — consume via `if include`, never compare to "false". */}}
+{{- define "avuruobs.collectMeshDataplane" -}}
+{{- if and .Values.modules.mesh.enabled .Values.modules.infraMetrics.enabled .Values.mesh.dataPlane.enabled .Values.sensor.agent.enabled -}}true{{- end -}}
 {{- end -}}
 
 {{/* The leader-election Lease name. Defaults to the release's fullname so two
