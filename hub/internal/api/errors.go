@@ -30,6 +30,13 @@ func forbidden(format string, args ...any) error {
 	return &apiError{status: http.StatusForbidden, message: fmt.Sprintf(format, args...)}
 }
 
+// notFound is for a resource the handler looked for by name and did not find,
+// where the message can say WHERE it looked — a bare "not found" sends the
+// reader to check the URL when the thing that is absent is in the cluster.
+func notFound(format string, args ...any) error {
+	return &apiError{status: http.StatusNotFound, message: fmt.Sprintf(format, args...)}
+}
+
 var errStoreUnavailable = &apiError{status: http.StatusServiceUnavailable, message: "telemetry store unavailable"}
 
 // decodeJSONError classifies a json.Decode error against a MaxBytesReader-
