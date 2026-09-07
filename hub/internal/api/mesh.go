@@ -1,8 +1,9 @@
 package api
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/auth"
 	"github.com/avuru/avuru-obs/hub/internal/modules"
@@ -41,42 +42,24 @@ type meshProxyDTO struct {
 	RTTMs             *float64 `json:"rttMs,omitempty"`
 	FailedConnections *uint64  `json:"failedConnections,omitempty"`
 	Retransmits       *uint64  `json:"retransmits,omitempty"`
+	// What the proxy's own counters said about traffic addressed TO it, from
+	// the data-plane scrape. Pointers for the same reason as the bytes: a
+	// proxy the scrape did not report is a gap, not a fully encrypted one.
+	MTLSShare      *float64 `json:"mtlsShare,omitempty"`
+	PlaintextUnits *uint64  `json:"plaintextUnits,omitempty"`
+	// ztunnel rows only: what the node proxies are carrying, how much they
+	// have been told about and not yet wired, and how often their control-
+	// plane stream was cut. These are FLEET totals stamped on every ztunnel
+	// row — the gauges are summed across pods at their latest value, and the
+	// trace-derived rows are per service name, which for a DaemonSet is one
+	// row for the whole fleet anyway.
+	ActiveWorkloads  *uint64 `json:"activeWorkloads,omitempty"`
+	PendingWorkloads *uint64 `json:"pendingWorkloads,omitempty"`
+	XDSTerminations  *uint64 `json:"xdsTerminations,omitempty"`
 }
 
 type meshProxiesResponse struct {
 	Proxies []meshProxyDTO `json:"proxies"`
-}
-
-// meshControlPlaneResponse deliberately leads with `available`. Every number
-// after it is meaningless when it is false, and a client that renders the
-// numbers anyway would be reporting a perfectly healthy control plane that
-// nobody is watching.
-type meshControlPlaneResponse struct {
-	Available bool `json:"available"`
-	// State says WHY, which `available: false` never could: nothing is
-	// scraping, the target is not answering, or it answered with metrics this
-	// product cannot read. Three problems, three different fixes
-	// (design/2026-08-26-control-plane-diagnosis.md).
-	State string `json:"state"`
-	// Kind is the control plane whose metrics were recognised ("istio").
-	// Empty otherwise — including when something answered and was not
-	// understood, which is the case this field exists to make legible.
-	Kind string `json:"kind,omitempty"`
-	// Reason explains an unavailable control plane in the terms the operator
-	// can act on. Empty when available.
-	Reason           string     `json:"reason,omitempty"`
-	LastSeen         *time.Time `json:"lastSeen,omitempty"`
-	ConnectedProxies uint64     `json:"connectedProxies,omitempty"`
-	Pushes           uint64     `json:"pushes,omitempty"`
-	RejectedConfigs  uint64     `json:"rejectedConfigs,omitempty"`
-	ConvergenceP95Ms float64    `json:"convergenceP95Ms,omitempty"`
-	// Pointers, because these come from a widened scrape keep-list and an
-	// install on an older chart publishes none of them while being perfectly
-	// healthy. For WriteTimeouts especially, nil and 0 are opposite answers:
-	// "we are not looking" versus "no proxy missed its config".
-	PushP95Ms     *float64 `json:"pushP95Ms,omitempty"`
-	WriteTimeouts *uint64  `json:"writeTimeouts,omitempty"`
-	ConfigEvents  *uint64  `json:"configEvents,omitempty"`
 }
 
 // handleMeshProxies lists the mesh's own workloads with their RED and the call
@@ -139,6 +122,15 @@ func (a *API) handleMeshProxies(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 	measured := meshFlows(cls, flows, health)
+	// The data plane's own account: optional reads, gated like the flows, and
+	// a failure costs the fields rather than the screen (the ServiceLabels
+	// pattern) — the RED is still worth showing without them.
+	var secured map[nsWorkloadKey]*observed
+	var ztunnel *storage.MeshZtunnelHealth
+	if a.modules.Enabled(modules.InfraMetrics) {
+		q.MeshDataplaneJob = a.cfg.MeshDataplaneJob
+		secured, ztunnel = a.meshProxySecurity(r.Context(), store, q)
+	}
 
 	in := map[string]uint64{}
 	out := map[string]uint64{}
@@ -181,79 +173,49 @@ func (a *API) handleMeshProxies(w http.ResponseWriter, r *http.Request) error {
 				row.Retransmits = &f.retransmits
 			}
 		}
+		if o := secured[nsWorkloadKeyOf(s.Name, namespaces)]; o != nil {
+			row.MTLSShare = o.mtlsShare()
+			plaintext := o.plaintext
+			row.PlaintextUnits = &plaintext
+		}
+		if ztunnel != nil && row.Role == string(topology.MeshRoleZtunnel) {
+			active, pending, cut := ztunnel.ActiveWorkloads, ztunnel.PendingWorkloads, ztunnel.XDSConnectionTerminations
+			row.ActiveWorkloads, row.PendingWorkloads, row.XDSTerminations = &active, &pending, &cut
+		}
 		resp.Proxies = append(resp.Proxies, row)
 	}
 	writeJSON(w, http.StatusOK, resp)
 	return nil
 }
 
-// handleMeshControlPlane answers "is the control plane still programming the
-// mesh?" — and says so plainly when it cannot.
-func (a *API) handleMeshControlPlane(w http.ResponseWriter, r *http.Request) error {
-	// The scrape lands in the metrics tables, which exist only with the
-	// infra-metrics module. Answering 200 with `available: false` rather than
-	// 404: the question is legitimate on this install, we simply have no data
-	// for it, and the reason is the actionable part.
-	if !a.modules.Enabled(modules.InfraMetrics) {
-		writeJSON(w, http.StatusOK, meshControlPlaneResponse{
-			State:  string(storage.MeshControlPlaneUnconfigured),
-			Reason: "control-plane metrics are stored by the infra-metrics module, which is not enabled on this install",
-		})
-		return nil
+// meshProxySecurity reads what the data plane said about the proxies
+// themselves: per-workload security keyed the mesh's way, and the ztunnel
+// fleet's own counts. Either read failing is logged and yields nil — the
+// fields it feeds stay absent, which is the truth about them.
+func (a *API) meshProxySecurity(
+	ctx context.Context, store storage.Store, q storage.ServiceQuery,
+) (map[nsWorkloadKey]*observed, *storage.MeshZtunnelHealth) {
+	var secured map[nsWorkloadKey]*observed
+	if sec, err := store.MeshSecurity(ctx, q); err != nil {
+		slog.Warn("mesh proxies: data-plane security read failed; rows carry no mTLS share", "error", err)
+	} else if sec.Available {
+		secured = make(map[nsWorkloadKey]*observed, len(sec.Workloads))
+		for _, w := range sec.Workloads {
+			secured[nsWorkloadKey{w.Namespace, w.Workload}] = observe(w)
+		}
 	}
-	store, err := a.store()
-	if err != nil {
-		return err
+	var ztunnel *storage.MeshZtunnelHealth
+	if zt, err := store.MeshZtunnelHealth(ctx, q); err != nil {
+		slog.Warn("mesh proxies: ztunnel read failed; rows carry no workload counts", "error", err)
+	} else if zt.Measured {
+		ztunnel = &zt
 	}
-	tr, err := parseTimeRange(r)
-	if err != nil {
-		return err
-	}
-	tenant, tenants, err := a.projectTenants(r, auth.RoleViewer)
-	if err != nil {
-		return err
-	}
-	cp, err := store.MeshControlPlane(r.Context(), storage.ServiceQuery{
-		Tenant: tenant, Tenants: tenants, Range: tr,
-		MeshScrapeJob: a.cfg.MeshScrapeJob,
-	})
-	if err != nil {
-		return err
-	}
-	if !cp.Available {
-		writeJSON(w, http.StatusOK, meshControlPlaneResponse{
-			State:  string(cp.State),
-			Reason: meshUnavailableReason(cp.State),
-		})
-		return nil
-	}
-	seen := cp.LastSeen
-	writeJSON(w, http.StatusOK, meshControlPlaneResponse{
-		Available:        true,
-		State:            string(cp.State),
-		Kind:             cp.Kind,
-		LastSeen:         &seen,
-		ConnectedProxies: cp.ConnectedProxies,
-		Pushes:           cp.Pushes,
-		RejectedConfigs:  cp.RejectedConfigs,
-		ConvergenceP95Ms: cp.ConvergenceP95Ms,
-		PushP95Ms:        cp.PushP95Ms,
-		WriteTimeouts:    cp.WriteTimeouts,
-		ConfigEvents:     cp.ConfigEvents,
-	})
-	return nil
+	return secured, ztunnel
 }
 
-// meshUnavailableReason turns a silence into an instruction. Each of the three
-// states has a different fix, and before this they all rendered the same
-// sentence — which sent an operator to check a scrape that was working fine.
-func meshUnavailableReason(state storage.MeshControlPlaneState) string {
-	switch state {
-	case storage.MeshControlPlaneUnreachable:
-		return "the control-plane scrape is running and the target is not answering — check mesh.controlPlane.endpoint, or the control plane itself is down"
-	case storage.MeshControlPlaneUnrecognised:
-		return "the scrape target answered, and none of the metrics this product reads came back. The control-plane view is Istio-shaped (pilot_*): a different control plane will show its proxies on this screen but not its own health"
-	default:
-		return "no control-plane metrics in this window — set mesh.controlPlane.enabled and point it at your control plane"
-	}
+// nsWorkloadKeyOf keys a traced service the mesh's way, or under an empty
+// namespace when none is known — which matches nothing, on purpose.
+func nsWorkloadKeyOf(service string, namespaces map[string]string) nsWorkloadKey {
+	ns, wl := workloadKey(service, namespaces[service])
+	return nsWorkloadKey{ns, wl}
 }

@@ -62,6 +62,10 @@ func TestMeshControlPlaneIntegration(t *testing.T) {
 		t.Errorf("optional metrics materialised from nothing: push=%v timeouts=%v events=%v",
 			cp.PushP95Ms, cp.WriteTimeouts, cp.ConfigEvents)
 	}
+	if cp.ListenerConflicts != nil || cp.QueueP95Ms != nil {
+		t.Errorf("optional metrics materialised from nothing: conflicts=%v queue=%v",
+			cp.ListenerConflicts, cp.QueueP95Ms)
+	}
 }
 
 // The widened keep-list, on an install that collects it. The write-timeout case
@@ -80,6 +84,11 @@ func TestMeshControlPlaneOptionalSeries(t *testing.T) {
 	// Same bucket shape as convergence: p95 first reached at bound 0.25s.
 	insertHistogram(t, store, base.Add(1*time.Minute), "pilot_xds_push_time", res,
 		map[string]string{}, []uint64{5, 10, 4, 1, 0}, []float64{0.05, 0.1, 0.25, 1})
+	insertHistogram(t, store, base.Add(1*time.Minute), "pilot_proxy_queue_time", res,
+		map[string]string{}, []uint64{5, 10, 4, 1, 0}, []float64{0.05, 0.1, 0.25, 1})
+	// Conflicts are gauges: 2 then 1 on one istiod is 1, not 3.
+	insertGauge(t, store, base.Add(1*time.Minute), "pilot_conflict_inbound_listener", res, 2)
+	insertGauge(t, store, base.Add(2*time.Minute), "pilot_conflict_inbound_listener", res, 1)
 
 	tr := storage.TimeRange{Start: base, End: base.Add(6 * time.Minute)}
 	cp, err := store.MeshControlPlane(ctx, storage.ServiceQuery{Tenant: "default", Range: tr})
@@ -97,6 +106,12 @@ func TestMeshControlPlaneOptionalSeries(t *testing.T) {
 	}
 	if cp.ConfigEvents == nil || *cp.ConfigEvents != 88 {
 		t.Errorf("config events = %v, want 88 summed", cp.ConfigEvents)
+	}
+	if cp.QueueP95Ms == nil || *cp.QueueP95Ms != 250 {
+		t.Errorf("queue p95 = %v, want 250ms", cp.QueueP95Ms)
+	}
+	if cp.ListenerConflicts == nil || *cp.ListenerConflicts != 1 {
+		t.Errorf("listener conflicts = %v, want the LATEST gauge, 1", cp.ListenerConflicts)
 	}
 }
 

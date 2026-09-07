@@ -406,3 +406,75 @@ func TestControlPlaneOptionalMetricsAreAbsentNotZero(t *testing.T) {
 		}
 	})
 }
+
+// The data plane's own account rides the proxy rows where it exists — and
+// only there. A share on a proxy the scrape never reported would be the
+// fully-encrypted lie this surface refuses elsewhere.
+func TestMeshProxiesCarryMTLSShareOnlyWhenReported(t *testing.T) {
+	fake := &storagetest.Fake{
+		Services: []storage.ServiceStats{
+			{Name: "global-waypoint.istio-waypoint", SpanCount: 30},
+			{Name: "istio-ingressgateway-istio.istio-edge", SpanCount: 40},
+		},
+		Labels: []storage.ServiceLabel{
+			{Service: "global-waypoint.istio-waypoint", K8sNamespace: "istio-waypoint"},
+			{Service: "istio-ingressgateway-istio.istio-edge", K8sNamespace: "istio-edge"},
+		},
+		Security: storage.MeshSecurity{Available: true, State: storage.MeshControlPlaneOK,
+			Workloads: []storage.MeshWorkloadSecurity{{
+				// Keyed the mesh's way: the ".istio-waypoint" suffix is the
+				// sensor's, and the join must strip it.
+				Namespace: "istio-waypoint", Workload: "global-waypoint", Reporter: "destination",
+				Counts: storage.MeshSecurityCounts{MTLSRequests: 30, PlaintextRequests: 10},
+			}}},
+	}
+	rec := meshGet(t, fake, Config{Modules: modules.AllSet()}, "/api/v1/mesh/proxies")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	wp := proxyJSON(t, body, "global-waypoint.istio-waypoint")
+	if wp["mtlsShare"] != 0.75 || wp["plaintextUnits"] != float64(10) {
+		t.Errorf("waypoint share=%v plaintext=%v, want 0.75 and 10", wp["mtlsShare"], wp["plaintextUnits"])
+	}
+	gw := proxyJSON(t, body, "istio-ingressgateway-istio.istio-edge")
+	for _, key := range []string{"mtlsShare", "plaintextUnits"} {
+		if _, present := gw[key]; present {
+			t.Errorf("%s was serialized on a proxy the data plane never reported", key)
+		}
+	}
+}
+
+// What a ztunnel carries is a fact about ztunnel and no other proxy: the
+// counts land on its rows and are absent from a sidecar's.
+func TestMeshProxiesZtunnelRowsCarryWorkloadCounts(t *testing.T) {
+	fake := &storagetest.Fake{
+		Services: []storage.ServiceStats{
+			{Name: "ztunnel", SpanCount: 90},
+			{Name: "istio-ingressgateway-istio.istio-edge", SpanCount: 40},
+		},
+		Ztunnel: storage.MeshZtunnelHealth{Measured: true, ActiveWorkloads: 41, PendingWorkloads: 2, XDSConnectionTerminations: 0, Pods: 3},
+	}
+	rec := meshGet(t, fake, Config{Modules: modules.AllSet()}, "/api/v1/mesh/proxies")
+	body := rec.Body.String()
+	zt := proxyJSON(t, body, "ztunnel")
+	if zt["activeWorkloads"] != float64(41) || zt["pendingWorkloads"] != float64(2) {
+		t.Errorf("ztunnel carries %v active / %v pending, want 41/2", zt["activeWorkloads"], zt["pendingWorkloads"])
+	}
+	// A measured zero survives: no stream cut is the good news.
+	if _, present := zt["xdsTerminations"]; !present {
+		t.Error("a measured zero was omitted, which reads as 'not collected'")
+	}
+	gw := proxyJSON(t, body, "istio-ingressgateway-istio.istio-edge")
+	for _, key := range []string{"activeWorkloads", "pendingWorkloads", "xdsTerminations"} {
+		if _, present := gw[key]; present {
+			t.Errorf("%s was stamped on a gateway", key)
+		}
+	}
+	// Not measured means absent, even on ztunnel.
+	fake.Ztunnel = storage.MeshZtunnelHealth{}
+	rec = meshGet(t, fake, Config{Modules: modules.AllSet()}, "/api/v1/mesh/proxies")
+	if _, present := proxyJSON(t, rec.Body.String(), "ztunnel")["activeWorkloads"]; present {
+		t.Error("counts were serialized with no ztunnel series in the window")
+	}
+}

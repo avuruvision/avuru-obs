@@ -438,6 +438,7 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		// carried. Same gate — they too say for themselves when infra-metrics
 		// is off, and the config half is joined in only when its module is on.
 		mux.Handle("GET /api/v1/mesh/security", a.secured(auth.RoleViewer, a.handleMeshSecurity))
+		mux.Handle("GET /api/v1/mesh/workloads/{namespace}/{name}/requests", a.secured(auth.RoleViewer, a.handleMeshWorkloadRequests))
 	}
 	// The configuration half is a module of its own because it is the only
 	// cluster-wide READ this product asks for — see the AEP. Its routes are
