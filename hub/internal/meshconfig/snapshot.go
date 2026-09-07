@@ -181,11 +181,16 @@ func listSorted(lister cache.GenericLister) []*unstructured.Unstructured {
 
 func toObject(kind string, u *unstructured.Unstructured) Object {
 	spec, _, _ := unstructured.NestedMap(u.Object, "spec")
-	return Object{
+	o := Object{
 		Kind:      kind,
 		Namespace: u.GetNamespace(),
 		Name:      u.GetName(),
 		Labels:    u.GetLabels(),
+		CreatedAt: u.GetCreationTimestamp().Time,
 		Spec:      spec,
 	}
+	if workloadKinds[kind] {
+		o.Annotations, o.AnnotationsCut = keepObjectAnnotations(u.GetAnnotations())
+	}
+	return o
 }

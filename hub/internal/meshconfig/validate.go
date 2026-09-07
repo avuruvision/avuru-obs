@@ -38,6 +38,7 @@ import (
 //     depend on resolution and location; a finding here would be a guess.
 func Validate(snap Snapshot) Snapshot {
 	idx := newIndex(snap)
+	attachRoutes(snap, idx)
 	for i := range snap.Objects {
 		o := &snap.Objects[i]
 		switch o.Kind {

@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -203,5 +205,46 @@ func TestK8sReaderTruncatesPodsSeparately(t *testing.T) {
 				t.Error("Service reported truncated")
 			}
 		}
+	}
+}
+
+// The pod's creation time is projected and must also be read: it dates a
+// workload whose controller object was not read.
+func TestPodFromUnstructuredReadsCreatedAt(t *testing.T) {
+	projected, _ := projectPod(fullPod("shop", "shop-7d9f"))
+	p := podFromUnstructured(projected.(*unstructured.Unstructured))
+	if want := time.Date(2026, 9, 6, 10, 0, 0, 0, time.UTC); !p.CreatedAt.Equal(want) {
+		t.Errorf("CreatedAt = %v, want %v", p.CreatedAt, want)
+	}
+}
+
+// A controller's annotations are kept for the workload page, within bounds: a
+// long list is cut at maxObjectAnnotations (by key, so the same ones every
+// time), a long value is truncated, and last-applied is never kept — it is the
+// object itself, again.
+func TestKeepObjectAnnotationsBounds(t *testing.T) {
+	all := map[string]string{"kubectl.kubernetes.io/last-applied-configuration": "{...}"}
+	for i := range maxObjectAnnotations + 1 {
+		all[fmt.Sprintf("k%03d", i)] = "v"
+	}
+	all["k000"] = strings.Repeat("x", maxAnnotationValue+10)
+	kept, cut := keepObjectAnnotations(all)
+	if !cut || len(kept) != maxObjectAnnotations {
+		t.Fatalf("kept %d annotations, cut=%v; want %d and cut", len(kept), cut, maxObjectAnnotations)
+	}
+	if _, has := kept["kubectl.kubernetes.io/last-applied-configuration"]; has {
+		t.Error("last-applied-configuration was kept")
+	}
+	if _, has := kept["k000"]; !has {
+		t.Error("the first key by name was cut instead of the last")
+	}
+	if got := kept["k000"]; len(got) != maxAnnotationValue+len("…") || !strings.HasSuffix(got, "…") {
+		t.Errorf("long value kept as %d bytes, want %d plus an ellipsis", len(got), maxAnnotationValue)
+	}
+	if kept, cut := keepObjectAnnotations(map[string]string{"a": "b"}); cut || kept["a"] != "b" {
+		t.Errorf("small map = %v cut=%v, want kept whole", kept, cut)
+	}
+	if kept, cut := keepObjectAnnotations(nil); kept != nil || cut {
+		t.Errorf("nil map = %v cut=%v, want nil", kept, cut)
 	}
 }

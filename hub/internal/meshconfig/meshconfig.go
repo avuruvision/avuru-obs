@@ -49,6 +49,15 @@ type Object struct {
 	Namespace string
 	Name      string
 	Labels    map[string]string
+	// CreatedAt is the object's creation timestamp — the date a workload
+	// page shows for its controller.
+	CreatedAt time.Time
+	// Annotations are kept for the workload kinds only (Deployment,
+	// StatefulSet, DaemonSet), within keepObjectAnnotations' bounds, and
+	// AnnotationsCut says when those bounds cut the list. A route's or a
+	// policy's annotations are not read by anything and are not carried.
+	Annotations    map[string]string
+	AnnotationsCut bool
 	// Spec is the object's spec, as decoded. Validation walks it; the API
 	// serves it back as YAML for the detail view.
 	Spec map[string]any
@@ -113,6 +122,9 @@ type Pod struct {
 	Containers     []string
 	InitContainers []string
 	Phase          string
+	// CreatedAt dates the pod, and through the oldest pod a workload whose
+	// controller object was not read.
+	CreatedAt time.Time
 }
 
 // KindSync is one kind's cache, described so staleness is visible rather than

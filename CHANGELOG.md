@@ -11,6 +11,21 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **A workload's page reads like the cluster's record of it.** The mesh
+  screen's workload page knew a workload's mode, its pod count and the
+  policies that select it. It now says when the workload was created and by
+  which controller, its type, `app` and `version`, every label and the
+  controller's annotations (within stated bounds), each pod with the rollout
+  it belongs to, and a one-word health verdict with the reason that decided
+  it. Beside the policies it lists the routes and rules that reach the
+  workload through its Services — HTTPRoute, GRPCRoute, VirtualService,
+  DestinationRule — each with its own findings, so a routed workload is no
+  longer called unconfigured. Nothing new is read from the cluster: the
+  objects were already watched. See
+  [the AEP](design/2026-09-08-mesh-workload-page.md).
+
 ## [0.15.0] — 2026-09-07
 
 ### Added

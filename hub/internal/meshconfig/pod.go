@@ -14,6 +14,23 @@ const (
 	annotationRevision           = "istio.io/rev"
 )
 
+// The bounds on a controller's annotations, kept for the workload page. A
+// list past maxObjectAnnotations is cut by key order, so the same ones survive
+// every time; a value past maxAnnotationValue is truncated. Both are far above
+// what a hand-written object carries and far below what a generator can emit.
+const (
+	maxObjectAnnotations = 64
+	maxAnnotationValue   = 2048
+)
+
+// annotationLastApplied is the object itself, again, as kubectl left it; it
+// is never kept.
+const annotationLastApplied = "kubectl.kubernetes.io/last-applied-configuration"
+
+// workloadKinds are the controllers a workload page is about, and the only
+// kinds whose annotations and creation time the snapshot carries.
+var workloadKinds = map[string]bool{KindDeployment: true, KindStatefulSet: true, KindDaemonSet: true}
+
 var keptPodAnnotations = []string{
 	annotationAmbientRedirection,
 	annotationSidecarInject,
@@ -93,6 +110,37 @@ func keepAnnotations(all map[string]string) map[string]string {
 	return kept
 }
 
+// keepObjectAnnotations returns a controller's annotations within the bounds
+// above, and whether the bounds cut anything. Nil in, nil out.
+func keepObjectAnnotations(all map[string]string) (map[string]string, bool) {
+	if len(all) == 0 {
+		return nil, false
+	}
+	keys := make([]string, 0, len(all))
+	for k := range all {
+		if k != annotationLastApplied {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	cut := false
+	if len(keys) > maxObjectAnnotations {
+		keys, cut = keys[:maxObjectAnnotations], true
+	}
+	kept := make(map[string]string, len(keys))
+	for _, k := range keys {
+		v := all[k]
+		if len(v) > maxAnnotationValue {
+			v, cut = v[:maxAnnotationValue]+"…", true
+		}
+		kept[k] = v
+	}
+	if len(kept) == 0 {
+		return nil, cut
+	}
+	return kept, cut
+}
+
 // projectOwners keeps kind, name and the controller flag of each owner — enough
 // to join a pod to its workload, and none of the uids or apiVersions.
 func projectOwners(u *unstructured.Unstructured) []any {
@@ -153,6 +201,7 @@ func podFromUnstructured(u *unstructured.Unstructured) Pod {
 	p.Containers = namesOf(u, "containers")
 	p.InitContainers = namesOf(u, "initContainers")
 	p.Phase, _, _ = unstructured.NestedString(u.Object, "status", "phase")
+	p.CreatedAt = u.GetCreationTimestamp().Time
 	return p
 }
 

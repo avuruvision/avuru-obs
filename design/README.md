@@ -74,6 +74,7 @@ only if the design needs to be pinned down before coding.
 | [2026-09-06](2026-09-06-mesh-by-role.md) | The mesh, by role — roles, bytes, what a proxy carries | Accepted |
 | [2026-09-07](2026-09-07-mesh-configuration.md) | Reading the mesh's configuration — inventory and validation, read-only | Accepted |
 | [2026-09-08](2026-09-08-mesh-declared-vs-observed.md) | What the mesh was told, and what it did — data-plane scrape, workloads, posture | Accepted |
+| [2026-09-08](2026-09-08-mesh-workload-page.md) | The workload's page — what the cluster records, and what it logged | Accepted |
 
 ## Conventions
 
