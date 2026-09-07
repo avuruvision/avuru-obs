@@ -3,6 +3,7 @@ package meshconfig
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 // running is a Running pod owned by a controller, with an app container.
@@ -232,5 +233,35 @@ func TestCountWorkloads(t *testing.T) {
 	}
 	if namespaces[1].Workloads != 0 || namespaces[1].Enrolled != 0 {
 		t.Errorf("empty = %+v, want zeros", namespaces[1])
+	}
+}
+
+// A workload's record is its controller's: creation time and annotations come
+// from the Deployment, StatefulSet or DaemonSet that owns the pods. When no
+// controller object was read, the oldest pod dates the workload instead.
+func TestWorkloadCarriesControllerMetadata(t *testing.T) {
+	born := time.Date(2026, 7, 9, 10, 23, 0, 0, time.UTC)
+	hash := map[string]string{"app": "cart", labelPodTemplateHash: "7d9f"}
+	young := running("shop", "orphan-7d9f-b", KindReplicaSet, "orphan-7d9f", map[string]string{labelPodTemplateHash: "7d9f"})
+	young.CreatedAt = born.Add(2 * time.Hour)
+	old := running("shop", "orphan-7d9f-a", KindReplicaSet, "orphan-7d9f", map[string]string{labelPodTemplateHash: "7d9f"})
+	old.CreatedAt = born.Add(time.Hour)
+	pods := []Pod{running("shop", "cart-7d9f-a", KindReplicaSet, "cart-7d9f", hash), young, old}
+	objects := []Object{{
+		Kind: KindDeployment, Namespace: "shop", Name: "cart", CreatedAt: born,
+		Annotations: map[string]string{"deployment.kubernetes.io/revision": "3"},
+	}}
+
+	got := byWorkload(WorkloadsFrom(pods, nil, objects, "istio-system"))
+	cart := got["shop/cart"]
+	if !cart.CreatedAt.Equal(born) || cart.CreatedFrom != CreatedFromController {
+		t.Errorf("cart created = %v from %q, want %v from controller", cart.CreatedAt, cart.CreatedFrom, born)
+	}
+	if cart.Annotations["deployment.kubernetes.io/revision"] != "3" {
+		t.Errorf("cart annotations = %v, want the Deployment's", cart.Annotations)
+	}
+	orphan := got["shop/orphan-7d9f"]
+	if !orphan.CreatedAt.Equal(born.Add(time.Hour)) || orphan.CreatedFrom != CreatedFromPods {
+		t.Errorf("orphan created = %v from %q, want the oldest pod's %v", orphan.CreatedAt, orphan.CreatedFrom, born.Add(time.Hour))
 	}
 }

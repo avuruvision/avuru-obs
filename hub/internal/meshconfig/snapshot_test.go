@@ -11,6 +11,7 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -269,3 +270,30 @@ func TestSnapshotCarriesWorkloadsAndServices(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// toObject keeps what the workload page shows of a controller — its creation
+// time and, for the workload kinds only, its annotations. A route's
+// annotations are nobody's business here and are not carried.
+func TestToObjectKeepsCreatedAtAndWorkloadAnnotations(t *testing.T) {
+	born := "2026-07-09T10:23:00Z"
+	u := func(kind string) *unstructured.Unstructured {
+		return &unstructured.Unstructured{Object: map[string]any{
+			"kind": kind,
+			"metadata": map[string]any{
+				"name": "x", "namespace": "shop", "creationTimestamp": born,
+				"annotations": map[string]any{"team": "checkout"},
+			},
+			"spec": map[string]any{},
+		}}
+	}
+	dep := toObject(KindDeployment, u("Deployment"))
+	if !dep.CreatedAt.Equal(time.Date(2026, 7, 9, 10, 23, 0, 0, time.UTC)) {
+		t.Errorf("Deployment CreatedAt = %v", dep.CreatedAt)
+	}
+	if dep.Annotations["team"] != "checkout" {
+		t.Errorf("Deployment annotations = %v, want kept", dep.Annotations)
+	}
+	if r := toObject(KindHTTPRoute, u("HTTPRoute")); r.Annotations != nil || r.CreatedAt.IsZero() {
+		t.Errorf("HTTPRoute annotations = %v created = %v; want none kept and a date", r.Annotations, r.CreatedAt)
+	}
+}

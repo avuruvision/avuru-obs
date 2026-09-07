@@ -75,6 +75,14 @@ type meshWorkloadDTO struct {
 	ServiceAccount    string `json:"serviceAccount,omitempty"`
 	Pods              int    `json:"pods"`
 	RunningPods       int    `json:"runningPods"`
+	// CreatedAt is the controller's creation time, or the oldest pod's when
+	// the controller was not read — CreatedFrom says which, so a date is
+	// never mistaken for the other. App and Version are the two labels every
+	// mesh tool reads a workload's identity from; absent when unset.
+	CreatedAt   *string `json:"createdAt,omitempty"`
+	CreatedFrom string  `json:"createdFrom,omitempty"`
+	App         string  `json:"app,omitempty"`
+	Version     string  `json:"version,omitempty"`
 	// DeclaredMTLS is absent when no policy applies and the mesh default
 	// governs — which we did not read, and will not guess. ObservedMTLS is
 	// absent when the data plane was not asked: not measured is not zero.
@@ -249,6 +257,10 @@ func toWorkloadDTO(wl meshconfig.Workload, traffic map[string]serviceDTO) meshWo
 		ServiceAccount: wl.ServiceAccount,
 		Pods:           wl.Pods,
 		RunningPods:    wl.RunningPods,
+		CreatedAt:      syncedAtString(wl.CreatedAt),
+		CreatedFrom:    wl.CreatedFrom,
+		App:            firstLabel(wl.Labels, "app", "app.kubernetes.io/name"),
+		Version:        firstLabel(wl.Labels, "version", "app.kubernetes.io/version"),
 		Services:       []string{},
 		Policies:       []meshPolicyRefDTO{},
 	}
@@ -277,4 +289,16 @@ func toWorkloadDTO(wl meshconfig.Workload, traffic map[string]serviceDTO) meshWo
 		}
 	}
 	return row
+}
+
+// firstLabel returns the first of keys that labels sets, or "". The order is
+// the precedence: the mesh's own convention first, Kubernetes' recommended
+// label second.
+func firstLabel(labels map[string]string, keys ...string) string {
+	for _, k := range keys {
+		if v := labels[k]; v != "" {
+			return v
+		}
+	}
+	return ""
 }

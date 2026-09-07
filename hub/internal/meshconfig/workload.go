@@ -4,6 +4,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 )
 
 // PolicyRef names one policy that covers a workload, and at what scope it
@@ -12,6 +13,22 @@ import (
 type PolicyRef struct {
 	Kind, Namespace, Name, Scope string
 }
+
+// RouteRef names one route or rule that reaches a workload through one of
+// its Services: Service is that Service, "namespace/name", and Host is how the
+// object spelled it — a bare name, a short form or a FQDN — so the page shows
+// what the operator wrote.
+type RouteRef struct {
+	Kind, Namespace, Name, Service, Host string
+}
+
+// Where a workload's creation time came from. The controller's own date is
+// the record; when no controller object was read the oldest pod dates it,
+// and the page says so.
+const (
+	CreatedFromController = "controller"
+	CreatedFromPods       = "pods"
+)
 
 // Workload is one thing the cluster runs, seen from its pods.
 //
@@ -31,6 +48,13 @@ type Workload struct {
 	ServiceAccount string
 	Pods           int
 	RunningPods    int
+	// CreatedAt is the controller's creation time, or the oldest pod's when
+	// no controller object was read; CreatedFrom says which. Annotations are
+	// the controller's, within the reader's bounds (AnnotationsCut).
+	CreatedAt      time.Time
+	CreatedFrom    string
+	Annotations    map[string]string
+	AnnotationsCut bool
 	// DeclaredMode is what was asked for: "ambient", "sidecar" or "" — the
 	// pod's own istio.io/dataplane-mode first, then the namespace's.
 	DeclaredMode string
@@ -55,6 +79,10 @@ type Workload struct {
 	// Services are "namespace/name" of every Service whose selector picks
 	// these pods.
 	Services []string
+	// Routes are the routes and rules that reach this workload through those
+	// Services — attached by the validator, which holds the host index. An
+	// empty list is an answer: nothing names this workload.
+	Routes   []RouteRef
 	Findings []Finding
 }
 
@@ -80,9 +108,13 @@ func WorkloadsFrom(pods []Pod, namespaces []Namespace, objects []Object, rootNam
 		nsByName[ns.Name] = ns
 	}
 	deployments := deploymentSet(objects)
+	controllers := map[string]Object{}
 	policiesByNS := map[string][]Object{}
 	var peerAuths []Object
 	for _, o := range objects {
+		if workloadKinds[o.Kind] {
+			controllers[o.Kind+"/"+key(o.Namespace, o.Name)] = o
+		}
 		if !workloadPolicyKinds[o.Kind] {
 			continue
 		}
@@ -112,10 +144,18 @@ func WorkloadsFrom(pods []Pod, namespaces []Namespace, objects []Object, rootNam
 				DeclaredMode:   declaredMode(p, ns),
 			}
 			w.Waypoint, w.WaypointNamespace, w.WaypointSource = waypointBinding(p.Labels, p.Namespace, ns, SourceWorkload)
+			if c, ok := controllers[k.Kind+"/"+k.id()]; ok {
+				w.CreatedAt, w.CreatedFrom = c.CreatedAt, CreatedFromController
+				w.Annotations, w.AnnotationsCut = c.Annotations, c.AnnotationsCut
+			}
 			groups[k] = w
 			order = append(order, k)
 		}
 		w.Pods++
+		if w.CreatedFrom != CreatedFromController && !p.CreatedAt.IsZero() &&
+			(w.CreatedAt.IsZero() || p.CreatedAt.Before(w.CreatedAt)) {
+			w.CreatedAt, w.CreatedFrom = p.CreatedAt, CreatedFromPods
+		}
 		// Only a running pod says anything about enrolment: a Pending pod has
 		// no sidecar yet and a Succeeded one no longer counts.
 		if p.Phase != phaseRunning {
