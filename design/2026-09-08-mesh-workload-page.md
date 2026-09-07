@@ -199,6 +199,6 @@ when the logs module is on.
 - [x] Reader: creation time, bounded annotations, routes through Services
 - [x] API: the record, health, routes with findings
 - [x] Store: composed log sources under one cursor; the workload logs route
-- [ ] UI: Overview tab
+- [x] UI: Overview tab
 - [ ] UI: Logs tab
 - [ ] Docs aligned

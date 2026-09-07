@@ -10,11 +10,13 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useTimeRange } from "@/hooks/use-time-range";
 import { useMeshWorkload } from "@/hooks/use-mesh-data";
 import { formatRate } from "@/lib/format";
-import type { MeshPolicyRef, MeshWorkload, MeshWorkloadDetail as Detail } from "@/lib/api-types";
+import { statusDotClass, statusLabel, statusTone } from "@/lib/health-status";
+import type { MeshWorkload, MeshWorkloadDetail as Detail } from "@/lib/api-types";
 import { FindingCard } from "./config-browser";
 import { EnrolmentBadge, MtlsLock, ObservedMtls } from "./posture";
 import { PostureBadge } from "./posture-badge";
 import { SnapshotNotes, UnreadableState } from "./snapshot-notes";
+import { Item, WorkloadOverview } from "./workload-overview";
 
 // One workload, whole: what the cluster says it is, what was declared for it,
 // what was measured, and which policies decided that.
@@ -82,6 +84,12 @@ export function WorkloadDetail({
           injected={w.injected}
           captured={w.captured}
         />
+        {data.health && (
+          <Badge tone={statusTone(data.health.status)} title={data.health.reason} data-testid="mesh-workload-health">
+            <span className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${statusDotClass(data.health.status)}`} />
+            {statusLabel(data.health.status)}
+          </Badge>
+        )}
         {/* Traces, logs and errors are the same screens every other workload
             uses; the link takes the reader there rather than rebuilding them. */}
         <Link
@@ -104,22 +112,7 @@ export function WorkloadDetail({
         <DeclaredVsObserved w={w} />
       </div>
 
-      <section className="flex flex-col gap-2" data-testid="mesh-workload-policies">
-        <div>
-          <h2 className="text-sm font-medium">Policies that cover it</h2>
-          <p className="mt-0.5 text-xs text-base-content/55">
-            Every policy whose selector, namespace or mesh-wide scope reaches this
-            workload, with what is wrong with each.
-          </p>
-        </div>
-        {w.policies.length === 0 ? (
-          <p className="text-xs text-base-content/55">
-            No policy names this workload; the mesh default governs it.
-          </p>
-        ) : (
-          w.policies.map((p) => <PolicyRow key={`${p.kind}/${p.namespace}/${p.name}`} p={p} />)
-        )}
-      </section>
+      <WorkloadOverview w={w} data={data} />
 
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-medium">Findings</h2>
@@ -153,21 +146,6 @@ function IdentityCard({ w, data }: { w: MeshWorkload; data: Detail }) {
           label="Pods"
           value={`${w.runningPods}/${w.pods} running`}
           tone={w.pods > 0 && w.runningPods === 0 ? "warning" : undefined}
-        />
-        <Item
-          label="Waypoint"
-          value={
-            w.waypoint
-              ? `${w.waypoint}${w.waypointNamespace ? ` in ${w.waypointNamespace}` : ""}${
-                  w.waypointSource ? ` · bound at ${w.waypointSource} scope` : ""
-                }`
-              : "none"
-          }
-        />
-        <Item
-          label="Services"
-          value={w.services.length ? w.services.join(", ") : "none select it"}
-          mono={w.services.length > 0}
         />
         <div className="col-span-2">
           <dt className="text-xs text-base-content/55">Nodes</dt>
@@ -230,54 +208,5 @@ function DeclaredVsObserved({ w }: { w: MeshWorkload }) {
         </div>
       </div>
     </Card>
-  );
-}
-
-function PolicyRow({ p }: { p: MeshPolicyRef }) {
-  // The config browser encodes its selection as kind/namespace/name.
-  const qs = new URLSearchParams({
-    view: "config",
-    kind: p.kind,
-    cfgns: p.namespace,
-    object: `${p.kind}/${p.namespace}/${p.name}`,
-  });
-  return (
-    <Card className="p-3">
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <Badge>{p.kind}</Badge>
-        <Link href={`/mesh?${qs}`} className="font-mono hover:text-primary hover:underline">
-          {p.namespace}/{p.name}
-        </Link>
-        <span className="text-xs text-base-content/50">{p.scope} scope</span>
-      </div>
-      {p.findings?.length ? (
-        <div className="mt-2 flex flex-col gap-2">
-          {p.findings.map((f, i) => (
-            <FindingCard key={`${f.code}-${i}`} finding={f} />
-          ))}
-        </div>
-      ) : null}
-    </Card>
-  );
-}
-
-function Item({
-  label,
-  value,
-  mono,
-  tone,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-  tone?: "warning";
-}) {
-  return (
-    <div>
-      <dt className="text-xs text-base-content/55">{label}</dt>
-      <dd className={`mt-0.5 ${mono ? "font-mono text-xs" : ""} ${tone === "warning" ? "text-warning" : ""}`}>
-        {value}
-      </dd>
-    </div>
   );
 }

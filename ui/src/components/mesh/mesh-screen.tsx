@@ -99,7 +99,9 @@ export function MeshScreen() {
       <WorkloadDetail
         namespace={slash < 0 ? "" : workload.slice(0, slash)}
         name={slash < 0 ? workload : workload.slice(slash + 1)}
-        onBack={() => setMany({ wl: undefined })}
+        onBack={() =>
+          setMany({ wl: undefined, wltab: undefined, wlq: undefined, wlsev: undefined, wlsrc: undefined })
+        }
       />
     );
   }
