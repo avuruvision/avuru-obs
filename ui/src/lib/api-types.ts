@@ -403,6 +403,13 @@ export interface MeshWorkload {
   serviceAccount?: string;
   pods: number;
   runningPods: number;
+  // The controller's creation time, or the oldest pod's when the controller
+  // was not read — createdFrom ("controller" | "pods") says which. app and
+  // version are the labels every mesh tool reads an identity from.
+  createdAt?: string;
+  createdFrom?: string;
+  app?: string;
+  version?: string;
   // Absent when no policy applies and the mesh default governs — not read,
   // not guessed. observedMtls is absent when nothing measured it.
   declaredMtls?: MeshDeclaredMtls;
@@ -448,8 +455,29 @@ export interface MeshPod {
   name: string;
   node?: string;
   phase?: string;
+  // The pod-template-hash: which rollout this pod belongs to.
+  revision?: string;
+  createdAt?: string;
   injected: boolean;
   captured: boolean;
+}
+
+// The page's one-word verdict on a workload, in the health board's
+// vocabulary, with the reason that decided it.
+export interface MeshHealth {
+  status: HealthStatus | string;
+  reason: string;
+}
+
+// One route or rule that reaches a workload through one of its Services, with
+// that object's own findings.
+export interface MeshConfigRef {
+  kind: string;
+  namespace: string;
+  name: string;
+  service: string;
+  host: string;
+  findings?: MeshFinding[];
 }
 
 export interface MeshWorkloadDetail {
@@ -462,6 +490,16 @@ export interface MeshWorkloadDetail {
   // Absent when the cluster, or its pods, could not be read: a zero-valued
   // workload would read as one that runs nothing.
   workload?: MeshWorkload;
+  // The workload's labels without the template hash; the controller's
+  // annotations within the hub's bounds, annotationsCut saying when they cut.
+  labels?: Record<string, string>;
+  annotations?: Record<string, string>;
+  annotationsCut?: boolean;
+  // Absent when pods could not be read.
+  health?: MeshHealth;
+  // Routes and rules that reach the workload through its Services. Empty is
+  // an answer.
+  routes: MeshConfigRef[];
   findings: MeshFinding[];
   // Bounded; podsShown and podsTotal say by how much.
   pods: MeshPod[];

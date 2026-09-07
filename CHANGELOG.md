@@ -38,6 +38,17 @@ When a release is cut, that block is renamed to the version with its date.
   `sources.fallback` rather than showing an empty column. Needs the mesh and
   logs modules; `mesh-config` only makes it precise.
 
+- **The workload page, on screen.** The mesh screen's workload page now
+  opens on the cluster's record: a health badge in the header with its
+  reason a hover away; an Overview card (created, type, version, app, mode)
+  and a Related card linking the workload's Services to their own screens
+  and its L7 waypoint to the proxy page; labels as chips and the
+  controller's annotations behind a fold; a pods table with the rollout,
+  phase, enrolment, node and age of each; and one "Istio config" section
+  listing the policies that select the workload and the routes and rules
+  that reach it through its Services, every reference linking into the
+  configuration browser with its own findings beside it.
+
 ## [0.15.0] — 2026-09-07
 
 ### Added

@@ -119,12 +119,56 @@ const POLICY_FINDING = {
   hint: "drop the port override, or say so in the policy's name",
 };
 
+const ROUTE_FINDING = {
+  code: "MESH_ROUTE_PARENT_MISSING",
+  severity: "error",
+  message: "parentRef shop/edge names a Gateway that does not exist",
+  hint: "create the Gateway, or correct the parentRef — until then nothing serves this route",
+};
+
+// The page: the row, the cluster's record of it, its pods with their rollout,
+// and every piece of configuration that names it — a policy by label, a route
+// through its Service — each with its own findings.
 const REPORTS_DETAIL = {
   state: "ok",
   syncedAt: new Date().toISOString(),
-  workload: { ...REPORTS, policies: [{ ...NAMESPACE_POLICY, findings: [POLICY_FINDING] }] },
+  workload: {
+    ...REPORTS,
+    createdAt: "2026-07-09T10:23:00Z",
+    createdFrom: "controller",
+    app: "reports",
+    version: "v2",
+    waypoint: "global-waypoint",
+    waypointNamespace: "istio-waypoint",
+    waypointSource: "namespace",
+    services: ["shop/reports"],
+    policies: [{ ...NAMESPACE_POLICY, findings: [POLICY_FINDING] }],
+  },
+  labels: { app: "reports", version: "v2", "avuru.io/tier": "T1" },
+  annotations: { "deployment.kubernetes.io/revision": "3" },
+  health: { status: "down", reason: "none of 1 pods is running" },
+  routes: [
+    {
+      kind: "HTTPRoute",
+      namespace: "shop",
+      name: "reports-route",
+      service: "shop/reports",
+      host: "reports",
+      findings: [ROUTE_FINDING],
+    },
+  ],
   findings: [NOT_ENROLLED],
-  pods: [{ name: "reports-7c9d-x1", node: "node-a", phase: "Running", injected: false, captured: false }],
+  pods: [
+    {
+      name: "reports-7c9d-x1",
+      node: "node-a",
+      phase: "Running",
+      revision: "7c9d",
+      createdAt: "2026-07-09T11:23:00Z",
+      injected: false,
+      captured: false,
+    },
+  ],
   podsShown: 1,
   podsTotal: 1,
 };
@@ -270,6 +314,55 @@ test.describe("mesh workloads", () => {
 
     await page.getByRole("button", { name: "All workloads" }).click();
     await expect(page.getByTestId("mesh-workloads")).toBeVisible();
+  });
+
+  test("a workload's page reads like the cluster's record of it", async ({ page }) => {
+    await stubMesh(page);
+    await page.goto("/mesh?view=workloads&wl=shop%2Freports");
+
+    // The verdict, with its reason a hover away.
+    const health = page.getByTestId("mesh-workload-health");
+    await expect(health).toContainText("Down");
+    await expect(health).toHaveAttribute("title", /none of 1 pods/);
+
+    const overview = page.getByTestId("mesh-workload-overview");
+    await expect(overview).toContainText("Deployment");
+    await expect(overview).toContainText("v2");
+    await expect(overview).toContainText("ago");
+    // Labels as chips, without the ReplicaSet's hash; the controller's
+    // annotations behind a fold.
+    await expect(page.getByTestId("mesh-workload-labels")).toContainText("avuru.io/tier=T1");
+    await expect(overview).not.toContainText("pod-template-hash");
+    await expect(overview).toContainText("Annotations (1)");
+
+    // Related: the Service by its own screen, the waypoint by its proxy page.
+    await expect(overview.getByRole("link", { name: "shop/reports", exact: true })).toHaveAttribute(
+      "href",
+      "/services?service=reports",
+    );
+    await expect(overview.getByRole("link", { name: /global-waypoint/ })).toHaveAttribute(
+      "href",
+      "/mesh?proxy=global-waypoint.istio-waypoint",
+    );
+
+    // Each pod with the rollout it belongs to.
+    const pods = page.getByTestId("mesh-workload-pods");
+    await expect(pods).toContainText("reports-7c9d-x1");
+    await expect(pods).toContainText("7c9d");
+    await expect(pods).toContainText("node-a");
+    await expect(pods).toContainText("not enrolled");
+
+    // Policies and routes in one section, each linking into the config
+    // browser and carrying its own finding.
+    const config = page.getByTestId("mesh-workload-istio-config");
+    await expect(config).toContainText("PeerAuthentication");
+    await expect(config).toContainText("HTTPRoute");
+    await expect(config).toContainText("via shop/reports");
+    await expect(config).toContainText("MESH_ROUTE_PARENT_MISSING");
+    await expect(config.getByRole("link", { name: "shop/reports-route" })).toHaveAttribute(
+      "href",
+      /view=config.*object=HTTPRoute/,
+    );
   });
 
   test("namespaces say where their mode came from, and how many are enrolled", async ({ page }) => {
