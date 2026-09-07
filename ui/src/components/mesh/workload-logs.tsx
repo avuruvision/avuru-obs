@@ -18,6 +18,14 @@ import type { MeshLogSources } from "@/lib/api-types";
 const SOURCES = ["app", "ztunnel", "waypoint"] as const;
 type Source = (typeof SOURCES)[number];
 
+// What the tab shows when the URL says nothing: the workload's own lines. The
+// proxies' lines are opt-in — they are about the workload, not by it. This is
+// the UI's default, not the hub's (which reads an absent source= as all
+// three), so the request always spells it out.
+const DEFAULT_SOURCES: readonly Source[] = ["app"];
+const isDefault = (set: Set<Source>) =>
+  set.size === DEFAULT_SOURCES.length && DEFAULT_SOURCES.every((s) => set.has(s));
+
 // A workload's logs from all three sources, one stream. The toolbar is this
 // tab's own rather than the logs screen's: that one is welded to the URL keys
 // of its page (q, service, severity), and this page already uses q for the
@@ -40,13 +48,13 @@ export function WorkloadLogs({
   const srcParam = get("wlsrc");
   const enabled = useMemo<Set<Source>>(() => {
     const asked = (srcParam ?? "").split(",").filter((s): s is Source => SOURCES.includes(s as Source));
-    return new Set(asked.length ? asked : SOURCES);
+    return new Set(asked.length ? asked : DEFAULT_SOURCES);
   }, [srcParam]);
 
   const logs = useMeshWorkloadLogs(time, true, namespace, name, {
     q,
     severity,
-    source: srcParam || undefined,
+    source: SOURCES.filter((s) => enabled.has(s)).join(","),
     waypoint,
   });
   const pages = logs.data?.pages.map((p) => p.logs);
@@ -58,8 +66,8 @@ export function WorkloadLogs({
     const next = new Set(enabled);
     if (next.has(s)) next.delete(s);
     else next.add(s);
-    // All three on is the default, and the default stays out of the URL.
-    setMany({ wlsrc: next.size === SOURCES.length ? undefined : SOURCES.filter((x) => next.has(x)).join(",") });
+    // The default stays out of the URL.
+    setMany({ wlsrc: isDefault(next) ? undefined : SOURCES.filter((x) => next.has(x)).join(",") });
   };
 
   return (
@@ -87,21 +95,32 @@ export function WorkloadLogs({
           onChange={(v) => setMany({ wlsev: v || undefined })}
           options={SEVERITY_OPTIONS}
         />
-        <div className="flex items-center gap-1" role="group" aria-label="Log sources">
+        <div className="flex items-center gap-3" role="group" aria-label="Log sources">
           {SOURCES.map((s) => {
             const unavailable = s === "waypoint" && sources !== undefined && sources.waypoint.length === 0;
+            // One source always stays on: an empty list would read as the
+            // default and the box would snap back, so the last one is held.
+            const last = enabled.size === 1 && enabled.has(s);
+            const title = unavailable
+              ? "No waypoint is bound to this workload"
+              : last
+                ? "At least one source stays on"
+                : undefined;
             return (
-              <Button
+              <label
                 key={s}
-                size="sm"
-                variant={enabled.has(s) ? "primary" : "ghost"}
-                aria-pressed={enabled.has(s)}
-                disabled={unavailable}
-                title={unavailable ? "No waypoint is bound to this workload" : undefined}
-                onClick={() => toggle(s)}
+                className="flex cursor-pointer items-center gap-1.5 text-xs text-base-content/70"
+                title={title}
               >
-                {s}
-              </Button>
+                <input
+                  type="checkbox"
+                  checked={enabled.has(s)}
+                  disabled={unavailable || last}
+                  onChange={() => toggle(s)}
+                  className="accent-primary"
+                />
+                {s === "app" ? <span className="font-mono">{name}</span> : s}
+              </label>
             );
           })}
         </div>
