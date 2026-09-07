@@ -113,6 +113,49 @@ When a release is cut, that block is renamed to the version with its date.
   name the grant to add; a pod list the snapshot had to cut says so, and says
   that an empty issues column is not a clean bill; a rate that was not measured
   is absent, never zero.
+- **Every meshed workload now has a posture: what the cluster declared, and
+  what its proxy observed.** The namespace list said "STRICT" and the map said
+  nothing, and a STRICT policy that is not applied to a workload looks, from
+  configuration alone, exactly like one that is. `GET /api/v1/mesh/security`
+  puts the two side by side per workload — the PeerAuthentication mode in
+  force, and how much of the traffic the proxy accepted came over mutual TLS,
+  how much in the clear, and who sent the clear part — and draws one of four
+  verdicts from them: strict and all mutual TLS; declared strict, observed
+  plaintext; permissive but every caller already on mutual TLS; permissive
+  with plaintext callers, named. The second is a finding
+  (`MESH_MTLS_NOT_ENFORCED`): plaintext reached the workload under a policy
+  that forbids it, so the policy is not applied — the pod is not enrolled, the
+  selector misses it, or a DestinationRule disables TLS for its host, and the
+  hint says which to check first. The third is the good news
+  (`MESH_MTLS_READY_TO_TIGHTEN`): STRICT would refuse nothing that is
+  currently talking. The fourth names the callers to migrate before
+  tightening (`MESH_PLAINTEXT_CALLERS`). And a workload the traces saw, in a
+  namespace labelled for ambient, that no proxy reported carrying at all, is
+  its own finding (`MESH_TRAFFIC_UNCARRIED`) — the traffic is crossing the
+  cluster unmeshed while the namespace reads as covered. Absence stays honest
+  throughout: a data plane nobody scrapes says so and names the switch, a
+  policy nobody read leaves every declared field out, and a proxy that
+  declined to classify traffic is counted as unknown, not as either side. The
+  same per-edge counts mark the service map: every edge the destination's
+  proxy reported carries its mutual-TLS share and its plaintext calls, and an
+  edge nobody measured carries neither.
+
+- **A proxy's requests by outcome, and what a ztunnel is carrying.** Opening a
+  workload from the mesh screen now shows its requests the way its proxy
+  counted them: by response flag, with the proxy's own reason in words —
+  a circuit breaker open, retries exhausted, an upstream that would not
+  connect, no route — by the destination version each landed on, and by caller
+  with its 5xx count, so a failing workload is failing for everyone or for one
+  client. The per-upstream counters a reader looks for next (pending overflow,
+  outlier ejections) are stated as not collected: a default mesh does not
+  expose them, and the response names the proxy setting
+  (`proxyStatsMatcher.inclusionPrefixes`) that does. Ztunnel rows carry the
+  node proxies' own counts — workloads carried, workloads told about and not
+  yet wired, control-plane streams cut — and the control-plane card reads two
+  more of istiod's series when the scrape carries them: listener conflicts
+  (configuration it could not program because two pieces claim one listener)
+  and the queue p95, which with the send and the convergence completes the
+  account of where a slow push spends its time.
 
 ## [0.14.0] — 2026-09-06
 
