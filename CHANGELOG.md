@@ -11,6 +11,8 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-09-07
+
 ### Added
 
 - **A workload's page reads like the cluster's record of it.** The mesh

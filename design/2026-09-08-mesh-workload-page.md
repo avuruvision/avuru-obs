@@ -201,4 +201,4 @@ when the logs module is on.
 - [x] Store: composed log sources under one cursor; the workload logs route
 - [x] UI: Overview tab
 - [x] UI: Logs tab
-- [ ] Docs aligned
+- [x] Docs aligned

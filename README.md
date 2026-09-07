@@ -30,8 +30,8 @@ light up — no SDK, no sidecars, no YAML archaeology.
 
 </details>
 
-> **Status: v0.13.0 released** (2026-09-04); `main` is under active development
-> toward v0.14. See [CHANGELOG.md](CHANGELOG.md) for what shipped,
+> **Status: v0.16.0 released** (2026-09-07); `main` is under active development
+> toward v0.17. See [CHANGELOG.md](CHANGELOG.md) for what shipped,
 > [ROADMAP.md](ROADMAP.md) for where it's headed and
 > [`agent_docs/architecture.md`](agent_docs/architecture.md) for the living
 > architecture.
@@ -128,6 +128,23 @@ Beyond the core signals, the day-2 layer:
   ancestry across the proxies and shows the dependency underneath, naming the
   proxy it came through. The mesh toggle swaps representations rather than
   stacking them, so the same request is never counted twice.
+- **The workload page an operator expects, and the logs no other screen joins**
+  *(v0.16)* — on the mesh screen a workload opens on the cluster's own record
+  of it: created when and by which controller, type, app and version, every
+  label, the controller's annotations, each pod with the rollout it belongs
+  to, a health verdict with the reason that decided it, and the routes and
+  rules that reach it through its Services beside the policies that select
+  it. Then a Logs tab that puts the workload's own lines, the ztunnel lines
+  naming its pods and the waypoint lines naming its Service in one table
+  under one cursor — three services the logs screen files apart, joined by
+  the hub that knows the pods. When it cannot know them, it says so.
+- **What the mesh was told, and what it did** *(v0.15)* — the sensor reads what
+  ztunnel and the Envoy proxies report about themselves, per request and per
+  connection, and the hub joins it to the PeerAuthentication that actually
+  governs each workload. Every namespace, workload and edge gets a lock;
+  "declared strict, observed plaintext" is a finding, not a silence; a proxy
+  explains its refusals by response flag; every workload the cluster runs has
+  a row whether or not it ever sent a span.
 - **The mesh, and the control plane that programs it** *(v0.9)* — every proxy's
   load, latency and success rate, with the calls it carried in and out counted
   apart, so a proxy that has stopped forwarding is visible even while its own

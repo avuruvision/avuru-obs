@@ -353,7 +353,38 @@ be worse than one that names the setting. Posture history and alerting on
 posture wait until the verdicts have been trusted on real clusters. Reading a
 second control plane still waits on an operator running one.
 
-## Beyond v0.15 (directional)
+## v0.16 — the workload's page — SHIPPED (v0.16.0)
+
+v0.15 put, on one row, what the mesh was told and what it did. On a real
+ambient cluster with a mesh console beside it, the reader's next questions were the ones
+that row did not answer: what is this workload, since when, which pods on which
+rollout, what configuration names it — and what did the proxies write about it.
+The record was already in objects the reader watched; the proxies' lines were
+already in the store, filed under the proxies' own names. Nothing new was read
+from the cluster.
+
+> **As an operator I open a workload and read the cluster's own record of it,
+> then its logs — its own, and what the node proxy and its waypoint wrote about
+> it — without leaving the page.**
+
+| Theme | Shipped |
+|---|---|
+| **The record** | The release-defining item. A workload's page carries the controller's creation time (or the oldest pod's, and it says which), its type, `app` and `version`, every label and the controller's annotations within stated bounds, each pod with the rollout it belongs to, and a health verdict — the usual thresholds, the health board's vocabulary — with the reason that decided it. Beside the policies that select it by label, the routes and rules that **reach** it through its Services: HTTPRoute, GRPCRoute, VirtualService, DestinationRule, resolved through the same host index the checks use, each with its own findings. A routed workload is no longer called unconfigured — [AEP](design/2026-09-08-mesh-workload-page.md) |
+| **Three sources, one stream** | The application logs one side of every request; ztunnel logs the connection and the waypoint logs the HTTP exchange, under their own service names. One route reads all three for a workload as one ordered stream under one keyset cursor — composed in the hub, which knows the pods behind the workload and the waypoint it is bound to — and rendered as one query with an OR branch per source. When the pods cannot be known (module off, cluster unread, pod list cut) the proxies' lines are matched by name **and** namespace together, and the response says which rung it fell to |
+| **On screen** | A health badge; Overview and Related cards; labels as chips and annotations behind a fold; a pods table; one Istio-config section linking every reference into the configuration browser. A Logs tab with its own toolbar — search, minimum severity, a toggle per source — a line saying what was actually asked of the store, and a table that loads the next page as its end scrolls into view. The tab exists only where the logs module is on |
+
+**Deliberately not in this list.** Pod readiness, restarts and container states:
+the reader projects a dozen fields per pod on purpose. Sidecar log lines: they
+share the pod's service name and are already the workload's own. A ztunnel row
+on the Proxies tab from the scrape rather than from spans, and the TCP byte
+counters the scrape already keeps, both wait for the next line.
+
+## Beyond v0.16 (directional)
+
+- **The proxies from the scrape, not from spans.** On an ambient cluster
+  ztunnel emits no span, so the Proxies tab has no row for it even while its
+  metrics are read; the scrape's `up` and gauges should seed the row. The TCP
+  byte counters already scraped should be read.
 
 - **Read a second control plane**, once someone running one can say which of its
   signals answer the four questions the Istio card answers — and which of them
