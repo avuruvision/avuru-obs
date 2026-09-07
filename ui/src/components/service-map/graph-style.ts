@@ -39,6 +39,12 @@ const scale = (compact: boolean) => ({
 //                  overlay rather than a repaint
 //   width          call volume
 //   line color     plain / amber (network health) / red (trace errors)
+//   source end     mutual TLS, measured edges only — a tee when all of the
+//                  edge's traffic was mTLS, a hollow circle when mixed, a
+//                  filled circle when none. The TARGET end is the direction
+//                  arrow and stays that; the source end was free. It sets no
+//                  line colour, so red still wins on an errored edge, and an
+//                  edge nobody measured carries no marker at all.
 //
 // Four treatments sit outside that set and must not disturb it. Three are node
 // SHAPES, so that the primary-filled hexagon keeps meaning "application":
@@ -220,7 +226,25 @@ export function applyStyle(cy: Core, carbon = false, compact = false, edgeLabels
     .selector("edge[health > 0]")
     .style({ "line-color": c.warning, "target-arrow-color": c.warning, "line-style": "dashed" })
     .selector("edge[error > 0]")
-    .style({ "line-color": c.error, "target-arrow-color": c.error, "line-style": "solid" });
+    .style({ "line-color": c.error, "target-arrow-color": c.error, "line-style": "solid" })
+    // Mutual TLS, at the SOURCE end — the free end, since the target end is
+    // the direction arrow. After the error rule so these never touch the line
+    // colour: an errored plaintext edge is red with a filled amber circle at
+    // its caller, and both facts survive. Only a measured edge carries `mtls`.
+    .selector("edge[mtls = 2]")
+    .style({ "source-arrow-shape": "tee", "source-arrow-color": c.neutral })
+    .selector("edge[mtls = 1]")
+    .style({
+      "source-arrow-shape": "circle",
+      "source-arrow-fill": "hollow",
+      "source-arrow-color": c.warning,
+    })
+    .selector("edge[mtls = 0]")
+    .style({
+      "source-arrow-shape": "circle",
+      "source-arrow-fill": "filled",
+      "source-arrow-color": c.warning,
+    });
 
   // Always-on edge volume. Off by default: on a dense graph every label is a
   // label too many, and the hover already answers the single-edge question.

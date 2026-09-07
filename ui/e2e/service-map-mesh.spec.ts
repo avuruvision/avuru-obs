@@ -121,6 +121,35 @@ test.describe("service map with a mesh", () => {
     await expect(page.getByTestId("map-legend")).toContainText("recovered across a mesh hop");
   });
 
+  // The destination's proxy reports how much of an edge crossed under mutual
+  // TLS. The legend explains the caller-end marker only when an edge in view
+  // carries a share: an unmeasured map must not be told about a marker it
+  // does not draw, and — the other way round — an unmeasured edge is never
+  // drawn as either encrypted or in the clear.
+  test("explains the mutual-TLS marker only when an edge was measured", async ({ page }) => {
+    await page.goto("/service-map");
+    await expect(page.getByTestId("map-count")).toContainText("2 services");
+    await expect(page.getByTestId("map-legend")).not.toContainText("mutual TLS");
+
+    await page.route("**/api/v1/service-map*", (route) =>
+      route.fulfill({
+        json: {
+          services: MESH_MAP.services,
+          edges: [
+            MESH_MAP.edges[0],
+            MESH_MAP.edges[1],
+            { ...MESH_MAP.edges[2], mtlsShare: 0.5, plaintextCalls: 6 },
+          ],
+        },
+      }),
+    );
+    await page.reload();
+    await expect(page.getByTestId("map-count")).toContainText("2 services");
+    await expect(page.getByTestId("map-legend")).toContainText(
+      "marker at the caller end = mutual TLS (tee all, hollow mixed, filled plaintext)",
+    );
+  });
+
   test("swaps the recovered edge for the hops rather than drawing both", async ({ page }) => {
     await page.route("**/api/v1/service-map*", (route) => route.fulfill({ json: COLLAPSED_MAP }));
     await page.goto("/service-map?infra=true");

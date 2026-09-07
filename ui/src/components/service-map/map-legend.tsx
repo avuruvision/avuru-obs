@@ -14,6 +14,7 @@ export function MapLegend({
   mesh,
   virtual,
   peers,
+  mtls,
   grouping = "none",
 }: {
   health: boolean;
@@ -22,6 +23,9 @@ export function MapLegend({
   mesh: boolean;
   virtual: boolean;
   peers: boolean;
+  // Any edge in view carries a measured mutual-TLS share, so the caller-end
+  // marker is on the map and needs a line here.
+  mtls: boolean;
   grouping?: MapGrouping;
 }) {
   return (
@@ -49,6 +53,9 @@ export function MapLegend({
       {mesh && <span>&ldquo;via&rdquo; on hover = recovered across a mesh hop</span>}
       {virtual && <span>dashed barrel = database, cache or queue</span>}
       {peers && <span>hollow outline = seen in traffic, never heard from</span>}
+      {mtls && (
+        <span>marker at the caller end = mutual TLS (tee all, hollow mixed, filled plaintext)</span>
+      )}
       {grouping !== "none" && (
         <span>box = {grouping === "namespace" ? "namespace" : "service group"}</span>
       )}
