@@ -420,9 +420,27 @@ test.describe("mesh workloads", () => {
     await expect(logs).toContainText("reports-7c9d-x1");
     await expect(page.getByTestId("mesh-workload-log-sources")).toContainText("1 pod matched");
 
+    // By default only the workload's own lines are asked for: the box carries
+    // the workload's name, the proxies' boxes start unchecked, and the default
+    // stays out of the URL while the hub is still told `source=app` (its own
+    // default is all three).
+    const own = page.getByRole("checkbox", { name: "reports", exact: true });
+    const ztunnel = page.getByRole("checkbox", { name: "ztunnel", exact: true });
+    await expect(own).toBeChecked();
+    await expect(ztunnel).not.toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "waypoint", exact: true })).not.toBeChecked();
+    await expect(page).not.toHaveURL(/wlsrc/);
+    await expect.poll(() => requests.at(-1) ?? "").toMatch(/source=app(&|$)/);
+
     // Filters travel in the URL and to the hub.
-    await page.getByRole("button", { name: "ztunnel", exact: true }).click();
-    await expect(page).toHaveURL(/wlsrc=app(%2C|,)waypoint/);
+    await ztunnel.check();
+    await expect(page).toHaveURL(/wlsrc=app(%2C|,)ztunnel/);
+    // One source always stays on: the last checked box cannot be unchecked.
+    await own.uncheck();
+    await expect(page).toHaveURL(/wlsrc=ztunnel(&|$)/);
+    await expect(ztunnel).toBeDisabled();
+    await own.check();
+    await expect(page).toHaveURL(/wlsrc=app(%2C|,)ztunnel/);
     await page.getByLabel("Search workload logs").fill("timeout");
     await page.getByLabel("Search workload logs").press("Enter");
     await expect(page).toHaveURL(/wlq=timeout/);
@@ -431,7 +449,7 @@ test.describe("mesh workloads", () => {
     await expect(page).toHaveURL(/wlsev=ERROR/);
     await expect.poll(() => requests.at(-1) ?? "").toMatch(/severity=ERROR/);
     const last = requests.at(-1) ?? "";
-    expect(last).toMatch(/source=app(%2C|,)waypoint/);
+    expect(last).toMatch(/source=app(%2C|,)ztunnel/);
     expect(last).toMatch(/q=timeout/);
 
     // Back to the list clears the page's own keys.
