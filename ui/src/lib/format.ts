@@ -89,3 +89,13 @@ export function formatAgo(iso: string): string {
   if (sec < 86400) return `${Math.round(sec / 3600)}h ago`;
   return `${Math.round(sec / 86400)}d ago`;
 }
+
+// A share where zero is a measured number, not an absence. formatPercent
+// renders 0 as "—" because its callers mean "no errors"; a mutual-TLS share of
+// 0 is the finding, and must say 0%. Near-total shares keep a decimal so a
+// handful of plaintext calls cannot round themselves away into "100%".
+export function formatShare(ratio: number): string {
+  if (ratio >= 1) return "100%";
+  if (ratio > 0.99) return `${(ratio * 100).toFixed(1)}%`;
+  return `${Math.round(ratio * 100)}%`;
+}

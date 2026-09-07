@@ -86,6 +86,12 @@ export interface ServiceEdge {
   // directly-observed remainder when the hops are being drawn themselves.
   collapsedCalls?: number;
   collapsedErrorCount?: number;
+  // The mutual-TLS share of this edge as the destination's proxy reported it,
+  // and the plaintext calls it counted. Stamped only when the data plane was
+  // read and reported this pair: absent is "not measured", and a measured 0 is
+  // the finding — so the two must never be folded into one another.
+  mtlsShare?: number;
+  plaintextCalls?: number;
 }
 
 // One mesh proxy or gateway: its own RED, plus the call volume it carries.
@@ -114,6 +120,17 @@ export interface MeshProxy {
   rttMs?: number;
   failedConnections?: number;
   retransmits?: number;
+  // What the proxy's own counters said about traffic addressed TO it, from the
+  // data-plane scrape. Optional for the same reason as the bytes: a proxy the
+  // scrape did not report is a gap, not a fully encrypted one.
+  mtlsShare?: number;
+  plaintextUnits?: number;
+  // ztunnel rows only: what the node proxies carry, what they have been told
+  // about and not yet wired, and how often their control-plane stream was cut.
+  // Fleet totals stamped on every ztunnel row.
+  activeWorkloads?: number;
+  pendingWorkloads?: number;
+  xdsTerminations?: number;
 }
 
 export interface MeshProxiesResponse {
@@ -146,6 +163,12 @@ export interface MeshControlPlane {
   pushP95Ms?: number;
   writeTimeouts?: number;
   configEvents?: number;
+  // Listener conflicts: configuration istiod could not program because two
+  // pieces of it claim the same listener. Queue p95: how long a push waited
+  // before being sent — the third place a slow push can be, after the send and
+  // the ack. Optional for the same reason as the trio above.
+  listenerConflicts?: number;
+  queueP95Ms?: number;
 }
 
 // One namespace's mesh membership, read from LABELS rather than traffic — which
@@ -204,6 +227,116 @@ export interface MeshConfigResponse {
   missingKinds?: string[];
   truncated?: boolean;
   objects: MeshConfigObject[];
+}
+
+// What one proxy reported about one workload's traffic. Units are requests plus
+// connections; mtlsShare is absent when nothing was classified — 0/0 is not 0%.
+export interface MeshObserved {
+  reporter: string;
+  mtls: number;
+  plaintext: number;
+  unknown: number;
+  requests: number;
+  connections: number;
+  mtlsShare?: number;
+}
+
+export interface MeshCaller {
+  namespace: string;
+  name: string;
+  units: number;
+}
+
+// One workload's declared policy beside what its proxy observed, and the
+// verdict drawn from the two. Every optional field is absent when its half was
+// not read: no `observed` means no proxy reported it, no `declaredMode` means
+// no policy the cluster knows of — and neither is rendered as the other.
+export interface MeshWorkloadPosture {
+  namespace: string;
+  name: string;
+  // The traced service name, when the workload has one, so a row can link to
+  // the same page the map does.
+  service?: string;
+  observed?: MeshObserved;
+  declaredMode?: string;
+  declaredScope?: string;
+  // A plain string, not a union: a verdict added later must not break the
+  // build. Unknown values fall to the neutral badge.
+  posture: string;
+  plaintextCallers?: MeshCaller[];
+  findings?: MeshFinding[];
+}
+
+export interface MeshEdgeSecurity {
+  sourceNamespace: string;
+  source: string;
+  targetNamespace: string;
+  target: string;
+  reporter: string;
+  mtls: number;
+  plaintext: number;
+  unknown: number;
+  mtlsShare?: number;
+}
+
+export interface MeshTargets {
+  up: number;
+  total: number;
+  down?: string[];
+}
+
+// Leads with `available`, as the control plane does: a data plane nobody
+// scrapes reports zero plaintext, which reads as a fully encrypted mesh — the
+// exact lie the screen exists to prevent.
+export interface MeshSecurityResponse {
+  available: boolean;
+  state: string;
+  reason?: string;
+  lastSeen?: string;
+  targets?: MeshTargets;
+  // Whether the configuration half was read at all. False makes every posture
+  // observed-only, and no row carries a declared mode.
+  declared: boolean;
+  workloads: MeshWorkloadPosture[];
+  edges: MeshEdgeSecurity[];
+  // Every posture finding, flat, so a screen can lead with what needs attention.
+  findings: MeshFinding[];
+}
+
+export interface MeshResponseFlag {
+  flag: string;
+  requests: number;
+  // The proxy's reason in words. Absent for a flag this product does not know,
+  // which passes through verbatim rather than being dropped.
+  meaning?: string;
+}
+
+export interface MeshDestinationVersion {
+  version: string;
+  requests: number;
+}
+
+export interface MeshCallerOutcome {
+  namespace: string;
+  name: string;
+  requests: number;
+  errors5xx: number;
+}
+
+// One workload's requests as its proxy counted them, by the dimensions no
+// application span carries. `measured` says only whether THIS workload had
+// series; whether the data plane is read at all is the security view's to say.
+export interface MeshWorkloadRequests {
+  measured: boolean;
+  reason?: string;
+  reporter?: string;
+  responseFlags: MeshResponseFlag[];
+  destinationVersions: MeshDestinationVersion[];
+  callers: MeshCallerOutcome[];
+  // Always present: the per-upstream counters a reader would look for next are
+  // not collected by a default mesh, and the screen says so before anyone goes
+  // looking for a zero that means "not looking".
+  upstreamStatsHint: string;
 }
 
 export interface ServiceMapResponse {

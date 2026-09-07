@@ -224,7 +224,9 @@ function ObjectDetail({
   );
 }
 
-function FindingCard({ finding }: { finding: MeshFinding }) {
+// Shared with the Security tab: a posture finding is the same shape as a
+// configuration finding, and the two must read the same.
+export function FindingCard({ finding }: { finding: MeshFinding }) {
   const isError = finding.severity === "error";
   return (
     <Card className={`p-3 ${isError ? "border-error/40" : "border-warning/40"}`}>

@@ -125,6 +125,21 @@ export function ControlPlaneCard({
             hint="Kubernetes config churn istiod is reacting to"
           />
         )}
+        {data.listenerConflicts !== undefined && (
+          <Stat
+            label="Listener conflicts"
+            value={data.listenerConflicts.toLocaleString()}
+            tone={data.listenerConflicts > 0 ? "warning" : undefined}
+            hint="Configuration istiod could not program because two pieces of it claim the same listener — served, and wrong"
+          />
+        )}
+        {data.queueP95Ms !== undefined && (
+          <Stat
+            label="Queue p95"
+            value={formatMs(data.queueP95Ms)}
+            hint="How long a push waited in istiod's queue before being sent — with the send and the convergence, where a slow push spends its time"
+          />
+        )}
       </dl>
     </Card>
   );

@@ -44,6 +44,10 @@ export const queryKeys = {
     [p, "mesh", "control-plane", { ...t }] as const,
   meshNamespaces: (p: string, t: TimeParams) =>
     [p, "mesh", "namespaces", { ...t }] as const,
+  meshSecurity: (p: string, t: TimeParams) =>
+    [p, "mesh", "security", { ...t }] as const,
+  meshWorkloadRequests: (p: string, t: TimeParams, namespace: string, name: string) =>
+    [p, "mesh", "workloads", namespace, name, "requests", { ...t }] as const,
   // Configuration is cluster state, not a time series: the key carries no
   // window, so changing the range does not refetch objects that cannot differ.
   meshConfig: (p: string, kind?: string, namespace?: string, name?: string) =>
