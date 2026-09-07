@@ -113,6 +113,7 @@ export function MeshScreen() {
           services={map.data?.services ?? []}
           edges={map.data?.edges ?? []}
           windowMs={windowMs}
+          proxies={list}
         />
       ) : view === "security" ? (
         <SecurityTab data={security.data} loading={security.isLoading} />
