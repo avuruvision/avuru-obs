@@ -126,6 +126,11 @@ type Config struct {
 	// scrape-report series up by it, so the value travels rather than being
 	// spelled the same way in two places.
 	MeshScrapeJob string
+	// MeshDataplaneJob is the job name the proxy scrape runs under (chart:
+	// mesh.dataPlane.jobName), for the same reason MeshScrapeJob travels: the
+	// hub finds the scrape-report series by it. Empty defers to storage's
+	// default, which mirrors the chart's.
+	MeshDataplaneJob string
 	// OIDC returns the current OIDC provider or nil (hot-reloaded; nil until
 	// discovery succeeds / when OIDC unconfigured).
 	OIDC func() *auth.OIDCProvider
@@ -429,6 +434,10 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		// so the screen either exists whole or not at all.
 		mux.Handle("GET /api/v1/mesh/proxies", a.secured(auth.RoleViewer, a.handleMeshProxies))
 		mux.Handle("GET /api/v1/mesh/control-plane", a.secured(auth.RoleViewer, a.handleMeshControlPlane))
+		// The data-plane reads: what the proxies said about the traffic they
+		// carried. Same gate — they too say for themselves when infra-metrics
+		// is off, and the config half is joined in only when its module is on.
+		mux.Handle("GET /api/v1/mesh/security", a.secured(auth.RoleViewer, a.handleMeshSecurity))
 	}
 	// The configuration half is a module of its own because it is the only
 	// cluster-wide READ this product asks for — see the AEP. Its routes are

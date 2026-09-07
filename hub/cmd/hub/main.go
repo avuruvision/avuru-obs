@@ -377,6 +377,7 @@ func run() error {
 		AIConfig:                        aiConfig,
 		Rates:                           ratesResolver,
 		MeshScrapeJob:                   envOr("AVURUOBS_MESH_SCRAPE_JOB", ""),
+		MeshDataplaneJob:                envOr("AVURUOBS_MESH_DATAPLANE_JOB", ""),
 		Topology:                        topologyConfig,
 		OIDC:                            oidcProvider,
 		OIDCSettings:                    oidcSettings,
