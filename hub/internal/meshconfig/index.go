@@ -1,10 +1,6 @@
 package meshconfig
 
-import (
-	"slices"
-	"strconv"
-	"strings"
-)
+import "strings"
 
 // labelGatewayName is what the mesh stamps on the pods it deploys for a
 // Gateway API Gateway — waypoints included — and how a Gateway is joined to
@@ -210,6 +206,35 @@ func (idx *index) hostKey(host, namespace string) string {
 	return idx.serviceHosts[host]
 }
 
+// workloadsBehind lists the workloads a host resolves to, through the Service
+// that answers to it. Nil for a ServiceEntry, an unresolved host, or a Service
+// whose selector picked nothing.
+func (idx *index) workloadsBehind(host, namespace string) []*Workload {
+	svc := idx.servicesByKey[idx.serviceByHost[idx.hostKey(host, namespace)]]
+	if svc == nil {
+		return nil
+	}
+	var out []*Workload
+	for _, id := range svc.Workloads {
+		if w := idx.workloads[id]; w != nil {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// selectedWorkloads lists the workloads of a namespace whose pod labels carry
+// every label of selector.
+func (idx *index) selectedWorkloads(namespace string, selector map[string]string) []*Workload {
+	var out []*Workload
+	for _, w := range idx.workloadsByNS[namespace] {
+		if labelsMatch(selector, w.Labels) {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
 // meshBound reports whether a VirtualService applies inside the mesh rather
 // than on a gateway: no gateways named, or only the reserved "mesh".
 func meshBound(o Object) bool {
@@ -221,75 +246,4 @@ func meshBound(o Object) bool {
 	return true
 }
 
-// podGatedChecks are the checks that read pods and cannot run without all of
-// them. Listed so the response can name what went silent.
-var podGatedChecks = []Code{
-	CodePolicyNoMatch, CodeAmbientNotEnrolled, CodeDataplaneConflict, CodeGatewayNoWorkload, CodePrincipalUnknown,
-}
-
-// podsUsable says whether the pod-dependent checks may run, and when not,
-// why — in the sentence the response carries. Two causes, two fixes: pods
-// the ClusterRole does not grant, and a pod list the cap cut. A check that
-// cannot see every pod would call a policy unmatched when its pods are simply
-// past the cap, so it must not run at all.
-func podsUsable(snap Snapshot) (bool, string) {
-	switch {
-	case slices.Contains(snap.MissingKinds, KindPod):
-		why := "pods were not readable"
-		if r := snap.MissingReasons[KindPod]; r != "" {
-			why += " (" + r + ")"
-		}
-		return false, why + " — grant pods get, list and watch in the mesh-config ClusterRole"
-	case snap.PodsTruncated:
-		return false, "the pod list was cut at " + strconv.Itoa(len(snap.Pods)) +
-			" — a check that cannot see every pod would report as absent what is only past the cap"
-	}
-	return true, ""
-}
-
 func key(namespace, name string) string { return namespace + "/" + name }
-
-// splitHost pulls name and namespace out of a cluster-shaped host.
-func splitHost(host string) (name, namespace string, ok bool) {
-	parts := strings.Split(host, ".")
-	if len(parts) < 2 {
-		return "", "", false
-	}
-	return parts[0], parts[1], true
-}
-
-func slice(v any) []any {
-	s, _ := v.([]any)
-	return s
-}
-
-func stringSlice(v any) []string {
-	var out []string
-	for _, item := range slice(v) {
-		if s, ok := item.(string); ok {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-func mapSlice(v any) []map[string]any {
-	var out []map[string]any
-	for _, item := range slice(v) {
-		if m, ok := item.(map[string]any); ok {
-			out = append(out, m)
-		}
-	}
-	return out
-}
-
-func nestedMap(m map[string]any, path ...string) map[string]any {
-	for _, p := range path {
-		next, ok := m[p].(map[string]any)
-		if !ok {
-			return nil
-		}
-		m = next
-	}
-	return m
-}

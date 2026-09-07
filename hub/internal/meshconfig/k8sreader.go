@@ -44,7 +44,8 @@ const warmTimeout = 30 * time.Second
 //
 // The ORDER is load-bearing. A snapshot fills in this order and truncates from
 // the end, so the kinds validation cannot do without come first and the
-// workload kinds — which no check reads yet — are the first to be cut.
+// workload kinds — which only the pod-to-workload join reads, and degrades
+// honestly without — are the first to be cut.
 var watched = []struct {
 	kind string
 	gvr  schema.GroupVersionResource

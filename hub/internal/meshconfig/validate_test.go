@@ -88,6 +88,15 @@ func workloadFindings(snap Snapshot, id string) []Finding {
 	return nil
 }
 
+func namespaceFindings(snap Snapshot, name string) []Finding {
+	for _, ns := range snap.Namespaces {
+		if ns.Name == name {
+			return ns.Findings
+		}
+	}
+	return nil
+}
+
 func hasCode(findings []Finding, code Code) bool {
 	for _, f := range findings {
 		if f.Code == code {

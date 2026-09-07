@@ -2,6 +2,8 @@ package meshconfig
 
 import (
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -44,6 +46,7 @@ func Validate(snap Snapshot) Snapshot {
 		case KindGateway:
 			o.Findings = append(o.Findings, checkGateway(*o, idx)...)
 			o.Findings = append(o.Findings, checkGatewayWorkload(*o, idx)...)
+			o.Findings = append(o.Findings, checkListeners(*o)...)
 		case KindDestinationRule:
 			o.Findings = append(o.Findings, checkDestinationRule(*o, idx)...)
 		case KindVirtualService:
@@ -54,16 +57,56 @@ func Validate(snap Snapshot) Snapshot {
 		if workloadPolicyKinds[o.Kind] {
 			o.Findings = append(o.Findings, checkPolicyMatch(*o, idx)...)
 		}
+		o.Findings = append(o.Findings, checkL7WithoutWaypoint(*o, idx)...)
+	}
+	for i := range snap.Namespaces {
+		ns := &snap.Namespaces[i]
+		ns.Findings = append(ns.Findings, checkWaypointBinding(ns.Waypoint, ns.WaypointNamespace, idx)...)
 	}
 	for i := range snap.Workloads {
 		w := &snap.Workloads[i]
+		if w.WaypointSource == SourceWorkload {
+			w.Findings = append(w.Findings, checkWaypointBinding(w.Waypoint, w.WaypointNamespace, idx)...)
+		}
 		w.Findings = append(w.Findings, checkAmbientEnrolment(*w, idx)...)
 		w.Findings = append(w.Findings, checkDataplaneConflict(*w, idx)...)
+	}
+	for i := range snap.Services {
+		s := &snap.Services[i]
+		if s.WaypointSource == SourceService {
+			s.Findings = append(s.Findings, checkWaypointBinding(s.Waypoint, s.WaypointNamespace, idx)...)
+		}
 	}
 	if !idx.podsUsable {
 		snap.ChecksSkipped = checksSkipped(idx.podsWhy)
 	}
 	return snap
+}
+
+// podGatedChecks are the checks that read pods and cannot run without all of
+// them. Listed so the response can name what went silent.
+var podGatedChecks = []Code{
+	CodePolicyNoMatch, CodeAmbientNotEnrolled, CodeDataplaneConflict, CodeGatewayNoWorkload, CodePrincipalUnknown,
+}
+
+// podsUsable says whether the pod-dependent checks may run, and when not,
+// why — in the sentence the response carries. Two causes, two fixes: pods
+// the ClusterRole does not grant, and a pod list the cap cut. A check that
+// cannot see every pod would call a policy unmatched when its pods are simply
+// past the cap, so it must not run at all.
+func podsUsable(snap Snapshot) (bool, string) {
+	switch {
+	case slices.Contains(snap.MissingKinds, KindPod):
+		why := "pods were not readable"
+		if r := snap.MissingReasons[KindPod]; r != "" {
+			why += " (" + r + ")"
+		}
+		return false, why + " — grant pods get, list and watch in the mesh-config ClusterRole"
+	case snap.PodsTruncated:
+		return false, "the pod list was cut at " + strconv.Itoa(len(snap.Pods)) +
+			" — a check that cannot see every pod would report as absent what is only past the cap"
+	}
+	return true, ""
 }
 
 // checksSkipped is the one sentence the response carries when the

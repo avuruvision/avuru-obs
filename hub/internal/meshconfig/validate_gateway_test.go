@@ -35,3 +35,36 @@ func TestGatewayNoWorkload(t *testing.T) {
 		t.Errorf("with pods cut: findings = %d, want none", got)
 	}
 }
+
+// Listeners that cannot coexist keep the whole gateway from being programmed
+// — including the listeners that were fine.
+func TestListenerConflict(t *testing.T) {
+	listener := func(name string, port int, hostname, protocol string) map[string]any {
+		l := map[string]any{"name": name, "port": int64(port), "protocol": protocol}
+		if hostname != "" {
+			l["hostname"] = hostname
+		}
+		return l
+	}
+	for _, tc := range []struct {
+		name      string
+		listeners []any
+		want      int
+	}{
+		{"distinct hostnames", []any{listener("a", 443, "a.example.com", "HTTPS"), listener("b", 443, "b.example.com", "TLS")}, 0},
+		{"same host and port, same protocol", []any{listener("a", 80, "", "HTTP"), listener("b", 80, "", "HTTP")}, 0},
+		{"same host and port, different protocol", []any{listener("a", 443, "x.example.com", "HTTPS"), listener("b", 443, "x.example.com", "TLS")}, 1},
+		{"no hostname counts as one hostname", []any{listener("a", 15008, "", "HBONE"), listener("b", 15008, "", "TCP")}, 1},
+		{"duplicate names", []any{listener("web", 80, "", "HTTP"), listener("web", 8080, "", "HTTP")}, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			snap := Validate(Snapshot{
+				MissingKinds: []string{KindPod},
+				Objects:      []Object{gateway("edge", "public", "istio", map[string]any{"listeners": tc.listeners})},
+			})
+			if got := codes(snap)[CodeListenerConflict]; got != tc.want {
+				t.Errorf("listener conflicts = %d, want %d: %+v", got, tc.want, objectFindings(snap, KindGateway, "public"))
+			}
+		})
+	}
+}
