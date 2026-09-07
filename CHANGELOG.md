@@ -157,6 +157,40 @@ When a release is cut, that block is renamed to the version with its date.
   and the queue p95, which with the send and the convergence completes the
   account of where a slow push spends its time.
 
+- **The mesh screen shows the posture, and the map marks every edge that was
+  measured.** A **Security** tab on the mesh screen puts what the cluster
+  declared beside what its proxies observed, one row per workload: the
+  PeerAuthentication mode in force, the share of accepted traffic that came
+  over mutual TLS as a bar and a number, the verdict as a badge — not
+  enforced, not carried, plaintext callers, safe to tighten, strict and all
+  mTLS — and, for a workload still accepting plaintext, the callers to
+  migrate, named when the row is opened. The findings behind the verdicts sit
+  under the table with their fix, filterable by namespace and by posture from
+  the URL. The tab leads with whether the data plane was read at all, in the
+  control-plane card's own words: not observed, not answering (with the pod
+  names), or not recognised — and shows no percentage until it was, because a
+  data plane nobody scrapes reports no plaintext, which would read as a fully
+  encrypted mesh. When the configuration module is off, the Declared column is
+  missing rather than full of "default", and a caption says so.
+
+  Opening a proxy now shows its requests as its proxy counted them — by
+  response flag, with the proxy's reason in words (a circuit breaker open, in
+  amber), and by destination version — or the reason there are none; the
+  per-upstream counters a reader looks for next are stated as not collected.
+  Its figures gain the mutual-TLS share, and a ztunnel's gain the workloads it
+  carries with any still waiting to be wired, and the times its control-plane
+  stream was cut. The proxy table gets an mTLS column only where the scrape
+  reported one, and the control-plane card reads listener conflicts and the
+  queue p95 when the scrape carries them.
+
+  On the service map and the mesh graph, every edge the destination's proxy
+  reported carries a marker at the caller end: a tee when all of it crossed
+  under mutual TLS, a hollow circle when mixed, a filled one when none did —
+  with the share and the plaintext count on hover. The target end stays the
+  direction arrow, an errored edge stays red, and an edge nobody measured
+  carries no marker at all. The legend explains the marker only when one is
+  on the map.
+
 ## [0.14.0] — 2026-09-06
 
 ### Added
