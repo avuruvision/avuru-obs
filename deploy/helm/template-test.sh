@@ -104,9 +104,17 @@ grep -q 'filter/collection:' <<<"$out" || fail "filter/collection processor miss
 grep -q 'resource.attributes\["k8s.namespace.name"\] == "kube-system"' <<<"$out" || fail "namespace filter condition missing"
 grep -q 'resource.attributes\["avuru.obs.collect"\] == "false"' <<<"$out" || fail "opt-out filter condition missing"
 grep -q 'tag_name: avuru.obs.collect' <<<"$out" || fail "k8sattributes opt-out label extraction missing"
-grep -Eq 'processors: \[memory_limiter, k8sattributes, filter/collection, transform/service_name, batch\]' <<<"$out" || fail "logs pipeline missing filter/collection"
+grep -Eq 'processors: \[memory_limiter, k8sattributes, filter/collection, transform/service_name, transform/log_severity, batch\]' <<<"$out" || fail "logs pipeline missing filter/collection"
 grep -Eq 'processors: \[memory_limiter, k8sattributes, filter/collection, batch\]' <<<"$out" || fail "metrics pipeline missing filter/collection"
 ok "filter/collection wired into logs + metrics pipelines"
+
+echo "== logs: severity is read off tailed lines by default, and only then"
+grep -q 'transform/log_severity:' <<<"$out" || fail "transform/log_severity processor missing from the default render"
+grep -q 'severity_number == 0' <<<"$out" || fail "severity parser must leave records that already carry a level alone"
+out_nosev="$(render --set sensor.agent.logs.parseSeverity=false)"
+grep -q 'transform/log_severity' <<<"$out_nosev" && fail "parseSeverity=false still rendered the severity parser"
+grep -Eq 'processors: \[memory_limiter, k8sattributes, filter/collection, transform/service_name, batch\]' <<<"$out_nosev" || fail "parseSeverity=false broke the logs pipeline"
+ok "severity parser on by default, off with sensor.agent.logs.parseSeverity=false, pipeline intact either way"
 
 echo "== empty guardrails -> no filter processor"
 out="$(render --set-json 'sensor.collection.excludeNamespaces=[]' --set sensor.collection.optOutLabel="")"
@@ -838,7 +846,7 @@ out="$(render --set modules.green.enabled=true --set sensor.green.enabled=true)"
 # the kubeletstats metrics pipeline and the logs pipeline byte-identical.
 grep -Eq 'processors: \[memory_limiter, k8sattributes, filter/collection, batch\]' <<<"$out" \
   || fail "kubeletstats metrics pipeline changed by the green opt-in"
-grep -Eq 'processors: \[memory_limiter, k8sattributes, filter/collection, transform/service_name, batch\]' <<<"$out" \
+grep -Eq 'processors: \[memory_limiter, k8sattributes, filter/collection, transform/service_name, transform/log_severity, batch\]' <<<"$out" \
   || fail "logs pipeline changed by the green opt-in"
 grep -q 'receivers: \[kubeletstats\]' <<<"$out" || fail "kubeletstats receiver lost with green on"
 ok "kubeletstats + logs pipelines identical with green on"
