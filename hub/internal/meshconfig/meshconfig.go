@@ -158,6 +158,11 @@ type Snapshot struct {
 	// Pods are kept apart from Objects: they are not configuration, they are
 	// what configuration acts on, and they never count against its cap.
 	Pods []Pod
+	// Workloads and Services are derived from Pods and Objects — what the
+	// cluster runs and what fronts it, each with the mesh's declared and
+	// effective settings resolved. Sorted by namespace then name.
+	Workloads []Workload
+	Services  []Service
 }
 
 // Reader returns the current view of the cluster's mesh configuration.

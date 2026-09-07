@@ -1,5 +1,7 @@
 package meshconfig
 
+import "sort"
+
 // DeclaredMTLS is the PeerAuthentication mode that applies, and where it came
 // from.
 //
@@ -78,4 +80,38 @@ func firstByName(cur, candidate *Object) *Object {
 		return candidate
 	}
 	return cur
+}
+
+// EffectiveMTLS is the mode a workload runs under, by name.
+//
+// This is the contract the telemetry join calls: it holds a service name and
+// a namespace, and needs the declared side of "declared strict, observed
+// plaintext". A workload the snapshot does not know falls back to its
+// namespace's answer — the namespace policy is what would apply to it — and
+// an unknown namespace gets nothing, because nothing is what we read.
+func (s Snapshot) EffectiveMTLS(namespace, workload string) DeclaredMTLS {
+	i := sort.Search(len(s.Workloads), func(i int) bool {
+		w := s.Workloads[i]
+		return w.Namespace > namespace || (w.Namespace == namespace && w.Name >= workload)
+	})
+	if i < len(s.Workloads) && s.Workloads[i].Namespace == namespace && s.Workloads[i].Name == workload {
+		return s.Workloads[i].DeclaredMTLS
+	}
+	for _, ns := range s.Namespaces {
+		if ns.Name == namespace {
+			return DeclaredMTLS{Mode: ns.MTLSMode, Source: ns.MTLSSource, Policy: ns.MTLSPolicy}
+		}
+	}
+	return DeclaredMTLS{}
+}
+
+// DataplaneMode is how a namespace joins the mesh, by name — "ambient",
+// "sidecar" or "" — for callers holding only a namespace.
+func (s Snapshot) DataplaneMode(namespace string) string {
+	for _, ns := range s.Namespaces {
+		if ns.Name == namespace {
+			return ns.DataplaneMode
+		}
+	}
+	return ""
 }

@@ -66,3 +66,41 @@ func TestDeclaredMTLSNothingApplies(t *testing.T) {
 		t.Errorf("got %+v, want nothing", got)
 	}
 }
+
+// The lookup the telemetry join calls: a known workload answers for itself, an
+// unknown one gets its namespace's answer, and an unknown namespace gets none.
+func TestSnapshotEffectiveMTLS(t *testing.T) {
+	snap := Snapshot{
+		Namespaces: []Namespace{
+			{Name: "shop", MTLSMode: "STRICT", MTLSSource: SourceMesh, MTLSPolicy: "istio-system/default"},
+			{Name: "web", MTLSMode: "PERMISSIVE", MTLSSource: SourceNamespace, MTLSPolicy: "web/default"},
+		},
+		Workloads: []Workload{
+			{Namespace: "shop", Name: "cart", DeclaredMTLS: DeclaredMTLS{Mode: "STRICT", Source: SourceMesh, Policy: "istio-system/default"}},
+			{Namespace: "web", Name: "legacy", DeclaredMTLS: DeclaredMTLS{Mode: "DISABLE", Source: SourceWorkload, Policy: "web/legacy"}},
+		},
+	}
+	for _, tc := range []struct {
+		namespace, workload string
+		want                DeclaredMTLS
+	}{
+		{"web", "legacy", DeclaredMTLS{Mode: "DISABLE", Source: SourceWorkload, Policy: "web/legacy"}},
+		{"web", "unknown", DeclaredMTLS{Mode: "PERMISSIVE", Source: SourceNamespace, Policy: "web/default"}},
+		{"shop", "cart", DeclaredMTLS{Mode: "STRICT", Source: SourceMesh, Policy: "istio-system/default"}},
+		{"nowhere", "cart", DeclaredMTLS{}},
+	} {
+		if got := snap.EffectiveMTLS(tc.namespace, tc.workload); got != tc.want {
+			t.Errorf("EffectiveMTLS(%s, %s) = %+v, want %+v", tc.namespace, tc.workload, got, tc.want)
+		}
+	}
+	if got := snap.DataplaneMode("shop"); got != "" {
+		t.Errorf("DataplaneMode(shop) = %q, want empty for an unlabelled namespace", got)
+	}
+	snap.Namespaces[0].DataplaneMode = DataplaneAmbient
+	if got := snap.DataplaneMode("shop"); got != DataplaneAmbient {
+		t.Errorf("DataplaneMode(shop) = %q, want ambient", got)
+	}
+	if got := snap.DataplaneMode("nowhere"); got != "" {
+		t.Errorf("DataplaneMode(nowhere) = %q, want empty", got)
+	}
+}
