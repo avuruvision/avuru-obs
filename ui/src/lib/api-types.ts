@@ -407,6 +407,9 @@ export interface MeshWorkload {
   // not guessed. observedMtls is absent when nothing measured it.
   declaredMtls?: MeshDeclaredMtls;
   observedMtls?: MeshObservedMtls;
+  // The join's verdict on declared against observed — the same vocabulary the
+  // Security tab uses, absent until the fold ran.
+  posture?: string;
   // hasTraffic says telemetry saw this workload; a silent one carries no rate
   // at all rather than a zero.
   hasTraffic: boolean;

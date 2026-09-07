@@ -13,6 +13,7 @@ import { formatRate } from "@/lib/format";
 import type { MeshPolicyRef, MeshWorkload, MeshWorkloadDetail as Detail } from "@/lib/api-types";
 import { FindingCard } from "./config-browser";
 import { EnrolmentBadge, MtlsLock, ObservedMtls } from "./posture";
+import { PostureBadge } from "./posture-badge";
 import { SnapshotNotes, UnreadableState } from "./snapshot-notes";
 
 // One workload, whole: what the cluster says it is, what was declared for it,
@@ -216,6 +217,11 @@ function DeclaredVsObserved({ w }: { w: MeshWorkload }) {
           <div className="mt-1 text-base">
             <ObservedMtls value={w.observedMtls} />
           </div>
+          {w.posture && w.posture !== "unknown" && (
+            <div className="mt-2">
+              <PostureBadge posture={w.posture} />
+            </div>
+          )}
           <p className="mt-1 text-xs text-base-content/55">
             {w.observedMtls?.mtlsShare === undefined
               ? "Nothing measured what this workload's traffic actually travelled under in this window."

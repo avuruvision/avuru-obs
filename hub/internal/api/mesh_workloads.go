@@ -29,8 +29,8 @@ type meshDeclaredMTLSDTO struct {
 }
 
 // meshObservedMTLSDTO is what the data plane reported for a workload's own
-// traffic. Declared now so the wire shape is settled; nothing fills it in this
-// build, and a client reading it absent must render "not measured", never 0%.
+// traffic. Absent when no proxy reported it in the window, and a client must
+// render that as "not measured", never as 0%.
 type meshObservedMTLSDTO struct {
 	MTLSShare *float64 `json:"mtlsShare,omitempty"`
 	Plaintext uint64   `json:"plaintext"`
@@ -80,6 +80,9 @@ type meshWorkloadDTO struct {
 	// absent when the data plane was not asked: not measured is not zero.
 	DeclaredMTLS *meshDeclaredMTLSDTO `json:"declaredMtls,omitempty"`
 	ObservedMTLS *meshObservedMTLSDTO `json:"observedMtls,omitempty"`
+	// Posture is the join's verdict on the two — the same fold and the same
+	// vocabulary as the Security tab, so a workload reads identically on both.
+	Posture string `json:"posture,omitempty"`
 	// HasTraffic says telemetry saw this workload in the window; the rates
 	// are pointers so a silent workload carries no number at all.
 	HasTraffic bool               `json:"hasTraffic"`
@@ -138,6 +141,7 @@ func (a *API) handleMeshWorkloads(w http.ResponseWriter, r *http.Request) error 
 	}
 
 	traffic := a.workloadTraffic(r)
+	observed := a.observedWorkloads(r)
 	wantNS := r.URL.Query().Get("namespace")
 	for _, wl := range snap.Workloads {
 		if wantNS != "" && wl.Namespace != wantNS {
@@ -146,7 +150,9 @@ func (a *API) handleMeshWorkloads(w http.ResponseWriter, r *http.Request) error 
 		if !matchesWorkloadMode(wl, mode) {
 			continue
 		}
-		resp.Workloads = append(resp.Workloads, toWorkloadDTO(wl, traffic))
+		row := toWorkloadDTO(wl, traffic)
+		observed.decorate(&row, wl, snap)
+		resp.Workloads = append(resp.Workloads, row)
 	}
 	writeJSON(w, http.StatusOK, resp)
 	return nil

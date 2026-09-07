@@ -14,6 +14,7 @@ import { useMeshWorkloads } from "@/hooks/use-mesh-data";
 import { formatAgo, formatRate } from "@/lib/format";
 import type { MeshWorkload } from "@/lib/api-types";
 import { EnrolmentBadge, MtlsLock, ObservedMtls } from "./posture";
+import { PostureBadge } from "./posture-badge";
 import { SnapshotNotes, UnreadableState } from "./snapshot-notes";
 
 type SortKey = "key" | "enrolment" | "waypoint" | "mtls" | "observed" | "rate" | "issues";
@@ -207,6 +208,11 @@ function WorkloadRow({ w, onSelect }: { w: Row; onSelect: () => void }) {
       </td>
       <td className="text-right">
         <ObservedMtls value={w.observedMtls} />
+        {w.posture && w.posture !== "unknown" && w.posture !== "idle" && (
+          <div className="mt-0.5">
+            <PostureBadge posture={w.posture} />
+          </div>
+        )}
       </td>
       <td
         className={`text-right tabular-nums ${(w.errorRate ?? 0) > 0 ? "text-error" : ""}`}

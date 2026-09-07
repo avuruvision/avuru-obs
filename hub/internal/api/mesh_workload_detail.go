@@ -84,8 +84,11 @@ func (a *API) handleMeshWorkload(w http.ResponseWriter, r *http.Request) error {
 	wl := snap.Workloads[i]
 	row := toWorkloadDTO(wl, a.workloadTraffic(r))
 	attachPolicyFindings(row.Policies, snap.Objects)
-	resp.Workload = &row
 	resp.Findings = append(resp.Findings, toFindingDTOs(wl.Findings)...)
+	if f := a.observedWorkloads(r).decorate(&row, wl, snap); f != nil {
+		resp.Findings = append(resp.Findings, toFindingDTOs([]meshconfig.Finding{*f})...)
+	}
+	resp.Workload = &row
 	for _, p := range snap.Pods {
 		if !podBelongsTo(p, wl) {
 			continue
