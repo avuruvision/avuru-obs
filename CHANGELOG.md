@@ -66,6 +66,28 @@ When a release is cut, that block is renamed to the version with its date.
   came from and how many of their workloads the mesh actually has. The screens
   that show this come in a later release.
 
+- **Every workload the cluster runs is on the API now, and so is what a
+  waypoint serves.** `GET /api/v1/mesh/workloads` lists what the cluster runs
+  whether or not it ever sent a span — a workload asked into the mesh and never
+  enrolled produces no traffic of its own, and until now had no row anywhere.
+  Each row carries the truth about enrolment (a sidecar was injected, the node
+  agent captured it) beside the mode its labels asked for, the waypoint that
+  binds it and where that binding came from, the policies that cover it, the
+  declared mTLS mode with the PeerAuthentication that decided it, and — when
+  there was any — its traffic. `?mode=declared-only` is the enrolment gap by
+  itself. One workload opens whole, with its findings, its pods, and the
+  covering policies' own findings beside them. The namespace rows now say where
+  their mode came from and how many of their workloads are enrolled.
+  `GET /api/v1/mesh/waypoints/{namespace}/{name}` says what a waypoint serves —
+  the namespaces, Services and workloads bound to it — and whether it is
+  running, which a waypoint's own traffic cannot say: a waypoint nothing is
+  bound to and one whose clients are idle look the same on the wire.
+
+  Every absence reads differently: pods the hub may not read empty the list and
+  name the grant to add; a pod list the snapshot had to cut says so, and says
+  that an empty issues column is not a clean bill; a rate that was not measured
+  is absent, never zero.
+
 ## [0.14.0] — 2026-09-06
 
 ### Added
