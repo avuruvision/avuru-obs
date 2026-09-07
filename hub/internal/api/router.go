@@ -441,6 +441,7 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		// cluster-wide and only its telemetry decoration is project-scoped.
 		mux.Handle("GET /api/v1/mesh/workloads", a.secured(auth.RoleViewer, a.handleMeshWorkloads))
 		mux.Handle("GET /api/v1/mesh/workloads/{namespace}/{name}", a.secured(auth.RoleViewer, a.handleMeshWorkload))
+		mux.Handle("GET /api/v1/mesh/waypoints/{namespace}/{name}", a.secured(auth.RoleViewer, a.handleMeshWaypoint))
 	}
 	if active.Enabled(modules.Green) {
 		mux.Handle("GET /api/v1/green/summary", a.secured(auth.RoleViewer, a.handleGreenSummary))
