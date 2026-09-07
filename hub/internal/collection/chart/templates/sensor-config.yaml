@@ -538,6 +538,45 @@ data:
               - set(attributes["service.name"], attributes["k8s.statefulset.name"]) where attributes["service.name"] == nil
               - set(attributes["service.name"], attributes["k8s.daemonset.name"]) where attributes["service.name"] == nil
               - set(attributes["service.name"], attributes["k8s.container.name"]) where attributes["service.name"] == nil
+      {{- if and (include "avuruobs.collectLogs" .) .Values.sensor.agent.logs.parseSeverity }}
+      # A tailed container line carries no OTLP severity either: the record
+      # lands with SeverityNumber 0, so the hub's severity floor ("INFO+")
+      # hides it and the error issues built from logs (SeverityNumber >= 17)
+      # never see a plain-stdout app's ERROR. Read the level off the line.
+      #
+      # Only records with no level are touched (OTLP from an SDK keeps its
+      # own). Three shapes, first hit wins: a JSON field; a key=value pair
+      # (logfmt, zap console); an upper-case token bounded on both sides
+      # (Spring/logback "… DEBUG [main] …", "[INFO]", "WARN:", "|ERROR|") —
+      # upper-case and delimited so "user info updated" is not an INFO. The
+      # number follows the OTel log data model; the text is the app's own
+      # word, upper-cased. `cache` is scratch and never leaves the agent.
+      # log15's short forms (dbug, eror, crit) are mapped too. Numeric JSON
+      # levels (pino) fail ToUpperCase and stay unparsed.
+      transform/log_severity:
+        error_mode: ignore
+        log_statements:
+          - context: log
+            conditions:
+              - severity_number == 0
+            statements:
+              - set(cache["json"], ParseJSON(body)) where IsMatch(body, "^\\s*\\{")
+              - set(cache["level"], cache["json"]["level"]) where cache["json"]["level"] != nil
+              - set(cache["level"], cache["json"]["severity"]) where cache["level"] == nil and cache["json"]["severity"] != nil
+              - set(cache["level"], cache["json"]["lvl"]) where cache["level"] == nil and cache["json"]["lvl"] != nil
+              - set(cache["kv"], ExtractPatterns(body, "(?:^|[\\s,;])(?:level|lvl|severity)=\"?(?P<level>[A-Za-z]+)")) where cache["level"] == nil
+              - set(cache["level"], cache["kv"]["level"]) where cache["level"] == nil and cache["kv"]["level"] != nil
+              - set(cache["tok"], ExtractPatterns(body, "(?:^|[\\s\\[|(])(?P<level>TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL|CRITICAL|PANIC)(?:[\\s\\]|:),]|$)")) where cache["level"] == nil
+              - set(cache["level"], cache["tok"]["level"]) where cache["level"] == nil and cache["tok"]["level"] != nil
+              - set(cache["level"], ToUpperCase(cache["level"])) where cache["level"] != nil
+              - set(severity_number, SEVERITY_NUMBER_TRACE) where cache["level"] == "TRACE"
+              - set(severity_number, SEVERITY_NUMBER_DEBUG) where cache["level"] == "DEBUG" or cache["level"] == "DBUG"
+              - set(severity_number, SEVERITY_NUMBER_INFO) where cache["level"] == "INFO"
+              - set(severity_number, SEVERITY_NUMBER_WARN) where cache["level"] == "WARN" or cache["level"] == "WARNING"
+              - set(severity_number, SEVERITY_NUMBER_ERROR) where cache["level"] == "ERROR" or cache["level"] == "ERR" or cache["level"] == "EROR"
+              - set(severity_number, SEVERITY_NUMBER_FATAL) where cache["level"] == "FATAL" or cache["level"] == "CRITICAL" or cache["level"] == "CRIT" or cache["level"] == "PANIC"
+              - set(severity_text, cache["level"]) where severity_number != 0
+      {{- end }}
       {{- if include "avuruobs.collectGreen" . }}
       # Prometheus's synthetic scrape-report series (up, scrape_duration_seconds,
       # scrape_samples_scraped, scrape_samples_post_metric_relabeling,
@@ -677,7 +716,7 @@ data:
     {{- if include "avuruobs.collectLogs" . }}
         logs:
           receivers: [filelog]
-          processors: [memory_limiter, k8sattributes{{ if $collectionFilter }}, filter/collection{{ end }}, transform/service_name, batch]
+          processors: [memory_limiter, k8sattributes{{ if $collectionFilter }}, filter/collection{{ end }}, transform/service_name{{ if .Values.sensor.agent.logs.parseSeverity }}, transform/log_severity{{ end }}, batch]
           exporters: [otlphttp]
     {{- end }}
     {{- if include "avuruobs.collectInfraMetrics" . }}

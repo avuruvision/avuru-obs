@@ -8,8 +8,11 @@ const TONE: Record<string, "neutral" | "warning" | "error"> = {
   INFO: "neutral",
   WARN: "warning",
   WARNING: "warning",
+  ERR: "error",
   ERROR: "error",
   FATAL: "error",
+  CRITICAL: "error",
+  PANIC: "error",
 };
 
 export function SeverityBadge({ severity }: { severity: string }) {
