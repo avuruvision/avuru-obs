@@ -33,9 +33,9 @@ WHERE Tenant IN (?)
   AND Timestamp >= ? AND Timestamp < ?`
 	args := []any{tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End}
 
-	if q.Service != "" {
-		query += ` AND ServiceName = ?`
-		args = append(args, q.Service)
+	if sql, sargs := logSourceFilter(q); sql != "" {
+		query += sql
+		args = append(args, sargs...)
 	}
 	if q.MinSeverity != "" {
 		if floor, ok := severityFloor[strings.ToUpper(q.MinSeverity)]; ok {
@@ -84,6 +84,36 @@ LIMIT ?`
 		page.NextCursor = &storage.LogCursor{Timestamp: last.Timestamp, TraceID: last.TraceID, SpanID: last.SpanID}
 	}
 	return page, nil
+}
+
+// logSourceFilter renders the service side of a log read: one OR branch per
+// source when sources are set, each narrowed to its services and, per needle
+// list, to the bodies containing one of them (multiSearchAny — exact, one
+// pass); the plain equality when only Service is. The sort key leads with
+// ServiceName after the time bucket, so each branch prunes to its own
+// service's granules before the body is scanned.
+func logSourceFilter(q storage.LogQuery) (string, []any) {
+	if len(q.Sources) == 0 {
+		if q.Service == "" {
+			return "", nil
+		}
+		return ` AND ServiceName = ?`, []any{q.Service}
+	}
+	var branches []string
+	var args []any
+	for _, src := range q.Sources {
+		branch := `ServiceName IN (?)`
+		args = append(args, src.Services)
+		for _, needles := range src.BodyAll {
+			if len(needles) == 0 {
+				continue
+			}
+			branch += ` AND multiSearchAny(Body, ?)`
+			args = append(args, needles)
+		}
+		branches = append(branches, "("+branch+")")
+	}
+	return ` AND (` + strings.Join(branches, " OR ") + `)`, args
 }
 
 // logTagFilters is tagFilters for the log table, where a record's own

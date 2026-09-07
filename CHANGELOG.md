@@ -26,6 +26,18 @@ When a release is cut, that block is renamed to the version with its date.
   objects were already watched. See
   [the AEP](design/2026-09-08-mesh-workload-page.md).
 
+- **A workload's logs, from all three sources, under one cursor.**
+  `GET /api/v1/mesh/workloads/{namespace}/{name}/logs` reads a workload's own
+  log lines together with the ztunnel access lines that name one of its pods
+  and the waypoint access lines that name its Service — one query, one
+  order, one cursor, with the logs screen's `q`, `severity`, `limit` and
+  `cursor`, plus `source=` to narrow to `app`, `ztunnel` or `waypoint`. The
+  pods come from the mesh-config snapshot; when they cannot (module off,
+  cluster unread, pod list cut, workload unknown) the proxies' lines are
+  matched by name and namespace together, and the response says so in
+  `sources.fallback` rather than showing an empty column. Needs the mesh and
+  logs modules; `mesh-config` only makes it precise.
+
 ## [0.15.0] — 2026-09-07
 
 ### Added
