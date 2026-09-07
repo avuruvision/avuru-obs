@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -195,5 +196,57 @@ func TestNamespaceRowsCountTheirFindings(t *testing.T) {
 	}
 	if got := resp.Namespaces[0]; got.Errors != 1 || got.Warnings != 2 {
 		t.Errorf("shop findings = %d errors / %d warnings, want 1/2", got.Errors, got.Warnings)
+	}
+}
+
+// A namespace row says where its mode came from and how many of its workloads
+// the mesh actually has — and when pods could not be read, the counts are
+// absent rather than zero, because zero would read as "nothing runs here".
+func TestNamespaceRowsCarryTheirSourceAndEnrolment(t *testing.T) {
+	snap := workloadSnapshot()
+	cfg := Config{Modules: modules.AllSet(), MeshConfigReader: stubReader{snap: snap}}
+
+	rec := meshGet(t, &storagetest.Fake{}, cfg, "/api/v1/mesh/namespaces")
+	var resp meshNamespacesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	byName := map[string]meshNamespaceDTO{}
+	for _, n := range resp.Namespaces {
+		byName[n.Name] = n
+	}
+	shop := byName["shop"]
+	if shop.MTLSSource != "namespace" || shop.MTLSPolicy != "shop/default" {
+		t.Errorf("shop mTLS source/policy = %q/%q", shop.MTLSSource, shop.MTLSPolicy)
+	}
+	if shop.Workloads == nil || *shop.Workloads != 2 || shop.Enrolled == nil || *shop.Enrolled != 2 {
+		t.Errorf("shop workloads/enrolled = %v/%v, want 2/2", shop.Workloads, shop.Enrolled)
+	}
+	quiet := byName["quiet"]
+	if quiet.MTLSSource != "" || quiet.Enrolled == nil || *quiet.Enrolled != 0 {
+		t.Errorf("quiet = %+v — zero enrolled is the finding, and must be sent", quiet)
+	}
+	// Workload findings roll up onto the namespace row too.
+	if shop.Errors != 1 || shop.Warnings != 1 {
+		t.Errorf("shop findings = %d/%d, want 1 error (policy) and 1 warning (workload)", shop.Errors, shop.Warnings)
+	}
+	if len(resp.Kinds) != 1 || resp.Kinds[0].Kind != "Pod" {
+		t.Errorf("kinds = %+v", resp.Kinds)
+	}
+
+	snap.MissingKinds = []string{meshconfig.KindPod}
+	cfg = Config{Modules: modules.AllSet(), MeshConfigReader: stubReader{snap: snap}}
+	rec = meshGet(t, &storagetest.Fake{}, cfg, "/api/v1/mesh/namespaces")
+	var unreadable meshNamespacesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &unreadable); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	for _, n := range unreadable.Namespaces {
+		if n.Workloads != nil || n.Enrolled != nil {
+			t.Errorf("%s carried counts with pods unreadable: %v/%v", n.Name, n.Workloads, n.Enrolled)
+		}
+	}
+	if !strings.Contains(unreadable.ChecksSkipped, "grant pods") {
+		t.Errorf("checksSkipped = %q", unreadable.ChecksSkipped)
 	}
 }

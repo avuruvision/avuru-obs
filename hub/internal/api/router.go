@@ -436,6 +436,11 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 	if active.Enabled(modules.MeshConfig) {
 		mux.Handle("GET /api/v1/mesh/namespaces", a.secured(auth.RoleViewer, a.handleMeshNamespaces))
 		mux.Handle("GET /api/v1/mesh/config", a.secured(auth.RoleViewer, a.handleMeshConfig))
+		// The rows below the namespace: what the cluster runs, and what a
+		// waypoint serves. Same gate, same viewer role — the roster is
+		// cluster-wide and only its telemetry decoration is project-scoped.
+		mux.Handle("GET /api/v1/mesh/workloads", a.secured(auth.RoleViewer, a.handleMeshWorkloads))
+		mux.Handle("GET /api/v1/mesh/workloads/{namespace}/{name}", a.secured(auth.RoleViewer, a.handleMeshWorkload))
 	}
 	if active.Enabled(modules.Green) {
 		mux.Handle("GET /api/v1/green/summary", a.secured(auth.RoleViewer, a.handleGreenSummary))
