@@ -224,8 +224,9 @@ function ObjectDetail({
   );
 }
 
-// Shared with the Security tab: a posture finding is the same shape as a
-// configuration finding, and the two must read the same.
+// Shared with the Security tab (a posture finding is the same shape as a
+// configuration finding, and the two must read the same) and with the
+// workload page, which shows a covering policy's findings beside the policy.
 export function FindingCard({ finding }: { finding: MeshFinding }) {
   const isError = finding.severity === "error";
   return (

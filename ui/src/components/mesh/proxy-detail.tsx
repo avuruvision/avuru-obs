@@ -12,11 +12,13 @@ import { useTimeRange } from "@/hooks/use-time-range";
 import { useRedData } from "@/hooks/use-red-data";
 import { useServiceMapData } from "@/hooks/use-service-map-data";
 import { useMeshWorkloadRequests } from "@/hooks/use-mesh-data";
+import { useCapabilities } from "@/hooks/use-capabilities";
 import { formatBytes, formatMs, formatPercent, formatRate, formatShare } from "@/lib/format";
 import { roleLabel } from "./mesh-roles";
 import { CarriedTable } from "./carried-table";
 import { Figure } from "./figure";
 import { RequestBreakdown } from "./request-breakdown";
+import { WaypointServes, waypointName } from "./waypoint-serves";
 import type { MeshProxy } from "@/lib/api-types";
 
 // The workload the mesh knows this proxy as. The traced service name carries
@@ -58,6 +60,12 @@ export function ProxyDetail({
     workloadName(proxy),
     !!proxy.namespace,
   );
+  // What a waypoint serves comes from the cluster, so only where the module
+  // that reads it is on — and only for a waypoint, which is the one proxy
+  // whose bindings are a fact about configuration rather than traffic.
+  const { data: caps } = useCapabilities();
+  const showServes =
+    proxy.role === "waypoint" && !!proxy.namespace && (caps?.modules.includes("mesh-config") ?? false);
 
   // Every dependency the hub recovered ACROSS this proxy. viaTransport is
   // stamped by the collapse walk, so this is the proxy's real workload: the
@@ -244,6 +252,13 @@ export function ProxyDetail({
           <CarriedTable edges={carried} />
         )}
       </section>
+
+      {showServes && proxy.namespace && (
+        <WaypointServes
+          namespace={proxy.namespace}
+          name={waypointName(proxy.name, proxy.namespace)}
+        />
+      )}
     </div>
   );
 }

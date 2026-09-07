@@ -10,7 +10,10 @@ import type {
   MeshNamespacesResponse,
   MeshProxiesResponse,
   MeshSecurityResponse,
+  MeshWaypointServes,
+  MeshWorkloadDetail,
   MeshWorkloadRequests,
+  MeshWorkloadsResponse,
 } from "@/lib/api-types";
 
 // The mesh's own workloads — the ones every other screen deliberately hides,
@@ -97,6 +100,66 @@ export function useMeshWorkloadRequests(
       apiGet<MeshWorkloadRequests>(
         `/api/v1/mesh/workloads/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/requests`,
         { ...time },
+        { project },
+      ),
+  });
+}
+
+// Workloads as the CLUSTER runs them, joined to what telemetry saw. Gated like
+// the namespaces read, and for the same reason. The mode filter goes to the
+// hub, which owns what "declared-only" means; the time window is only for the
+// traffic columns.
+export function useMeshWorkloads(
+  time: TimeParams,
+  enabled: boolean,
+  filters: { namespace?: string; mode?: string } = {},
+) {
+  const { project } = useProject();
+  const { namespace, mode } = filters;
+  return useQuery({
+    enabled,
+    queryKey: queryKeys.meshWorkloads(project, time, namespace, mode),
+    queryFn: () =>
+      apiGet<MeshWorkloadsResponse>(
+        "/api/v1/mesh/workloads",
+        { ...time, namespace, mode },
+        { project },
+      ),
+  });
+}
+
+// One workload whole: its row, its own findings, the policies that cover it
+// with THEIR findings, and its pods.
+export function useMeshWorkload(
+  time: TimeParams,
+  enabled: boolean,
+  namespace: string,
+  name: string,
+) {
+  const { project } = useProject();
+  return useQuery({
+    enabled: enabled && !!namespace && !!name,
+    queryKey: queryKeys.meshWorkload(project, time, namespace, name),
+    queryFn: () =>
+      apiGet<MeshWorkloadDetail>(
+        `/api/v1/mesh/workloads/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`,
+        { ...time },
+        { project },
+      ),
+  });
+}
+
+// What a waypoint serves. No time in the key: bindings are cluster state, and
+// a moved range cannot change them.
+export function useMeshWaypointServes(enabled: boolean, namespace: string, name: string) {
+  const { project } = useProject();
+  return useQuery({
+    enabled: enabled && !!namespace && !!name,
+    queryKey: queryKeys.meshWaypoint(project, namespace, name),
+    queryFn: () =>
+      apiGet<MeshWaypointServes>(
+        `/api/v1/mesh/waypoints/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`,
+        undefined,
         { project },
       ),
   });

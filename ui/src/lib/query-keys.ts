@@ -52,6 +52,13 @@ export const queryKeys = {
   // window, so changing the range does not refetch objects that cannot differ.
   meshConfig: (p: string, kind?: string, namespace?: string, name?: string) =>
     [p, "mesh", "config", { kind, namespace, name }] as const,
+  meshWorkloads: (p: string, t: TimeParams, namespace?: string, mode?: string) =>
+    [p, "mesh", "workloads", { ...t, namespace, mode }] as const,
+  meshWorkload: (p: string, t: TimeParams, namespace: string, name: string) =>
+    [p, "mesh", "workload", { ...t, namespace, name }] as const,
+  // What a waypoint serves is cluster state, like configuration: no window.
+  meshWaypoint: (p: string, namespace: string, name: string) =>
+    [p, "mesh", "waypoint", { namespace, name }] as const,
   traceOverview: (
     p: string,
     t: TimeParams,

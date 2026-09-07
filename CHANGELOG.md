@@ -191,6 +191,27 @@ When a release is cut, that block is renamed to the version with its date.
   carries no marker at all. The legend explains the marker only when one is
   on the map.
 
+- **The mesh screen shows every workload the cluster runs, in the mesh or
+  not.** A **Workloads** tab lists what the cluster runs whether or not it ever
+  sent a span — the row that was missing from every traffic-derived screen,
+  because a workload asked into the mesh and never enrolled produces no traffic
+  of its own. Each row says whether the mesh actually has it — *captured* by
+  the node agent, a *sidecar* injected, *declared, not enrolled*, or *out of
+  mesh* — beside the waypoint that binds it and where that binding came from,
+  the declared mTLS mode drawn as a lock, the observed share where something
+  measured it (nothing does yet, and the column shows a dash rather than 0%),
+  its traffic when there was any, and its issues. *Declared, not enrolled* is a
+  filter of its own, and it travels in the URL. A workload opens onto its own
+  page: identity and binding, declared beside observed, the policies that
+  cover it with their own findings and a link into each, and its findings with
+  the fix beside the fault. The namespaces tab draws its mTLS mode as the same
+  lock, marked *inherited* when a mesh-wide policy decided it rather than the
+  namespace's own, and says how many of each namespace's workloads are
+  enrolled. A waypoint's page now lists what it serves — the namespaces,
+  Services and workloads bound to it — and says when nothing runs it, or
+  nothing is bound to it. A pod list the snapshot had to cut, and the checks
+  that did not run because of it, are said on each of these tabs.
+
 ## [0.14.0] — 2026-09-06
 
 ### Added

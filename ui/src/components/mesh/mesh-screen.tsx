@@ -7,20 +7,19 @@ import { useURLState } from "@/hooks/use-url-state";
 import { useMeshProxies, useMeshControlPlane } from "@/hooks/use-mesh-data";
 import { CenteredSpinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Card } from "@/components/ui/card";
-import { Select } from "@/components/ui/select";
 import { Tabs } from "@/components/ui/tabs";
 import { ControlPlaneCard } from "./control-plane-card";
-import { ProxiesTable } from "./proxies-table";
+import { ProxiesPanel } from "./proxies-panel";
 import { ProxyDetail } from "./proxy-detail";
 import { MeshGraph } from "./mesh-graph";
 import { NamespacesTable } from "./namespaces-table";
 import { ConfigBrowser } from "./config-browser";
 import { SecurityTab } from "./security-tab";
+import { WorkloadsTable } from "./workloads-table";
+import { WorkloadDetail } from "./workload-detail";
 import { useMeshNamespaces, useMeshSecurity } from "@/hooks/use-mesh-data";
 import { useCapabilities } from "@/hooks/use-capabilities";
 import { useServiceMapData } from "@/hooks/use-service-map-data";
-import { namespacesPresent, roleLabel, rolesPresent } from "./mesh-roles";
 
 // The mesh's own screen.
 //
@@ -29,7 +28,7 @@ import { namespacesPresent, roleLabel, rolesPresent } from "./mesh-roles";
 // right call for the map and the wrong final word: on a cluster where the mesh
 // IS the network, a proxy dropping requests or a control plane that has stopped
 // pushing config is the outage.
-type MeshView = "proxies" | "graph" | "security" | "namespaces" | "config";
+type MeshView = "proxies" | "graph" | "security" | "namespaces" | "config" | "workloads";
 // Security is a base view: the observed half comes from the proxies' own
 // scrape, which the mesh module runs. Without the config module the tab still
 // says what was seen — and says, in so many words, that nothing was declared.
@@ -38,27 +37,27 @@ const BASE_VIEWS: { value: MeshView; label: string }[] = [
   { value: "graph", label: "Graph" },
   { value: "security", label: "Security" },
 ];
-// Namespaces come from the cluster, not from traffic, so the tab appears only
-// where the module that reads the cluster is on.
+// Namespaces, configuration and workloads come from the cluster, not from
+// traffic, so these tabs appear only where the module that reads the cluster
+// is on.
 const CONFIG_VIEWS: { value: MeshView; label: string }[] = [
   { value: "namespaces", label: "Namespaces" },
   { value: "config", label: "Configuration" },
+  { value: "workloads", label: "Workloads" },
 ];
 
 export function MeshScreen() {
   const { time, windowMs } = useTimeRange();
   const { get, setMany } = useURLState();
-  const query = get("q") ?? "";
-  const namespace = get("ns") ?? "";
-  const role = get("role") ?? "";
   const selected = get("proxy") ?? "";
+  const workload = get("wl") ?? "";
   const { data: caps } = useCapabilities();
   const configOn = caps?.modules.includes("mesh-config") ?? false;
   const requested = get("view");
   const view: MeshView =
     requested === "graph" || requested === "security"
       ? requested
-      : configOn && (requested === "namespaces" || requested === "config")
+      : configOn && CONFIG_VIEWS.some((v) => v.value === requested)
         ? (requested as MeshView)
         : "proxies";
   const views = configOn ? [...BASE_VIEWS, ...CONFIG_VIEWS] : BASE_VIEWS;
@@ -74,25 +73,6 @@ export function MeshScreen() {
   const security = useMeshSecurity(time, view === "security");
 
   const list = useMemo(() => proxies.data?.proxies ?? [], [proxies.data]);
-
-  // Facet options come from the rows in scope, so the screen never offers a
-  // choice that would match nothing.
-  const namespaces = useMemo(() => namespacesPresent(list), [list]);
-  const roles = useMemo(() => rolesPresent(list), [list]);
-
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return list.filter((p) => {
-      if (namespace && p.namespace !== namespace) return false;
-      if (role && p.role !== role) return false;
-      if (!q) return true;
-      // Namespace is searchable too: on an ambient install the namespace is
-      // half of how a proxy is identified.
-      return (
-        p.name.toLowerCase().includes(q) || (p.namespace ?? "").toLowerCase().includes(q)
-      );
-    });
-  }, [list, query, namespace, role]);
 
   if (proxies.isLoading) return <CenteredSpinner />;
 
@@ -111,67 +91,18 @@ export function MeshScreen() {
     return <ProxyDetail proxy={proxy} onBack={() => setMany({ proxy: undefined })} />;
   }
 
-  const table = (
-    <>
-      {list.length === 0 ? (
-        <EmptyState icon={Waypoints} title="No mesh workloads in this window">
-          Nothing here is classified as transport — no sidecars, waypoints or
-          gateways have sent telemetry. If your proxies are running but missing,
-          the classification is correctable per install through the hub&apos;s
-          topology config, without waiting for a release.
-        </EmptyState>
-      ) : (
-        <Card className="overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral px-4 py-3">
-            <h2 className="text-sm font-medium">Proxies &amp; gateways</h2>
-            <div className="flex flex-wrap items-center gap-2">
-              {roles.length > 1 && (
-                <Select
-                  ariaLabel="Filter by role"
-                  className="w-40"
-                  value={role}
-                  onChange={(v) => setMany({ role: v || undefined })}
-                  options={[
-                    { value: "", label: "All roles" },
-                    ...roles.map((r) => ({ value: r, label: roleLabel(r) })),
-                  ]}
-                />
-              )}
-              {namespaces.length > 1 && (
-                <Select
-                  ariaLabel="Filter by namespace"
-                  className="w-48"
-                  value={namespace}
-                  onChange={(v) => setMany({ ns: v || undefined })}
-                  options={[
-                    { value: "", label: "All namespaces" },
-                    ...namespaces.map((n) => ({ value: n, label: n })),
-                  ]}
-                />
-              )}
-              <input
-                type="search"
-                aria-label="Filter proxies"
-                placeholder="Filter…"
-                value={query}
-                onChange={(e) => setMany({ q: e.target.value || undefined })}
-                className="w-48 rounded-md border border-neutral bg-base-100 px-2 py-1 text-xs"
-              />
-            </div>
-          </div>
-          <ProxiesTable
-            proxies={visible}
-            onSelect={(name) => setMany({ proxy: name })}
-          />
-          {visible.length === 0 && (
-            <p className="px-4 py-3 text-xs text-base-content/55">
-              No proxy matches those filters.
-            </p>
-          )}
-        </Card>
-      )}
-    </>
-  );
+  // A workload is "namespace/name"; the name may itself carry no slash, so the
+  // first one is the split.
+  if (view === "workloads" && workload) {
+    const slash = workload.indexOf("/");
+    return (
+      <WorkloadDetail
+        namespace={slash < 0 ? "" : workload.slice(0, slash)}
+        name={slash < 0 ? workload : workload.slice(slash + 1)}
+        onBack={() => setMany({ wl: undefined })}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -187,6 +118,8 @@ export function MeshScreen() {
         <SecurityTab data={security.data} loading={security.isLoading} />
       ) : view === "config" ? (
         <ConfigBrowser />
+      ) : view === "workloads" ? (
+        <WorkloadsTable />
       ) : view === "namespaces" ? (
         nsConfig.isLoading ? (
           <CenteredSpinner />
@@ -194,7 +127,7 @@ export function MeshScreen() {
           <NamespacesTable data={nsConfig.data} />
         ) : null
       ) : (
-        table
+        <ProxiesPanel proxies={list} />
       )}
     </div>
   );
