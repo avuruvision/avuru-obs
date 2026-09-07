@@ -200,5 +200,5 @@ when the logs module is on.
 - [x] API: the record, health, routes with findings
 - [x] Store: composed log sources under one cursor; the workload logs route
 - [x] UI: Overview tab
-- [ ] UI: Logs tab
+- [x] UI: Logs tab
 - [ ] Docs aligned

@@ -49,6 +49,16 @@ When a release is cut, that block is renamed to the version with its date.
   that reach it through its Services, every reference linking into the
   configuration browser with its own findings beside it.
 
+- **A Logs tab on the workload page.** The workload's own log lines, the
+  ztunnel lines that name one of its pods and the waypoint lines that name
+  its Service, in one table under one cursor — with a search box, a minimum
+  severity, and a toggle per source, all kept in the URL. A line under the
+  toolbar says what was actually asked: which service names, how many pods
+  were matched, and — when the pods could not be known — that the proxies'
+  lines were matched by name, and why. The tab exists only where the logs
+  module is on, and the table loads the next page as its end scrolls into
+  view.
+
 ## [0.15.0] — 2026-09-07
 
 ### Added

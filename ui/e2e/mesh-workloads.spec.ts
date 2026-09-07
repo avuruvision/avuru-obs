@@ -173,6 +173,39 @@ const REPORTS_DETAIL = {
   podsTotal: 1,
 };
 
+// The workload's logs from its three sources, as the hub composes them: its
+// own lines, the ztunnel line naming its pod, the waypoint line naming its
+// Service — one stream, and a descriptor of what was actually queried.
+const REPORTS_LOGS = {
+  logs: [
+    {
+      timestamp: "2026-09-07T13:32:33Z",
+      severity: "INFO",
+      service: "global-waypoint",
+      body: '{"method":"GET","path":"/api/reports","response_code":200,"upstream_cluster":"inbound-vip|8080|http|reports.shop.svc.cluster.local"}',
+    },
+    {
+      timestamp: "2026-09-07T13:32:32Z",
+      severity: "INFO",
+      service: "ztunnel",
+      body: 'connection complete src.workload="web-1" dst.workload="reports-7c9d-x1" dst.namespace="shop"',
+    },
+    {
+      timestamp: "2026-09-07T13:32:31Z",
+      severity: "ERROR",
+      service: "reports",
+      body: "report generation failed: upstream timeout",
+    },
+  ],
+  sources: {
+    app: ["reports", "reports.shop"],
+    ztunnel: ["ztunnel"],
+    waypoint: ["global-waypoint", "global-waypoint.istio-waypoint"],
+    needles: ["reports.shop.svc", "reports-7c9d-x1"],
+    precise: true,
+  },
+};
+
 const PODS_CUT =
   "the snapshot keeps the first 500 of the cluster's 900 pods, so workloads past the cut are not listed and the checks that need every pod did not run — an empty issues column here is not a clean bill";
 
@@ -231,6 +264,9 @@ async function stubMesh(page: Page, workloads: object = { state: "ok", workloads
   });
   await page.route("**/api/v1/mesh/workloads/shop/reports*", (r) =>
     r.fulfill({ json: REPORTS_DETAIL }),
+  );
+  await page.route("**/api/v1/mesh/workloads/shop/reports/logs*", (r) =>
+    r.fulfill({ json: REPORTS_LOGS }),
   );
   await page.route("**/api/v1/mesh/waypoints/istio-waypoint/global-waypoint*", (r) =>
     r.fulfill({ json: SERVES }),
@@ -307,7 +343,7 @@ test.describe("mesh workloads", () => {
     await expect(findings).toContainText("check that the node agent runs");
     await expect(findings).toContainText("MESH_WORKLOAD_NOT_ENROLLED");
 
-    await expect(page.getByRole("link", { name: /Traces, logs/ })).toHaveAttribute(
+    await expect(page.getByRole("link", { name: /Traces & errors/ })).toHaveAttribute(
       "href",
       "/services?service=reports",
     );
@@ -363,6 +399,75 @@ test.describe("mesh workloads", () => {
       "href",
       /view=config.*object=HTTPRoute/,
     );
+  });
+
+  test("the logs tab merges the workload's, ztunnel's and the waypoint's lines", async ({ page }) => {
+    await stubMesh(page);
+    const requests: string[] = [];
+    page.on("request", (req) => {
+      if (req.url().includes("/mesh/workloads/shop/reports/logs")) requests.push(req.url());
+    });
+    await page.goto("/mesh?view=workloads&wl=shop%2Freports");
+
+    await page.getByRole("tab", { name: "Logs" }).click();
+    await expect(page).toHaveURL(/wltab=logs/);
+
+    const logs = page.getByTestId("mesh-workload-logs");
+    // Three sources, one table — and the line saying what was asked.
+    await expect(logs).toContainText("global-waypoint");
+    await expect(logs).toContainText("ztunnel");
+    await expect(logs).toContainText("report generation failed");
+    await expect(logs).toContainText("reports-7c9d-x1");
+    await expect(page.getByTestId("mesh-workload-log-sources")).toContainText("1 pod matched");
+
+    // Filters travel in the URL and to the hub.
+    await page.getByRole("button", { name: "ztunnel", exact: true }).click();
+    await expect(page).toHaveURL(/wlsrc=app(%2C|,)waypoint/);
+    await page.getByLabel("Search workload logs").fill("timeout");
+    await page.getByLabel("Search workload logs").press("Enter");
+    await expect(page).toHaveURL(/wlq=timeout/);
+    await page.getByRole("button", { name: "Minimum severity" }).click();
+    await page.getByRole("option", { name: "ERROR+" }).click();
+    await expect(page).toHaveURL(/wlsev=ERROR/);
+    await expect.poll(() => requests.at(-1) ?? "").toMatch(/severity=ERROR/);
+    const last = requests.at(-1) ?? "";
+    expect(last).toMatch(/source=app(%2C|,)waypoint/);
+    expect(last).toMatch(/q=timeout/);
+
+    // Back to the list clears the page's own keys.
+    await page.getByRole("button", { name: "All workloads" }).click();
+    await expect(page).not.toHaveURL(/wltab|wlq|wlsev|wlsrc/);
+  });
+
+  test("says when the proxies' lines could only be matched by name", async ({ page }) => {
+    await stubMesh(page);
+    await page.route("**/api/v1/mesh/workloads/shop/reports/logs*", (r) =>
+      r.fulfill({
+        json: {
+          logs: [],
+          sources: {
+            ...REPORTS_LOGS.sources,
+            needles: ["reports.shop.svc"],
+            precise: false,
+            fallback: "pods are matched by name: the pod list was cut, and this workload's may be past the cut",
+          },
+        },
+      }),
+    );
+    await page.goto("/mesh?view=workloads&wl=shop%2Freports&wltab=logs");
+    await expect(page.getByTestId("mesh-workload-log-sources")).toContainText("matched by name");
+    await expect(page.getByTestId("mesh-workload-log-sources")).toContainText("pod list was cut");
+  });
+
+  test("has no Logs tab without the logs module", async ({ page }) => {
+    await stubMesh(page);
+    await page.route("**/api/v1/capabilities*", (r) =>
+      r.fulfill({ json: { ...CAPABILITIES, modules: CAPABILITIES.modules.filter((m) => m !== "logs") } }),
+    );
+    await page.goto("/mesh?view=workloads&wl=shop%2Freports&wltab=logs");
+    await expect(page.getByTestId("mesh-workload-overview")).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Logs" })).toHaveCount(0);
+    await expect(page.getByTestId("mesh-workload-logs")).toHaveCount(0);
   });
 
   test("namespaces say where their mode came from, and how many are enrolled", async ({ page }) => {

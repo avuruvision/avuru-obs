@@ -5,9 +5,12 @@ import { useMemo } from "react";
 import { ArrowLeft, Boxes, ExternalLink } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tabs } from "@/components/ui/tabs";
 import { CenteredSpinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
+import { useCapabilities } from "@/hooks/use-capabilities";
 import { useTimeRange } from "@/hooks/use-time-range";
+import { useURLState } from "@/hooks/use-url-state";
 import { useMeshWorkload } from "@/hooks/use-mesh-data";
 import { formatRate } from "@/lib/format";
 import { statusDotClass, statusLabel, statusTone } from "@/lib/health-status";
@@ -17,6 +20,11 @@ import { EnrolmentBadge, MtlsLock, ObservedMtls } from "./posture";
 import { PostureBadge } from "./posture-badge";
 import { SnapshotNotes, UnreadableState } from "./snapshot-notes";
 import { Item, WorkloadOverview } from "./workload-overview";
+import { WorkloadLogs } from "./workload-logs";
+
+// The page's tabs, keyed in the URL as wltab. The mesh screen's own keys
+// (view, wl, wlns, mode, proxy, q, ns, role) stay untouched.
+type WorkloadTab = "overview" | "logs";
 
 // One workload, whole: what the cluster says it is, what was declared for it,
 // what was measured, and which policies decided that.
@@ -30,7 +38,13 @@ export function WorkloadDetail({
   onBack: () => void;
 }) {
   const { time } = useTimeRange();
+  const { get, setMany } = useURLState();
+  const { data: caps } = useCapabilities();
   const one = useMeshWorkload(time, true, namespace, name);
+  // Logs are the logs module's; without it the tab does not exist, and a
+  // deep link to it lands on the overview.
+  const logsOn = caps?.modules.includes("logs") ?? false;
+  const tab: WorkloadTab = logsOn && get("wltab") === "logs" ? "logs" : "overview";
 
   const back = (
     <button
@@ -90,13 +104,14 @@ export function WorkloadDetail({
             {statusLabel(data.health.status)}
           </Badge>
         )}
-        {/* Traces, logs and errors are the same screens every other workload
-            uses; the link takes the reader there rather than rebuilding them. */}
+        {/* Traces and errors are the same screens every other workload uses;
+            the link takes the reader there. Logs are a tab here, because the
+            proxies' lines about this workload are on no other screen. */}
         <Link
           href={`/services?service=${encodeURIComponent(w.name)}`}
           className="ml-auto inline-flex items-center gap-1 text-xs text-primary hover:underline"
         >
-          Traces, logs &amp; errors
+          Traces &amp; errors
           <ExternalLink className="h-3 w-3" aria-hidden />
         </Link>
       </div>
@@ -107,27 +122,46 @@ export function WorkloadDetail({
         checksSkipped={data.checksSkipped}
       />
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        <IdentityCard w={w} data={data} />
-        <DeclaredVsObserved w={w} />
-      </div>
+      <Tabs<WorkloadTab>
+        items={[
+          { value: "overview", label: "Overview" },
+          ...(logsOn ? [{ value: "logs" as const, label: "Logs" }] : []),
+        ]}
+        value={tab}
+        onChange={(v) => setMany({ wltab: v === "overview" ? undefined : v })}
+      />
 
-      <WorkloadOverview w={w} data={data} />
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium">Findings</h2>
-        {data.findings.length === 0 ? (
-          <p className="text-xs text-base-content/55">
-            Nothing this product checks for is wrong with this workload.
-          </p>
-        ) : (
-          <div data-testid="mesh-workload-findings" className="flex flex-col gap-2">
-            {data.findings.map((f, i) => (
-              <FindingCard key={`${f.code}-${i}`} finding={f} />
-            ))}
+      {tab === "logs" ? (
+        <WorkloadLogs
+          namespace={w.namespace}
+          name={w.name}
+          waypoint={w.waypoint ? `${w.waypointNamespace ?? w.namespace}/${w.waypoint}` : undefined}
+        />
+      ) : (
+        <>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <IdentityCard w={w} data={data} />
+            <DeclaredVsObserved w={w} />
           </div>
-        )}
-      </section>
+
+          <WorkloadOverview w={w} data={data} />
+
+          <section className="flex flex-col gap-2">
+            <h2 className="text-sm font-medium">Findings</h2>
+            {data.findings.length === 0 ? (
+              <p className="text-xs text-base-content/55">
+                Nothing this product checks for is wrong with this workload.
+              </p>
+            ) : (
+              <div data-testid="mesh-workload-findings" className="flex flex-col gap-2">
+                {data.findings.map((f, i) => (
+                  <FindingCard key={`${f.code}-${i}`} finding={f} />
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      )}
     </div>
   );
 }

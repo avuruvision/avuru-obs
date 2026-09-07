@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -21,13 +22,28 @@ export function LogTable({
   hasNextPage,
   isFetchingNextPage,
   fetchNextPage,
+  autoLoad = false,
 }: {
   pages?: LogRecord[][];
   isLoading: boolean;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   fetchNextPage: () => void;
+  // Fetch the next page when the end of the table scrolls into view. The
+  // button stays for keyboards and for a viewport the sentinel never enters.
+  autoLoad?: boolean;
 }) {
+  const sentinel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!autoLoad || !hasNextPage || isFetchingNextPage || !sentinel.current) return;
+    const el = sentinel.current;
+    const obs = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) fetchNextPage();
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [autoLoad, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
   if (isLoading) return <CenteredSpinner />;
   const logs = pages?.flat() ?? [];
   if (!logs.length) {
@@ -94,7 +110,7 @@ export function LogTable({
         </tbody>
       </table>
       {hasNextPage && (
-        <div className="border-t border-neutral p-2 text-center">
+        <div ref={sentinel} className="border-t border-neutral p-2 text-center">
           <Button variant="ghost" size="sm" onClick={fetchNextPage} disabled={isFetchingNextPage}>
             {isFetchingNextPage ? <Spinner className="h-4 w-4" /> : "Load more"}
           </Button>
