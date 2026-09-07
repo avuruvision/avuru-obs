@@ -65,6 +65,32 @@ When a release is cut, that block is renamed to the version with its date.
   under its own `DISABLE` as `STRICT`. Namespace rows now say where their mode
   came from and how many of their workloads the mesh actually has. The screens
   that show this come in a later release.
+- **Six checks became seventeen.** v0.14 judged the mesh's configuration for
+  the breakage that emits nothing — a route to a Service that is not there, a
+  host nobody answers to. Eleven more checks now cover the configuration that
+  looks finished and is not: a workload labelled for ambient that the node
+  agent never captured; a policy whose selector matches no pod, or whose
+  targetRef names nothing; a namespace, service or workload bound to a
+  waypoint nobody deployed; an HTTP-level rule or route in an ambient
+  namespace with no waypoint to evaluate it, where allow rules fail closed and
+  routes are simply not applied; a workload running a sidecar in an ambient
+  namespace, or labelled for both, or bound to a waypoint it can never reach;
+  a route to a subset no DestinationRule defines; two rules claiming one host,
+  where only one is applied; a Gateway — waypoints included — that no running
+  pod serves; listeners on one gateway that cannot coexist and keep the whole
+  gateway from being programmed; an authorization rule naming a service
+  account nobody runs as, which allows or denies nobody. The mTLS conflict is
+  now judged workload by workload against the policy that actually applies,
+  and in both directions.
+
+  Every finding says what breaks silently and what to change, and names the
+  object it is about — with its kind, so a Service and a Workload spelled the
+  same way open on the right tab. The five checks that need pods go silent
+  when the pod list could not be read or was cut, and the snapshot says so in
+  one sentence naming them and why: an empty issues column must never read as
+  a clean bill. "Not covered by any policy" is deliberately not a finding — it
+  is the workload's own policy list being empty, a fact on the row, because on
+  most clusters it is the state of most workloads.
 
 - **Every workload the cluster runs is on the API now, and so is what a
   waypoint serves.** `GET /api/v1/mesh/workloads` lists what the cluster runs
