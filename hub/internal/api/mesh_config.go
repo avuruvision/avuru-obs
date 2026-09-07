@@ -21,6 +21,10 @@ type meshFindingDTO struct {
 	// it was found on — the Service a route cannot reach, say — so the reader
 	// can search for the thing that is absent.
 	Ref string `json:"ref,omitempty"`
+	// RefKind says what Ref names — Service, Gateway, Workload, Namespace,
+	// ServiceAccount, VirtualService, DestinationRule, Host or Waypoint — so
+	// the screen can open it rather than guess from its shape.
+	RefKind string `json:"refKind,omitempty"`
 }
 
 type meshConfigObjectDTO struct {
@@ -104,6 +108,7 @@ func toFindingDTOs(findings []meshconfig.Finding) []meshFindingDTO {
 			Message:  f.Message,
 			Hint:     f.Hint,
 			Ref:      f.Ref,
+			RefKind:  f.RefKind,
 		})
 	}
 	return out

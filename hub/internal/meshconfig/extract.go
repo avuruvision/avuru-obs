@@ -33,11 +33,14 @@ const (
 	KindSidecar             = "Sidecar"
 	KindPeerAuthentication  = "PeerAuthentication"
 	KindAuthorizationPolicy = "AuthorizationPolicy"
-	KindTelemetry           = "Telemetry"
-	KindWasmPlugin          = "WasmPlugin"
-	KindDeployment          = "Deployment"
-	KindDaemonSet           = "DaemonSet"
-	KindStatefulSet         = "StatefulSet"
+	// KindRequestAuthentication is not watched yet; the validator knows the
+	// kind so that the day it is, the L7 check needs no change.
+	KindRequestAuthentication = "RequestAuthentication"
+	KindTelemetry             = "Telemetry"
+	KindWasmPlugin            = "WasmPlugin"
+	KindDeployment            = "Deployment"
+	KindDaemonSet             = "DaemonSet"
+	KindStatefulSet           = "StatefulSet"
 	// KindReplicaSet is never watched; it is what a pod names as its owner
 	// when its Deployment could not be confirmed.
 	KindReplicaSet = "ReplicaSet"

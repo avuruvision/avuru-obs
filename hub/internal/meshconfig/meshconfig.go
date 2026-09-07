@@ -152,6 +152,11 @@ type Snapshot struct {
 	// Kinds describes every kind that was read, sorted by kind, so a screen
 	// can say which cache is stale and which one was cut.
 	Kinds []KindSync
+	// ChecksSkipped names the checks the validator did not run and why —
+	// the pod-dependent ones, when pods were refused or the list was cut.
+	// Empty when every check ran. One sentence, operator-facing, because an
+	// empty issues column must never be read as a clean bill.
+	ChecksSkipped string
 
 	Namespaces []Namespace
 	Objects    []Object

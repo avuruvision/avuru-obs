@@ -1,6 +1,10 @@
 package meshconfig
 
-import "testing"
+import (
+	"slices"
+	"strings"
+	"testing"
+)
 
 func obj(kind, namespace, name string, spec map[string]any) Object {
 	return Object{Kind: kind, Namespace: namespace, Name: name, Spec: spec}
@@ -23,15 +27,83 @@ func ref(name string, extra map[string]any) map[string]any {
 	return m
 }
 
-// codes collects every finding raised anywhere in the snapshot.
+// codes collects every finding raised anywhere in the snapshot — on objects,
+// namespaces, workloads and services alike.
 func codes(snap Snapshot) map[Code]int {
 	out := map[Code]int{}
-	for _, o := range snap.Objects {
-		for _, f := range o.Findings {
-			out[f.Code]++
-		}
+	for _, f := range allFindings(snap) {
+		out[f.Code]++
 	}
 	return out
+}
+
+func allFindings(snap Snapshot) []Finding {
+	var out []Finding
+	for _, o := range snap.Objects {
+		out = append(out, o.Findings...)
+	}
+	for _, ns := range snap.Namespaces {
+		out = append(out, ns.Findings...)
+	}
+	for _, w := range snap.Workloads {
+		out = append(out, w.Findings...)
+	}
+	for _, s := range snap.Services {
+		out = append(out, s.Findings...)
+	}
+	return out
+}
+
+// judge derives the workload and service inventory the reader would, then
+// validates — the same two steps build() takes, so a test hands in pods and
+// objects and gets the findings a real snapshot would carry. Objects are
+// copied first: Validate writes findings in place, and a test that judges one
+// object list twice must not see the first run's findings on the second.
+func judge(snap Snapshot) Snapshot {
+	snap.Objects = slices.Clone(snap.Objects)
+	for i := range snap.Objects {
+		snap.Objects[i].Findings = nil
+	}
+	snap.Services = ServicesFrom(snap.Objects, snap.Pods, snap.Namespaces)
+	snap.Workloads = WorkloadsFrom(snap.Pods, snap.Namespaces, snap.Objects, "istio-system")
+	return Validate(snap)
+}
+
+// objectFindings returns the findings on one object, by kind and name.
+func objectFindings(snap Snapshot, kind, name string) []Finding {
+	for _, o := range snap.Objects {
+		if o.Kind == kind && o.Name == name {
+			return o.Findings
+		}
+	}
+	return nil
+}
+
+func workloadFindings(snap Snapshot, id string) []Finding {
+	for _, w := range snap.Workloads {
+		if key(w.Namespace, w.Name) == id {
+			return w.Findings
+		}
+	}
+	return nil
+}
+
+func namespaceFindings(snap Snapshot, name string) []Finding {
+	for _, ns := range snap.Namespaces {
+		if ns.Name == name {
+			return ns.Findings
+		}
+	}
+	return nil
+}
+
+func hasCode(findings []Finding, code Code) bool {
+	for _, f := range findings {
+		if f.Code == code {
+			return true
+		}
+	}
+	return false
 }
 
 // The check the whole module is worth having: a route that attaches, matches,
@@ -51,11 +123,12 @@ func TestRouteWithMissingBackend(t *testing.T) {
 	if got[CodeRouteParentMissing] != 0 {
 		t.Errorf("a Gateway that exists was reported missing")
 	}
-	// The finding must name the thing that is absent, so it can be searched for.
+	// The finding must name the thing that is absent, and what kind of thing
+	// it is, so it can be searched for on the right list.
 	for _, o := range snap.Objects {
 		for _, f := range o.Findings {
-			if f.Code == CodeRouteBackendMissing && f.Ref != "shop/payments" {
-				t.Errorf("finding ref = %q, want shop/payments", f.Ref)
+			if f.Code == CodeRouteBackendMissing && (f.Ref != "shop/payments" || f.RefKind != RefKindService) {
+				t.Errorf("finding ref = %s %q, want Service shop/payments", f.RefKind, f.Ref)
 			}
 		}
 	}
@@ -99,10 +172,8 @@ func TestWaypointIsNotAnUnusedGateway(t *testing.T) {
 	if got[CodeGatewayNoRoutes] != 1 {
 		t.Errorf("unused-gateway findings = %d, want only the real gateway", got[CodeGatewayNoRoutes])
 	}
-	for _, o := range snap.Objects {
-		if o.Name == "global-waypoint" && len(o.Findings) != 0 {
-			t.Errorf("a waypoint was flagged for having no routes: %+v", o.Findings)
-		}
+	if hasCode(objectFindings(snap, KindGateway, "global-waypoint"), CodeGatewayNoRoutes) {
+		t.Error("a waypoint was flagged for having no routes")
 	}
 }
 
@@ -153,5 +224,50 @@ func TestHostResolutionIsConservative(t *testing.T) {
 		if o.Name == "typo" && len(o.Findings) == 0 {
 			t.Error("the typo was not caught")
 		}
+	}
+}
+
+// A bare host means a different Service in every namespace, so it resolves
+// against the asker's — never against whichever namespace happened to be
+// indexed last.
+func TestBareHostResolvesInTheAskersNamespace(t *testing.T) {
+	snap := Validate(Snapshot{Objects: []Object{
+		svc("web", "checkout"),
+		obj(KindVirtualService, "shop", "bare", map[string]any{"hosts": []any{"checkout"}}),
+		obj(KindVirtualService, "web", "bare", map[string]any{"hosts": []any{"checkout"}}),
+	}})
+	for _, o := range snap.Objects {
+		if o.Kind != KindVirtualService {
+			continue
+		}
+		unresolved := hasCode(o.Findings, CodeHostUnresolved)
+		if want := o.Namespace == "shop"; unresolved != want {
+			t.Errorf("%s/%s unresolved = %v, want %v", o.Namespace, o.Name, unresolved, want)
+		}
+	}
+}
+
+// The pod-dependent checks go silent when pods were refused or cut, and the
+// snapshot says so: an empty issues column must never read as a clean bill.
+func TestChecksSkippedNamesWhy(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		snap Snapshot
+		want string
+	}{
+		{"pods readable", Snapshot{}, ""},
+		{"pods refused", Snapshot{MissingKinds: []string{KindPod}, MissingReasons: map[string]string{KindPod: reasonForbidden}},
+			"pods were not readable (the ClusterRole does not grant reading it) — grant pods get, list and watch"},
+		{"pods cut", Snapshot{PodsTruncated: true, Pods: []Pod{{Name: "a"}, {Name: "b"}}}, "the pod list was cut at 2"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Validate(tc.snap).ChecksSkipped
+			if tc.want == "" && got != "" {
+				t.Fatalf("ChecksSkipped = %q, want none", got)
+			}
+			if tc.want != "" && (!strings.Contains(got, tc.want) || !strings.Contains(got, string(CodeAmbientNotEnrolled))) {
+				t.Errorf("ChecksSkipped = %q, want it to name the checks and say %q", got, tc.want)
+			}
+		})
 	}
 }
