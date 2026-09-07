@@ -1194,6 +1194,9 @@
               "properties": {
                 "enabled": {
                   "type": "boolean"
+                },
+                "parseSeverity": {
+                  "type": "boolean"
                 }
               }
             },

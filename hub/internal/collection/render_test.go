@@ -91,6 +91,53 @@ const (
 	filelogPipeline = "receivers: [filelog]"
 )
 
+// A tailed container line carries no OTLP severity; the agent reads one off
+// the line so the hub's severity filter and the error issues built from logs
+// see plain-stdout apps. On by default, off with sensor.agent.logs.parseSeverity,
+// and gone with the logs pipeline itself.
+func TestRenderSensorManifests_LogSeverityParser(t *testing.T) {
+	render := func(values map[string]any, overlay Overlay) string {
+		t.Helper()
+		got, err := RenderSensorManifests(values, overlay, "avuruobs", "avuruobs")
+		if err != nil {
+			t.Fatalf("RenderSensorManifests: %v", err)
+		}
+		agent, ok := got.ConfigMap("avuruobs-sensor-agent")
+		if !ok {
+			t.Fatal("agent ConfigMap missing")
+		}
+		return agent.Data["config.yaml"]
+	}
+
+	def := render(baseValuesFixture(t), Overlay{})
+	if !strings.Contains(def, logSeverityProcessor) || !strings.Contains(def, logSeverityInPipeline) {
+		t.Fatalf("default render should parse severity in the logs pipeline:\n%s", def)
+	}
+
+	off := false
+	noLogs := render(baseValuesFixture(t), Overlay{LogsEnabled: &off})
+	if strings.Contains(noLogs, logSeverityProcessor) || strings.Contains(noLogs, logSeverityInPipeline) {
+		t.Fatal("logs toggled off but the severity processor still rendered")
+	}
+
+	values := baseValuesFixture(t)
+	values["sensor"] = map[string]any{
+		"agent": map[string]any{"logs": map[string]any{"parseSeverity": false}},
+	}
+	noParse := render(values, Overlay{})
+	if strings.Contains(noParse, logSeverityProcessor) || strings.Contains(noParse, logSeverityInPipeline) {
+		t.Fatal("parseSeverity=false but the severity processor still rendered")
+	}
+	if !strings.Contains(noParse, filelogPipeline) {
+		t.Fatal("parseSeverity=false should leave the logs pipeline itself in place")
+	}
+}
+
+const (
+	logSeverityProcessor  = "\n  transform/log_severity:"
+	logSeverityInPipeline = "transform/log_severity, batch]"
+)
+
 func TestRenderSensorManifests_OverlayExcludeNamespaces(t *testing.T) {
 	ns := []string{"payments"}
 	got, err := RenderSensorManifests(baseValuesFixture(t), Overlay{ExcludeNamespaces: &ns}, "avuruobs", "avuruobs")

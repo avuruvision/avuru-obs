@@ -11,6 +11,18 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **Container logs carry a level.** A line tailed from a pod's stdout arrives
+  with no OTLP severity, so the Logs screen showed "—" for it, "INFO+" hid it,
+  and an `ERROR` line from a plain-stdout app never became an error issue. The
+  node agent now reads the level off the line — a JSON `level`/`severity`/`lvl`
+  field, a `level=warn` key=value, or the usual upper-case token (`… DEBUG
+  [main] …`, `[INFO]`, `ERROR:`) — and sets the OTel severity number and text.
+  pino's numeric levels are read too. Records that already carry a level are
+  left alone. On by default, off with `sensor.agent.logs.parseSeverity=false`.
+  Rows ingested before the upgrade keep their empty level until they age out.
+
 ### Changed
 
 - **A workload's Logs tab shows the workload's own lines by default.** On the
