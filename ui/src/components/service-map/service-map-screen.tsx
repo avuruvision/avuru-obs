@@ -221,6 +221,7 @@ export function ServiceMapScreen() {
         mesh={meshEdges > 0}
         virtual={shownVirtual > 0}
         peers={shownPeers > 0}
+        mtls={shown.edges.some((e) => e.mtlsShare !== undefined)}
         grouping={grouping}
       />
 

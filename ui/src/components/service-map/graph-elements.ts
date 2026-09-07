@@ -51,6 +51,26 @@ function viaLabel(e: ServiceEdge): string | undefined {
   return `via ${via.join(", ")}`;
 }
 
+// The mutual-TLS share of an edge, bucketed for the stylesheet: 2 is all of
+// it, 0 is none of it, 1 is the mixed middle. Only an edge the destination's
+// proxy reported gets a bucket at all — an unmeasured edge carries no `mtls`
+// field, and the stylesheet draws nothing for it, because "not measured" must
+// never be drawn as either "encrypted" or "in the clear".
+function mtlsBucket(e: ServiceEdge): 0 | 1 | 2 | undefined {
+  if (e.mtlsShare === undefined) return undefined;
+  return e.mtlsShare >= 0.999 ? 2 : e.mtlsShare <= 0 ? 0 : 1;
+}
+
+// "mTLS 97% · 30 plaintext" for the hover and the focus label. The plaintext
+// count is named rather than left to the percentage: on a busy edge 97% is a
+// lot of calls in the clear, and the number says so.
+function mtlsLabel(e: ServiceEdge): string[] {
+  if (e.mtlsShare === undefined) return [];
+  const parts = [`mTLS ${Math.round(e.mtlsShare * 100)}%`];
+  if (e.plaintextCalls) parts.push(`${e.plaintextCalls} plaintext`);
+  return parts;
+}
+
 // edgeTooltip is the hover text for an edge: call volume, this path's latency,
 // plus any network health OBI measured for the connection.
 function edgeTooltip(e: ServiceEdge, windowMinutes: number): string {
@@ -62,6 +82,7 @@ function edgeTooltip(e: ServiceEdge, windowMinutes: number): string {
   if (e.failedConnections) parts.push(`${e.failedConnections} failed conns`);
   if (e.retransmits) parts.push(`${e.retransmits} retransmits`);
   if (e.bytes) parts.push(formatBytes(e.bytes));
+  parts.push(...mtlsLabel(e));
   const via = viaLabel(e);
   if (via) parts.push(via);
   return parts.join(" · ");
@@ -75,6 +96,7 @@ function edgeFocusLabel(e: ServiceEdge, windowMinutes: number): string {
   if (e.p95Ms !== undefined) parts.push(`p95 ${formatMs(e.p95Ms)}`);
   if ((e.errorRate ?? 0) > 0) parts.push(`${(e.errorRate * 100).toFixed(1)}% err`);
   if (e.rttMs) parts.push(`RTT ${e.rttMs.toFixed(0)}ms`);
+  parts.push(...mtlsLabel(e));
   const via = viaLabel(e);
   if (via) parts.push(via);
   return parts.join(" · ");
@@ -245,6 +267,9 @@ export function buildElements({
         // differently from "call we traced" without borrowing dashed, which
         // already means network-unhealthy.
         flow: isFlowOnly(e) ? 1 : 0,
+        // Stamped only on a measured edge; an unmeasured one carries no field,
+        // so the stylesheet's marker selectors never match it.
+        ...(mtlsBucket(e) !== undefined ? { mtls: mtlsBucket(e) } : {}),
         focusLabel: edgeFocusLabel(e, windowMinutes),
         volumeLabel: edgeVolumeLabel(e, windowMinutes),
         tooltip: edgeTooltip(e, windowMinutes),

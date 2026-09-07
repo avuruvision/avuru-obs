@@ -16,7 +16,8 @@ import { ProxyDetail } from "./proxy-detail";
 import { MeshGraph } from "./mesh-graph";
 import { NamespacesTable } from "./namespaces-table";
 import { ConfigBrowser } from "./config-browser";
-import { useMeshNamespaces } from "@/hooks/use-mesh-data";
+import { SecurityTab } from "./security-tab";
+import { useMeshNamespaces, useMeshSecurity } from "@/hooks/use-mesh-data";
 import { useCapabilities } from "@/hooks/use-capabilities";
 import { useServiceMapData } from "@/hooks/use-service-map-data";
 import { namespacesPresent, roleLabel, rolesPresent } from "./mesh-roles";
@@ -28,10 +29,14 @@ import { namespacesPresent, roleLabel, rolesPresent } from "./mesh-roles";
 // right call for the map and the wrong final word: on a cluster where the mesh
 // IS the network, a proxy dropping requests or a control plane that has stopped
 // pushing config is the outage.
-type MeshView = "proxies" | "graph" | "namespaces" | "config";
+type MeshView = "proxies" | "graph" | "security" | "namespaces" | "config";
+// Security is a base view: the observed half comes from the proxies' own
+// scrape, which the mesh module runs. Without the config module the tab still
+// says what was seen — and says, in so many words, that nothing was declared.
 const BASE_VIEWS: { value: MeshView; label: string }[] = [
   { value: "proxies", label: "Proxies" },
   { value: "graph", label: "Graph" },
+  { value: "security", label: "Security" },
 ];
 // Namespaces come from the cluster, not from traffic, so the tab appears only
 // where the module that reads the cluster is on.
@@ -51,8 +56,8 @@ export function MeshScreen() {
   const configOn = caps?.modules.includes("mesh-config") ?? false;
   const requested = get("view");
   const view: MeshView =
-    requested === "graph"
-      ? "graph"
+    requested === "graph" || requested === "security"
+      ? requested
       : configOn && (requested === "namespaces" || requested === "config")
         ? (requested as MeshView)
         : "proxies";
@@ -64,6 +69,9 @@ export function MeshScreen() {
   // read is the most expensive one on the screen.
   const map = useServiceMapData(time);
   const nsConfig = useMeshNamespaces(time, configOn);
+  // Fetched only while its tab is open: the read joins two stores, and no
+  // other view on the screen needs it.
+  const security = useMeshSecurity(time, view === "security");
 
   const list = useMemo(() => proxies.data?.proxies ?? [], [proxies.data]);
 
@@ -175,6 +183,8 @@ export function MeshScreen() {
           edges={map.data?.edges ?? []}
           windowMs={windowMs}
         />
+      ) : view === "security" ? (
+        <SecurityTab data={security.data} loading={security.isLoading} />
       ) : view === "config" ? (
         <ConfigBrowser />
       ) : view === "namespaces" ? (

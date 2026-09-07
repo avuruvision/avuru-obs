@@ -9,6 +9,8 @@ import type {
   MeshControlPlane,
   MeshNamespacesResponse,
   MeshProxiesResponse,
+  MeshSecurityResponse,
+  MeshWorkloadRequests,
 } from "@/lib/api-types";
 
 // The mesh's own workloads — the ones every other screen deliberately hides,
@@ -61,5 +63,41 @@ export function useMeshConfig(
     queryKey: queryKeys.meshConfig(project, kind, namespace, name),
     queryFn: () =>
       apiGet<MeshConfigResponse>("/api/v1/mesh/config", { kind, namespace, name }, { project }),
+  });
+}
+
+// What the cluster declared about mutual TLS beside what the proxies observed,
+// per workload. `enabled` for the same reason as the namespaces: the read joins
+// two stores and is only wanted while the Security tab is the one open.
+export function useMeshSecurity(time: TimeParams, enabled: boolean) {
+  const { project } = useProject();
+  return useQuery({
+    enabled,
+    queryKey: queryKeys.meshSecurity(project, time),
+    queryFn: () =>
+      apiGet<MeshSecurityResponse>("/api/v1/mesh/security", { ...time }, { project }),
+  });
+}
+
+// One workload's requests as its proxy counted them — by response flag,
+// destination version and caller. `enabled` is false when the proxy has no
+// namespace: the route is keyed by namespace and name, and guessing one would
+// ask the hub about a workload that does not exist.
+export function useMeshWorkloadRequests(
+  time: TimeParams,
+  namespace: string,
+  name: string,
+  enabled: boolean,
+) {
+  const { project } = useProject();
+  return useQuery({
+    enabled,
+    queryKey: queryKeys.meshWorkloadRequests(project, time, namespace, name),
+    queryFn: () =>
+      apiGet<MeshWorkloadRequests>(
+        `/api/v1/mesh/workloads/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/requests`,
+        { ...time },
+        { project },
+      ),
   });
 }

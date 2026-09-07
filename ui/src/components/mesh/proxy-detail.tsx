@@ -11,10 +11,26 @@ import { RedChart } from "@/components/metrics/red-chart";
 import { useTimeRange } from "@/hooks/use-time-range";
 import { useRedData } from "@/hooks/use-red-data";
 import { useServiceMapData } from "@/hooks/use-service-map-data";
-import { formatBytes, formatMs, formatPercent, formatRate } from "@/lib/format";
+import { useMeshWorkloadRequests } from "@/hooks/use-mesh-data";
+import { formatBytes, formatMs, formatPercent, formatRate, formatShare } from "@/lib/format";
 import { roleLabel } from "./mesh-roles";
 import { CarriedTable } from "./carried-table";
+import { Figure } from "./figure";
+import { RequestBreakdown } from "./request-breakdown";
 import type { MeshProxy } from "@/lib/api-types";
+
+// The workload the mesh knows this proxy as. The traced service name carries
+// the namespace as a suffix ("global-waypoint.istio-waypoint"); the data-plane
+// series are keyed by namespace and bare name. Mirrors the hub's workloadKey,
+// so the two sides ask about the same thing.
+function workloadName(proxy: MeshProxy): string {
+  const ns = proxy.namespace;
+  if (!ns) return proxy.name;
+  const suffix = `.${ns}`;
+  return proxy.name.endsWith(suffix) && proxy.name.length > suffix.length
+    ? proxy.name.slice(0, -suffix.length)
+    : proxy.name;
+}
 
 // One proxy, and the question the table cannot answer: what is it carrying, and
 // who loses it when this fails.
@@ -34,6 +50,14 @@ export function ProxyDetail({
   const { time } = useTimeRange();
   const map = useServiceMapData(time);
   const red = useRedData(time, proxy.name);
+  // Keyed by namespace, so a proxy whose namespace could not be resolved asks
+  // nothing rather than asking about a workload that does not exist.
+  const requests = useMeshWorkloadRequests(
+    time,
+    proxy.namespace ?? "",
+    workloadName(proxy),
+    !!proxy.namespace,
+  );
 
   // Every dependency the hub recovered ACROSS this proxy. viaTransport is
   // stamped by the collapse walk, so this is the proxy's real workload: the
@@ -44,6 +68,8 @@ export function ProxyDetail({
   );
 
   const points = red.data?.series.find((s) => s.service === proxy.name)?.points ?? [];
+  const plaintext = proxy.plaintextUnits ?? 0;
+  const pending = proxy.pendingWorkloads ?? 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -78,7 +104,7 @@ export function ProxyDetail({
       </div>
 
       <Card className="p-4">
-        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <dl data-testid="mesh-proxy-figures" className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Figure label="Rate" value={formatRate(proxy.ratePerSec)} />
           <Figure
             label="Success"
@@ -119,6 +145,45 @@ export function ProxyDetail({
               }
             />
           )}
+          {/* What the proxy's own counters said about traffic addressed to it.
+              Same rule as the bytes: a proxy the scrape did not report gets no
+              figure, because "not measured" must not read as "all encrypted". */}
+          {proxy.mtlsShare !== undefined && (
+            <Figure
+              label="mTLS"
+              value={formatShare(proxy.mtlsShare)}
+              tone={plaintext > 0 ? "warning" : undefined}
+              hint={
+                plaintext > 0
+                  ? `${plaintext.toLocaleString()} requests or connections reached this proxy in the clear`
+                  : "Every request and connection this proxy accepted came over mutual TLS"
+              }
+            />
+          )}
+          {/* ztunnel only: the node proxies' own account of what they carry.
+              A waiting count is the finding — a workload told about and not
+              yet wired is one whose traffic is crossing the node unmeshed. */}
+          {proxy.role === "ztunnel" && proxy.activeWorkloads !== undefined && (
+            <Figure
+              label="Workloads carried"
+              value={proxy.activeWorkloads.toLocaleString()}
+              tone={pending > 0 ? "warning" : undefined}
+              note={pending > 0 ? `${pending.toLocaleString()} waiting` : undefined}
+              hint={
+                pending > 0
+                  ? "Workloads ztunnel has been told about and has not yet wired"
+                  : undefined
+              }
+            />
+          )}
+          {proxy.role === "ztunnel" && proxy.xdsTerminations !== undefined && (
+            <Figure
+              label="XDS drops"
+              value={proxy.xdsTerminations.toLocaleString()}
+              tone={proxy.xdsTerminations > 0 ? "warning" : undefined}
+              hint="Times the control-plane stream to ztunnel was cut"
+            />
+          )}
         </dl>
       </Card>
 
@@ -157,6 +222,8 @@ export function ProxyDetail({
         </div>
       )}
 
+      <RequestBreakdown data={requests.data} loading={requests.isLoading} />
+
       <section className="flex flex-col gap-2">
         <div>
           <h2 className="text-sm font-medium">Dependencies carried</h2>
@@ -177,31 +244,6 @@ export function ProxyDetail({
           <CarriedTable edges={carried} />
         )}
       </section>
-    </div>
-  );
-}
-
-function Figure({
-  label,
-  value,
-  tone,
-  hint,
-}: {
-  label: string;
-  value: string;
-  tone?: "warning" | "error";
-  hint?: string;
-}) {
-  return (
-    <div title={hint}>
-      <dt className="text-xs text-base-content/55">{label}</dt>
-      <dd
-        className={`mt-0.5 text-lg tabular-nums ${
-          tone === "warning" ? "text-warning" : tone === "error" ? "text-error" : ""
-        }`}
-      >
-        {value}
-      </dd>
     </div>
   );
 }

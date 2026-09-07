@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { SortableTh, useColumnSort, type SortColumn } from "@/components/ui/sortable";
-import { formatBytes, formatMs, formatPercent, formatRate } from "@/lib/format";
+import { formatBytes, formatMs, formatPercent, formatRate, formatShare } from "@/lib/format";
 import { roleLabel } from "./mesh-roles";
 import type { MeshProxy } from "@/lib/api-types";
 
@@ -19,7 +19,8 @@ type SortKey =
   | "callsOut"
   | "bytesIn"
   | "bytesOut"
-  | "rttMs";
+  | "rttMs"
+  | "mtlsShare";
 
 // Sorted on SUCCESS, not on the error rate the API sends, so the column sorts
 // the way it reads: one click puts the worst proxy on top.
@@ -42,6 +43,9 @@ const OUT: SortColumn<SortKey> = { key: "callsOut", label: "Calls out", numeric:
 const BYTES_IN: SortColumn<SortKey> = { key: "bytesIn", label: "Bytes in", numeric: true };
 const BYTES_OUT: SortColumn<SortKey> = { key: "bytesOut", label: "Bytes out", numeric: true };
 const RTT: SortColumn<SortKey> = { key: "rttMs", label: "Link p95", numeric: true };
+// From the data-plane scrape, and present only where it reported something —
+// the same rule as the bytes, for the same reason.
+const MTLS: SortColumn<SortKey> = { key: "mtlsShare", label: "mTLS", numeric: true };
 
 export function ProxiesTable({
   proxies,
@@ -54,6 +58,9 @@ export function ProxiesTable({
   // full of dashes on an install without the flow metrics would read as a fleet
   // moving no bytes, which is the exact failure the pointers exist to prevent.
   const measured = proxies.some((p) => p.bytesIn !== undefined || p.rttMs !== undefined);
+  // Same rule for the data-plane scrape: a column of dashes on an install that
+  // never read the proxies would read as a fleet nobody encrypted.
+  const secured = proxies.some((p) => p.mtlsShare !== undefined);
   // Worst success first: the reason to open this screen is that something is
   // wrong, and the fleet is too long to scan by hand.
   const sort = useColumnSort<SortKey>("successRate", true);
@@ -84,6 +91,7 @@ export function ProxiesTable({
                 <SortableTh col={RTT} sort={sort} iconFirst />
               </>
             )}
+            {secured && <SortableTh col={MTLS} sort={sort} iconFirst />}
           </tr>
         </thead>
         <tbody>
@@ -92,6 +100,7 @@ export function ProxiesTable({
               key={p.name}
               proxy={p}
               measured={measured}
+              secured={secured}
               onSelect={() => onSelect(p.name)}
             />
           ))}
@@ -104,10 +113,12 @@ export function ProxiesTable({
 function ProxyRow({
   proxy,
   measured,
+  secured,
   onSelect,
 }: {
   proxy: SortableProxy;
   measured: boolean;
+  secured: boolean;
   onSelect: () => void;
 }) {
   // Traffic in with none coming out is a proxy that stopped forwarding — a
@@ -160,7 +171,35 @@ function ProxyRow({
           <LinkHealthCell proxy={proxy} />
         </>
       )}
+      {secured && <MtlsCell proxy={proxy} />}
     </tr>
+  );
+}
+
+// What the proxy's own counters said about traffic addressed to it. Absent is
+// "—", not 0%: a proxy the scrape did not report has said nothing, and a
+// measured 0% is the finding. Any plaintext tints the cell — 97% on a busy
+// proxy is a lot of requests in the clear.
+function MtlsCell({ proxy }: { proxy: MeshProxy }) {
+  if (proxy.mtlsShare === undefined) {
+    return (
+      <td className="text-right tabular-nums text-base-content/40" title="Not reported by the data-plane scrape">
+        —
+      </td>
+    );
+  }
+  const plaintext = proxy.plaintextUnits ?? 0;
+  return (
+    <td
+      className={`text-right tabular-nums ${plaintext > 0 ? "text-warning" : ""}`}
+      title={
+        plaintext > 0
+          ? `${plaintext.toLocaleString()} requests or connections reached this proxy in the clear`
+          : undefined
+      }
+    >
+      {formatShare(proxy.mtlsShare)}
+    </td>
   );
 }
 
