@@ -507,6 +507,25 @@ export interface MeshWorkloadDetail {
   podsTotal: number;
 }
 
+// What the hub actually asked the store for a workload's logs: the service
+// names per source, the needles a proxy's line had to contain, and whether
+// the pods came from the snapshot. When they did not, `fallback` says why —
+// so an empty column is never silent.
+export interface MeshLogSources {
+  app: string[];
+  ztunnel: string[];
+  waypoint: string[];
+  needles: string[];
+  precise: boolean;
+  fallback?: string;
+}
+
+// The logs screen's own page shape, plus the descriptor: LogTable renders it
+// unchanged.
+export interface MeshWorkloadLogsResponse extends LogsResponse {
+  sources: MeshLogSources;
+}
+
 // One waypoint: what it is, and whether it is there.
 export interface MeshWaypoint {
   namespace: string;

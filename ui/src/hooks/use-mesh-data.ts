@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { queryKeys, type TimeParams } from "@/lib/query-keys";
@@ -12,6 +12,7 @@ import type {
   MeshSecurityResponse,
   MeshWaypointServes,
   MeshWorkloadDetail,
+  MeshWorkloadLogsResponse,
   MeshWorkloadRequests,
   MeshWorkloadsResponse,
 } from "@/lib/api-types";
@@ -162,5 +163,39 @@ export function useMeshWaypointServes(enabled: boolean, namespace: string, name:
         undefined,
         { project },
       ),
+  });
+}
+
+export interface WorkloadLogFilters {
+  q?: string;
+  severity?: string;
+  // Comma list of app, ztunnel, waypoint; absent means all three.
+  source?: string;
+  // "namespace/name" of the waypoint to read when the hub cannot resolve
+  // the binding itself.
+  waypoint?: string;
+}
+
+// A workload's logs from its three sources as one stream — the same infinite
+// page shape as the logs screen's, so the same table renders it.
+export function useMeshWorkloadLogs(
+  time: TimeParams,
+  enabled: boolean,
+  namespace: string,
+  name: string,
+  filters: WorkloadLogFilters,
+) {
+  const { project } = useProject();
+  return useInfiniteQuery({
+    enabled: enabled && !!namespace && !!name,
+    queryKey: queryKeys.meshWorkloadLogs(project, time, namespace, name, { ...filters }),
+    queryFn: ({ pageParam }) =>
+      apiGet<MeshWorkloadLogsResponse>(
+        `/api/v1/mesh/workloads/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/logs`,
+        { ...time, ...filters, limit: 100, cursor: pageParam || undefined },
+        { project },
+      ),
+    initialPageParam: "",
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
 }

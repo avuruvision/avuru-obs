@@ -10,7 +10,7 @@ import { TagChips } from "@/components/filters/tag-chips";
 import { useLogSearch, type LogFilters } from "@/hooks/use-logs-data";
 import { LogTable } from "./log-table";
 
-const SEVERITY_OPTIONS = [
+export const SEVERITY_OPTIONS = [
   { value: "", label: "All severities" },
   { value: "INFO", label: "INFO+" },
   { value: "WARN", label: "WARN+" },

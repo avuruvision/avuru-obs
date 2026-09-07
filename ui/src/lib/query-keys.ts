@@ -56,6 +56,13 @@ export const queryKeys = {
     [p, "mesh", "workloads", { ...t, namespace, mode }] as const,
   meshWorkload: (p: string, t: TimeParams, namespace: string, name: string) =>
     [p, "mesh", "workload", { ...t, namespace, name }] as const,
+  meshWorkloadLogs: (
+    p: string,
+    t: TimeParams,
+    namespace: string,
+    name: string,
+    filters: Record<string, string | undefined>,
+  ) => [p, "mesh", "workload", namespace, name, "logs", { ...t, ...filters }] as const,
   // What a waypoint serves is cluster state, like configuration: no window.
   meshWaypoint: (p: string, namespace: string, name: string) =>
     [p, "mesh", "waypoint", { namespace, name }] as const,
