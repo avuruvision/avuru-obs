@@ -1,6 +1,7 @@
 package meshconfig
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -53,11 +54,35 @@ func allFindings(snap Snapshot) []Finding {
 	return out
 }
 
+// judge derives the workload and service inventory the reader would, then
+// validates — the same two steps build() takes, so a test hands in pods and
+// objects and gets the findings a real snapshot would carry. Objects are
+// copied first: Validate writes findings in place, and a test that judges one
+// object list twice must not see the first run's findings on the second.
+func judge(snap Snapshot) Snapshot {
+	snap.Objects = slices.Clone(snap.Objects)
+	for i := range snap.Objects {
+		snap.Objects[i].Findings = nil
+	}
+	snap.Services = ServicesFrom(snap.Objects, snap.Pods, snap.Namespaces)
+	snap.Workloads = WorkloadsFrom(snap.Pods, snap.Namespaces, snap.Objects, "istio-system")
+	return Validate(snap)
+}
+
 // objectFindings returns the findings on one object, by kind and name.
 func objectFindings(snap Snapshot, kind, name string) []Finding {
 	for _, o := range snap.Objects {
 		if o.Kind == kind && o.Name == name {
 			return o.Findings
+		}
+	}
+	return nil
+}
+
+func workloadFindings(snap Snapshot, id string) []Finding {
+	for _, w := range snap.Workloads {
+		if key(w.Namespace, w.Name) == id {
+			return w.Findings
 		}
 	}
 	return nil

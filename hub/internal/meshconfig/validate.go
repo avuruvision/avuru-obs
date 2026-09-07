@@ -43,11 +43,22 @@ func Validate(snap Snapshot) Snapshot {
 			o.Findings = append(o.Findings, checkRoute(*o, idx)...)
 		case KindGateway:
 			o.Findings = append(o.Findings, checkGateway(*o, idx)...)
+			o.Findings = append(o.Findings, checkGatewayWorkload(*o, idx)...)
 		case KindDestinationRule:
 			o.Findings = append(o.Findings, checkDestinationRule(*o, idx)...)
 		case KindVirtualService:
 			o.Findings = append(o.Findings, checkVirtualService(*o, idx)...)
+		case KindAuthorizationPolicy:
+			o.Findings = append(o.Findings, checkPrincipals(*o, idx)...)
 		}
+		if workloadPolicyKinds[o.Kind] {
+			o.Findings = append(o.Findings, checkPolicyMatch(*o, idx)...)
+		}
+	}
+	for i := range snap.Workloads {
+		w := &snap.Workloads[i]
+		w.Findings = append(w.Findings, checkAmbientEnrolment(*w, idx)...)
+		w.Findings = append(w.Findings, checkDataplaneConflict(*w, idx)...)
 	}
 	if !idx.podsUsable {
 		snap.ChecksSkipped = checksSkipped(idx.podsWhy)
