@@ -307,7 +307,7 @@ func TestGreenTenantIsolation(t *testing.T) {
 // one number, and a series carrying no quality attribute at all (pre-AEP
 // data, or a misconfigured install) reads as an empty Quality string rather
 // than silently dropping. The delta math itself is unaffected: quality
-// rides the grouping, not the series identity (greenSeriesID).
+// rides the grouping, not the series identity (seriesIDExpr).
 func TestServiceEnergyQualitySplit(t *testing.T) {
 	store := startClickHouse(t)
 	ctx := context.Background()

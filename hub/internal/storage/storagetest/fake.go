@@ -25,6 +25,13 @@ type Fake struct {
 	CollapseCalls         int
 	NetEdges              []storage.ServiceEdge
 	ControlPlane          storage.MeshControlPlane
+	// Data-plane reads. LastMeshBreakdownKey records the (namespace,
+	// workload) the breakdown was asked for, so a handler test can assert the
+	// path parameters reached storage unmangled.
+	Security             storage.MeshSecurity
+	MeshBreakdown        storage.MeshRequestBreakdown
+	Ztunnel              storage.MeshZtunnelHealth
+	LastMeshBreakdownKey [2]string
 	// Endpoint-check results: per-check history for the results route, and the
 	// recent-states map the health evaluation's consecutive-failure rule reads.
 	CheckResultsByID   map[string][]storage.CheckResult
@@ -287,6 +294,22 @@ func (f *Fake) LatestCheckStates(_ context.Context, q storage.ServiceQuery, _ in
 func (f *Fake) MeshControlPlane(_ context.Context, q storage.ServiceQuery) (storage.MeshControlPlane, error) {
 	f.LastServiceQuery = q
 	return f.ControlPlane, nil
+}
+
+func (f *Fake) MeshSecurity(_ context.Context, q storage.ServiceQuery) (storage.MeshSecurity, error) {
+	f.LastServiceQuery = q
+	return f.Security, nil
+}
+
+func (f *Fake) MeshRequestBreakdown(_ context.Context, q storage.ServiceQuery, namespace, workload string) (storage.MeshRequestBreakdown, error) {
+	f.LastServiceQuery = q
+	f.LastMeshBreakdownKey = [2]string{namespace, workload}
+	return f.MeshBreakdown, nil
+}
+
+func (f *Fake) MeshZtunnelHealth(_ context.Context, q storage.ServiceQuery) (storage.MeshZtunnelHealth, error) {
+	f.LastServiceQuery = q
+	return f.Ztunnel, nil
 }
 
 func (f *Fake) TagKeys(_ context.Context, q storage.ServiceQuery) ([]storage.TagKey, error) {
