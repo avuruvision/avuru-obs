@@ -11,6 +11,14 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Changed
+
+- **A workload's Logs tab shows the workload's own lines by default.** On the
+  mesh screen, the proxies' lines about a workload (ztunnel's, the waypoint's)
+  are now opt-in checkboxes beside the box that carries the workload's name,
+  instead of three buttons all on at once. One source always stays on, and the
+  choice travels in the URL as before.
+
 ## [0.16.0] — 2026-09-07
 
 ### Added
