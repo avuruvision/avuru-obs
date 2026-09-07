@@ -183,7 +183,16 @@ export interface MeshNamespace {
   // Effective PeerAuthentication mode. Absent means no policy applies and the
   // mesh default governs — which the hub did not read and will not guess.
   mtlsMode?: string;
+  // Which scope decided it — "namespace" or "mesh" — and the policy by name,
+  // so a row can say where its mode came from rather than just what it is.
+  mtlsSource?: string;
+  mtlsPolicy?: string;
   services: number;
+  // How many workloads the namespace runs and how many the mesh actually has.
+  // Both absent when pods could not be read: a 0/0 would read as an empty
+  // namespace, which is not what "could not look" means.
+  workloads?: number;
+  enrolled?: number;
   errors: number;
   warnings: number;
 }
@@ -196,6 +205,11 @@ export interface MeshNamespacesResponse {
   syncedAt?: string;
   missingKinds?: string[];
   truncated?: boolean;
+  // Pods are capped on their own; when the cap hit, the checks that need every
+  // pod did not run and checksSkipped says so in words.
+  podsTruncated?: boolean;
+  checksSkipped?: string;
+  kinds?: MeshKindSync[];
   namespaces: MeshNamespace[];
 }
 
@@ -337,6 +351,145 @@ export interface MeshWorkloadRequests {
   // not collected by a default mesh, and the screen says so before anyone goes
   // looking for a zero that means "not looking".
   upstreamStatsHint: string;
+}
+
+// The PeerAuthentication mode that applies to a workload, with the scope that
+// decided it and the policy by name — so PERMISSIVE inside a STRICT namespace
+// reads as a selector policy rather than as a bug.
+export interface MeshDeclaredMtls {
+  mode: string;
+  // "workload", "namespace" or "mesh".
+  source: string;
+  policy: string;
+}
+
+// What the data plane reported for a workload's own traffic. The shape is
+// settled; nothing fills it in this build, and absent must render as "not
+// measured", never as 0%.
+export interface MeshObservedMtls {
+  mtlsShare?: number;
+  plaintext: number;
+  mtls: number;
+  unknown: number;
+  reporter?: string;
+}
+
+// One policy that covers a workload and at what scope it reached it. Findings
+// ride only on the single-workload response: they are the policy's own.
+export interface MeshPolicyRef {
+  kind: string;
+  namespace: string;
+  name: string;
+  scope: string;
+  findings?: MeshFinding[];
+}
+
+// One thing the cluster runs, from CONFIGURATION, with whatever telemetry we
+// also have for it. The row exists whether or not it ever sent a span.
+export interface MeshWorkload {
+  namespace: string;
+  name: string;
+  kind: string;
+  // What the labels asked for, and what the pods say happened. Both absent
+  // means out of mesh, and absent must not render as a mode.
+  declaredMode?: string;
+  dataplaneMode?: string;
+  injected: boolean;
+  captured: boolean;
+  waypoint?: string;
+  // Only sent when it differs from the workload's own namespace.
+  waypointNamespace?: string;
+  waypointSource?: string;
+  serviceAccount?: string;
+  pods: number;
+  runningPods: number;
+  // Absent when no policy applies and the mesh default governs — not read,
+  // not guessed. observedMtls is absent when nothing measured it.
+  declaredMtls?: MeshDeclaredMtls;
+  observedMtls?: MeshObservedMtls;
+  // hasTraffic says telemetry saw this workload; a silent one carries no rate
+  // at all rather than a zero.
+  hasTraffic: boolean;
+  ratePerSec?: number;
+  errorRate?: number;
+  services: string[];
+  policies: MeshPolicyRef[];
+  errors: number;
+  warnings: number;
+}
+
+// One kind's cache: how much it holds, when it was warm, and whether it was
+// cut.
+export interface MeshKindSync {
+  kind: string;
+  count: number;
+  syncedAt?: string;
+  lastChangeAt?: string;
+  truncated?: boolean;
+}
+
+export interface MeshWorkloadsResponse {
+  state: string;
+  reason?: string;
+  syncedAt?: string;
+  missingKinds?: string[];
+  truncated?: boolean;
+  podsTruncated?: boolean;
+  checksSkipped?: string;
+  kinds?: MeshKindSync[];
+  workloads: MeshWorkload[];
+}
+
+// One pod of a workload, reduced to where it runs and whether the mesh has it.
+export interface MeshPod {
+  name: string;
+  node?: string;
+  phase?: string;
+  injected: boolean;
+  captured: boolean;
+}
+
+export interface MeshWorkloadDetail {
+  state: string;
+  reason?: string;
+  syncedAt?: string;
+  missingKinds?: string[];
+  podsTruncated?: boolean;
+  checksSkipped?: string;
+  // Absent when the cluster, or its pods, could not be read: a zero-valued
+  // workload would read as one that runs nothing.
+  workload?: MeshWorkload;
+  findings: MeshFinding[];
+  // Bounded; podsShown and podsTotal say by how much.
+  pods: MeshPod[];
+  podsShown: number;
+  podsTotal: number;
+}
+
+// One waypoint: what it is, and whether it is there.
+export interface MeshWaypoint {
+  namespace: string;
+  name: string;
+  // "service", "workload", "all" or "none", from its Gateway. Absent when no
+  // Gateway of that name was read: something is bound to a waypoint that is
+  // not deployed.
+  scope?: string;
+  // "not running" and "could not look at pods" are different instructions,
+  // and only the first is a false.
+  running?: boolean;
+}
+
+// What a waypoint serves, from the inventory's bindings — the question its own
+// traffic cannot answer, because a waypoint nothing is bound to and one whose
+// clients are idle look the same on the wire.
+export interface MeshWaypointServes {
+  state: string;
+  reason?: string;
+  waypoint?: MeshWaypoint;
+  // Each "namespace/name" except namespaces, which are their own name.
+  namespaces: string[];
+  services: string[];
+  workloads: string[];
 }
 
 export interface ServiceMapResponse {
