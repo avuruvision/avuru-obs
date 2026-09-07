@@ -669,12 +669,26 @@ type LogCursor struct {
 	SpanID    string
 }
 
+// LogSource is one branch of a composed log read: records from any of
+// Services whose Body contains, for EVERY list in BodyAll, at least one of
+// that list's needles. No BodyAll means every record of those services. The
+// needles are matched exactly — pod and Service names are lowercase by the
+// API server's own rule, and the exact match is the cheap one.
+type LogSource struct {
+	Services []string
+	BodyAll  [][]string
+}
+
 // LogQuery filters SearchLogs. Zero values mean "no filter".
 type LogQuery struct {
-	Tenant      string
-	Tenants     []string // resolved tenant set; empty means []string{Tenant}
-	Range       TimeRange
-	Service     string
+	Tenant  string
+	Tenants []string // resolved tenant set; empty means []string{Tenant}
+	Range   TimeRange
+	Service string
+	// Sources, when set, replace Service: the page is the union of the
+	// sources, still one stream in one order under one cursor — which is why
+	// they are one query and not several.
+	Sources     []LogSource
 	MinSeverity string // "", or a severity name (e.g. "ERROR") — matches >= its number
 	Query       string // full-text substring on Body (case-insensitive)
 	// Tags are equality filters. Keys under the business-tag prefix

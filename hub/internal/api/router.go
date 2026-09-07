@@ -439,6 +439,11 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		// is off, and the config half is joined in only when its module is on.
 		mux.Handle("GET /api/v1/mesh/security", a.secured(auth.RoleViewer, a.handleMeshSecurity))
 		mux.Handle("GET /api/v1/mesh/workloads/{namespace}/{name}/requests", a.secured(auth.RoleViewer, a.handleMeshWorkloadRequests))
+		// A workload's logs from its three sources. Needs the logs module for
+		// the lines; degrades, and says so, without mesh-config for the pods.
+		if active.Enabled(modules.Logs) {
+			mux.Handle("GET /api/v1/mesh/workloads/{namespace}/{name}/logs", a.secured(auth.RoleViewer, a.handleMeshWorkloadLogs))
+		}
 	}
 	// The configuration half is a module of its own because it is the only
 	// cluster-wide READ this product asks for — see the AEP. Its routes are

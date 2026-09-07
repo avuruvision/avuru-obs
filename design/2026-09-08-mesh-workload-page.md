@@ -198,7 +198,7 @@ when the logs module is on.
 - [x] AEP accepted
 - [x] Reader: creation time, bounded annotations, routes through Services
 - [x] API: the record, health, routes with findings
-- [ ] Store: composed log sources under one cursor; the workload logs route
+- [x] Store: composed log sources under one cursor; the workload logs route
 - [ ] UI: Overview tab
 - [ ] UI: Logs tab
 - [ ] Docs aligned
