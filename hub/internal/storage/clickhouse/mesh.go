@@ -28,6 +28,14 @@ const (
 	meshPushTimeMetric     = "pilot_xds_push_time"     // histogram, seconds: istiod's own send latency
 	meshWriteTimeoutMetric = "pilot_xds_write_timeout" // counter: pushes that never landed
 	meshConfigEventsMetric = "pilot_k8s_cfg_events"    // counter: Kubernetes config churn
+
+	// Optional too, and read differently: the conflict series are GAUGES of
+	// the last push (pilot/pkg/model/push_context.go, monitoring.NewGauge),
+	// so the fleet's figure is the latest value per istiod summed, never a
+	// sum over scrapes. The queue time is a histogram like the push time.
+	meshConflictInboundMetric  = "pilot_conflict_inbound_listener"
+	meshConflictOutboundMetric = "pilot_conflict_outbound_listener_tcp_over_current_tcp"
+	meshQueueTimeMetric        = "pilot_proxy_queue_time" // histogram, seconds: time a push waited to be sent
 )
 
 // meshKindIstio names the one control plane whose metrics are understood.
@@ -133,6 +141,27 @@ WHERE Tenant IN (?) AND MetricName = ? AND TimeUnix >= ? AND TimeUnix < ?`
 		return out, err
 	}
 	out.PushP95Ms = pushP95
+	queueP95, err := s.meshHistogramP95(ctx, tenants, meshQueueTimeMetric, q)
+	if err != nil {
+		return out, err
+	}
+	out.QueueP95Ms = queueP95
+
+	// Listener conflicts: gauges, latest per instance, summed. Optional, so
+	// nil unless a series was there — and a present zero is the good news.
+	var conflicts uint64
+	var conflictRows bool
+	err = s.meshLatestGauges(ctx, tenants, []string{meshConflictInboundMetric, meshConflictOutboundMetric}, q.Range,
+		func(_, _ string, latest float64) {
+			conflictRows = true
+			conflicts += uint64(latest)
+		})
+	if err != nil {
+		return out, err
+	}
+	if conflictRows {
+		out.ListenerConflicts = &conflicts
+	}
 
 	if out.Available {
 		out.State = storage.MeshControlPlaneOK

@@ -70,6 +70,13 @@ type serviceEdgeDTO struct {
 	// remainder, so no request is drawn twice.
 	CollapsedCalls      uint64 `json:"collapsedCalls,omitempty"`
 	CollapsedErrorCount uint64 `json:"collapsedErrorCount,omitempty"`
+	// The mutual-TLS share of this edge's traffic as the destination's proxy
+	// reported it, and the plaintext units it counted. Stamped only when the
+	// data plane was read and reported this pair; absent otherwise, so an
+	// unmeshed map's JSON is unchanged and an unmeasured edge never reads as
+	// an unencrypted one. A pointer because a measured 0 is the finding.
+	MTLSShare      *float64 `json:"mtlsShare,omitempty"`
+	PlaintextCalls uint64   `json:"plaintextCalls,omitempty"`
 }
 
 type serviceMapResponse struct {

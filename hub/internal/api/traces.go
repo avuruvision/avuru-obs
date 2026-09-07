@@ -55,10 +55,11 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	q := storage.ServiceQuery{
-		Tenant:     tenant,
-		Tenants:    tenants,
-		Range:      tr,
-		ExcludeAux: !parseBool(r, "includeAux", false),
+		Tenant:           tenant,
+		Tenants:          tenants,
+		Range:            tr,
+		ExcludeAux:       !parseBool(r, "includeAux", false),
+		MeshDataplaneJob: a.cfg.MeshDataplaneJob,
 	}
 	services, err := store.ListServices(r.Context(), q)
 	if err != nil {
@@ -132,8 +133,10 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 	}
 	// Namespaces, so the map can draw a boundary around one. Best-effort: a
 	// label read that fails costs the boundaries, not the map.
+	var namespaces map[string]string
 	if labels, lerr := store.ServiceLabels(r.Context(), q); lerr == nil {
 		stampServiceNamespaces(labels, resp.Services)
+		namespaces = serviceNamespaces(labels)
 	}
 	// Virtual targets go on LAST, after every stamp above: they are neither
 	// workloads the topology classifier should re-label, nor pods the energy
@@ -142,6 +145,12 @@ func (a *API) handleServiceMap(w http.ResponseWriter, r *http.Request) error {
 	// walking real services only.
 	resp.Services, resp.Edges = appendVirtualTargets(resp.Services, resp.Edges, virtual, window)
 	resp.Edges = applyEdgeHealth(resp.Edges, health)
+	// The mutual-TLS share per edge, from the data plane's own counters.
+	// Needs the namespaces to key the join, and both modules: the mesh for
+	// the feature, infra-metrics for the tables the scrape lands in.
+	if namespaces != nil && a.modules.Enabled(modules.Mesh) && a.modules.Enabled(modules.InfraMetrics) {
+		a.stampEdgeSecurity(r.Context(), store, q, resp.Edges, namespaces)
+	}
 	writeJSON(w, http.StatusOK, resp)
 	return nil
 }

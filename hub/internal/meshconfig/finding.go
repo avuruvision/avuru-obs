@@ -81,6 +81,33 @@ const (
 	// no running workload uses. An ALLOW for it allows nobody; a DENY denies
 	// nobody.
 	CodePrincipalUnknown Code = "MESH_PRINCIPAL_UNKNOWN"
+
+	// The four below are emitted by the API layer's posture fold (the join of
+	// what the cluster declares with what the proxies reported), never by
+	// validate.go: each needs an observation, and this package reads only
+	// configuration. They live here so the product's vocabulary stays in one
+	// place.
+
+	// CodeMTLSNotEnforced — plaintext reached a workload under a STRICT
+	// PeerAuthentication. The policy exists and is not applied to this
+	// workload: it is not enrolled, the selector misses it, or a
+	// DestinationRule disables TLS for its host. Configuration alone reads as
+	// secure; only the proxy's own count says otherwise.
+	CodeMTLSNotEnforced Code = "MESH_MTLS_NOT_ENFORCED"
+	// CodePlaintextCallers — a workload without a STRICT policy is receiving
+	// plaintext, and these are the callers sending it. Tightening the policy
+	// would cut exactly them, so they are named before that happens.
+	CodePlaintextCallers Code = "MESH_PLAINTEXT_CALLERS"
+	// CodeMTLSReadyToTighten — every observed caller already used mutual TLS
+	// over the window, under a policy that would still accept plaintext.
+	// STRICT would refuse nothing that is currently talking.
+	CodeMTLSReadyToTighten Code = "MESH_MTLS_READY_TO_TIGHTEN"
+	// CodeTrafficUncarried — a namespace labelled for ambient, a workload in
+	// it with traffic in the traces, and no proxy reporting that it carried
+	// any of it. The pod is not enrolled — typically started before the label
+	// or opted out — and its traffic is crossing the cluster unmeshed while
+	// the namespace reads as covered.
+	CodeTrafficUncarried Code = "MESH_TRAFFIC_UNCARRIED"
 )
 
 // What a finding's Ref names, so a screen can link it to the right list

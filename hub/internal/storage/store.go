@@ -252,6 +252,15 @@ type MeshControlPlane struct {
 	// ConfigEvents is how much Kubernetes config churn istiod is reacting to.
 	// High and rising is a control plane thrashing rather than converging.
 	ConfigEvents *uint64
+	// ListenerConflicts is configuration the control plane could not program
+	// because two pieces of it claim one listener: istiod keeps serving the
+	// one it picked and the other is silently dropped. A gauge of the last
+	// push, summed across istiod instances — not a rate.
+	ListenerConflicts *uint64
+	// QueueP95Ms is how long a push waited in istiod's queue before being
+	// sent. With PushP95Ms (the send) and ConvergenceP95Ms (send plus ack) it
+	// completes the account of where a slow push spends its time.
+	QueueP95Ms *float64
 }
 
 // MeshScrapeState is the control-plane diagnosis reused for the data plane:
