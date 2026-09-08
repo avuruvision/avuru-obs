@@ -92,6 +92,21 @@ type errorHistogramResponse struct {
 	Points []histogramPointDTO `json:"points"`
 }
 
+type errorServiceCountDTO struct {
+	Service string `json:"service"`
+	Events  uint64 `json:"events"`
+}
+
+type errorStatsResponse struct {
+	BucketSeconds int                    `json:"bucketSeconds"`
+	Issues        uint64                 `json:"issues"`
+	NewIssues     uint64                 `json:"newIssues"`
+	Regressed     uint64                 `json:"regressed"`
+	Events        uint64                 `json:"events"`
+	Histogram     []histogramPointDTO    `json:"histogram"`
+	TopServices   []errorServiceCountDTO `json:"topServices"`
+}
+
 func (a *API) handleSearchErrorIssues(w http.ResponseWriter, r *http.Request) error {
 	store, err := a.store()
 	if err != nil {
@@ -125,6 +140,77 @@ func (a *API) handleSearchErrorIssues(w http.ResponseWriter, r *http.Request) er
 	resp := errorIssuesResponse{Issues: make([]errorIssueDTO, 0, len(issues))}
 	for _, i := range issues {
 		resp.Issues = append(resp.Issues, toErrorIssueDTO(i))
+	}
+	writeJSON(w, http.StatusOK, resp)
+	return nil
+}
+
+// handleErrorStats serves the Errors screen's stats band: how many issues match
+// the current filters, how many are new or regressed, how many occurrences they
+// produced in the window and which services produced them. It takes the same
+// filters as the issue list so the band and the rows beneath it agree.
+func (a *API) handleErrorStats(w http.ResponseWriter, r *http.Request) error {
+	store, err := a.store()
+	if err != nil {
+		return err
+	}
+	tr, err := parseTimeRange(r)
+	if err != nil {
+		return err
+	}
+	// The store rejects an unknown status too, but as a 500 — a typo in a query
+	// string is the caller's mistake, so name it here.
+	status := r.URL.Query().Get("status")
+	switch status {
+	case "", "all", "unresolved", "resolved", "ignored":
+	default:
+		return badRequest("invalid status: must be unresolved, resolved, ignored or all")
+	}
+	points, err := parseInt(r, "points", 48)
+	if err != nil {
+		return err
+	}
+	if points < 0 {
+		return badRequest("points must not be negative")
+	}
+	top, err := parseInt(r, "top", 5)
+	if err != nil {
+		return err
+	}
+	if top < 0 {
+		return badRequest("top must not be negative")
+	}
+	tenant, tenants, err := a.projectTenants(r, auth.RoleViewer)
+	if err != nil {
+		return err
+	}
+	stats, err := store.ErrorStats(r.Context(), storage.ErrorStatsQuery{
+		Tenant:      tenant,
+		Tenants:     tenants,
+		Range:       tr,
+		Status:      status,
+		Service:     r.URL.Query().Get("service"),
+		Query:       r.URL.Query().Get("q"),
+		Points:      points,
+		TopServices: top,
+	})
+	if err != nil {
+		return err
+	}
+	resp := errorStatsResponse{
+		BucketSeconds: stats.BucketSeconds,
+		Issues:        stats.Issues,
+		NewIssues:     stats.NewIssues,
+		Regressed:     stats.Regressed,
+		Events:        stats.Events,
+		Histogram:     make([]histogramPointDTO, 0, len(stats.Histogram)),
+		TopServices:   make([]errorServiceCountDTO, 0, len(stats.TopServices)),
+	}
+	for _, p := range stats.Histogram {
+		resp.Histogram = append(resp.Histogram, histogramPointDTO{Time: p.Time, Count: p.Count})
+	}
+	for _, s := range stats.TopServices {
+		resp.TopServices = append(resp.TopServices, errorServiceCountDTO{Service: s.Service, Events: s.Events})
 	}
 	writeJSON(w, http.StatusOK, resp)
 	return nil

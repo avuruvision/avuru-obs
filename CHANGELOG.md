@@ -13,6 +13,22 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **The Errors screen now says what the issue list adds up to.** A page of
+  fingerprints tells you what broke and nothing about the shape of it: whether
+  those issues are new or long-standing, whether any came back after being
+  resolved, how much traffic they actually represent, or which service is
+  producing the noise. Triage started by counting rows by hand.
+
+  A stats band above the list answers that in four numbers — issues matching,
+  **new in the window**, **regressed**, and total events — with a histogram of
+  occurrences across the window and the busiest services beneath it. Clicking a
+  service filters the list to it; clicking it again clears the filter.
+
+  The band reads a new `GET /api/v1/errors/stats`, which aggregates the **same**
+  issue set the list queries, through the same SQL: the tiles and the rows
+  cannot state different totals. And when the list hits its 200-issue page, it
+  now says so and names the real total instead of quietly ending.
+
 - **Container logs carry a level.** A line tailed from a pod's stdout arrives
   with no OTLP severity, so the Logs screen showed "—" for it, "INFO+" hid it,
   and an `ERROR` line from a plain-stdout app never became an error issue. The
@@ -32,6 +48,14 @@ When a release is cut, that block is renamed to the version with its date.
   choice travels in the URL as before.
 
 ### Fixed
+
+- **The issue list on Errors can be scrolled.** Every other screen lets its
+  content scroll; Errors did not, and the application shell deliberately owns no
+  scrollbar of its own. So the page fetched every issue and then clipped all but
+  the first screenful, with no way to reach the rest — on a busy install, the
+  twenty rows that happened to fit were the whole product. The list now scrolls
+  in place, with the tabs, filters and stats band staying put above it and the
+  issue detail panel keeping its own independent scroll.
 
 - **Security floor: gRPC-Go raised to v1.83.2** in the gateway and node-agent
   collector builds, for CVE-2026-84445 (HIGH — gRPC-Go xDS servers, denial of

@@ -115,6 +115,11 @@ export const queryKeys = {
     t: TimeParams,
     filters: Record<string, string | undefined>,
   ) => [p, "errors", "issues", { ...t, ...filters }] as const,
+  errorStats: (
+    p: string,
+    t: TimeParams,
+    filters: Record<string, string | undefined>,
+  ) => [p, "errors", "stats", { ...t, ...filters }] as const,
   errorIssue: (p: string, fingerprint: string) =>
     [p, "errors", "issue", fingerprint] as const,
   errorIssueEvents: (p: string, fingerprint: string) =>

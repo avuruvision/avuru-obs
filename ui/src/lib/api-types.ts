@@ -1079,6 +1079,21 @@ export interface ErrorHistogramResponse {
   points: ErrorHistogramPoint[];
 }
 
+export interface ErrorServiceCount {
+  service: string;
+  events: number;
+}
+
+export interface ErrorStatsResponse {
+  bucketSeconds: number;
+  issues: number;
+  newIssues: number;
+  regressed: number;
+  events: number;
+  histogram: ErrorHistogramPoint[];
+  topServices: ErrorServiceCount[];
+}
+
 // Service health groups (module service-health). Mirrors hub/internal/api/health.go.
 export interface HealthDependency {
   service: string;

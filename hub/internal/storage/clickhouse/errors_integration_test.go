@@ -340,6 +340,77 @@ func TestErrorReadQueries(t *testing.T) {
 		}
 	})
 
+	// The band must be able to state the same truth as the rows beneath it:
+	// the tile count is the issue count, and the histogram adds up to events.
+	t.Run("Stats", func(t *testing.T) {
+		stats, err := store.ErrorStats(ctx, storage.ErrorStatsQuery{Tenant: "default", Range: win, Points: 12})
+		if err != nil {
+			t.Fatalf("ErrorStats: %v", err)
+		}
+		issues := mustSearch(t, store, storage.ErrorIssueQuery{Tenant: "default", Range: win})
+		if stats.Issues != uint64(len(issues)) {
+			t.Errorf("Issues = %d, list has %d", stats.Issues, len(issues))
+		}
+		if stats.Events != 4 {
+			t.Errorf("Events = %d, want 4 (3 NPE + 1 Timeout, other tenant excluded)", stats.Events)
+		}
+		var summed uint64
+		for _, p := range stats.Histogram {
+			summed += p.Count
+		}
+		if summed != stats.Events {
+			t.Errorf("histogram sums to %d, Events = %d", summed, stats.Events)
+		}
+		if stats.BucketSeconds <= 0 {
+			t.Errorf("BucketSeconds = %d", stats.BucketSeconds)
+		}
+		// Both issues were born inside the window; neither was triaged.
+		if stats.NewIssues != 2 || stats.Regressed != 0 {
+			t.Errorf("NewIssues = %d, Regressed = %d; want 2 and 0", stats.NewIssues, stats.Regressed)
+		}
+		if len(stats.TopServices) != 2 || stats.TopServices[0].Service != "web" || stats.TopServices[0].Events != 3 {
+			t.Errorf("top services wrong: %+v", stats.TopServices)
+		}
+	})
+
+	// A service filter must narrow the aggregate the same way it narrows rows.
+	t.Run("StatsServiceFilter", func(t *testing.T) {
+		stats, err := store.ErrorStats(ctx, storage.ErrorStatsQuery{Tenant: "default", Range: win, Service: "api"})
+		if err != nil {
+			t.Fatalf("ErrorStats: %v", err)
+		}
+		if stats.Issues != 1 || stats.Events != 1 {
+			t.Errorf("filtered stats: Issues = %d, Events = %d; want 1 and 1", stats.Issues, stats.Events)
+		}
+		if len(stats.TopServices) != 1 || stats.TopServices[0].Service != "api" {
+			t.Errorf("filtered top services: %+v", stats.TopServices)
+		}
+	})
+
+	// Issues born before the window are active in it but not new.
+	t.Run("StatsNewIssuesUsesAllTimeFirstSeen", func(t *testing.T) {
+		late := storage.TimeRange{Start: base.Add(15 * time.Minute), End: base.Add(time.Hour)}
+		stats, err := store.ErrorStats(ctx, storage.ErrorStatsQuery{Tenant: "default", Range: late})
+		if err != nil {
+			t.Fatalf("ErrorStats: %v", err)
+		}
+		// Only the NPE issue has occurrences after +15m, and its first
+		// occurrence (+20m) is inside this narrower window.
+		if stats.Issues != 1 || stats.NewIssues != 1 {
+			t.Errorf("late window: Issues = %d, NewIssues = %d; want 1 and 1", stats.Issues, stats.NewIssues)
+		}
+	})
+
+	t.Run("StatsTenantIsolation", func(t *testing.T) {
+		stats, err := store.ErrorStats(ctx, storage.ErrorStatsQuery{Tenant: "other", Range: win})
+		if err != nil {
+			t.Fatalf("ErrorStats: %v", err)
+		}
+		if stats.Issues != 1 || stats.Events != 1 {
+			t.Errorf("other tenant: Issues = %d, Events = %d; want 1 and 1", stats.Issues, stats.Events)
+		}
+	})
+
 	t.Run("TenantIsolation", func(t *testing.T) {
 		issues, err := store.SearchErrorIssues(ctx, storage.ErrorIssueQuery{Tenant: "other", Range: win})
 		if err != nil {
@@ -615,6 +686,15 @@ func TestTriageAndRegression(t *testing.T) {
 	}
 	if !regressed {
 		t.Errorf("regressed issue should surface in the unresolved list")
+	}
+
+	// The band counts the same regression the list surfaces.
+	stats, err := store.ErrorStats(ctx, storage.ErrorStatsQuery{Tenant: "default", Range: win})
+	if err != nil {
+		t.Fatalf("ErrorStats: %v", err)
+	}
+	if stats.Regressed != 1 {
+		t.Errorf("Regressed = %d, want 1", stats.Regressed)
 	}
 
 	// Re-resolving AFTER the recurrence clears the regression (newer row wins).

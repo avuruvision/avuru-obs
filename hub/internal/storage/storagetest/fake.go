@@ -89,6 +89,7 @@ type Fake struct {
 	IssueErr     error
 	EventPage    storage.ErrorEventPage
 	Histogram    []storage.ErrorHistogramPoint
+	ErrorStat    storage.ErrorStats
 	StatusWrites []StatusWrite
 
 	// Alerting fakes.
@@ -196,6 +197,7 @@ type Fake struct {
 	LastREDQuery          storage.REDQuery
 	LastProfileQuery      storage.ProfileQuery
 	LastIssueQuery        storage.ErrorIssueQuery
+	LastStatsQuery        storage.ErrorStatsQuery
 	LastEventQuery        storage.ErrorEventQuery
 	LastGreenQuery        storage.GreenQuery
 	LastSpanLookupTenants []string
@@ -403,6 +405,11 @@ func (f *Fake) LogsForTrace(_ context.Context, _ []string, traceID string) ([]st
 func (f *Fake) SearchErrorIssues(_ context.Context, q storage.ErrorIssueQuery) ([]storage.ErrorIssue, error) {
 	f.LastIssueQuery = q
 	return f.Issues, nil
+}
+
+func (f *Fake) ErrorStats(_ context.Context, q storage.ErrorStatsQuery) (storage.ErrorStats, error) {
+	f.LastStatsQuery = q
+	return f.ErrorStat, nil
 }
 
 func (f *Fake) GetErrorIssue(_ context.Context, _ []string, _ uint64) (storage.ErrorIssue, error) {

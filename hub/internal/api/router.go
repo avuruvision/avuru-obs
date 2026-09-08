@@ -396,6 +396,7 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 	}
 	if active.Enabled(modules.ErrorTracking) {
 		mux.Handle("GET /api/v1/errors/issues", a.secured(auth.RoleViewer, a.handleSearchErrorIssues))
+		mux.Handle("GET /api/v1/errors/stats", a.secured(auth.RoleViewer, a.handleErrorStats))
 		mux.Handle("GET /api/v1/errors/issues/{fingerprint}", a.secured(auth.RoleViewer, a.handleGetErrorIssue))
 		mux.Handle("GET /api/v1/errors/issues/{fingerprint}/events", a.secured(auth.RoleViewer, a.handleListErrorEvents))
 		mux.Handle("GET /api/v1/errors/issues/{fingerprint}/histogram", a.secured(auth.RoleViewer, a.handleErrorIssueHistogram))

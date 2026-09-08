@@ -15,9 +15,11 @@ export function IssueList({
   onSelect: (fingerprint: string) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-neutral">
+    // No overflow-hidden here: it would become the sticky header's scroll
+    // container and pin the header to a box that never scrolls.
+    <div className="rounded-lg border border-neutral">
       <table className="w-full text-sm">
-        <thead className="bg-base-200 text-xs uppercase tracking-wider text-base-content/50">
+        <thead className="sticky top-0 z-10 bg-base-200 text-xs uppercase tracking-wider text-base-content/50">
           <tr>
             <th className="px-3 py-2 text-left font-semibold">Error</th>
             <th className="px-3 py-2 text-left font-semibold">Service</th>

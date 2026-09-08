@@ -9,7 +9,13 @@ import { CenteredSpinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useTimeRange } from "@/hooks/use-time-range";
 import { useURLState } from "@/hooks/use-url-state";
-import { useErrorIssues, type IssueFilters } from "@/hooks/use-errors-data";
+import {
+  ISSUE_LIMIT,
+  useErrorIssues,
+  useErrorStats,
+  type IssueFilters,
+} from "@/hooks/use-errors-data";
+import { ErrorStatsBand } from "./error-stats-band";
 import { IssueList } from "./issue-list";
 import { IssueDetailPanel } from "./issue-detail-panel";
 
@@ -46,9 +52,20 @@ export function ErrorsScreen() {
   const issuesQuery = useErrorIssues(time, filters);
   const issues = issuesQuery.data?.issues ?? [];
 
+  // Sort cannot change an aggregate, so the band's key stays stable across
+  // re-sorts of the same set — no refetch when you reorder the table.
+  const statsQuery = useErrorStats(time, {
+    status: filters.status,
+    service: filters.service,
+    q: filters.q,
+  });
+  const stats = statsQuery.data;
+  // Only claim a total when the page is full AND the server counted more.
+  const truncated = issues.length >= ISSUE_LIMIT && (stats?.issues ?? 0) > issues.length;
+
   return (
-    <div className="flex h-full gap-4">
-      <div className="flex min-w-0 flex-1 flex-col gap-4">
+    <div className="flex h-full min-h-0 gap-4">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
         <Tabs
           items={STATUS_TABS.map((t) => ({ value: t.value, label: t.label }))}
           value={status}
@@ -100,20 +117,50 @@ export function ErrorsScreen() {
           ) : null}
         </div>
 
-        {issuesQuery.isLoading ? (
-          <CenteredSpinner />
-        ) : issues.length === 0 ? (
-          <EmptyState icon={Bug} title="No issues here">
-            Nothing matches these filters. Errors appear automatically from your
-            traces and logs — no instrumentation needed.
-          </EmptyState>
-        ) : (
-          <IssueList
-            issues={issues}
-            selected={selected}
-            onSelect={(fp) => setMany({ issue: fp })}
-          />
-        )}
+        <ErrorStatsBand
+          stats={stats}
+          isLoading={statsQuery.isLoading}
+          activeService={filters.service ?? undefined}
+          onPickService={(service) =>
+            setMany({
+              // A second click on the active service clears the filter.
+              service: service === filters.service ? undefined : service,
+              issue: undefined,
+            })
+          }
+        />
+
+        {/* The app shell owns no scrollbar (h-screen, overflow-hidden), so the
+            list scrolls here — tabs, filters and the band stay put, and the
+            detail panel keeps its own independent scroll. */}
+        <div className="min-h-0 flex-1 overflow-y-auto" data-testid="issues-scroll">
+          {issuesQuery.isLoading ? (
+            <CenteredSpinner />
+          ) : issues.length === 0 ? (
+            <EmptyState icon={Bug} title="No issues here">
+              Nothing matches these filters. Errors appear automatically from your
+              traces and logs — no instrumentation needed.
+            </EmptyState>
+          ) : (
+            <>
+              <IssueList
+                issues={issues}
+                selected={selected}
+                onSelect={(fp) => setMany({ issue: fp })}
+              />
+              {truncated ? (
+                <p
+                  data-testid="issues-footer"
+                  className="px-3 py-2 text-xs text-base-content/50"
+                >
+                  Showing {issues.length.toLocaleString()} of{" "}
+                  {stats?.issues.toLocaleString()} issues — narrow the filters to
+                  see the rest.
+                </p>
+              ) : null}
+            </>
+          )}
+        </div>
       </div>
 
       {selected ? (
