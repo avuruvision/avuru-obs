@@ -5,6 +5,7 @@ import type { ErrorIssueStatus } from "@/lib/api-types";
 import type { TimeParams } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { CenteredSpinner } from "@/components/ui/spinner";
+import { Stat } from "@/components/ui/stat";
 import {
   useErrorIssue,
   useErrorIssueEvents,
@@ -97,14 +98,14 @@ export function IssueDetailPanel({
             </Button>
           </div>
 
-          <dl className="grid grid-cols-3 gap-3 text-sm">
+          <div className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-neutral bg-neutral">
             <Stat label="Service" value={issue.service} />
             <Stat label="Events" value={issue.count.toLocaleString()} />
             <Stat label="Source" value={issue.source} />
             <Stat label="First seen" value={formatAgo(issue.firstSeen)} />
             <Stat label="Last seen" value={formatAgo(issue.lastSeen)} />
             {latest?.environment ? <Stat label="Environment" value={latest.environment} /> : null}
-          </dl>
+          </div>
 
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-base-content/50">
@@ -130,14 +131,5 @@ export function IssueDetailPanel({
         </div>
       )}
     </aside>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-xs text-base-content/50">{label}</dt>
-      <dd className="truncate font-medium">{value}</dd>
-    </div>
   );
 }

@@ -15,6 +15,7 @@ import type {
   ErrorIssue,
   ErrorIssueStatus,
   ErrorIssuesResponse,
+  ErrorStatsResponse,
 } from "@/lib/api-types";
 
 export interface IssueFilters {
@@ -24,6 +25,11 @@ export interface IssueFilters {
   sort?: string;
 }
 
+// One page of issues, deliberately generous: the list filters (status, service,
+// search) are the way to narrow a large estate, so the screen loads a big slice
+// once and tells you when it is not the whole set.
+export const ISSUE_LIMIT = 200;
+
 export function useErrorIssues(time: TimeParams, filters: IssueFilters) {
   const { project } = useProject();
   return useQuery({
@@ -31,7 +37,22 @@ export function useErrorIssues(time: TimeParams, filters: IssueFilters) {
     queryFn: () =>
       apiGet<ErrorIssuesResponse>(
         "/api/v1/errors/issues",
-        { ...time, ...filters, limit: 200 },
+        { ...time, ...filters, limit: ISSUE_LIMIT },
+        { project },
+      ),
+  });
+}
+
+// The stats band. It takes the same filters as the list (minus sort, which
+// cannot change an aggregate) so the two can never state different totals.
+export function useErrorStats(time: TimeParams, filters: Omit<IssueFilters, "sort">) {
+  const { project } = useProject();
+  return useQuery({
+    queryKey: queryKeys.errorStats(project, time, { ...filters }),
+    queryFn: () =>
+      apiGet<ErrorStatsResponse>(
+        "/api/v1/errors/stats",
+        { ...time, ...filters, points: 48, top: 5 },
         { project },
       ),
   });

@@ -52,6 +52,78 @@ func TestSearchErrorIssuesEndpoint(t *testing.T) {
 	}
 }
 
+func TestErrorStatsEndpoint(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	fake := &storagetest.Fake{
+		ErrorStat: storage.ErrorStats{
+			Issues: 7, NewIssues: 2, Regressed: 1, Events: 913, BucketSeconds: 60,
+			Histogram: []storage.ErrorHistogramPoint{{Time: now, Count: 913}},
+			TopServices: []storage.ErrorServiceCount{
+				{Service: "checkout", Events: 800},
+				{Service: "cart", Events: 113},
+			},
+		},
+	}
+	mux := newMux(fake)
+
+	rec := get(t, mux, "/api/v1/errors/stats?status=ignored&service=cart&q=null&points=12&top=3")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	q := fake.LastStatsQuery
+	if q.Status != "ignored" || q.Service != "cart" || q.Query != "null" || q.Points != 12 || q.TopServices != 3 {
+		t.Errorf("query not parsed: %+v", q)
+	}
+	if q.Tenant != storage.DefaultTenant {
+		t.Errorf("tenant = %q, want default", q.Tenant)
+	}
+
+	var resp errorStatsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Issues != 7 || resp.NewIssues != 2 || resp.Regressed != 1 || resp.Events != 913 {
+		t.Errorf("tiles wrong: %+v", resp)
+	}
+	if resp.BucketSeconds != 60 || len(resp.Histogram) != 1 || resp.Histogram[0].Count != 913 {
+		t.Errorf("histogram wrong: %+v", resp)
+	}
+	if len(resp.TopServices) != 2 || resp.TopServices[0].Service != "checkout" || resp.TopServices[0].Events != 800 {
+		t.Errorf("top services wrong: %+v", resp.TopServices)
+	}
+}
+
+// The band's defaults are the contract the UI relies on: without ?points/?top
+// it still gets a histogram it can draw and a ranking it can list.
+func TestErrorStatsDefaults(t *testing.T) {
+	fake := &storagetest.Fake{}
+	rec := get(t, newMux(fake), "/api/v1/errors/stats")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if q := fake.LastStatsQuery; q.Points != 48 || q.TopServices != 5 || q.Status != "" {
+		t.Errorf("defaults not applied: %+v", q)
+	}
+	// An empty aggregate must serialise as [] — a null breaks the chart.
+	if body := rec.Body.String(); !strings.Contains(body, `"histogram":[]`) ||
+		!strings.Contains(body, `"topServices":[]`) {
+		t.Errorf("empty arrays serialised as null: %s", body)
+	}
+}
+
+func TestErrorStatsRejectsBadInput(t *testing.T) {
+	mux := newMux(&storagetest.Fake{})
+	for _, path := range []string{
+		"/api/v1/errors/stats?status=bogus",
+		"/api/v1/errors/stats?points=-1",
+		"/api/v1/errors/stats?top=-2",
+	} {
+		if rec := get(t, mux, path); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s = %d, want 400", path, rec.Code)
+		}
+	}
+}
+
 func TestGetErrorIssueRoundTrip(t *testing.T) {
 	fake := &storagetest.Fake{Issue: storage.ErrorIssue{Fingerprint: 0xff, Service: "api", Type: "Timeout"}}
 	mux := newMux(fake)
@@ -192,6 +264,7 @@ func TestErrorTrackingRoutesGated(t *testing.T) {
 		"/api/v1/errors/issues/00000000deadbeef",
 		"/api/v1/errors/issues/00000000deadbeef/events",
 		"/api/v1/errors/issues/00000000deadbeef/histogram",
+		"/api/v1/errors/stats",
 	}
 
 	off, _ := modules.Parse("core")

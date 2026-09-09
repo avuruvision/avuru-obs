@@ -956,6 +956,39 @@ type ErrorIssueQuery struct {
 	Limit   int
 }
 
+// ErrorStatsQuery aggregates the same issue set SearchErrorIssues would return,
+// so a stats band and the list beneath it can never disagree.
+type ErrorStatsQuery struct {
+	Tenant      string
+	Tenants     []string // resolved tenant set; empty means []string{Tenant}
+	Range       TimeRange
+	Status      string // same set as ErrorIssueQuery.Status
+	Service     string
+	Query       string
+	Points      int // histogram buckets; <=0 or >500 means 48
+	TopServices int // busiest services to return; <=0 means 5, capped at 20
+}
+
+// ErrorServiceCount is one service's share of the occurrences in the window.
+type ErrorServiceCount struct {
+	Service string
+	Events  uint64
+}
+
+// ErrorStats is the aggregate behind the Errors screen's stats band. The three
+// issue counts use the query window to decide which issues exist (all-time
+// aggregates decide new/regressed); Events, Histogram and TopServices count
+// occurrences inside the window only.
+type ErrorStats struct {
+	Issues        uint64 // issues active in the window matching the filters
+	NewIssues     uint64 // of those, first seen (all-time) inside the window
+	Regressed     uint64 // of those, resolved and then seen again
+	Events        uint64 // occurrences inside the window across matching issues
+	BucketSeconds int
+	Histogram     []ErrorHistogramPoint
+	TopServices   []ErrorServiceCount // descending by Events
+}
+
 // ErrorIssue is a fingerprint-grouped error, with all-time aggregates so first/
 // last seen and regression are correct regardless of the query window.
 type ErrorIssue struct {
@@ -1543,6 +1576,8 @@ type Store interface {
 	ProfileFlamegraph(ctx context.Context, q ProfileQuery) (FlameNode, error)
 	// Error tracking (module error-tracking).
 	SearchErrorIssues(ctx context.Context, q ErrorIssueQuery) ([]ErrorIssue, error)
+	// ErrorStats aggregates the issue set SearchErrorIssues would return.
+	ErrorStats(ctx context.Context, q ErrorStatsQuery) (ErrorStats, error)
 	GetErrorIssue(ctx context.Context, tenants []string, fingerprint uint64) (ErrorIssue, error)
 	ListErrorEvents(ctx context.Context, q ErrorEventQuery) (ErrorEventPage, error)
 	ErrorIssueHistogram(ctx context.Context, tenants []string, fingerprint uint64, r TimeRange, points int) ([]ErrorHistogramPoint, error)
