@@ -3,7 +3,9 @@ package clickhouse
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
@@ -159,4 +161,111 @@ ORDER BY Timestamp ASC`
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// ServicePresence probes the raw signal tables for service names, one query per
+// requested signal.
+//
+// It exists to answer a question ListServices structurally cannot: ListServices
+// counts entry spans, because that is the population RED is defined over, so a
+// workload shipping logs and no server spans is absent from it. Treating that
+// absence as "the service reported nothing" is a false statement about a live
+// workload, and it is the one this method lets callers stop making.
+//
+// Spans counted here are of EVERY kind, unlike ListServices' Server/Consumer
+// restriction: a job that only calls out has no entry span and is still a name
+// someone can ask about. ExcludeAux is honoured for spans so the two
+// populations cannot disagree about whether a health-check-only workload
+// "reported". It cannot be honoured for logs — otel_logs has no SpanName or
+// http.route to match on — so a log-only service is present here even if every
+// line came from a health check.
+func (s *Store) ServicePresence(ctx context.Context, q storage.ServiceQuery, signals []storage.Signal) ([]storage.ServicePresence, error) {
+	if len(signals) == 0 {
+		return nil, nil
+	}
+	tenants := tenantsOrDefault(q.Tenants, q.Tenant)
+	found := map[string]*storage.ServicePresence{}
+	get := func(name string) *storage.ServicePresence {
+		if p, ok := found[name]; ok {
+			return p
+		}
+		p := &storage.ServicePresence{Name: name}
+		found[name] = p
+		return p
+	}
+
+	for _, sig := range signals {
+		var (
+			query string
+			args  []any
+			apply func(p *storage.ServicePresence, n, errs uint64)
+		)
+		switch sig {
+		case storage.SignalLogs:
+			// The countIf bind sits in the SELECT list, AHEAD of the WHERE
+			// binds: arguments bind in STATEMENT order, not logical order.
+			query = `
+SELECT ServiceName, count() AS n, countIf(SeverityNumber >= ?) AS errs, max(Timestamp) AS newest
+FROM otel_logs
+WHERE Tenant IN (?)
+  AND Timestamp >= ? AND Timestamp < ?
+  AND ServiceName != ''
+GROUP BY ServiceName`
+			args = []any{severityFloor["ERROR"], tenants, q.Range.Start, q.Range.End}
+			apply = func(p *storage.ServicePresence, n, errs uint64) {
+				p.LogRecords, p.ErrorLogRecords = n, errs
+			}
+		case storage.SignalSpans:
+			query = `
+SELECT ServiceName, count() AS n, toUInt64(0) AS errs, max(Timestamp) AS newest
+FROM otel_traces
+WHERE Tenant IN (?)
+  AND Timestamp >= ? AND Timestamp < ?
+  AND ServiceName != ''`
+			args = []any{tenants, q.Range.Start, q.Range.End}
+			if q.ExcludeAux {
+				query += auxExclusion("")
+			}
+			query += `
+GROUP BY ServiceName`
+			apply = func(p *storage.ServicePresence, n, _ uint64) { p.Spans = n }
+		default:
+			return nil, fmt.Errorf("service presence: unknown signal %q", sig)
+		}
+
+		if err := func() error {
+			rows, err := s.conn.Query(ctx, query, args...)
+			if err != nil {
+				return fmt.Errorf("service presence (%s): %w", sig, err)
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var (
+					name    string
+					n, errs uint64
+					newest  time.Time
+				)
+				if err := rows.Scan(&name, &n, &errs, &newest); err != nil {
+					return fmt.Errorf("scanning service presence (%s): %w", sig, err)
+				}
+				p := get(name)
+				apply(p, n, errs)
+				if newest.After(p.LastSeen) {
+					p.LastSeen = newest
+				}
+			}
+			return rows.Err()
+		}(); err != nil {
+			return nil, err
+		}
+	}
+
+	// Sorted by name: the caller matches on it and, on a miss, ranks it for
+	// "did you mean" — both want a stable order rather than a map's.
+	out := make([]storage.ServicePresence, 0, len(found))
+	for _, p := range found {
+		out = append(out, *p)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
 }

@@ -177,6 +177,10 @@ type searchTracesPayload struct {
 	// and inventing a read path for this client is the one thing this design
 	// refuses to do.
 	Truncated bool `json:"truncated"`
+	// Notes carries what an empty list does NOT say on its own. A service with
+	// no spans returns no traces, which reads identically to a service that
+	// served nothing — see serviceContextPayload.Notes for the same rule.
+	Notes []string `json:"notes,omitempty"`
 }
 
 func (p searchTracesPayload) rows() int { return p.Returned }
@@ -212,9 +216,18 @@ func runSearchTraces(ctx context.Context, s *Server, raw json.RawMessage) (any, 
 		return nil, err
 	}
 	service := ""
+	var notes []string
 	if a.Service != "" {
-		if service, err = s.resolveService(ctx, tr, a.Service); err != nil {
-			return nil, err
+		res, rerr := s.resolveService(ctx, tr, a.Service)
+		if rerr != nil {
+			return nil, rerr
+		}
+		service = res.Name
+		if !res.Spans {
+			// Without this the fix trades a false error for a false empty
+			// list, which is the worse of the two: an error at least stops a
+			// model, an empty list invites it to conclude.
+			notes = append(notes, noSpansNote(res))
 		}
 	}
 	limit := clampRows(a.Limit, defaultRows, maxRows)
@@ -245,6 +258,7 @@ func runSearchTraces(ctx context.Context, s *Server, raw json.RawMessage) (any, 
 	return searchTracesPayload{
 		Window: toWindowDTO(tr), Traces: rows,
 		Returned: len(rows), Truncated: page.NextCursor != nil,
+		Notes: notes,
 	}, nil
 }
 
@@ -452,9 +466,11 @@ func runSearchLogs(ctx context.Context, s *Server, raw json.RawMessage) (any, er
 	}
 	service := ""
 	if a.Service != "" {
-		if service, err = s.resolveService(ctx, tr, a.Service); err != nil {
-			return nil, err
+		res, rerr := s.resolveService(ctx, tr, a.Service)
+		if rerr != nil {
+			return nil, rerr
 		}
+		service = res.Name
 	}
 	page, err := s.Store.SearchLogs(ctx, storage.LogQuery{
 		Tenant:      s.Tenant,
@@ -560,9 +576,11 @@ func runListErrorIssues(ctx context.Context, s *Server, raw json.RawMessage) (an
 	}
 	service := ""
 	if a.Service != "" {
-		if service, err = s.resolveService(ctx, tr, a.Service); err != nil {
-			return nil, err
+		res, rerr := s.resolveService(ctx, tr, a.Service)
+		if rerr != nil {
+			return nil, rerr
 		}
+		service = res.Name
 	}
 	status := a.Status
 	if status == "" {

@@ -15,6 +15,9 @@ import (
 type Fake struct {
 	PingErr  error
 	Services []storage.ServiceStats
+	// Presence is what ServicePresence returns — the services known from a
+	// signal other than entry spans.
+	Presence []storage.ServicePresence
 	Labels   []storage.ServiceLabel
 	Edges    []storage.ServiceEdge
 	// Collapsed is what CollapsedEdges returns, and LastCollapseTransport
@@ -196,6 +199,12 @@ type Fake struct {
 	LastEventQuery        storage.ErrorEventQuery
 	LastGreenQuery        storage.GreenQuery
 	LastSpanLookupTenants []string
+	// LastPresenceSignals records the signal set the caller resolved from its
+	// modules, so a test can assert that an install without the logs module
+	// never probes otel_logs. PresenceCalls guards the claim that the happy
+	// path costs no extra query.
+	LastPresenceSignals []storage.Signal
+	PresenceCalls       int
 }
 
 // StatusWrite records a SetErrorIssueStatus call.
@@ -255,6 +264,16 @@ func (f *Fake) SystemStats(context.Context) (storage.SystemStats, error) {
 func (f *Fake) ListServices(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceStats, error) {
 	f.LastServiceQuery = q
 	return f.Services, nil
+}
+
+func (f *Fake) ServicePresence(_ context.Context, q storage.ServiceQuery, signals []storage.Signal) ([]storage.ServicePresence, error) {
+	f.LastServiceQuery = q
+	f.LastPresenceSignals = signals
+	f.PresenceCalls++
+	if len(signals) == 0 {
+		return nil, nil
+	}
+	return f.Presence, nil
 }
 
 func (f *Fake) ServiceLabels(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceLabel, error) {

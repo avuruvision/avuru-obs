@@ -74,6 +74,42 @@ type ServiceStats struct {
 	TransportLabels map[string]string
 }
 
+// Signal names a telemetry table a presence probe may read. The CALLER resolves
+// the set, never the store: otel_logs exists only where the logs module is on
+// (migration 0002), and probing a table that was never created turns "this name
+// is unknown" into a query error. An empty set means no probe and no query.
+type Signal string
+
+const (
+	SignalSpans Signal = "spans" // otel_traces, spans of EVERY kind
+	SignalLogs  Signal = "logs"  // otel_logs
+)
+
+// ServicePresence answers "did this name report anything", for a name
+// ListServices does not know.
+//
+// It exists because ListServices counts ENTRY spans only — that is the
+// population RED is defined over — so a service shipping logs and no server
+// spans is absent from it. Reading that absence as "the service is dead" is the
+// mistake this type exists to make impossible.
+//
+// Deliberately NOT a ServiceStats: there are no percentiles here and there
+// never can be. A caller wanting RED must use ListServices and get nothing when
+// there is nothing.
+type ServicePresence struct {
+	Name string
+	// Spans of every kind, Client and Internal included — wider than
+	// ListServices on purpose, because a workload that only calls out still has
+	// a name someone can ask about. Aux exclusion still applies when the query
+	// asks for it, so the two populations agree on what "reported" means.
+	Spans uint64
+	// LogRecords is every record; ErrorLogRecords only those at ERROR or worse.
+	// Both, because "alive" and "angry" are different answers.
+	LogRecords      uint64
+	ErrorLogRecords uint64
+	LastSeen        time.Time
+}
+
 // ServiceEdge is a service→service edge on the topology map. It can be derived
 // from trace spans (a Client span and the cross-service Server span it spawned,
 // giving call volume in Count/ErrorCount) and/or from OBI network flow metrics
@@ -1414,6 +1450,15 @@ type Store interface {
 	Ping(ctx context.Context) error
 	SystemStats(ctx context.Context) (SystemStats, error)
 	ListServices(ctx context.Context, q ServiceQuery) ([]ServiceStats, error)
+	// ServicePresence reports which service names reported the named signals in
+	// the window. It is the fallback for a name ListServices does not know:
+	// ListServices is entry-span-derived, so a service shipping only logs, or
+	// only client spans, is invisible to it — and answering "that service
+	// reported nothing" about a live workload is worse than answering slowly.
+	//
+	// signals is resolved by the caller from its module set (see Signal).
+	// Empty returns nil without querying.
+	ServicePresence(ctx context.Context, q ServiceQuery, signals []Signal) ([]ServicePresence, error)
 	// ServiceLabels returns each service's dominant grouping labels (namespace)
 	// over the same entry-span population as ListServices. Used by the
 	// service-health module to auto-group unassigned services by namespace.

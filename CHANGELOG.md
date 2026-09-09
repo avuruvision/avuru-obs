@@ -33,6 +33,30 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Fixed
 
+- **The MCP tools can reach a service that ships logs but no traces.** Asking
+  any service-scoped tool about such a workload — `search_logs`,
+  `service_context`, `search_traces`, `list_error_issues` — got back *"no
+  service named hotrod reported anything"*, while the same `search_logs` call
+  without a service filter returned that service's rows from the same window.
+  A live workload with open issues was being reported as non-existent, which is
+  precisely the confident falsehood the "did you mean" machinery exists to
+  prevent. Three services on one real estate were unreachable this way.
+
+  A service name is now resolved against every signal, not just entry spans.
+  `list_services` is unchanged and still means "services with RED", because RED
+  needs entry spans and a row of zeros there would be a claim rather than an
+  answer; the wider probe runs only when the name is not found, so the common
+  path costs nothing extra. A typo on a log-only name is now suggestible too.
+
+  `service_context` degrades instead of failing: for a service with no entry
+  spans it omits the RED block rather than zeroing it, adds a `signals` block
+  with what the service actually reported, and still returns its open issues,
+  firing alerts and dependencies. `search_traces` accepts the name and says in
+  a note that the service is untraced — without that, the fix would only have
+  traded a false error for an empty list, which is the more misleading of the
+  two.
+
+
 - **The Errors screen groups by error again, not by request.** An issue is
   supposed to be one failure kind with an occurrence count. For any error
   derived from a log line it had become one issue *per request*: the

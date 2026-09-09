@@ -232,3 +232,60 @@ func TestServiceContextUnknownService(t *testing.T) {
 		t.Errorf("no near matches offered: %v", payload)
 	}
 }
+
+// TestServiceContextDegradesForAServiceWithNoSpans: service_context is where
+// degrading pays most. For hotrod it can still return open issues and firing
+// alerts; erroring threw all of that away to protect a RED block that was
+// never computable.
+func TestServiceContextDegradesForAServiceWithNoSpans(t *testing.T) {
+	f := contextFake()
+	f.Presence = []storage.ServicePresence{{
+		Name: "hotrod", LogRecords: 1240, ErrorLogRecords: 15, LastSeen: testNow,
+	}}
+	f.Issues = []storage.ErrorIssue{{
+		Fingerprint: 7, Service: "hotrod", Type: "ERROR", Message: "redis timeout",
+		Status: "unresolved", Count: 45, FirstSeen: testNow.Add(-time.Hour), LastSeen: testNow,
+	}}
+
+	payload, isErr := callTool(t, serverWith(f), "service_context", `{"service":"hotrod"}`)
+	if isErr {
+		t.Fatalf("service_context erased a live service instead of describing it: %v", payload)
+	}
+	// RED must be ABSENT, not zeroed: "0 req/s, 0% errors" is a claim, and for
+	// an untraced service it is false.
+	if _, present := payload["red"]; present {
+		t.Error("red present for a service with no entry spans — a zero RED row is a false claim")
+	}
+	signals, _ := payload["signals"].(map[string]any)
+	if signals == nil {
+		t.Fatal("no signals block: nothing then distinguishes 'untraced' from 'dead'")
+	}
+	if got, _ := signals["logRecords"].(float64); got != 1240 {
+		t.Errorf("signals.logRecords = %v, want 1240", got)
+	}
+	// The reason this is worth answering at all.
+	issues, _ := payload["topIssues"].([]any)
+	if len(issues) != 1 {
+		t.Errorf("got %d issues, want the 1 open issue this service has", len(issues))
+	}
+	notes, _ := payload["notes"].([]any)
+	if len(notes) == 0 || !strings.Contains(fmt.Sprint(notes...), "no entry spans") {
+		t.Errorf("notes = %v, want the absence of spans named", notes)
+	}
+}
+
+// Regression guard for making RED a pointer: a span-backed service must still
+// carry a populated red block.
+func TestServiceContextKeepsRedWhenThereAreSpans(t *testing.T) {
+	payload, isErr := callTool(t, serverWith(contextFake()), "service_context", `{"service":"payment-api"}`)
+	if isErr {
+		t.Fatalf("unexpected tool error: %v", payload)
+	}
+	red, _ := payload["red"].(map[string]any)
+	if red == nil {
+		t.Fatal("red absent for a service with entry spans")
+	}
+	if _, present := payload["signals"]; present {
+		t.Error("signals present alongside RED — it exists only to explain RED's absence")
+	}
+}

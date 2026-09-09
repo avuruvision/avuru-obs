@@ -3,6 +3,7 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -358,5 +359,71 @@ func TestListErrorIssues(t *testing.T) {
 	// what used to be.
 	if f.LastIssueQuery.Status != "unresolved" {
 		t.Errorf("default status = %q, want unresolved", f.LastIssueQuery.Status)
+	}
+}
+
+// TestSearchLogsForAServiceWithNoSpans: the tool the bug was reported against.
+// hotrod shipped logs and no entry spans, so the service filter — the one
+// argument you would obviously use — rejected the name outright.
+func TestSearchLogsForAServiceWithNoSpans(t *testing.T) {
+	f := fakeWithLogOnly(fakeWithServices("payment-api"), "hotrod")
+	f.LogPage = storage.LogPage{Logs: []storage.LogRecord{{
+		Timestamp: testNow, Severity: "ERROR", Service: "hotrod",
+		Body: "driver/redis.go:70 redis timeout", TraceID: "abc", SpanID: "s1",
+	}}}
+	payload, isErr := callTool(t, serverWith(f), "search_logs", `{"service":"hotrod","level":"ERROR"}`)
+	if isErr {
+		t.Fatalf("search_logs rejected a service that ships logs: %v", payload)
+	}
+	logs, _ := payload["logs"].([]any)
+	if len(logs) != 1 {
+		t.Fatalf("got %d logs, want 1: %v", len(logs), payload)
+	}
+	// The filter must reach storage, not be silently dropped to make the call
+	// "work" — a tool that ignores the filter answers a different question.
+	if f.LastLogQuery.Service != "hotrod" {
+		t.Errorf("LastLogQuery.Service = %q, want hotrod", f.LastLogQuery.Service)
+	}
+}
+
+func TestListErrorIssuesForAServiceWithNoSpans(t *testing.T) {
+	f := fakeWithLogOnly(fakeWithServices("payment-api"), "hotrod")
+	f.Issues = []storage.ErrorIssue{{
+		Fingerprint: 42, Service: "hotrod", Type: "ERROR", Message: "redis timeout",
+		Source: "log", Status: "unresolved", Count: 45, FirstSeen: testNow, LastSeen: testNow,
+	}}
+	payload, isErr := callTool(t, serverWith(f), "list_error_issues", `{"service":"hotrod"}`)
+	if isErr {
+		t.Fatalf("list_error_issues rejected a service with open issues: %v", payload)
+	}
+	issues, _ := payload["issues"].([]any)
+	if len(issues) != 1 {
+		t.Fatalf("got %d issues, want 1: %v", len(issues), payload)
+	}
+	if f.LastIssueQuery.Service != "hotrod" {
+		t.Errorf("LastIssueQuery.Service = %q, want hotrod", f.LastIssueQuery.Service)
+	}
+}
+
+// TestSearchTracesNamesTheAbsenceOfSpans guards the half of this fix that is
+// easy to forget: accepting the name is not enough. Without a note, a service
+// that is simply untraced returns an empty trace list, and an empty list is
+// how a model concludes an outage.
+func TestSearchTracesNamesTheAbsenceOfSpans(t *testing.T) {
+	f := fakeWithLogOnly(fakeWithServices("payment-api"), "hotrod")
+	payload, isErr := callTool(t, serverWith(f), "search_traces", `{"service":"hotrod"}`)
+	if isErr {
+		t.Fatalf("search_traces rejected a log-only service: %v", payload)
+	}
+	if got, _ := payload["returned"].(float64); got != 0 {
+		t.Fatalf("returned = %v, want 0", got)
+	}
+	notes, _ := payload["notes"].([]any)
+	if len(notes) == 0 {
+		t.Fatal("an empty trace list for an untraced service carried no explanation")
+	}
+	note, _ := notes[0].(string)
+	if !strings.Contains(note, "log records") || !strings.Contains(note, "not traced") {
+		t.Errorf("note = %q, want it to say the service reports but is not traced", note)
 	}
 }
