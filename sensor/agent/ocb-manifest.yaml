@@ -72,8 +72,10 @@ replaces:
   # but the scan gate is a decision point, not a judgement call. Drop on the
   # first line that carries v0.40.0+.
   - golang.org/x/mod => golang.org/x/mod v0.40.0
-  # Security floor: CVE-2026-84304 (HIGH — gRPC-Go). The 0.159.0 line resolves
-  # google.golang.org/grpc v1.83.0 and the fix is v1.83.1; the advisory landed
-  # after that collector line was cut, which is exactly the case a floor exists
-  # for. Drop on the first line that carries v1.83.1+.
-  - google.golang.org/grpc => google.golang.org/grpc v1.83.1
+  # Security floor: CVE-2026-84304 (HIGH — gRPC-Go), and since 2026-09-09
+  # CVE-2026-84445 (HIGH — gRPC-Go xDS servers, DoS via crash) which lands on
+  # v1.83.1, the version this floor used to pin. The 0.159.0 line resolves
+  # google.golang.org/grpc v1.83.0; the fix for the current advisory is v1.83.2.
+  # Both advisories landed after that collector line was cut, which is exactly
+  # the case a floor exists for. Drop on the first line that carries v1.83.2+.
+  - google.golang.org/grpc => google.golang.org/grpc v1.83.2

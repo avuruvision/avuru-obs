@@ -33,6 +33,12 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Fixed
 
+- **Security floor: gRPC-Go raised to v1.83.2** in the gateway and node-agent
+  collector builds, for CVE-2026-84445 (HIGH — gRPC-Go xDS servers, denial of
+  service via crash). The advisory landed on v1.83.1, which is the version the
+  previous floor pinned to answer the advisory before it. Neither collector
+  line carries the fix yet, so the floor stays until one does.
+
 - **The MCP tools can reach a service that ships logs but no traces.** Asking
   any service-scoped tool about such a workload — `search_logs`,
   `service_context`, `search_traces`, `list_error_issues` — got back *"no
