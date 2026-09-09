@@ -4,6 +4,8 @@ package clickhouse
 
 import (
 	"context"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -633,4 +635,142 @@ func mustSearch(t *testing.T, s *Store, q storage.ErrorIssueQuery) []storage.Err
 		t.Fatalf("SearchErrorIssues: %v", err)
 	}
 	return iss
+}
+
+// TestErrorFingerprintIgnoresRequestIds is the regression test for the defect
+// 0023/0024 fix: ERROR logs of the SAME kind that differ only by the ids the
+// application embedded in the line must collapse into ONE issue.
+//
+// Before the fix the normalizer collapsed only `0x`-hex and digit runs, and a
+// bare 32-char trace id is neither — so every request minted its own
+// fingerprint and the Errors screen listed one issue per request. On a live
+// estate a single hotrod retry loop produced 15 issues of 3 events each, the 3
+// being the retries that happened to share a trace id.
+//
+// The bodies below are the real ones captured from that estate, not invented.
+func TestErrorFingerprintIgnoresRequestIds(t *testing.T) {
+	store := startClickHouse(t)
+	base := time.Now().UTC().Truncate(time.Minute).Add(-10 * time.Minute)
+
+	// Go/zap, as hotrod writes it: leading RFC3339 timestamp, a caller with a
+	// line number, then a JSON tail carrying trace_id, span_id and a counter.
+	zap := func(ts time.Time, trace, span string, retry int) string {
+		return ts.Format("2006-01-02T15:04:05.000Z") +
+			"\tERROR\tdriver/server.go:78\tRetrying GetDriver after error\t" +
+			`{"service": "driver", "trace_id": "` + trace + `", "span_id": "` + span +
+			`", "retry_no": ` + strconv.Itoa(retry) + `, "error": "redis timeout"}`
+	}
+	// Three occurrences of ONE error kind, differing only in ids and time.
+	insertErrorLog(t, store, base, "hotrod",
+		zap(base, "dd411d9cc936265ba5c634a36d0674c8", "e0cea28bf921dc66", 1), nil, nil)
+	insertErrorLog(t, store, base.Add(time.Minute), "hotrod",
+		zap(base.Add(time.Minute), "e8e4d00ea3c398f85523f9fe772e821e", "2b4fb8853cb7c1b7", 2), nil, nil)
+	insertErrorLog(t, store, base.Add(2*time.Minute), "hotrod",
+		zap(base.Add(2*time.Minute), "bc7afc4734a310b252dd0280a049bc51", "b492d13fff83f831", 3), nil, nil)
+	// A genuinely different failure on the same service stays its own issue.
+	// Without this the fix could "pass" by collapsing everything into one.
+	insertErrorLog(t, store, base.Add(3*time.Minute), "hotrod",
+		base.Add(3*time.Minute).Format("2006-01-02T15:04:05.000Z")+
+			"\tERROR\tdriver/server.go:91\tno drivers found\t"+
+			`{"service": "driver", "trace_id": "794ce2455ae7a499c2023324ea42c885"}`, nil, nil)
+
+	rows := readErrorEvents(t, store, "ServiceName = 'hotrod'")
+	if len(rows) != 4 {
+		t.Fatalf("got %d log-sourced rows, want 4: %+v", len(rows), rows)
+	}
+	if rows[0].fingerprint != rows[1].fingerprint || rows[1].fingerprint != rows[2].fingerprint {
+		t.Errorf("the same error in three requests forked into separate issues: %d, %d, %d",
+			rows[0].fingerprint, rows[1].fingerprint, rows[2].fingerprint)
+	}
+	if rows[3].fingerprint == rows[0].fingerprint {
+		t.Errorf("a different message collapsed into the same issue — normalization is too greedy")
+	}
+	// The message kept for display must stay the RAW line: it is what someone
+	// searches their logs for.
+	if !strings.Contains(rows[0].excMessage, "dd411d9cc936265ba5c634a36d0674c8") {
+		t.Errorf("issue message was normalized, want the raw body: %q", rows[0].excMessage)
+	}
+
+	// The same claim stated the way a user meets it: two issues, one of them
+	// with three events. Before the fix this was four issues of one.
+	issues, err := store.SearchErrorIssues(context.Background(), storage.ErrorIssueQuery{
+		Tenant:  "default",
+		Range:   storage.TimeRange{Start: base.Add(-time.Minute), End: base.Add(10 * time.Minute)},
+		Service: "hotrod",
+		Status:  "all",
+		Sort:    "count",
+	})
+	if err != nil {
+		t.Fatalf("searching issues: %v", err)
+	}
+	if len(issues) != 2 {
+		t.Fatalf("got %d issues for hotrod, want 2 (one retry loop + one distinct failure): %+v", len(issues), issues)
+	}
+	if issues[0].Count != 3 {
+		t.Errorf("busiest issue has %d events, want 3", issues[0].Count)
+	}
+}
+
+// TestErrorFingerprintIgnoresRequestIdsAcrossFormats covers the other id shapes
+// the normalizer has to survive, each as a pair differing ONLY in the id.
+func TestErrorFingerprintIgnoresRequestIdsAcrossFormats(t *testing.T) {
+	store := startClickHouse(t)
+	base := time.Now().UTC().Truncate(time.Minute).Add(-20 * time.Minute)
+
+	// Java/logback: space-separated timestamp, a thread name with digits in it,
+	// and bracketed trace/span ids — three hazards in one line.
+	java := func(ts time.Time, thread, trace, span string) string {
+		return ts.Format("2006-01-02 15:04:05") + " [" + thread + "] ERROR [" + trace + "," + span +
+			"] c.v.ReportService - failed to render report"
+	}
+	insertErrorLog(t, store, base, "valife-report",
+		java(base, "http-nio-80-exec-3", "94c7a8af205db41b130cbeaee5465c31", "1a2b3c4d5e6f7081"), nil, nil)
+	insertErrorLog(t, store, base.Add(time.Minute), "valife-report",
+		java(base.Add(time.Minute), "http-nio-80-exec-11", "06b61d3625361173b0fe45eddf740281", "9f8e7d6c5b4a3021"), nil, nil)
+
+	// A UUID: only its 8- and 12-char groups clear the bare-hex length
+	// threshold, so the UUID rule has to run first or the middle survives.
+	insertErrorLog(t, store, base.Add(2*time.Minute), "accounts",
+		"failed to load user 550e8400-e29b-41d4-a716-446655440000", nil, nil)
+	insertErrorLog(t, store, base.Add(3*time.Minute), "accounts",
+		"failed to load user 7c9e6679-7425-40de-944b-e07fc1f90ae7", nil, nil)
+
+	for _, svc := range []string{"valife-report", "accounts"} {
+		rows := readErrorEvents(t, store, "ServiceName = '"+svc+"'")
+		if len(rows) != 2 {
+			t.Fatalf("%s: got %d rows, want 2: %+v", svc, len(rows), rows)
+		}
+		if rows[0].fingerprint != rows[1].fingerprint {
+			t.Errorf("%s: two occurrences of one error kind forked into separate issues (%d vs %d)",
+				svc, rows[0].fingerprint, rows[1].fingerprint)
+		}
+	}
+}
+
+// TestSpanExceptionFingerprintIgnoresRequestIds is the 0023 half: an exception
+// with NO stack trace fingerprints on its message, so an id in that message
+// forked the issue exactly as it did for logs.
+func TestSpanExceptionFingerprintIgnoresRequestIds(t *testing.T) {
+	store := startClickHouse(t)
+	base := time.Now().UTC().Truncate(time.Minute).Add(-30 * time.Minute)
+
+	exc := func(id string) map[string]string {
+		return map[string]string{
+			"exception.type":    "java.lang.IllegalArgumentException",
+			"exception.message": "unknown tenant " + id,
+		}
+	}
+	insertSpanWithEvent(t, store, testSpan{base, "x1", "s0000000000000101", "", "GET /t", "Server", "tenants", time.Millisecond, "Error"},
+		"exception", exc("550e8400-e29b-41d4-a716-446655440000"), nil)
+	insertSpanWithEvent(t, store, testSpan{base.Add(time.Minute), "x2", "s0000000000000102", "", "GET /t", "Server", "tenants", time.Millisecond, "Error"},
+		"exception", exc("7c9e6679-7425-40de-944b-e07fc1f90ae7"), nil)
+
+	rows := readErrorEvents(t, store, "ServiceName = 'tenants'")
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2: %+v", len(rows), rows)
+	}
+	if rows[0].fingerprint != rows[1].fingerprint {
+		t.Errorf("one stack-less exception kind forked on the id in its message: %d vs %d",
+			rows[0].fingerprint, rows[1].fingerprint)
+	}
 }

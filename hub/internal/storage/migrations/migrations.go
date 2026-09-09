@@ -52,6 +52,8 @@ var Ordered = []string{
 	"0020_endpoint_checks.sql",
 	"0021_rates_overlay.sql",
 	"0022_oauth.sql",
+	"0023_error_fingerprint_v2.sql",
+	"0024_error_fingerprint_v2_from_logs.sql",
 }
 
 // ByModule tags each migration with the module(s) whose schema it owns; the
@@ -113,6 +115,13 @@ var ByModule = map[string][]modules.Name{
 	// server has a resource to protect. The routes are separately
 	// flag-gated, the same split 0014 makes between a table and its switch.
 	"0022_oauth.sql": {modules.MCP},
+	// Fingerprint v2 for the span-exception view: a request id in a stack-less
+	// exception.message forked one issue per request. Reads otel_traces, so the
+	// error-tracking module alone, exactly like the 0006 view it replaces.
+	"0023_error_fingerprint_v2.sql": {modules.ErrorTracking},
+	// The same fix for the log-derived view, where the defect was reported.
+	// Reads otel_logs, so it needs the logs module too, exactly like 0007.
+	"0024_error_fingerprint_v2_from_logs.sql": {modules.ErrorTracking, modules.Logs},
 }
 
 // Expected returns, in apply order, the versions that should exist on an
