@@ -12,6 +12,11 @@ import (
 // for the same window.
 type Store interface {
 	ListServices(ctx context.Context, q storage.ServiceQuery) ([]storage.ServiceStats, error)
+	// ServicePresence is the fallback ListServices cannot be: ListServices is
+	// entry-span-derived, so a service that ships logs and no server spans is
+	// absent from it, and telling an agent such a service reported nothing is a
+	// false statement about a live workload.
+	ServicePresence(ctx context.Context, q storage.ServiceQuery, signals []storage.Signal) ([]storage.ServicePresence, error)
 	ServiceEdges(ctx context.Context, q storage.ServiceQuery) ([]storage.ServiceEdge, error)
 	// CollapsedEdges recovers the app→app dependencies a service mesh hides,
 	// by walking each trace's ancestry across the proxies named in `transport`.

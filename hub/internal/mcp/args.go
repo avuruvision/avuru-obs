@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/avuru/avuru-obs/hub/internal/modules"
 	"github.com/avuru/avuru-obs/hub/internal/storage"
 )
 
@@ -104,47 +105,117 @@ func (s *Server) serviceQuery(tr storage.TimeRange) storage.ServiceQuery {
 	return storage.ServiceQuery{Tenant: s.Tenant, Tenants: s.Tenants, Range: tr, ExcludeAux: true}
 }
 
-// resolveService turns the name an agent asked for into one this estate knows.
-func (s *Server) resolveService(ctx context.Context, tr storage.TimeRange, name string) (string, error) {
-	stats, _, err := s.resolveServiceStats(ctx, tr, name)
-	if err != nil {
-		return "", err
-	}
-	return stats.Name, nil
+// resolvedService is a name this estate knows, and HOW it knows it. The second
+// half is not decoration: RED, callers and dependencies are all span-derived,
+// so a tool handed a log-only service has to be able to say which of its
+// answers are missing for want of spans rather than for want of trouble.
+type resolvedService struct {
+	// Name is the STORED spelling — it is what every downstream filter matches.
+	Name string
+	// Stats is the entry-span RED row, valid only when Spans is true. The zero
+	// value must never be rendered as RED: "0 req/s, 0% errors" is a claim, and
+	// a false one.
+	Stats storage.ServiceStats
+	// Spans records that the name came from ListServices, i.e. it handled entry
+	// spans in this window.
+	Spans bool
+	// Presence is the signal evidence that resolved a name with no entry spans.
+	// Zero when Spans is true — the happy path never probes.
+	Presence storage.ServicePresence
 }
 
-// resolveServiceStats is resolveService plus the row it matched and the full
-// service list, both of which service_context needs anyway.
+// resolveService turns the name an agent asked for into one this estate knows.
+func (s *Server) resolveService(ctx context.Context, tr storage.TimeRange, name string) (resolvedService, error) {
+	res, _, err := s.resolveServiceStats(ctx, tr, name)
+	return res, err
+}
+
+// resolveServiceStats is resolveService plus the full entry-span service list,
+// which service_context needs anyway.
 //
 // Returning no rows for an unknown name is the cheaper answer and the
 // dangerous one: a model handed an empty list for a misspelling reads it as
 // "this service is dead" and says so with confidence. Naming the near matches
 // turns a dead end into the next question.
-func (s *Server) resolveServiceStats(ctx context.Context, tr storage.TimeRange, name string) (storage.ServiceStats, []storage.ServiceStats, error) {
+//
+// The same reasoning is why ListServices alone is not the population to resolve
+// against. It counts ENTRY spans, because that is what RED is defined over, so
+// a service shipping logs and no server spans — or only client spans, or only
+// health checks — is absent from it. Answering "no service named hotrod
+// reported anything" while its logs and its open issues are right there is the
+// same confident falsehood, told by us instead of inferred by the model. So on
+// a miss we widen the evidence rather than the answer: probe the raw signal
+// tables, and carry back WHICH signal matched so the caller can be honest.
+func (s *Server) resolveServiceStats(ctx context.Context, tr storage.TimeRange, name string) (resolvedService, []storage.ServiceStats, error) {
 	if strings.TrimSpace(name) == "" {
-		return storage.ServiceStats{}, nil, &toolError{Message: "service is required"}
+		return resolvedService{}, nil, &toolError{Message: "service is required"}
 	}
 	all, err := s.Store.ListServices(ctx, s.serviceQuery(tr))
 	if err != nil {
-		return storage.ServiceStats{}, nil, fmt.Errorf("listing services: %w", err)
+		return resolvedService{}, nil, fmt.Errorf("listing services: %w", err)
 	}
 	known := make([]string, 0, len(all))
 	for _, svc := range all {
-		if svc.Name == name {
-			return svc, all, nil
-		}
 		known = append(known, svc.Name)
 	}
-	for _, svc := range all {
-		if strings.EqualFold(svc.Name, name) {
-			return svc, all, nil // the stored spelling wins — it is what filters match
+	if i, ok := matchName(name, known); ok {
+		return resolvedService{Name: all[i].Name, Stats: all[i], Spans: true}, all, nil
+	}
+
+	// Miss. Only now does the extra query happen.
+	signals := s.presenceSignals()
+	present, err := s.Store.ServicePresence(ctx, s.serviceQuery(tr), signals)
+	if err != nil {
+		return resolvedService{}, all, fmt.Errorf("probing service presence: %w", err)
+	}
+	others := make([]string, 0, len(present))
+	for _, p := range present {
+		others = append(others, p.Name)
+	}
+	if i, ok := matchName(name, others); ok {
+		return resolvedService{Name: present[i].Name, Presence: present[i]}, all, nil
+	}
+
+	// Genuinely unknown. Say what was actually checked — an install with the
+	// logs module off has not checked logs, and claiming otherwise is the same
+	// overclaim in the other direction.
+	checked := "spans or logs"
+	if !s.Modules.Enabled(modules.Logs) {
+		checked = "spans (the logs module is off here, so a service reporting only logs could not be checked)"
+	}
+	return resolvedService{}, all, &toolError{
+		Message: fmt.Sprintf("no service named %q reported %s to this project between %s and %s",
+			name, checked, tr.Start.Format(time.RFC3339), tr.End.Format(time.RFC3339)),
+		DidYouMean: nearest(name, append(known, others...), 5),
+	}
+}
+
+// matchName finds want in candidates: exact first, then case-insensitively.
+// The stored spelling always wins, because that is what a storage filter
+// matches — resolving "HotRod" to "HotRod" would return an empty page.
+func matchName(want string, candidates []string) (int, bool) {
+	for i, c := range candidates {
+		if c == want {
+			return i, true
 		}
 	}
-	return storage.ServiceStats{}, all, &toolError{
-		Message: fmt.Sprintf("no service named %q reported anything between %s and %s",
-			name, tr.Start.Format(time.RFC3339), tr.End.Format(time.RFC3339)),
-		DidYouMean: nearest(name, known, 5),
+	for i, c := range candidates {
+		if strings.EqualFold(c, want) {
+			return i, true
+		}
 	}
+	return 0, false
+}
+
+// presenceSignals names the tables this install actually has. otel_logs exists
+// only when the logs module is on (migration 0002), and probing a table that
+// was never created turns "unknown service" into a query error.
+func (s *Server) presenceSignals() []storage.Signal {
+	signals := []storage.Signal{storage.SignalSpans} // otel_traces is core
+	if s.Modules.Enabled(modules.Logs) {
+		signals = append(signals, storage.SignalLogs)
+	}
+	return signals
 }
 
 // nearest ranks known names by closeness to want: containment either way first
@@ -231,4 +302,24 @@ func perSec(count uint64, tr storage.TimeRange) float64 {
 		return 0
 	}
 	return float64(count) / secs
+}
+
+// noSpansNote states, for a service resolved from something other than entry
+// spans, what the trace-shaped answer cannot tell anyone. "It is reporting; it
+// is not traced" is the sentence a model needs in order not to conclude an
+// outage from an empty list.
+func noSpansNote(res resolvedService) string {
+	note := fmt.Sprintf("%s reported no entry spans in this window", res.Name)
+	switch {
+	case res.Presence.LogRecords > 0:
+		note += fmt.Sprintf(" but did report %d log records (%d at ERROR or worse)",
+			res.Presence.LogRecords, res.Presence.ErrorLogRecords)
+	case res.Presence.Spans > 0:
+		note += fmt.Sprintf(" but did emit %d client or internal spans", res.Presence.Spans)
+	}
+	if !res.Presence.LastSeen.IsZero() {
+		note += ", last at " + res.Presence.LastSeen.UTC().Format(time.RFC3339)
+	}
+	return note + ". It is reporting; it is not traced — so an empty trace list " +
+		"here is not evidence that it served no requests. Try search_logs."
 }

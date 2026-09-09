@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -84,13 +85,13 @@ func TestResolveService(t *testing.T) {
 	s := serverWith(fakeWithServices("payment-api", "payments-worker", "frontend"))
 	tr := storage.TimeRange{Start: testNow.Add(-time.Hour), End: testNow}
 
-	if got, err := s.resolveService(context.Background(), tr, "payment-api"); err != nil || got != "payment-api" {
-		t.Fatalf("exact match: got %q, %v", got, err)
+	if got, err := s.resolveService(context.Background(), tr, "payment-api"); err != nil || got.Name != "payment-api" {
+		t.Fatalf("exact match: got %q, %v", got.Name, err)
 	}
 	// The stored spelling wins, so everything downstream filters on a name the
 	// store will actually match.
-	if got, err := s.resolveService(context.Background(), tr, "Payment-API"); err != nil || got != "payment-api" {
-		t.Fatalf("case-insensitive match: got %q, %v", got, err)
+	if got, err := s.resolveService(context.Background(), tr, "Payment-API"); err != nil || got.Name != "payment-api" {
+		t.Fatalf("case-insensitive match: got %q, %v", got.Name, err)
 	}
 }
 
@@ -131,5 +132,109 @@ func TestNearest(t *testing.T) {
 				t.Errorf("nearest(%q) = %v, want %v", tt.in, got, tt.want)
 			}
 		})
+	}
+}
+
+// fakeWithLogOnly is fakeWithServices' counterpart: names known ONLY from the
+// signal probe, i.e. workloads with no entry spans.
+func fakeWithLogOnly(f *storagetest.Fake, names ...string) *storagetest.Fake {
+	for _, n := range names {
+		f.Presence = append(f.Presence, storage.ServicePresence{
+			Name: n, LogRecords: 1240, ErrorLogRecords: 15, LastSeen: testNow,
+		})
+	}
+	return f
+}
+
+// TestResolveServiceAcceptsAServiceKnownOnlyFromLogs is the bug this fixes. On
+// a real estate, search_logs with no filter returned rows for "hotrod" while
+// search_logs FOR "hotrod" answered "no service named hotrod reported
+// anything" — a false statement about a workload with 15 open issues, made by
+// the one code path whose docstring warns against exactly that.
+func TestResolveServiceAcceptsAServiceKnownOnlyFromLogs(t *testing.T) {
+	s := serverWith(fakeWithLogOnly(fakeWithServices("payment-api", "frontend"), "hotrod"))
+	tr := storage.TimeRange{Start: testNow.Add(-time.Hour), End: testNow}
+
+	got, err := s.resolveService(context.Background(), tr, "hotrod")
+	if err != nil {
+		t.Fatalf("a service with logs and no entry spans was rejected: %v", err)
+	}
+	if got.Name != "hotrod" {
+		t.Errorf("name = %q, want the stored spelling", got.Name)
+	}
+	if got.Spans {
+		t.Error("resolved as span-backed — a caller would then render a zero RED row as fact")
+	}
+	if got.Presence.LogRecords != 1240 {
+		t.Errorf("presence = %+v, want the evidence that resolved it", got.Presence)
+	}
+}
+
+// The stored spelling has to win here too: a LogQuery filters on it literally.
+func TestResolveServiceCaseInsensitiveOnALogOnlyName(t *testing.T) {
+	s := serverWith(fakeWithLogOnly(fakeWithServices("frontend"), "hotrod"))
+	tr := storage.TimeRange{Start: testNow.Add(-time.Hour), End: testNow}
+
+	got, err := s.resolveService(context.Background(), tr, "HotRod")
+	if err != nil || got.Name != "hotrod" {
+		t.Fatalf("got %q, %v; want the stored spelling hotrod", got.Name, err)
+	}
+}
+
+// The probe is a fallback, not a tax. Every resolution that succeeds against
+// entry spans — which is nearly all of them — must cost no extra query.
+func TestResolveServiceDoesNotProbeOnTheHappyPath(t *testing.T) {
+	f := fakeWithLogOnly(fakeWithServices("payment-api"), "hotrod")
+	s := serverWith(f)
+	tr := storage.TimeRange{Start: testNow.Add(-time.Hour), End: testNow}
+
+	if _, err := s.resolveService(context.Background(), tr, "payment-api"); err != nil {
+		t.Fatalf("resolving a span-backed service: %v", err)
+	}
+	if f.PresenceCalls != 0 {
+		t.Errorf("PresenceCalls = %d, want 0 — the happy path must not probe", f.PresenceCalls)
+	}
+}
+
+// A typo on a log-only name was unsuggestable before this change, because the
+// name was not in the list `nearest` searched.
+func TestResolveServiceSuggestsALogOnlyName(t *testing.T) {
+	s := serverWith(fakeWithLogOnly(fakeWithServices("payment-api"), "hotrod"))
+	tr := storage.TimeRange{Start: testNow.Add(-time.Hour), End: testNow}
+
+	_, err := s.resolveService(context.Background(), tr, "hotrodd")
+	var terr *toolError
+	if !errors.As(err, &terr) {
+		t.Fatalf("err = %v, want a toolError", err)
+	}
+	if len(terr.DidYouMean) == 0 || terr.DidYouMean[0] != "hotrod" {
+		t.Errorf("didYouMean = %v, want hotrod first", terr.DidYouMean)
+	}
+}
+
+// Honesty in the other direction: an install with the logs module off has not
+// checked logs, and must not imply that it did.
+func TestResolveServiceSaysWhenLogsCouldNotBeChecked(t *testing.T) {
+	f := fakeWithServices("payment-api")
+	s := serverWith(f)
+	noLogs, err := modules.Parse("core,error-tracking")
+	if err != nil {
+		t.Fatalf("parsing module set: %v", err)
+	}
+	s.Modules = noLogs
+	tr := storage.TimeRange{Start: testNow.Add(-time.Hour), End: testNow}
+
+	_, err = s.resolveService(context.Background(), tr, "hotrod")
+	var terr *toolError
+	if !errors.As(err, &terr) {
+		t.Fatalf("err = %v, want a toolError", err)
+	}
+	if !strings.Contains(terr.Message, "logs module is off") {
+		t.Errorf("message = %q, want it to admit logs were not checked", terr.Message)
+	}
+	for _, sig := range f.LastPresenceSignals {
+		if sig == storage.SignalLogs {
+			t.Error("probed otel_logs on an install where the logs module is off")
+		}
 	}
 }

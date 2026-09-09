@@ -61,9 +61,13 @@ type alertRow struct {
 }
 
 type serviceContextPayload struct {
-	Service      string         `json:"service"`
-	Window       windowDTO      `json:"window"`
-	RED          serviceRow     `json:"red"`
+	Service string    `json:"service"`
+	Window  windowDTO `json:"window"`
+	// RED is span-derived and therefore ABSENT — not zeroed — for a service
+	// with no entry spans. A zero RED row is a claim ("no traffic, no errors")
+	// and a false one; absence plus a note is the truth. Same rule the
+	// module-gated sections below already follow.
+	RED          *serviceRow    `json:"red,omitempty"`
 	Callers      []neighbourRow `json:"callers"`
 	Dependencies []neighbourRow `json:"dependencies"`
 	// Absent — not empty — when the module that owns them is off. An empty
@@ -74,8 +78,21 @@ type serviceContextPayload struct {
 	// model reads a missing section as an absence of trouble, which is the
 	// same way of being confidently wrong that v0.11's "reported no usage"
 	// bucket exists to prevent.
-	Notes    []string `json:"notes,omitempty"`
-	Returned int      `json:"returned"`
+	Notes []string `json:"notes,omitempty"`
+	// Signals reports what the service actually shipped, and appears only when
+	// RED could not be computed: it is what stops an absent RED block and an
+	// empty dependency list from reading as "this service is dead".
+	Signals  *signalsDTO `json:"signals,omitempty"`
+	Returned int         `json:"returned"`
+}
+
+// signalsDTO is presence, not performance — the counts that prove a service is
+// alive when there are no entry spans to describe how it is doing.
+type signalsDTO struct {
+	Spans           uint64 `json:"spans"`
+	LogRecords      uint64 `json:"logRecords"`
+	ErrorLogRecords uint64 `json:"errorLogRecords"`
+	LastSeen        string `json:"lastSeen,omitempty"`
 }
 
 func (p serviceContextPayload) rows() int { return p.Returned }
@@ -89,11 +106,11 @@ func runServiceContext(ctx context.Context, s *Server, raw json.RawMessage) (any
 	if err != nil {
 		return nil, err
 	}
-	stats, all, err := s.resolveServiceStats(ctx, tr, a.Service)
+	res, all, err := s.resolveServiceStats(ctx, tr, a.Service)
 	if err != nil {
 		return nil, err
 	}
-	name := stats.Name
+	name := res.Name
 
 	edges, err := s.Store.ServiceEdges(ctx, s.serviceQuery(tr))
 	if err != nil {
@@ -126,9 +143,28 @@ func runServiceContext(ctx context.Context, s *Server, raw json.RawMessage) (any
 	payload := serviceContextPayload{
 		Service:      name,
 		Window:       toWindowDTO(tr),
-		RED:          toServiceRow(stats, tr),
 		Callers:      neighbours(edges, name, tr, inbound),
 		Dependencies: neighbours(edges, name, tr, outbound),
+	}
+	if res.Spans {
+		red := toServiceRow(res.Stats, tr)
+		payload.RED = &red
+	} else {
+		// Everything below still runs: issues, alerts and dependencies are
+		// real for a service that only ships logs, and they are exactly what
+		// makes this worth answering instead of erroring.
+		payload.Signals = &signalsDTO{
+			Spans:           res.Presence.Spans,
+			LogRecords:      res.Presence.LogRecords,
+			ErrorLogRecords: res.Presence.ErrorLogRecords,
+		}
+		if !res.Presence.LastSeen.IsZero() {
+			payload.Signals.LastSeen = res.Presence.LastSeen.UTC().Format(time.RFC3339)
+		}
+		payload.Notes = append(payload.Notes, fmt.Sprintf(
+			"no entry spans for %s in this window, so it has no request rate, error rate, "+
+				"latency, callers or dependencies here — not because it is idle, but because "+
+				"nothing traced it. %s", name, noSpansNote(res)))
 	}
 
 	if s.Modules.Enabled(modules.ErrorTracking) {
