@@ -17,15 +17,23 @@ const schemaMigrationsTable = "schema_migrations"
 // recording each in the `<db>.schema_migrations` ledger. Idempotent:
 // already-applied versions are skipped, so re-running is a no-op — enabling a
 // module later is just a re-run with a bigger set. ClickHouse DDL is not
-// transactional — every statement is `IF NOT EXISTS` and the ledger row is
-// the commit marker.
+// transactional — every statement is guarded and the ledger row is the commit
+// marker.
 //
 // Safe to run CONCURRENTLY (several hub replicas, or a replica racing the
 // chart's migrate Job) with no lock, and that is a property to preserve rather
-// than a happy accident: every statement in every .sql is `IF NOT EXISTS`-
-// guarded (enforced by TestEveryStatementIsIdempotent), the ledger is read into
-// a set so duplicate rows are inert, and each caller walks Expected top-down so
-// none can reach a derived view before its base table exists.
+// than a happy accident: every statement in every .sql is guarded (enforced by
+// TestEveryStatementIsIdempotent), the ledger is read into a set so duplicate
+// rows are inert, and each caller walks Expected top-down so none can reach a
+// derived view before its base table exists.
+//
+// "Guarded" means `IF NOT EXISTS`, or for a view REDEFINITION a `DROP VIEW IF
+// EXISTS` followed by the guarded CREATE (0023/0024 — a materialized view
+// cannot be altered in place). That pair is still re-runnable, and its only
+// concurrency hazard is a sub-second window during one upgrade in which the
+// view does not exist and inserts landing then are not derived. Acceptable for
+// a derived signal; it would NOT be for a base table, which is why none of
+// these DROPs touches one.
 func (s *Store) Migrate(ctx context.Context, active modules.Set) error {
 	if err := s.ensureLedger(ctx); err != nil {
 		return err

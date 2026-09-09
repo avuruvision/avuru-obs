@@ -61,12 +61,14 @@ func TestExpectedFiltersByModule(t *testing.T) {
 		t.Fatalf("parsing module set: %v", err)
 	}
 	got := Expected(noLogs)
-	for _, dropped := range []string{"0002_logs.sql", "0007_errors_from_logs.sql"} {
+	for _, dropped := range []string{"0002_logs.sql", "0007_errors_from_logs.sql",
+		"0024_error_fingerprint_v2_from_logs.sql"} {
 		if slices.Contains(got, dropped) {
 			t.Errorf("Expected(core,error-tracking) contains %s, want it filtered out", dropped)
 		}
 	}
-	for _, kept := range []string{"0001_traces.sql", "0006_errors.sql", "0010_auth.sql"} {
+	for _, kept := range []string{"0001_traces.sql", "0006_errors.sql", "0010_auth.sql",
+		"0023_error_fingerprint_v2.sql"} {
 		if !slices.Contains(got, kept) {
 			t.Errorf("Expected(core,error-tracking) is missing %s", kept)
 		}
@@ -75,6 +77,12 @@ func TestExpectedFiltersByModule(t *testing.T) {
 
 // ddlVerb matches the leading keyword of a DDL statement.
 var ddlVerb = regexp.MustCompile(`(?is)^\s*(CREATE|ALTER|DROP|RENAME|TRUNCATE)\b`)
+
+// dropVerb matches a DROP, whose idempotence marker is `IF EXISTS` rather than
+// `IF NOT EXISTS`. Redefining a materialized view means dropping it first
+// (0006:87-89), and a guarded drop re-executes just as harmlessly as a guarded
+// create — which is the property this file actually cares about.
+var dropVerb = regexp.MustCompile(`(?is)^\s*DROP\b`)
 
 // TestEveryStatementIsIdempotent is load-bearing, not hygiene: Store.Migrate is
 // documented as safe to run concurrently (several hub replicas, or a replica
@@ -95,8 +103,12 @@ func TestEveryStatementIsIdempotent(t *testing.T) {
 			if !ddlVerb.MatchString(stmt) {
 				continue // INSERTs and the like are not schema statements
 			}
-			if !strings.Contains(strings.ToUpper(stmt), "IF NOT EXISTS") {
-				t.Errorf("%s: DDL statement is not idempotent (no IF NOT EXISTS):\n%.120s", version, stmt)
+			marker := "IF NOT EXISTS"
+			if dropVerb.MatchString(stmt) {
+				marker = "IF EXISTS"
+			}
+			if !strings.Contains(strings.ToUpper(stmt), marker) {
+				t.Errorf("%s: DDL statement is not idempotent (no %s):\n%.120s", version, marker, stmt)
 			}
 		}
 	}
@@ -130,5 +142,58 @@ func TestStatementsSubstitutesDatabase(t *testing.T) {
 	want := []string{"CREATE TABLE IF NOT EXISTS mydb.t (a String)"}
 	if !slices.Equal(got, want) {
 		t.Errorf("Statements() = %q, want %q", got, want)
+	}
+}
+
+// fingerprintNormalizerRules is the pipeline 0023 and 0024 must both apply
+// before hashing. Each entry is the regex literal as it appears in the SQL.
+var fingerprintNormalizerRules = []string{
+	`[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}([.,][0-9]+)?(Z|[+-][0-9]{2}:?[0-9]{2})?`,
+	`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`,
+	`0x[0-9a-fA-F]+`,
+	`[0-9a-fA-F]{8,}`,
+	`[0-9]+`,
+}
+
+// TestFingerprintNormalizerIsShared stands in for the abstraction we could not
+// have: a ClickHouse SQL UDF is server-global and cannot carry the {db}
+// placeholder, so the normalizer is duplicated across the two views and this
+// test is the only thing keeping the copies honest. They must agree, or the
+// same failure reported once through a span exception and once through a log
+// becomes two issues that never merge.
+//
+// It also pins the ORDER of the last three rules, which is where the original
+// bug lived: normalizing digits before bare hex turns a trace id into a mixed
+// token no hex rule can catch, and collapsing bare hex before UUIDs leaves a
+// UUID's middle groups intact and still unique per request.
+func TestFingerprintNormalizerIsShared(t *testing.T) {
+	files := []string{"0023_error_fingerprint_v2.sql", "0024_error_fingerprint_v2_from_logs.sql"}
+	for _, name := range files {
+		body, err := FS.ReadFile(name)
+		if err != nil {
+			t.Fatalf("reading %s: %v", name, err)
+		}
+		sql := string(body)
+		for _, rule := range fingerprintNormalizerRules {
+			if !strings.Contains(sql, rule) {
+				t.Errorf("%s does not apply the normalization rule %s", name, rule)
+			}
+		}
+		// Anchor on the (pattern, replacement) pairs: the bare `[0-9]+` also
+		// occurs inside the timestamp pattern, so a plain index would compare
+		// the wrong occurrence.
+		uuid := strings.Index(sql, `-[0-9a-fA-F]{12}', 'U')`)
+		hex := strings.Index(sql, `'[0-9a-fA-F]{8,}', 'H')`)
+		digits := strings.Index(sql, `'[0-9]+', 'N')`)
+		if uuid < 0 || hex < 0 || digits < 0 {
+			t.Fatalf("%s: could not locate the UUID/hex/digit rules (%d/%d/%d)", name, uuid, hex, digits)
+		}
+		// replaceRegexpAll nests, so the OUTERMOST call runs last and appears
+		// LAST in the source: UUID before bare hex before digits.
+		if uuid >= hex || hex >= digits {
+			t.Errorf("%s: normalization order is wrong (uuid=%d hex=%d digits=%d); "+
+				"UUIDs must collapse before bare hex, and bare hex before digits",
+				name, uuid, hex, digits)
+		}
 	}
 }

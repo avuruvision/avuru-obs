@@ -31,6 +31,34 @@ When a release is cut, that block is renamed to the version with its date.
   instead of three buttons all on at once. One source always stays on, and the
   choice travels in the URL as before.
 
+### Fixed
+
+- **The Errors screen groups by error again, not by request.** An issue is
+  supposed to be one failure kind with an occurrence count. For any error
+  derived from a log line it had become one issue *per request*: the
+  fingerprint hashed the whole log body, and the only normalization was
+  `0x`-prefixed hex and digit runs — neither of which touches a bare 32-char
+  trace id. A single retry loop in the demo workload filled the list with 15
+  separate issues of three events each, the three being the retries that
+  happened to share a trace id. A Java service fragmented the same way on the
+  trace id in its log prefix. Now timestamps, UUIDs, hex ids and digit runs are
+  all collapsed before hashing, in that order, so those 15 issues are one issue
+  with 45 events. The issue title still shows the raw line, ids included.
+
+  The same latent defect is fixed for exceptions recorded on a span that carry
+  no stack trace, where the fingerprint falls back to the exception message.
+
+  Two consequences worth knowing before you upgrade. **Triage state does not
+  carry over**: it is keyed by fingerprint, so log-derived issues you had
+  resolved or ignored come back as unresolved once — the state you set applied
+  to an issue that only ever covered one request. And **history is not
+  rewritten**: `Fingerprint` is part of the table's sorting key, so ClickHouse
+  cannot update it in place and a rewrite would break the migrator's lock-free
+  concurrent-apply contract. Issues from before the upgrade stay fragmented
+  until retention ages them out (`AVURUOBS_RETENTION_ERRORS_DAYS`, 30 by
+  default). Rolling back needs the old view definitions re-applied by hand.
+
+
 ## [0.16.0] — 2026-09-07
 
 ### Added
