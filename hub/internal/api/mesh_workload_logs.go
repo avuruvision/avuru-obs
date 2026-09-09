@@ -43,6 +43,16 @@ type meshLogSourcesDTO struct {
 	// Fallback names why the pods could not be read, when they could not,
 	// in the operator's terms.
 	Fallback string `json:"fallback,omitempty"`
+	// Workload and Namespace are the workload the sources were composed for.
+	// The mesh page knows them already; the service page is told, and echoes
+	// them back on later pages so the source set cannot shift mid-scroll.
+	Workload  string `json:"workload,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+	// ProxiesUnavailable says why ztunnel and waypoint are not on offer —
+	// set only when no workload could be resolved at all, because without one
+	// there is nothing to narrow the proxies' lines to. The UI hides those
+	// checkboxes rather than offering a filter that cannot answer.
+	ProxiesUnavailable string `json:"proxiesUnavailable,omitempty"`
 }
 
 type meshWorkloadLogsResponse struct {
@@ -130,10 +140,10 @@ type workloadLogSources struct {
 
 func (s workloadLogSources) sources(wanted map[string]bool) []storage.LogSource {
 	var out []storage.LogSource
-	if wanted[logSourceApp] {
+	if wanted[logSourceApp] && len(s.App) > 0 {
 		out = append(out, storage.LogSource{Services: s.App})
 	}
-	if wanted[logSourceZtunnel] {
+	if wanted[logSourceZtunnel] && len(s.Ztunnel) > 0 {
 		out = append(out, storage.LogSource{Services: s.Ztunnel, BodyAll: s.bodyAll})
 	}
 	if wanted[logSourceWaypoint] && len(s.Waypoint) > 0 {
@@ -146,12 +156,19 @@ func (s workloadLogSources) sources(wanted map[string]bool) []storage.LogSource 
 // precise path needs the snapshot: mesh-config on, the cluster read, pods
 // readable and not cut, and the workload in it. Every rung short of that
 // falls back to matching by name AND namespace, and says which rung.
-func (a *API) workloadLogSources(r *http.Request, namespace, name, wantWaypoint string) workloadLogSources {
+// extraApp are further service names the application's own lines may be filed
+// under. The mesh page passes none — a workload's lines are under its own
+// name. The service page passes the OTel service.name, which is frequently
+// NOT the workload name (valife-report-service runs as valife-report), and
+// missing it is exactly what makes a service's Logs tab look empty.
+func (a *API) workloadLogSources(r *http.Request, namespace, name, wantWaypoint string, extraApp ...string) workloadLogSources {
 	desc := workloadLogSources{meshLogSourcesDTO: meshLogSourcesDTO{
-		App:      []string{name, name + "." + namespace},
-		Ztunnel:  ztunnelServiceNames,
-		Waypoint: []string{},
-		Needles:  []string{},
+		App:       appNames(name, namespace, extraApp),
+		Ztunnel:   ztunnelServiceNames,
+		Waypoint:  []string{},
+		Needles:   []string{},
+		Workload:  name,
+		Namespace: namespace,
 	}}
 	host := name + "." + namespace + ".svc"
 	fallback := func(why string) workloadLogSources {
@@ -206,4 +223,19 @@ func (a *API) workloadLogSources(r *http.Request, namespace, name, wantWaypoint 
 		desc.Waypoint = []string{wl.Waypoint, wl.Waypoint + "." + wl.WaypointNamespace}
 	}
 	return desc
+}
+
+// appNames is the workload's own two spellings plus any extra name the app's
+// lines may carry, deduped and in a stable order — the store is asked for a
+// set, and a repeated name would only make the query longer.
+func appNames(name, namespace string, extra []string) []string {
+	out := []string{name, name + "." + namespace}
+	seen := map[string]bool{out[0]: true, out[1]: true}
+	for _, e := range extra {
+		if e != "" && !seen[e] {
+			seen[e] = true
+			out = append(out, e)
+		}
+	}
+	return out
 }

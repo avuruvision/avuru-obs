@@ -518,6 +518,14 @@ export interface MeshLogSources {
   needles: string[];
   precise: boolean;
   fallback?: string;
+  // The workload the sources were composed for. The mesh page knows it
+  // already; the service page is told, and echoes it back on later pages so
+  // the source set cannot shift under a live cursor.
+  workload?: string;
+  namespace?: string;
+  // Why the proxies' lines are not on offer — set only when no workload could
+  // be resolved. The toolbar hides those checkboxes and shows this instead.
+  proxiesUnavailable?: string;
 }
 
 // The logs screen's own page shape, plus the descriptor: LogTable renders it

@@ -61,3 +61,38 @@ GROUP BY ServiceName`
 	}
 	return out, rows.Err()
 }
+
+// ServiceWorkload resolves one service to the Kubernetes workload its spans
+// were emitted from. Same population and same argMax-by-span-count rule as
+// ServiceLabels, so the namespace it reports is the one the service map
+// already shows; the owner comes from workloadExpr, shared with the pod and
+// energy reads, so "the workload behind this service" means one thing across
+// the product. Rows with no owner attribute are dropped rather than allowed to
+// win the vote — an empty string is the absence of an answer, not an answer.
+func (s *Store) ServiceWorkload(ctx context.Context, q storage.ServiceQuery, service string) (storage.ServiceWorkload, error) {
+	query := `
+SELECT
+    argMax(ns, w) AS namespace,
+    argMax(wl, w) AS workload
+FROM (
+    SELECT
+        ResourceAttributes['k8s.namespace.name'] AS ns,
+        ` + workloadExpr + ` AS wl,
+        count() AS w
+    FROM otel_traces
+    WHERE Tenant IN (?)
+      AND Timestamp >= ? AND Timestamp < ?
+      AND ServiceName = ?
+      AND SpanKind IN ('Server', 'Consumer')
+    GROUP BY ns, wl
+)
+WHERE wl != ''`
+
+	var out storage.ServiceWorkload
+	row := s.conn.QueryRow(ctx, query,
+		tenantsOrDefault(q.Tenants, q.Tenant), q.Range.Start, q.Range.End, service)
+	if err := row.Scan(&out.Namespace, &out.Workload); err != nil {
+		return storage.ServiceWorkload{}, fmt.Errorf("service workload: %w", err)
+	}
+	return out, nil
+}

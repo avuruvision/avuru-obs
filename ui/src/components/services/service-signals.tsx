@@ -2,16 +2,22 @@
 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Bug, ScrollText } from "lucide-react";
+import { Bug } from "lucide-react";
 import { CenteredSpinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TraceList } from "@/components/traces/trace-list";
-import { LogTable } from "@/components/logs/log-table";
+import {
+  SourcedLogs,
+  sourceParam,
+  useSourceSet,
+  type SourceURLKeys,
+} from "@/components/logs/sourced-logs";
 import { IssueList } from "@/components/errors/issue-list";
 import { useTraceSearch } from "@/hooks/use-traces-data";
-import { useLogSearch } from "@/hooks/use-logs-data";
+import { useServiceLogs } from "@/hooks/use-logs-data";
 import { useErrorIssues } from "@/hooks/use-errors-data";
 import { useTimeRange } from "@/hooks/use-time-range";
+import { useURLState } from "@/hooks/use-url-state";
 
 export type SignalTab = "overview" | "traces" | "logs" | "errors";
 
@@ -58,39 +64,61 @@ function ServiceTraces({ service, includeAux }: { service: string; includeAux: b
   );
 }
 
+// This screen spends its URL on the selection (?service=), so the toolbar can
+// have the plain keys.
+const LOG_KEYS: SourceURLKeys = { q: "q", severity: "severity", source: "src" };
+
 function ServiceLogs({ service }: { service: string }) {
   const { time } = useTimeRange();
-  const logs = useLogSearch(time, { service });
-  const pages = logs.data?.pages.map((p) => p.logs);
-  const empty = !logs.isLoading && !pages?.some((p) => p.length > 0);
+  const { get } = useURLState();
+  const { enabled } = useSourceSet(LOG_KEYS.source);
 
-  if (empty) {
-    return (
-      <EmptyState icon={ScrollText} title="No logs in this window">
-        This service emitted no log records here. Widen the time range, or check
-        that its logs reach the collector.
-      </EmptyState>
-    );
-  }
+  const logs = useServiceLogs(time, service, {
+    q: get(LOG_KEYS.q),
+    severity: get(LOG_KEYS.severity),
+    source: sourceParam(enabled),
+  });
+  const sources = logs.data?.pages[0]?.sources;
+
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-xs text-base-content/50">
-        Logs from this service ·{" "}
-        <Link
-          href={`/logs?service=${encodeURIComponent(service)}`}
-          className="text-primary hover:underline"
-        >
-          open in Logs
-        </Link>
-      </p>
-      <LogTable
-        pages={pages}
-        isLoading={logs.isLoading}
-        hasNextPage={Boolean(logs.hasNextPage)}
-        isFetchingNextPage={logs.isFetchingNextPage}
-        fetchNextPage={() => logs.fetchNextPage()}
-      />
-    </div>
+    <SourcedLogs
+      query={{
+        pages: logs.data?.pages.map((p) => p.logs),
+        sources,
+        isLoading: logs.isLoading,
+        hasNextPage: Boolean(logs.hasNextPage),
+        isFetchingNextPage: logs.isFetchingNextPage,
+        fetchNextPage: () => logs.fetchNextPage(),
+      }}
+      keys={LOG_KEYS}
+      appLabel={service}
+      downloadName={service}
+      emptyText={
+        <>
+          Neither this service nor the proxies carrying it logged anything here
+          that matches. Widen the time range, or check that its logs reach the
+          collector.
+        </>
+      }
+      links={(s) => (
+        <>
+          <Link
+            href={`/logs?service=${encodeURIComponent(service)}`}
+            className="text-primary hover:underline"
+          >
+            open in Logs
+          </Link>
+          {s.workload && s.namespace && (
+            <Link
+              href={`/mesh?view=workloads&wl=${encodeURIComponent(`${s.namespace}/${s.workload}`)}&wltab=logs`}
+              className="text-primary hover:underline"
+            >
+              open the workload
+            </Link>
+          )}
+        </>
+      )}
+    />
   );
 }
 

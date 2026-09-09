@@ -29,6 +29,23 @@ When a release is cut, that block is renamed to the version with its date.
   cannot state different totals. And when the list hits its 200-issue page, it
   now says so and names the real total instead of quietly ending.
 
+- **A service's Logs tab shows the lines that are actually about it.** The tab
+  asked the store for `ServiceName = <service.name>`, which returns nothing
+  whenever the pod's lines are filed under a different name — a service called
+  `valife-report-service` running as the Deployment `valife-report` had an
+  empty Logs tab beside a mesh page full of its own stack traces. The hub now
+  ties a service to its workload (from the spans' `k8s.deployment.name`, or the
+  Kubernetes Service that fronts it in the cluster snapshot) and composes the
+  same three sources the workload page composes: the app's own lines under
+  either name, plus ztunnel's and the waypoint's as opt-in checkboxes. When no
+  workload can be found the tab shows what it always did and says, in one line,
+  which of the two to fix. Needs only the logs module; the proxy sources need
+  mesh-config.
+- **Logs can be taken out of the screen.** Every log table — the Logs screen,
+  the workload tab and the service tab — gains a `Copy N lines` control, row
+  selection with shift-click ranges (`Copy N selected`), and a `.log` download
+  of what is loaded. The per-row copy button is now reachable by keyboard
+  rather than on hover alone.
 - **Container logs carry a level.** A line tailed from a pod's stdout arrives
   with no OTLP severity, so the Logs screen showed "—" for it, "INFO+" hid it,
   and an `ERROR` line from a plain-stdout app never became an error issue. The

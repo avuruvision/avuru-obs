@@ -373,6 +373,11 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 
 	if active.Enabled(modules.Logs) {
 		mux.Handle("GET /api/v1/logs", a.secured(auth.RoleViewer, a.handleSearchLogs))
+		// One service's logs, composed the way the workload page composes a
+		// workload's. Only the logs module: it answers on an install with no
+		// mesh at all, with the app's own lines and a reason the proxies'
+		// are not on offer.
+		mux.Handle("GET /api/v1/services/{service}/logs", a.secured(auth.RoleViewer, a.handleServiceLogs))
 		mux.Handle("GET /api/v1/traces/{traceId}/logs", a.secured(auth.RoleViewer, a.handleLogsForTrace))
 	}
 	if active.Enabled(modules.Profiling) {
