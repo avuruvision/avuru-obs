@@ -459,6 +459,16 @@ type ServiceLabel struct {
 	DeclaredTier string
 }
 
+// ServiceWorkload is the Kubernetes workload a service's telemetry says it
+// runs as: the owner of the pods that emitted its spans, read from the
+// k8sattributes processor's resource attributes. Zero when the service's spans
+// carry no owner attribute, which is a real answer — it means the collector
+// was never told to add them, not that the workload does not exist.
+type ServiceWorkload struct {
+	Namespace string
+	Workload  string
+}
+
 // OverviewQuery filters TraceOverview.
 type OverviewQuery struct {
 	Tenant     string
@@ -1496,6 +1506,10 @@ type Store interface {
 	// over the same entry-span population as ListServices. Used by the
 	// service-health module to auto-group unassigned services by namespace.
 	ServiceLabels(ctx context.Context, q ServiceQuery) ([]ServiceLabel, error)
+	// ServiceWorkload resolves one service to the workload its spans came
+	// from, weighted by span count the same way ServiceLabels resolves a
+	// namespace — so the two agree about the same service.
+	ServiceWorkload(ctx context.Context, q ServiceQuery, service string) (ServiceWorkload, error)
 	ServiceEdges(ctx context.Context, q ServiceQuery) ([]ServiceEdge, error)
 	// CollapsedEdges recovers the app→app dependencies a service mesh hides,
 	// by walking each trace's parent chain across the transport spans named in

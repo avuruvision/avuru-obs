@@ -108,6 +108,12 @@ export const queryKeys = {
     t: TimeParams,
     filters: Record<string, string | number | undefined>,
   ) => [p, "logs", "search", { ...t, ...filters }] as const,
+  serviceLogs: (
+    p: string,
+    t: TimeParams,
+    service: string,
+    filters: Record<string, string | undefined>,
+  ) => [p, "logs", "service", service, { ...t, ...filters }] as const,
   traceLogs: (p: string, traceId: string) =>
     [p, "logs", "trace", traceId] as const,
   errorIssues: (

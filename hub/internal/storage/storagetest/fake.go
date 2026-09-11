@@ -19,7 +19,13 @@ type Fake struct {
 	// signal other than entry spans.
 	Presence []storage.ServicePresence
 	Labels   []storage.ServiceLabel
-	Edges    []storage.ServiceEdge
+	// Workload is what ServiceWorkload returns; LastWorkloadService records
+	// the service it was asked about and WorkloadCalls how often, so a test
+	// can assert the resolver is skipped when the caller already knows.
+	Workload            storage.ServiceWorkload
+	LastWorkloadService string
+	WorkloadCalls       int
+	Edges               []storage.ServiceEdge
 	// Collapsed is what CollapsedEdges returns, and LastCollapseTransport
 	// records the classified transport set it was called with — the assertion
 	// that the handler resolves the mesh BEFORE it queries edges.
@@ -281,6 +287,13 @@ func (f *Fake) ServicePresence(_ context.Context, q storage.ServiceQuery, signal
 func (f *Fake) ServiceLabels(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceLabel, error) {
 	f.LastServiceQuery = q
 	return f.Labels, nil
+}
+
+func (f *Fake) ServiceWorkload(_ context.Context, q storage.ServiceQuery, service string) (storage.ServiceWorkload, error) {
+	f.LastServiceQuery = q
+	f.LastWorkloadService = service
+	f.WorkloadCalls++
+	return f.Workload, nil
 }
 
 func (f *Fake) ServiceEdges(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceEdge, error) {
