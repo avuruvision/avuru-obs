@@ -25,6 +25,16 @@ test.describe("Explorer workspace", () => {
     await expect(page).toHaveURL(/range=1h/);
   });
 
+  test("log actions use the service-aware log view", async ({ page }) => {
+    await page.goto("/service-map?range=1h&selected=seed-checkout");
+    await page.getByTestId("map-inspector").getByRole("link", { name: "Read logs" }).click();
+    await expect(page).toHaveURL(/\/services\?/);
+    await expect(page).toHaveURL(/service=seed-checkout/);
+    await expect(page).toHaveURL(/view=logs/);
+    await expect(page).toHaveURL(/range=1h/);
+    await expect(page.getByRole("tab", { name: "Logs", exact: true })).toHaveAttribute("aria-selected", "true");
+  });
+
   test("inferred targets show caller evidence, never own-service RED", async ({ page }) => {
     await page.goto("/service-map");
     const select = page.getByRole("combobox", { name: selector });

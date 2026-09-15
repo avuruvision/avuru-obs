@@ -83,7 +83,7 @@ export function MapInspector({ service, selected, edges, health, carbon, logs, o
           <Link href={href("/services")} className={buttonVariants({variant:"primary"})}>Open service <ArrowRight className="h-4 w-4" aria-hidden /></Link>
           <div className="flex justify-between gap-3 text-xs text-primary">
             <Link href={href("/traces")} className="py-2 hover:underline">Explore traces ↗</Link>
-            {logs && <Link href={href("/logs")} className="py-2 hover:underline">Read logs ↗</Link>}
+            {logs && <Link href={`${href("/services")}&view=logs`} className="py-2 hover:underline">Read logs ↗</Link>}
           </div>
         </>}
       </div>
