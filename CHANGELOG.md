@@ -11,6 +11,8 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-09-15
+
 ### Added
 
 - **Explorer opens on the connections between services.** The service map is
