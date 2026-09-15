@@ -379,7 +379,23 @@ share the pod's service name and are already the workload's own. A ztunnel row
 on the Proxies tab from the scrape rather than from spans, and the TCP byte
 counters the scrape already keeps, both wait for the next line.
 
-## Beyond v0.16 (directional)
+## v0.17 — the connected workspace — SHIPPED (v0.17.0)
+
+The map is the application entry point. Explorer keeps a selected service's
+callers and dependencies beside the graph, then links into its traces, logs and
+service detail. Selection travels in the URL and is available from the keyboard.
+An empty project teaches eBPF and OTLP connection; a failed read offers retry.
+
+The shared UI adopts sage/forest and forest/lime themes, with mobile navigation
+that retains enabled modules and project controls. Existing theme preferences
+survive. Inferred targets keep their measurements distinct from application RED.
+
+This release also gives Errors a summary over the matching issue set, resolves
+service-related logs through workload identity, supports log copy/download and
+extracts severity from container log bodies. See the changelog for scope and
+upgrade behavior.
+
+## Beyond v0.17 (directional)
 
 - **The proxies from the scrape, not from spans.** On an ambient cluster
   ztunnel emits no span, so the Proxies tab has no row for it even while its
