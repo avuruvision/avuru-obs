@@ -1,5 +1,9 @@
 "use client";
 
+import { MapInspector } from "./map-inspector";
+import { MapOnboarding } from "./map-onboarding";
+import { MapOverview } from "./map-overview";
+import { Button } from "@/components/ui/button";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Crosshair, Map as MapIcon } from "lucide-react";
 import { useTimeRange } from "@/hooks/use-time-range";
@@ -39,12 +43,15 @@ export function ServiceMapScreen() {
   // "look at the storefront namespace" arrives grouped.
   const grouping = (get("groupBy") ?? "none") as MapGrouping;
   const edgeLabels = get("edgeLabels") === "true";
-  const { data, isLoading } = useServiceMapData(time, includeAux);
+  const { data, isLoading, isError, refetch } = useServiceMapData(time, includeAux);
   const greenEnabled = useModuleEnabled("green");
   const healthEnabled = useModuleEnabled("service-health");
   // Aux stays excluded from the health read, matching the Health screen's
   // default — the two screens must not disagree about a group's status.
-  const { byService, groups } = useServiceHealthStatus(time, false, healthEnabled);
+  const { byService, groups, isLoading: healthLoading } = useServiceHealthStatus(time, false, healthEnabled);
+  const logsEnabled = useModuleEnabled("logs");
+  const selected = get("selected");
+  const selectService = useCallback((name: string) => setMany({ selected: name || undefined }), [setMany]);
   const mapRef = useRef<ServiceMapHandle>(null);
   // Whole percent, so a re-render only happens when the readout would actually
   // change. Starts at 100 and is corrected as soon as the graph reports its own
@@ -137,18 +144,17 @@ export function ServiceMapScreen() {
   const canCarbon = greenEnabled && all.some((s) => s.wh !== undefined);
   const carbon = canCarbon && get("carbon") === "true";
 
-  if (!all.length) {
-    return (
-      <EmptyState icon={MapIcon} title="No services yet">
-        The service map draws itself from the services sending OTLP — point an
-        OTel SDK at the gateway and they appear here. Call edges come from trace
-        spans; the eBPF sensor adds the connections traces never see.
-      </EmptyState>
-    );
-  }
+  if (isError) return (
+    <EmptyState icon={MapIcon} title="Unable to load service map">
+      <p>The telemetry query failed. Check the connection and your project access, then try again.</p>
+      <Button className="mt-4" onClick={() => void refetch()}>Retry service map</Button>
+    </EmptyState>
+  );
+  if (!all.length) return <MapOnboarding />;
 
   return (
     <div className="flex flex-col gap-3">
+      <MapOverview services={shown.services} health={byService} healthEnabled={healthEnabled} healthLoading={healthLoading} selected={selected} onSelect={selectService} />
       <MapToolbar
         filters={filters}
         groups={groups}
@@ -182,7 +188,7 @@ export function ServiceMapScreen() {
         // whether that is a filter or the truth.
         <div
           data-testid="map-focus"
-          className="flex flex-wrap items-center gap-2 text-xs text-base-content/60"
+          className="flex flex-wrap items-center gap-2 text-xs text-base-content/75"
         >
           <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-base-200 px-2 py-0.5">
             <Crosshair className="h-3 w-3 text-primary" aria-hidden />
@@ -199,38 +205,14 @@ export function ServiceMapScreen() {
         </div>
       )}
 
-      <p data-testid="map-count" className="text-xs text-base-content/55">
-        {shownApps} services · {callEdges} call edges
-        {meshEdges > 0 && ` · ${meshEdges} through the mesh`}
-        {flowEdges > 0 && ` · ${flowEdges} network ${flowEdges === 1 ? "flow" : "flows"}`}
-        {shownVirtual > 0 && ` · ${shownVirtual} ${shownVirtual === 1 ? "dependency" : "dependencies"}`}
-        {shownPeers > 0 && ` · ${shownPeers} undetected ${shownPeers === 1 ? "peer" : "peers"}`}
-        {!showVirtual &&
-          virtualCount > 0 &&
-          ` · ${virtualCount} ${virtualCount === 1 ? "dependency" : "dependencies"} hidden`}
-        {hiddenInfra > 0 &&
-          ` · ${hiddenInfra} mesh/gateway node${hiddenInfra === 1 ? "" : "s"} hidden`}
-        {hasActiveFilter(filters) && ` · filtered from ${totalApps}`} · click
-        a service for its traces.
-      </p>
-
-      <MapLegend
-        health={healthEnabled}
-        carbon={carbon}
-        infra={showInfra}
-        mesh={meshEdges > 0}
-        virtual={shownVirtual > 0}
-        peers={shownPeers > 0}
-        mtls={shown.edges.some((e) => e.mtlsShare !== undefined)}
-        grouping={grouping}
-      />
-
       {shown.services.length === 0 ? (
         <EmptyState icon={MapIcon} title="No services match">
           No service in this window matches the current filter. Clear it, or
           widen the time range.
         </EmptyState>
       ) : (
+        <div className="explorer-map-grid overflow-hidden rounded-lg border border-neutral">
+        <div className="explorer-canvas">
         <ServiceMap
           services={shown.services}
           edges={shown.edges}
@@ -243,8 +225,42 @@ export function ServiceMapScreen() {
           grouping={grouping}
           edgeLabels={edgeLabels}
           onZoomPercent={onZoomPercent}
+          selected={selected}
+          onSelect={selectService}
         />
+        </div>
+        <MapInspector service={shown.services.find(s => s.name === selected)} selected={selected}
+          edges={shown.edges} health={selected ? byService.get(selected) : undefined}
+          carbon={carbon} logs={logsEnabled} onSelect={selectService}
+          onClear={() => setMany({ selected: undefined })}
+          onFocus={(name) => setMany({ focus: name })} />
+        </div>
       )}
+      <p data-testid="map-count" className="text-xs text-base-content/75">
+        {shownApps} services · {callEdges} call edges
+        {meshEdges > 0 && ` · ${meshEdges} through the mesh`}
+        {flowEdges > 0 && ` · ${flowEdges} network ${flowEdges === 1 ? "flow" : "flows"}`}
+        {shownVirtual > 0 && ` · ${shownVirtual} ${shownVirtual === 1 ? "dependency" : "dependencies"}`}
+        {shownPeers > 0 && ` · ${shownPeers} undetected ${shownPeers === 1 ? "peer" : "peers"}`}
+        {!showVirtual &&
+          virtualCount > 0 &&
+          ` · ${virtualCount} ${virtualCount === 1 ? "dependency" : "dependencies"} hidden`}
+        {hiddenInfra > 0 &&
+          ` · ${hiddenInfra} mesh/gateway node${hiddenInfra === 1 ? "" : "s"} hidden`}
+        {hasActiveFilter(filters) && ` · filtered from ${totalApps}`} · click
+        a service to inspect its connections.
+      </p>
+
+      <MapLegend
+        health={healthEnabled}
+        carbon={carbon}
+        infra={showInfra}
+        mesh={meshEdges > 0}
+        virtual={shownVirtual > 0}
+        peers={shownPeers > 0}
+        mtls={shown.edges.some((e) => e.mtlsShare !== undefined)}
+        grouping={grouping}
+      />
     </div>
   );
 }

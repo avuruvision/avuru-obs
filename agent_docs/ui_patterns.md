@@ -23,17 +23,16 @@ API at runtime.
   blocks (`light`, `dark`). Components use daisyUI semantic tokens
   (`bg-base-100`, `text-base-content`, `text-primary`...) — never hardcoded
   hex in components
-- **Theming**: next-themes, `attribute="data-theme"`, `defaultTheme="dark"`,
+- **Theming**: next-themes, `attribute="data-theme"`, `defaultTheme="light"`,
   themes `["light","dark"]`; `suppressHydrationWarning` on `<html>`; any
   component reading theme/localStorage uses the mounted-guard pattern
   (valife `themeSwitch.tsx` reference)
-- **Avuru Gold palette** (do not improvise): light primary `#A8854A` on
-  white/slate bases · dark primary `#C9A96A` on navy `#050B17/#0F1729/#162038`,
-  pearl text `#E8E5DC` · semantics SATURATED and fixed: green success, red
-  error, amber warning (error-rate readability beats brand subtlety)
-- **Visual treatment**: Coroot layout density (collapsible sidebar, dense
-  tables, heatmap-first) with SkyWalking-modern skin (rounded-xl cards, soft
-  shadows, Inter via `next/font`)
+- **Explorer palette**: sage/forest light and forest/lime dark, defined in the
+  semantic theme blocks. Light is the default; stored theme choices survive.
+  Status success/error/warning stay distinct from branding. The graph has its
+  own semantic forest surface in either theme. See the accepted Explorer AEP.
+- **Visual treatment**: compact navigation, quiet bordered cards, Inter,
+  responsive graph with an adjacent inspector. Preserve dense signal tables.
 - lucide-react icons; `cn()` = clsx + tailwind-merge (`src/lib/cn.ts`); CVA
   for component variants
 - URL params hold filter/search state (shareable links are a product feature

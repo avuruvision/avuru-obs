@@ -11,8 +11,8 @@ const CAPABILITIES = "**/api/v1/capabilities";
 const SERVICE_MAP = "**/api/v1/service-map*";
 
 test.describe("dashboard", () => {
-  test("is where the product opens", async ({ page }) => {
-    await page.goto("/");
+  test("remains available after the map-first entry", async ({ page }) => {
+    await page.goto("/dashboard");
     await expect(page).toHaveURL(/\/dashboard/);
     await expect(page.getByTestId("dashboard-screen")).toBeVisible();
   });

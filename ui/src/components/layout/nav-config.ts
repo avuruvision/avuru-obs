@@ -55,20 +55,20 @@ export interface NavSection {
 export const NAV_SECTIONS: NavSection[] = [
   {
     title: "Overview",
-    // Core, and the landing route — the Dashboard's own bands gate per module,
-    // so this entry is never hidden.
-    items: [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, docs: "getting-started/core-concepts" }],
+    // The map is the entry point. Both overview destinations are core.
+    items: [
+      { href: "/service-map", label: "Service Map", icon: MapIcon, docs: "signals/service-map" },
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, docs: "getting-started/core-concepts" },
+    ],
   },
   {
-    // "What is out there, and is it well?" — the inventory layer. The map
-    // leads it, because on a fresh install it is the first thing that fills in.
+    // "What is out there, and is it well?" — the inventory layer.
     //
     // NOT titled "Services": a section named exactly like one of its own
     // entries is ambiguous to read and to click. "Topology" is already the
     // product's word for this view — it titles the Dashboard's map card.
     title: "Topology",
     items: [
-      { href: "/service-map", label: "Service Map", icon: MapIcon, docs: "signals/service-map" },
       { href: "/services", label: "Services", icon: Boxes, docs: "signals/metrics" },
       { href: "/health", label: "Service Health", icon: Activity, module: "service-health", docs: "signals/service-health" },
     ],

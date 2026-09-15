@@ -1,5 +1,6 @@
 "use client";
 
+import { MobileNavigationButton } from "./app-shell";
 import { Suspense } from "react";
 import { TimeRangePicker } from "./time-range-picker";
 import { ThemeSwitch } from "./theme-switch";
@@ -10,8 +11,9 @@ import { DocsLink } from "./docs-link";
 // the right. Replaces the old per-page title prop with route-derived crumbs.
 export function Topbar() {
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-neutral bg-base-100 px-5">
+    <header className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-neutral bg-base-100 px-5 py-3">
       <div className="flex min-w-0 items-center gap-2">
+        <MobileNavigationButton />
         <Breadcrumbs />
         {/* Beside the crumb, not in a help menu: the question "what is this
             screen" is asked while looking at the screen. */}

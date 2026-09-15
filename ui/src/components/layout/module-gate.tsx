@@ -65,7 +65,7 @@ export function ModuleGate({
         <h2 className="mb-2 text-lg font-semibold">
           The {LABEL[module]} module is off
         </h2>
-        <p className="mb-4 text-sm text-base-content/60">
+        <p className="mb-4 text-sm text-base-content/75">
           This install doesn&apos;t run it, so there is nothing to show here.
           Turn it on to start collecting and storing this signal.
         </p>

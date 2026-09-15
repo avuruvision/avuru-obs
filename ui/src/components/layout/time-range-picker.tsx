@@ -12,7 +12,7 @@ export function TimeRangePicker() {
 
   return (
     <div className="flex items-center gap-1 rounded-lg border border-neutral bg-base-200 p-0.5">
-      <Clock className="ml-2 h-3.5 w-3.5 text-base-content/50" aria-hidden />
+      <Clock className="ml-2 h-3.5 w-3.5 text-base-content/75" aria-hidden />
       {(Object.keys(RANGE_PRESETS) as RangePreset[]).map((p) => (
         <button
           key={p}
@@ -22,7 +22,7 @@ export function TimeRangePicker() {
             "rounded-md px-2 py-1 text-xs font-medium transition-colors",
             p === preset
               ? "bg-primary/15 text-primary"
-              : "text-base-content/60 hover:text-base-content",
+              : "text-base-content/75 hover:text-base-content",
           )}
         >
           {p}

@@ -1,6 +1,6 @@
 import { cn } from "@/lib/cn";
 
-// SkyWalking-modern card: rounded-xl, soft shadow, subtle border.
+// Shared Explorer surface across signals and optional modules.
 export function Card({
   className,
   ...props
@@ -8,7 +8,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-xl border border-neutral bg-base-200 [box-shadow:var(--shadow-card)]",
+        "rounded-lg border border-neutral bg-base-200 [box-shadow:var(--shadow-card)]",
         className,
       )}
       {...props}

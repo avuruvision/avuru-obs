@@ -23,7 +23,7 @@ export function DocsLink() {
       rel="noreferrer noopener"
       data-testid="docs-link"
       title="Open the documentation for this screen"
-      className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs text-base-content/45 hover:bg-base-200 hover:text-base-content"
+      className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs text-base-content/75 hover:bg-base-200 hover:text-base-content"
     >
       docs
       <ExternalLink className="h-3 w-3" aria-hidden />

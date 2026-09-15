@@ -1,19 +1,19 @@
 import type { Core } from "cytoscape";
 import { MESH_ROLE_SHAPES } from "./role-shapes";
 
-// Resolve Avuru Gold tokens from the live theme (daisyUI CSS vars) so the graph
+// Resolve Explorer tokens from the live theme (daisyUI CSS vars) so the graph
 // follows light/dark — never hardcode hex (agent_docs/ui_patterns.md).
-export function themeColors() {
-  const cs = getComputedStyle(document.documentElement);
+export function themeColors(surface?: Element | null) {
+  const cs = getComputedStyle(surface ?? document.documentElement);
   const v = (name: string, fallback: string) =>
     cs.getPropertyValue(name).trim() || fallback;
   return {
-    primary: v("--color-primary", "#c9a96a"),
+    primary: v("--color-primary", "#c0ed93"),
     error: v("--color-error", "#f87171"),
     warning: v("--color-warning", "#f59e0b"),
     success: v("--color-success", "#34d399"),
-    base100: v("--color-base-100", "#0b1120"),
-    text: v("--color-base-content", "#e8e5dc"),
+    base100: v("--color-base-100", "#14372b"),
+    text: v("--color-base-content", "#e3eedb"),
     neutral: v("--color-neutral", "#33415580"),
   };
 }
@@ -62,9 +62,15 @@ const scale = (compact: boolean) => ({
 // above precisely so that adding a kind of node never costs the map a colour.
 //
 // carbon=false must leave the graph byte-identical to a non-green install.
-export function applyStyle(cy: Core, carbon = false, compact = false, edgeLabels = false) {
-  const c = themeColors();
+export function applyStyle(cy: Core, carbon = false, compact = false, edgeLabels = false, surface?: Element | null) {
+  const c = themeColors(surface);
   const s = scale(compact);
+  const explorer = Boolean(surface?.closest(".explorer-canvas"));
+  if (explorer) {
+    s.fontSize = 13;
+    s.node = "mapData(rate, 0, 10, 32, 64)";
+    s.barrelWidth = "mapData(rate, 0, 10, 23, 45)";
+  }
 
   const withNodes = cy
     .style()
@@ -102,7 +108,7 @@ export function applyStyle(cy: Core, carbon = false, compact = false, edgeLabels
       // which cytoscape cannot use; the shared thing is the token, not the code.
       "border-color": c.neutral,
       "transition-property": "opacity, border-width",
-      "transition-duration": 120,
+      "transition-duration": window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 120,
     })
     // Status rings. Colors follow lib/health-status.ts so the map and the
     // health board cannot disagree about what amber means.
@@ -226,7 +232,7 @@ export function applyStyle(cy: Core, carbon = false, compact = false, edgeLabels
       "curve-style": "bezier",
       opacity: 0.85,
       "transition-property": "opacity, width",
-      "transition-duration": 120,
+      "transition-duration": window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 120,
     })
     // Flow-only: a connection the sensor observed with no traced call behind
     // it. First, so an edge that is ALSO unhealthy or errored still gets the
@@ -280,10 +286,10 @@ export function applyStyle(cy: Core, carbon = false, compact = false, edgeLabels
     // ---- Hover focus ----
     // Everything outside the focused neighbourhood recedes.
     .selector(".faded")
-    .style({ opacity: 0.18, "text-opacity": 0.18 })
+    .style({ opacity: explorer ? 0.55 : 0.18, "text-opacity": explorer ? 0.9 : 0.18 })
     // The hovered node: thicker ring and the expanded two-line label.
     .selector("node.focus")
-    .style({ "border-width": 5, label: "data(focusLabel)", "font-size": s.fontSize + 1 })
+    .style({ "border-width": 5, label: explorer ? "data(label)" : "data(focusLabel)", "font-size": s.fontSize + 1 })
     // Its edges: thicker, fully opaque, labelled with rpm/latency, and carrying
     // a mid-line arrowhead so direction reads without following the line to its
     // end. NOT an animated dash — dashed already means "network-unhealthy".
@@ -291,7 +297,7 @@ export function applyStyle(cy: Core, carbon = false, compact = false, edgeLabels
     .style({
       opacity: 1,
       width: compact ? 3 : 5,
-      label: "data(focusLabel)",
+      label: explorer ? (edgeLabels ? "data(volumeLabel)" : "") : "data(focusLabel)",
       "font-size": s.fontSize,
       color: c.text,
       "text-background-color": c.base100,
