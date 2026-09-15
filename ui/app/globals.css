@@ -5,44 +5,44 @@
 }
 
 /* ========================================
-   Avuru Gold — Light ("SkyWalking-modern" treatment on Coroot density)
+   Explorer — Light: sage surfaces and forest accents
    ======================================== */
 @plugin "daisyui/theme" {
   name: "light";
-  default: false;
+  default: true;
   prefersdark: false;
   color-scheme: "light";
 
   /* Base — white page → slate-50 cards → slate-100 inputs */
-  --color-base-100: #ffffff;
-  --color-base-200: #f8fafc;
-  --color-base-300: #f1f5f9;
-  --color-base-content: #0f172a;
+  --color-base-100: #edf2e9;
+  --color-base-200: #f8faf5;
+  --color-base-300: #e2eadc;
+  --color-base-content: #173c2d;
 
-  /* Primary — deep gold (valife brand, AA on white) */
-  --color-primary: #a8854a;
-  --color-primary-content: #ffffff;
+  /* Forest actions on sage surfaces. */
+  --color-primary: #1c4b36;
+  --color-primary-content: #f8faf5;
 
-  --color-secondary: #334155;
-  --color-secondary-content: #ffffff;
+  --color-secondary: #506a55;
+  --color-secondary-content: #f8faf5;
 
-  --color-accent: #a8854a;
-  --color-accent-content: #ffffff;
+  --color-accent: #1c4b36;
+  --color-accent-content: #f8faf5;
 
   /* Neutral — slate-200 borders */
-  --color-neutral: #e2e8f0;
-  --color-neutral-content: #0f172a;
+  --color-neutral: #ccd8c5;
+  --color-neutral-content: #173c2d;
 
   /* Semantics — SATURATED and fixed (o11y readability beats brand subtlety:
      these encode error rates, never desaturate them) */
   --color-info: #2563eb;
-  --color-info-content: #ffffff;
-  --color-success: #16a34a;
-  --color-success-content: #ffffff;
-  --color-warning: #d97706;
-  --color-warning-content: #ffffff;
+  --color-info-content: #f8faf5;
+  --color-success: #22753b;
+  --color-success-content: #f8faf5;
+  --color-warning: #9a4b13;
+  --color-warning-content: #f8faf5;
   --color-error: #dc2626;
-  --color-error-content: #ffffff;
+  --color-error-content: #f8faf5;
 
   --radius-selector: 0.5rem;
   --radius-field: 0.5rem;
@@ -55,43 +55,43 @@
 }
 
 /* ========================================
-   Avuru Gold — Dark (default; midnight navy, pale gold)
+   Explorer — Dark: forest surfaces and lime accents
    ======================================== */
 @plugin "daisyui/theme" {
   name: "dark";
-  default: true;
+  default: false;
   prefersdark: true;
   color-scheme: "dark";
 
   /* Base — midnight navy, pearl text */
-  --color-base-100: #050b17;
-  --color-base-200: #0f1729;
-  --color-base-300: #162038;
-  --color-base-content: #e8e5dc;
+  --color-base-100: #10271f;
+  --color-base-200: #163328;
+  --color-base-300: #1e3e30;
+  --color-base-content: #e3eedb;
 
-  /* Primary — pale gold */
-  --color-primary: #c9a96a;
-  --color-primary-content: #050b17;
+  /* Lime actions on forest surfaces. */
+  --color-primary: #c0ed93;
+  --color-primary-content: #10271f;
 
-  --color-secondary: #2a3654;
-  --color-secondary-content: #e8e5dc;
+  --color-secondary: #355a40;
+  --color-secondary-content: #e3eedb;
 
-  --color-accent: #c9a96a;
-  --color-accent-content: #050b17;
+  --color-accent: #c0ed93;
+  --color-accent-content: #10271f;
 
   /* Neutral — visible-but-discreet card borders */
-  --color-neutral: #1e2840;
-  --color-neutral-content: #e8e5dc;
+  --color-neutral: #385244;
+  --color-neutral-content: #e3eedb;
 
   /* Semantics — saturated for navy backdrop (NOT valife's desaturated set) */
   --color-info: #60a5fa;
-  --color-info-content: #050b17;
+  --color-info-content: #10271f;
   --color-success: #34d399;
-  --color-success-content: #050b17;
+  --color-success-content: #10271f;
   --color-warning: #fbbf24;
-  --color-warning-content: #050b17;
+  --color-warning-content: #10271f;
   --color-error: #f87171;
-  --color-error-content: #050b17;
+  --color-error-content: #10271f;
 
   --radius-selector: 0.5rem;
   --radius-field: 0.5rem;
@@ -130,7 +130,7 @@
      deliberately absent here, so an error red on a chart always means error.
 
    Validated (OKLab CVD ΔE, adjacent pairs) against the card surface in both
-   modes: light on --color-base-200 #f8fafc, dark on #0f1729. Three light steps
+   modes: light on --color-base-200 #f8faf5, dark on #163328. Three light steps
    sit below 3:1 contrast, which is why every chart drawn from this palette
    ships direct labels AND a table view. Re-run the check before editing a hex.
    ======================================== */
@@ -162,7 +162,7 @@
   /* Soft-shadow scale (SkyWalking-modern cards) */
   --shadow-card: 0 1px 3px rgb(15 23 42 / 0.06), 0 1px 2px rgb(15 23 42 / 0.04);
   --shadow-card-hover: 0 4px 12px rgb(15 23 42 / 0.1);
-  /* Heatmap ramp endpoints (gold intensity; error tint = --color-error) */
+  /* Heatmap ramp endpoints (primary intensity; error tint = --color-error) */
   --heat-low: color-mix(in oklab, var(--color-primary) 18%, var(--color-base-200));
   --heat-high: var(--color-primary);
 }
@@ -178,7 +178,7 @@ body {
   color: var(--color-base-content);
 }
 
-/* Dense data tables (Coroot density) */
+/* Dense tables retain room for long service identities. */
 .table-dense th {
   font-size: 0.6875rem;
   text-transform: uppercase;
@@ -196,3 +196,13 @@ body {
   scrollbar-width: thin;
   scrollbar-color: var(--color-neutral) transparent;
 }
+
+/* Explorer workspace: semantic tokens apply to every signal and module. */
+h1 { letter-spacing: -0.035em; }
+:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+.explorer-canvas { --color-primary: #c0ed93; --color-base-100: #14372b; --color-base-200: #14372b; --color-base-content: #e3eedb; --color-neutral: #648363; --color-success: #78ca8b; --color-warning: #efbc83; --color-error: #f87171; background: var(--color-base-100); color: var(--color-base-content); background-image: radial-gradient(var(--color-neutral) 0.5px, transparent 0.5px); background-size: 22px 22px; }
+.explorer-map-grid { display: grid; grid-template-columns: minmax(0, 1fr) 19rem; }
+.explorer-map-grid > * { min-width: 0; }
+@media (max-width: 1100px) { .explorer-map-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) { main { padding: 1rem; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0s !important; animation-duration: 0s !important; } }

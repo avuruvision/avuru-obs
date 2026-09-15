@@ -15,18 +15,20 @@ test.describe("shell", () => {
   test("renders sidebar nav and toggles theme", async ({ page }) => {
     await page.goto("/traces");
 
-    await expect(page.getByRole("link", { name: "Avuru Obs", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Avuru Obs service map", exact: true })).toBeVisible();
     for (const item of ["Services", "Service Map", "Traces", "Logs", "Profiling"]) {
       await expect(page.getByRole("link", { name: item, exact: true })).toBeVisible();
     }
 
-    // Dark is the default; the switch flips data-theme on <html>.
+    // Explorer light is the default; the switch flips data-theme on <html>.
     const html = page.locator("html");
-    await expect(html).toHaveAttribute("data-theme", "dark");
-    await page.getByRole("button", { name: "Switch to light theme" }).click();
     await expect(html).toHaveAttribute("data-theme", "light");
     await page.getByRole("button", { name: "Switch to dark theme" }).click();
     await expect(html).toHaveAttribute("data-theme", "dark");
+    await page.reload();
+    await expect(html).toHaveAttribute("data-theme", "dark");
+    await page.getByRole("button", { name: "Switch to light theme" }).click();
+    await expect(html).toHaveAttribute("data-theme", "light");
   });
 
   test("sidebar groups nav into sections", async ({ page }) => {
@@ -43,7 +45,7 @@ test.describe("shell", () => {
   test("service map renders the seeded service graph", async ({ page }) => {
     await page.goto("/service-map");
     // Seeded data → not the empty state; the screen summarises the nodes.
-    await expect(page.getByText(/click a service for its traces/)).toBeVisible();
+    await expect(page.getByText(/click a service to inspect its connections/)).toBeVisible();
   });
 });
 
@@ -291,7 +293,7 @@ test.describe("service map controls", () => {
     await expect(button).toBeVisible();
     await button.click();
     // The graph stays mounted and interactive after the re-layout.
-    await expect(page.getByText(/click a service for its traces/)).toBeVisible();
+    await expect(page.getByText(/click a service to inspect its connections/)).toBeVisible();
   });
 });
 

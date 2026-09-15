@@ -13,6 +13,17 @@ When a release is cut, that block is renamed to the version with its date.
 
 ### Added
 
+- **Explorer opens on the connections between services.** The service map is
+  now the application entry point. Selecting a node keeps the map visible and
+  opens an inspector with callers, dependencies and links to service details,
+  traces and logs. The selection is shareable in the URL; a keyboard-accessible
+  selector offers the same path. Inferred dependencies keep their own-service
+  latency and health unavailable and link to the callers' evidence instead.
+- **First connection guidance on an empty map.** New installations explain
+  eBPF discovery and existing OTLP ingestion. A failed query shows a retry
+  action, rather than presenting an empty installation.
+
+
 - **The Errors screen now says what the issue list adds up to.** A page of
   fingerprints tells you what broke and nothing about the shape of it: whether
   those issues are new or long-standing, whether any came back after being
@@ -57,6 +68,12 @@ When a release is cut, that block is renamed to the version with its date.
   Rows ingested before the upgrade keep their empty level until they age out.
 
 ### Changed
+
+- **Explorer themes across the application.** Sage and forest surfaces replace
+  the Gold palette, with lime accents in dark mode and separate status colors.
+  Light is the new default; an existing theme preference is retained. Mobile
+  navigation exposes the same module-aware destinations and project controls.
+  Graph selection preserves the layout, and re-layout respects reduced motion.
 
 - **A workload's Logs tab shows the workload's own lines by default.** On the
   mesh screen, the proxies' lines about a workload (ztunnel's, the waypoint's)

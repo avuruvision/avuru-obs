@@ -68,7 +68,7 @@ const EMPTY_HEALTH: Map<string, ServiceHealth> = new Map();
 // Service-map graph. Nodes = services (sized by request rate, ring = health
 // status); edges = caller→callee call volume derived from trace spans. Hover a
 // node to focus its neighbourhood and reveal per-edge rpm/latency; click a
-// service to open its detail page (a virtual target has none to open).
+// service to inspect it, or open its detail page on embedded maps.
 export function ServiceMap({
   services,
   edges,
@@ -83,6 +83,8 @@ export function ServiceMap({
   edgeLabels = false,
   meshRoles,
   onZoomPercent,
+  selected,
+  onSelect,
 }: {
   services: ServiceStats[];
   edges: ServiceEdge[];
@@ -125,16 +127,28 @@ export function ServiceMap({
   // re-render the screen ~60 times a second to move a readout that can only
   // show integers anyway. Optional — the graph works the same without it.
   onZoomPercent?: (percent: number) => void;
+  selected?: string;
+  onSelect?: (name: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const selectedRef = useRef(selected);
+
+  useEffect(() => {
+    selectedRef.current = selected;
+    const cy = cyRef.current;
+    if (!cy) return;
+    const node = cy.getElementById(selected || focus || "");
+    if (node.nonempty()) focusNeighbourhood(cy, node as unknown as NodeSingular);
+    else clearFocus(cy);
+  }, [selected, focus]);
 
   useImperativeHandle(
     handleRef,
     () => ({
-      relayout: () => cyRef.current?.layout(layoutOptions(true, compact)).run(),
+      relayout: () => cyRef.current?.layout(layoutOptions(!window.matchMedia("(prefers-reduced-motion: reduce)").matches, compact)).run(),
       fit: () => cyRef.current?.fit(undefined, fitPadding(compact)),
       zoomBy: (factor: number) => {
         const cy = cyRef.current;
@@ -167,7 +181,7 @@ export function ServiceMap({
       minZoom: 0.3,
       maxZoom: 2.5,
     });
-    applyStyle(cy, carbon, compact, edgeLabels);
+    applyStyle(cy, carbon, compact, edgeLabels, ref.current);
     // Compact sits in a short card, so a wide estate hangs off the edges unless
     // it is fitted. Safe to call straight away: the initial layout runs with
     // animate:false, so positions are already final here.
@@ -177,19 +191,19 @@ export function ServiceMap({
     // opens on the answer instead of asking the reader to find the node and
     // hover it. Same helper the hover uses — one definition of "neighbourhood".
     const applyFocus = () => {
-      const el = focus ? cy.getElementById(focus) : null;
+      const identity = selectedRef.current || focus;
+      const el = identity ? cy.getElementById(identity) : null;
       if (el?.nonempty()) focusNeighbourhood(cy, el as unknown as NodeSingular);
       else clearFocus(cy);
     };
     applyFocus();
 
     cy.on("tap", "node", (e) => {
-      // A virtual target has no service page to open: it never sent a span, so
-      // there are no RED numbers, no dependencies of its own and no traces
-      // rooted at it — every panel would be empty or, worse, filled with its
-      // callers' numbers. Doing nothing is the honest answer until there is a
-      // per-target view.
-      if (e.target.data("virtual")) return;
+      // Explorer inspects every node kind. Embedded maps keep direct service
+      // navigation, but inferred targets and unresolved peers have no page.
+      if (e.target.isParent()) return;
+      if (onSelect) { onSelect(e.target.id()); return; }
+      if (e.target.data("virtual") || e.target.data("peer")) return;
       router.push(`/services?service=${encodeURIComponent(e.target.id())}`);
     });
 
@@ -252,7 +266,10 @@ export function ServiceMap({
     });
 
     cyRef.current = cy;
+    const resize = new ResizeObserver(() => cy.resize());
+    resize.observe(ref.current);
     return () => {
+      resize.disconnect();
       cy.destroy();
       cyRef.current = null;
     };
@@ -269,13 +286,14 @@ export function ServiceMap({
     edgeLabels,
     meshRoles,
     onZoomPercent,
+    onSelect,
     focus,
   ]);
 
   // Re-theme the graph when the user toggles light/dark.
   useEffect(() => {
     const obs = new MutationObserver(() => {
-      if (cyRef.current) applyStyle(cyRef.current, carbon, compact, edgeLabels);
+      if (cyRef.current) applyStyle(cyRef.current, carbon, compact, edgeLabels, ref.current);
     });
     obs.observe(document.documentElement, {
       attributes: true,
@@ -293,7 +311,7 @@ export function ServiceMap({
           // Compact sits inside the Dashboard's Card, which already draws the
           // surface — a second border there would read as a box in a box.
           "w-full rounded-xl",
-          compact ? "h-75" : "h-[70vh] border border-neutral bg-base-200",
+          compact ? "h-75" : onSelect ? "h-[55vh] min-h-80 lg:h-[65vh]" : "h-[70vh] border border-neutral bg-base-200",
         )}
       />
       {/* Hover tooltip (edge detail, or node energy under the carbon lens).

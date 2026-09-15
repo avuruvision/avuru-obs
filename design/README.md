@@ -39,6 +39,7 @@ only if the design needs to be pinned down before coding.
 
 | Date | Topic | Status |
 |---|---|---|
+| [2026-09-15](2026-09-15-explorer-ux.md) | Explorer — map-first application and connected investigation | Accepted |
 | [2026-07-15](2026-07-15-module-framework.md) | Module framework — opt-in signals | Accepted |
 | [2026-07-16](2026-07-16-error-tracking.md) | Error tracking — derived issues + Sentry ingest | Accepted |
 | [2026-07-17](2026-07-17-sensor-safe-by-default.md) | Make the eBPF sensor safe to leave on | Accepted |

@@ -67,7 +67,7 @@ export function MapToolbar({
   onRelayout: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-3 rounded-lg border border-neutral bg-base-200 p-3">
       <input
         type="search"
         aria-label="Filter services"
