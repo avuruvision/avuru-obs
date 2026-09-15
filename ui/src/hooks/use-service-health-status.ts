@@ -35,6 +35,8 @@ export function useServiceHealthStatus(
 
   const byService = useMemo(() => {
     const m = new Map<string, ServiceHealth>();
+    // Disabled queries may retain cached data: module-off must not reuse it.
+    if (!enabled) return m;
     for (const g of data?.groups ?? []) {
       for (const mem of g.members) {
         // A service can belong to more than one group; the worst status wins so
@@ -50,9 +52,9 @@ export function useServiceHealthStatus(
       }
     }
     return m;
-  }, [data]);
+  }, [data, enabled]);
 
-  const groups: HealthGroup[] = useMemo(() => data?.groups ?? [], [data]);
+  const groups: HealthGroup[] = useMemo(() => enabled ? data?.groups ?? [] : [], [data, enabled]);
 
   return { byService, groups, isLoading };
 }

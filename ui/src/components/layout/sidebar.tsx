@@ -22,7 +22,7 @@ import { ProjectSwitcher } from "./project-switcher";
 // Exact nav-item styling copied from the Settings link's inactive state so the
 // auth control reads as one more entry in the primary nav.
 const NAV_ITEM_CLASS =
-  "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors text-base-content/65 hover:bg-base-300 hover:text-base-content";
+  "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors text-base-content/75 hover:bg-base-300 hover:text-base-content";
 
 // Auth affordance pinned under the nav: Sign out for a real session, Sign in
 // for the anonymous fallback, and nothing when identity is unknown (auth off
@@ -121,7 +121,7 @@ export function Sidebar({ mobile = false }: { mobile?: boolean }) {
             {collapsed ? (
               <div className="mx-2 my-1 border-t border-neutral/60" />
             ) : (
-              <p className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-base-content/65">
+              <p className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-base-content/75">
                 {section.title}
               </p>
             )}
@@ -138,7 +138,7 @@ export function Sidebar({ mobile = false }: { mobile?: boolean }) {
                     "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
                     active
                       ? "bg-primary font-medium text-primary-content"
-                      : "text-base-content/65 hover:bg-base-300 hover:text-base-content",
+                      : "text-base-content/75 hover:bg-base-300 hover:text-base-content",
                   )}
                 >
                   <Icon className="h-4 w-4 shrink-0" aria-hidden />
@@ -157,7 +157,7 @@ export function Sidebar({ mobile = false }: { mobile?: boolean }) {
           hidden={mobile}
           onClick={toggle}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="flex w-full items-center justify-center rounded-lg py-1.5 text-base-content/50 hover:bg-base-300 hover:text-base-content"
+          className="flex w-full items-center justify-center rounded-lg py-1.5 text-base-content/75 hover:bg-base-300 hover:text-base-content"
         >
           {collapsed ? (
             <ChevronsRight className="h-4 w-4" />
@@ -166,7 +166,7 @@ export function Sidebar({ mobile = false }: { mobile?: boolean }) {
           )}
         </button>
         {!collapsed && (
-          <p className="mt-1 flex items-center justify-center gap-1 text-center text-[10px] text-base-content/35">
+          <p className="mt-1 flex items-center justify-center gap-1 text-center text-[10px] text-base-content/75">
             <Activity className="h-3 w-3" aria-hidden /> connected observability
           </p>
         )}

@@ -12,7 +12,7 @@ export function Breadcrumbs() {
 
   return (
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5">
-      <span className="shrink-0 text-sm text-base-content/50">
+      <span className="shrink-0 text-sm text-base-content/75">
         {info?.section ?? "Avuru Obs"}
       </span>
       {info && (

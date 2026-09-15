@@ -196,7 +196,7 @@ test.describe("green dashboard (stubbed states)", () => {
 
     // Budget cards are Card divs; scope by name so the burn-down assertions
     // land on the right card.
-    const card = (name: string) => page.locator("div.rounded-xl").filter({ hasText: name });
+    const card = (name: string) => page.getByRole("region", { name: `${name} carbon budget`, exact: true });
 
     const warn = card("checkout-monthly");
     await expect(warn.getByText("Warning", { exact: true })).toBeVisible();
@@ -248,7 +248,7 @@ test.describe("green dashboard (stubbed states)", () => {
     );
     await page.goto(GREEN_URL);
 
-    const card = (name: string) => page.locator("div.rounded-xl").filter({ hasText: name });
+    const card = (name: string) => page.getByRole("region", { name: `${name} carbon budget`, exact: true });
 
     await expect(card("module-off")).toContainText(
       "Notifications require the alerting module",
@@ -467,7 +467,7 @@ test.describe("service map carbon overlay", () => {
       }),
     );
     await page.goto("/service-map?carbon=true");
-    await expect(page.getByText(/click a service for its traces/)).toBeVisible();
+    await expect(page.getByText(/click a service to inspect its connections/)).toBeVisible();
 
     // Canvas hover is positional: sweep a 3×3 grid around the centre until the
     // node's mouseover fires. FLAKE-FLAGGED — healer: if this cannot be kept
@@ -501,7 +501,7 @@ test.describe("service map carbon overlay", () => {
     // A stale ?carbon=true bookmark must not resurrect the lens.
     await page.goto("/service-map?carbon=true&range=24h");
 
-    await expect(page.getByText(/click a service for its traces/)).toBeVisible();
+    await expect(page.getByText(/click a service to inspect its connections/)).toBeVisible();
     await expect(page.getByRole("checkbox", { name: "Carbon" })).toHaveCount(0);
     await expect(page.getByText(/Carbon lens on/)).toHaveCount(0);
   });
@@ -521,7 +521,7 @@ test.describe("service map carbon overlay", () => {
     );
     await page.goto("/service-map");
 
-    await expect(page.getByText(/click a service for its traces/)).toBeVisible();
+    await expect(page.getByText(/click a service to inspect its connections/)).toBeVisible();
     await expect(page.getByRole("checkbox", { name: "Carbon" })).toHaveCount(0);
     await expect(page.getByRole("checkbox", { name: "Show auxiliary requests" })).toBeVisible();
   });

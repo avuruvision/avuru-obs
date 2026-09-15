@@ -153,7 +153,7 @@ export function ServiceMapScreen() {
   if (!all.length) return <MapOnboarding />;
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-3">
       <MapOverview services={shown.services} health={byService} healthEnabled={healthEnabled} healthLoading={healthLoading} selected={selected} onSelect={selectService} />
       <MapToolbar
         filters={filters}
@@ -188,7 +188,7 @@ export function ServiceMapScreen() {
         // whether that is a filter or the truth.
         <div
           data-testid="map-focus"
-          className="flex flex-wrap items-center gap-2 text-xs text-base-content/60"
+          className="flex flex-wrap items-center gap-2 text-xs text-base-content/75"
         >
           <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-base-200 px-2 py-0.5">
             <Crosshair className="h-3 w-3 text-primary" aria-hidden />
@@ -204,32 +204,6 @@ export function ServiceMapScreen() {
           </button>
         </div>
       )}
-
-      <p data-testid="map-count" className="text-xs text-base-content/55">
-        {shownApps} services · {callEdges} call edges
-        {meshEdges > 0 && ` · ${meshEdges} through the mesh`}
-        {flowEdges > 0 && ` · ${flowEdges} network ${flowEdges === 1 ? "flow" : "flows"}`}
-        {shownVirtual > 0 && ` · ${shownVirtual} ${shownVirtual === 1 ? "dependency" : "dependencies"}`}
-        {shownPeers > 0 && ` · ${shownPeers} undetected ${shownPeers === 1 ? "peer" : "peers"}`}
-        {!showVirtual &&
-          virtualCount > 0 &&
-          ` · ${virtualCount} ${virtualCount === 1 ? "dependency" : "dependencies"} hidden`}
-        {hiddenInfra > 0 &&
-          ` · ${hiddenInfra} mesh/gateway node${hiddenInfra === 1 ? "" : "s"} hidden`}
-        {hasActiveFilter(filters) && ` · filtered from ${totalApps}`} · click
-        a service to inspect its connections.
-      </p>
-
-      <MapLegend
-        health={healthEnabled}
-        carbon={carbon}
-        infra={showInfra}
-        mesh={meshEdges > 0}
-        virtual={shownVirtual > 0}
-        peers={shownPeers > 0}
-        mtls={shown.edges.some((e) => e.mtlsShare !== undefined)}
-        grouping={grouping}
-      />
 
       {shown.services.length === 0 ? (
         <EmptyState icon={MapIcon} title="No services match">
@@ -262,6 +236,31 @@ export function ServiceMapScreen() {
           onFocus={(name) => setMany({ focus: name })} />
         </div>
       )}
+      <p data-testid="map-count" className="text-xs text-base-content/75">
+        {shownApps} services · {callEdges} call edges
+        {meshEdges > 0 && ` · ${meshEdges} through the mesh`}
+        {flowEdges > 0 && ` · ${flowEdges} network ${flowEdges === 1 ? "flow" : "flows"}`}
+        {shownVirtual > 0 && ` · ${shownVirtual} ${shownVirtual === 1 ? "dependency" : "dependencies"}`}
+        {shownPeers > 0 && ` · ${shownPeers} undetected ${shownPeers === 1 ? "peer" : "peers"}`}
+        {!showVirtual &&
+          virtualCount > 0 &&
+          ` · ${virtualCount} ${virtualCount === 1 ? "dependency" : "dependencies"} hidden`}
+        {hiddenInfra > 0 &&
+          ` · ${hiddenInfra} mesh/gateway node${hiddenInfra === 1 ? "" : "s"} hidden`}
+        {hasActiveFilter(filters) && ` · filtered from ${totalApps}`} · click
+        a service to inspect its connections.
+      </p>
+
+      <MapLegend
+        health={healthEnabled}
+        carbon={carbon}
+        infra={showInfra}
+        mesh={meshEdges > 0}
+        virtual={shownVirtual > 0}
+        peers={shownPeers > 0}
+        mtls={shown.edges.some((e) => e.mtlsShare !== undefined)}
+        grouping={grouping}
+      />
     </div>
   );
 }

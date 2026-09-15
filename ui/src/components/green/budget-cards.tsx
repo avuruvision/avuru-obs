@@ -46,7 +46,7 @@ function BudgetCard({ budget }: { budget: GreenBudget }) {
   const projectedPct = budget.monthlyKgCO2e > 0 ? budget.projectedKgCO2e / budget.monthlyKgCO2e : 0;
 
   return (
-    <Card className="flex flex-col gap-3 p-4">
+    <Card role="region" aria-label={`${budget.name} carbon budget`} className="flex flex-col gap-3 p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold">{budget.name}</h3>

@@ -65,6 +65,12 @@ const scale = (compact: boolean) => ({
 export function applyStyle(cy: Core, carbon = false, compact = false, edgeLabels = false, surface?: Element | null) {
   const c = themeColors(surface);
   const s = scale(compact);
+  const explorer = Boolean(surface?.closest(".explorer-canvas"));
+  if (explorer) {
+    s.fontSize = 13;
+    s.node = "mapData(rate, 0, 10, 32, 64)";
+    s.barrelWidth = "mapData(rate, 0, 10, 23, 45)";
+  }
 
   const withNodes = cy
     .style()
@@ -280,10 +286,10 @@ export function applyStyle(cy: Core, carbon = false, compact = false, edgeLabels
     // ---- Hover focus ----
     // Everything outside the focused neighbourhood recedes.
     .selector(".faded")
-    .style({ opacity: 0.18, "text-opacity": 0.18 })
+    .style({ opacity: explorer ? 0.55 : 0.18, "text-opacity": explorer ? 0.9 : 0.18 })
     // The hovered node: thicker ring and the expanded two-line label.
     .selector("node.focus")
-    .style({ "border-width": 5, label: "data(focusLabel)", "font-size": s.fontSize + 1 })
+    .style({ "border-width": 5, label: explorer ? "data(label)" : "data(focusLabel)", "font-size": s.fontSize + 1 })
     // Its edges: thicker, fully opaque, labelled with rpm/latency, and carrying
     // a mid-line arrowhead so direction reads without following the line to its
     // end. NOT an animated dash — dashed already means "network-unhealthy".
@@ -291,7 +297,7 @@ export function applyStyle(cy: Core, carbon = false, compact = false, edgeLabels
     .style({
       opacity: 1,
       width: compact ? 3 : 5,
-      label: "data(focusLabel)",
+      label: explorer ? (edgeLabels ? "data(volumeLabel)" : "") : "data(focusLabel)",
       "font-size": s.fontSize,
       color: c.text,
       "text-background-color": c.base100,

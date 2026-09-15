@@ -31,11 +31,11 @@ export function MapLegend({
   return (
     <div
       data-testid="map-legend"
-      className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-base-content/55"
+      className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-base-content/75"
     >
       {health ? (
         <span className="flex items-center gap-3">
-          <span className="text-base-content/45">ring:</span>
+          <span className="text-base-content/75">ring:</span>
           <Swatch className="border-success" label="Healthy" />
           <Swatch className="border-warning" label="Degraded" />
           <Swatch className="border-error" label="Down" />
@@ -46,8 +46,8 @@ export function MapLegend({
       )}
       <span>size = rate</span>
       <span>width = calls</span>
-      <span className="text-warning/80">amber dashed = network health (RTT, failures, retransmits)</span>
-      <span className="text-error/80">red = errors</span>
+      <span className="text-warning">amber dashed = network health (RTT, failures, retransmits)</span>
+      <span className="text-error">red = errors</span>
       <span>dotted = observed connection, no traced calls</span>
       {infra && <span>diamond = mesh or gateway</span>}
       {mesh && <span>&ldquo;via&rdquo; on hover = recovered across a mesh hop</span>}
@@ -59,8 +59,8 @@ export function MapLegend({
       {grouping !== "none" && (
         <span>box = {grouping === "namespace" ? "namespace" : "service group"}</span>
       )}
-      {carbon && <span className="text-success/80">halo = gCO2e</span>}
-      <span className="text-base-content/40">hover a node for its edges</span>
+      {carbon && <span className="text-success">halo = gCO2e</span>}
+      <span className="text-base-content/75">hover a node for its edges</span>
     </div>
   );
 }

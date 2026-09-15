@@ -41,7 +41,7 @@
   --color-success-content: #f8faf5;
   --color-warning: #9a4b13;
   --color-warning-content: #f8faf5;
-  --color-error: #dc2626;
+  --color-error: #b42323;
   --color-error-content: #f8faf5;
 
   --radius-selector: 0.5rem;
@@ -90,7 +90,7 @@
   --color-success-content: #10271f;
   --color-warning: #fbbf24;
   --color-warning-content: #10271f;
-  --color-error: #f87171;
+  --color-error: #ff8f8f;
   --color-error-content: #10271f;
 
   --radius-selector: 0.5rem;
@@ -200,7 +200,7 @@ body {
 /* Explorer workspace: semantic tokens apply to every signal and module. */
 h1 { letter-spacing: -0.035em; }
 :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
-.explorer-canvas { --color-primary: #c0ed93; --color-base-100: #14372b; --color-base-200: #14372b; --color-base-content: #e3eedb; --color-neutral: #648363; --color-success: #78ca8b; --color-warning: #efbc83; --color-error: #f87171; background: var(--color-base-100); color: var(--color-base-content); background-image: radial-gradient(var(--color-neutral) 0.5px, transparent 0.5px); background-size: 22px 22px; }
+.explorer-canvas { --color-primary: #c0ed93; --color-base-100: #14372b; --color-base-200: #14372b; --color-base-content: #e3eedb; --color-neutral: #648363; --color-success: #78ca8b; --color-warning: #efbc83; --color-error: #ff8f8f; background: var(--color-base-100); color: var(--color-base-content); background-image: radial-gradient(var(--color-neutral) 0.5px, transparent 0.5px); background-size: 22px 22px; }
 .explorer-map-grid { display: grid; grid-template-columns: minmax(0, 1fr) 19rem; }
 .explorer-map-grid > * { min-width: 0; }
 @media (max-width: 1100px) { .explorer-map-grid { grid-template-columns: minmax(0, 1fr); } }

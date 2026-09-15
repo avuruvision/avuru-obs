@@ -27,7 +27,7 @@ const fitPadding = (compact: boolean) => (compact ? 26 : 60);
 // ignores label width and stacks the names on top of each other. The initial
 // layout lands instantly (no animation); a re-layout runs the same simulation
 // animated, so the untangle reads as movement rather than a flash.
-const layoutOptions = (animate: boolean, compact = false) =>
+const layoutOptions = (animate: boolean, compact = false, explorer = false) =>
   ({
     name: "fcose",
     quality: "proof",
@@ -41,9 +41,9 @@ const layoutOptions = (animate: boolean, compact = false) =>
     randomize: true,
     padding: fitPadding(compact),
     nodeDimensionsIncludeLabels: true,
-    nodeSeparation: compact ? 95 : 170,
-    idealEdgeLength: compact ? 95 : 170,
-    nodeRepulsion: compact ? 5200 : 9000,
+    nodeSeparation: compact ? 95 : explorer ? 115 : 170,
+    idealEdgeLength: compact ? 95 : explorer ? 115 : 170,
+    nodeRepulsion: compact || explorer ? 5200 : 9000,
     // Nodes with no edges are TILED rather than simulated, and tiling does not
     // honour nodeDimensionsIncludeLabels — so without generous padding a box
     // full of unconnected services stacks their labels on top of each other.
@@ -148,7 +148,7 @@ export function ServiceMap({
   useImperativeHandle(
     handleRef,
     () => ({
-      relayout: () => cyRef.current?.layout(layoutOptions(!window.matchMedia("(prefers-reduced-motion: reduce)").matches, compact)).run(),
+      relayout: () => cyRef.current?.layout(layoutOptions(!window.matchMedia("(prefers-reduced-motion: reduce)").matches, compact, Boolean(onSelect))).run(),
       fit: () => cyRef.current?.fit(undefined, fitPadding(compact)),
       zoomBy: (factor: number) => {
         const cy = cyRef.current;
@@ -159,7 +159,7 @@ export function ServiceMap({
         });
       },
     }),
-    [compact],
+    [compact, onSelect],
   );
 
   useEffect(() => {
@@ -177,7 +177,7 @@ export function ServiceMap({
         grouping,
         meshRoles,
       }),
-      layout: layoutOptions(false, compact),
+      layout: layoutOptions(false, compact, Boolean(onSelect)),
       minZoom: 0.3,
       maxZoom: 2.5,
     });

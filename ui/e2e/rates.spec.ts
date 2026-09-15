@@ -33,7 +33,12 @@ test.describe("rate table", () => {
     await panel.getByRole("button", { name: "Add" }).click();
     await panel.getByLabel("Model").last().fill("e2e-test-model");
     await panel.getByLabel("Input / 1M").last().fill("1.25");
-    await panel.getByRole("button", { name: "Save", exact: true }).click();
+    // A click starts the write; wait for its acknowledgement before reloading.
+    const [saved] = await Promise.all([
+      page.waitForResponse(r => r.url().includes("/api/v1/rates") && r.request().method() === "PUT"),
+      panel.getByRole("button", { name: "Save", exact: true }).click(),
+    ]);
+    expect(saved.ok()).toBe(true);
 
     // The write must be visible to its own author immediately — a stale read
     // of your own edit reads as the save not having worked.
@@ -41,7 +46,11 @@ test.describe("rate table", () => {
     await expect(panel.locator('input[value="e2e-test-model"]')).toBeVisible();
 
     // And clearing returns the install to the chart without un-pricing it.
-    await panel.getByRole("button", { name: "Reset to chart values" }).click();
+    const [cleared] = await Promise.all([
+      page.waitForResponse(r => r.url().includes("/api/v1/rates") && r.request().method() === "DELETE"),
+      panel.getByRole("button", { name: "Reset to chart values" }).click(),
+    ]);
+    expect(cleared.ok()).toBe(true);
     await page.reload();
     await expect(panel.locator('input[value="e2e-test-model"]')).toHaveCount(0);
     await expect(

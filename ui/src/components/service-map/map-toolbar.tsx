@@ -74,7 +74,7 @@ export function MapToolbar({
         placeholder="Filter services…"
         value={filters.q ?? ""}
         onChange={(e) => onFilters({ ...filters, q: e.target.value })}
-        className="h-7 w-44 rounded-lg border border-neutral bg-base-100 px-2 text-xs text-base-content placeholder:text-base-content/40 focus-visible:outline-2 focus-visible:outline-primary"
+        className="h-7 w-44 rounded-lg border border-neutral bg-base-100 px-2 text-xs text-base-content placeholder:text-base-content/75 focus-visible:outline-2 focus-visible:outline-primary"
       />
 
       {healthEnabled && (
@@ -187,7 +187,7 @@ export function MapToolbar({
       <div className="ml-auto flex items-center gap-1">
         <span
           data-testid="map-zoom"
-          className="mr-1 tabular-nums text-xs text-base-content/45"
+          className="mr-1 tabular-nums text-xs text-base-content/75"
           title="Current zoom"
         >
           {zoomPercent}%

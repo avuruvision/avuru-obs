@@ -53,24 +53,24 @@ export function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
           collapsed && "justify-center px-0",
         )}
       >
-        <FolderKanban className="h-4 w-4 shrink-0 text-base-content/50" aria-hidden />
+        <FolderKanban className="h-4 w-4 shrink-0 text-base-content/75" aria-hidden />
         {!collapsed && (
           <>
             <span className="flex min-w-0 flex-1 flex-col">
-              <span className="text-[10px] uppercase tracking-wider text-base-content/40">
+              <span className="text-[10px] uppercase tracking-wider text-base-content/75">
                 Project
               </span>
               <span className="flex items-center gap-1">
                 <span className="truncate text-sm font-medium">{activeLabel}</span>
                 {activeMembers > 0 && (
                   <Layers
-                    className="h-3 w-3 shrink-0 text-base-content/40"
+                    className="h-3 w-3 shrink-0 text-base-content/75"
                     aria-label={`aggregate of ${activeMembers} projects`}
                   />
                 )}
               </span>
             </span>
-            <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-base-content/50" aria-hidden />
+            <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-base-content/75" aria-hidden />
           </>
         )}
       </button>
@@ -100,7 +100,7 @@ export function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
                   <span className="truncate">{p.label || p.id}</span>
                   {(p.members?.length ?? 0) > 0 && (
                     <Layers
-                      className="h-3 w-3 shrink-0 text-base-content/40"
+                      className="h-3 w-3 shrink-0 text-base-content/75"
                       aria-label={`aggregate of ${p.members?.length} projects`}
                     />
                   )}
