@@ -77,7 +77,9 @@ test.describe("nodes screen", () => {
   test("sorting the pods table by name reverses the order", async ({ page }) => {
     await page.goto("/nodes");
     const podsTable = page.getByRole("table").last();
-    const header = podsTable.getByRole("button", { name: "Pod" });
+    // Nodes can arrive before pods: match the pod header exactly so the
+    // node table's "Pods" column cannot receive this click while loading.
+    const header = podsTable.getByRole("button", { name: "Pod", exact: true });
 
     await header.click();
     await expect(podsTable.getByRole("row").nth(1)).toContainText("seed-checkout-0");
