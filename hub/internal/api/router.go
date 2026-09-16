@@ -391,6 +391,7 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 	if active.Enabled(modules.InfraMetrics) {
 		mux.Handle("GET /api/v1/infra/nodes", a.secured(auth.RoleViewer, a.handleInfraNodes))
 		mux.Handle("GET /api/v1/infra/pods", a.secured(auth.RoleViewer, a.handleInfraPods))
+		mux.Handle("GET /api/v1/infra/pod-connections", a.secured(auth.RoleViewer, a.handlePodConnections))
 		// The sensor inventory reads collector self-metrics from the metrics
 		// tables, so it lives with infra-metrics (see the module AEP).
 		mux.Handle("GET /api/v1/agents", a.secured(auth.RoleViewer, a.handleAgents))

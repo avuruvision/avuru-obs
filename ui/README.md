@@ -47,3 +47,26 @@ From the repo root: `make ui` (build), `make ui-image` (container), `make check`
   ones; keep files focused (aim < 300 lines).
 - The hub binary serves the **last built** export — when iterating on UI, use
   the dev server; changes don't appear in a built hub/UI image until `make ui`.
+
+## Cluster X-Ray
+
+Infrastructure (`/nodes`) keeps the inventory as its default. Select **Cluster
+X-Ray** (`/nodes?view=xray`) for an interactive 3D view of observed Nodes and Pods.
+Select a Pod in the scene or the keyboard-accessible selector; use node,
+namespace and Pod filters to narrow placement, then isolate its neighbourhood.
+Layer switches, spacing, transparency and camera controls change presentation.
+
+The scene draws a logical infrastructure illustration, not a discovered physical
+chassis. CPU/memory are observed usage; Pod readiness and resource limits are not
+available here. Connections come from `/api/v1/infra/pod-connections`: matched
+Client/Server span identities connect Pods, while an unmatched recorded address
+appears as an unresolved peer. A globe does not assert public Internet location.
+Only caller-side request counts, errors and p95 latency are reported. Flow speed
+is illustrative. Missing span identities mean no attributed connection.
+
+The engine loads only on opening X-Ray. A scene is limited to 9 nodes, 12 Pods
+per node and 100 connections; visible counts explain truncation. The resource
+read loads up to 200 Pods per node filter. Narrow filters to bring omitted Pods
+into view; the inventory is always available. Reduced motion pauses particles,
+and hidden/offscreen scenes suspend rendering. GPU resources are released when
+the view closes. Browsers without WebGL receive an inventory fallback.

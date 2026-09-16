@@ -56,29 +56,32 @@ type Fake struct {
 	LastBreakdownQuery storage.BreakdownQuery
 	// AI observability: LastAIQuery records the filters the handler built, so
 	// a test can assert the trace vocabulary reached storage.
-	AIUsageResult storage.AIUsage
-	AICallerRows  []storage.AICallerUsage
-	AIToolRows    []storage.AIToolUsage
-	AISpendRows   []storage.AIServiceSpend
-	AIErr         error
-	LastAIQuery   storage.AIQuery
-	Page          storage.TracePage
-	Traces        map[string]storage.Trace
-	SpanTraces    map[string]string // spanId -> traceId
-	Heat          storage.Heatmap
-	LogPage       storage.LogPage
-	TraceLogs     map[string][]storage.LogRecord
-	Stats         storage.SystemStats
-	StatsErr      error
-	Nodes         []storage.NodeStat
-	Pods          []storage.PodStat
-	Agents        []storage.AgentNode
-	Tenants       []string
-	TenantsErr    error
-	RED           []storage.REDSeries
-	Written       []storage.ProfileSample
-	Profiled      []storage.ProfiledService
-	Flame         storage.FlameNode
+	AIUsageResult          storage.AIUsage
+	AICallerRows           []storage.AICallerUsage
+	AIToolRows             []storage.AIToolUsage
+	AISpendRows            []storage.AIServiceSpend
+	AIErr                  error
+	LastAIQuery            storage.AIQuery
+	Page                   storage.TracePage
+	Traces                 map[string]storage.Trace
+	SpanTraces             map[string]string // spanId -> traceId
+	Heat                   storage.Heatmap
+	LogPage                storage.LogPage
+	TraceLogs              map[string][]storage.LogRecord
+	Stats                  storage.SystemStats
+	StatsErr               error
+	PodConnectionRows      []storage.PodConnection
+	PodConnectionErr       error
+	LastPodConnectionQuery storage.InfraQuery
+	Nodes                  []storage.NodeStat
+	Pods                   []storage.PodStat
+	Agents                 []storage.AgentNode
+	Tenants                []string
+	TenantsErr             error
+	RED                    []storage.REDSeries
+	Written                []storage.ProfileSample
+	Profiled               []storage.ProfiledService
+	Flame                  storage.FlameNode
 
 	ServiceEnergies    []storage.ServiceEnergy
 	NodeEnergies       []storage.NodeEnergy
@@ -1211,4 +1214,9 @@ func (f *Fake) TouchOAuthToken(_ context.Context, tokenHash string, at time.Time
 	t.LastUsedAt = at
 	f.OAuthTokens[tokenHash] = t
 	return nil
+}
+
+func (f *Fake) PodConnections(_ context.Context, q storage.InfraQuery) ([]storage.PodConnection, error) {
+	f.LastPodConnectionQuery = q
+	return f.PodConnectionRows, f.PodConnectionErr
 }

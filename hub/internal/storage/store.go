@@ -1580,6 +1580,7 @@ type Store interface {
 	LogsForTrace(ctx context.Context, tenants []string, traceID string) ([]LogRecord, error)
 	ListNodeStats(ctx context.Context, q InfraQuery) ([]NodeStat, error)
 	ListPodStats(ctx context.Context, q InfraQuery) ([]PodStat, error)
+	PodConnections(ctx context.Context, q InfraQuery) ([]PodConnection, error)
 	ListAgentNodes(ctx context.Context, q AgentQuery) ([]AgentNode, error)
 	// ListTenants returns tenants observed in recent data (projects
 	// auto-discovery; config-defined projects merge in at the API layer).

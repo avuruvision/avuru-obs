@@ -1719,3 +1719,24 @@ export interface OAuthGrant {
 export interface OAuthGrantsResponse {
   grants: OAuthGrant[];
 }
+
+// Trace-backed Pod placement connections; unresolved peers are not Internet claims.
+export interface PodRef {
+  name: string;
+  namespace: string;
+  node: string;
+  service: string;
+}
+export interface PodConnection {
+  source: PodRef;
+  target: PodRef;
+  peer?: string;
+  calls: number;
+  errors: number;
+  p95Ms: number;
+}
+export interface PodConnectionsResponse {
+  connections: PodConnection[];
+  truncated: boolean;
+  limit: number;
+}

@@ -23,7 +23,7 @@ relevant Dockerfile/manifest together.
 | Component | Stack | Key crates/libs |
 |---|---|---|
 | `hub/` | Go (see `hub/go.mod`) | stdlib `net/http`, `opamp-go`, `clickhouse-go`, `modernc.org/sqlite` (CGO-free SQLite) |
-| `ui/` | Next.js (App Router, `output: 'export'`), TypeScript strict | Tailwind v4 CSS-first + daisyUI 5 (two custom themes, Explorer), next-themes (`data-theme`, light default), TanStack Query, lucide-react, CVA + clsx/tailwind-merge. NO chart lib in M1 (heatmap = CSS grid, waterfall = flex bars); canvas/flame-graph lib chosen in M4 |
+| `ui/` | Next.js (App Router, `output: 'export'`), TypeScript strict | Tailwind v4 CSS-first + daisyUI 5 (two custom themes, Explorer), next-themes (`data-theme`, light default), TanStack Query, lucide-react, CVA + clsx/tailwind-merge. Three.js **0.180.0** + @types/three **0.180.0** for the lazy-loaded Cluster X-Ray view only; heatmap = CSS grid, waterfall = flex bars |
 
 ## Hard rules
 
