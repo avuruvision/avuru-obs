@@ -11,6 +11,8 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.18.0] — 2026-09-16
+
 ### Added
 
 - **Cluster X-Ray in Infrastructure.** Switch from the inventory to an interactive
