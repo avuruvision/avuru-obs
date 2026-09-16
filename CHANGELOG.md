@@ -11,6 +11,22 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **Cluster X-Ray in Infrastructure.** Switch from the inventory to an interactive
+  isometric view of Nodes, translucent Pods and a logical infrastructure layer.
+  Orbit, zoom, separate or hide layers, adjust transparency, filter namespaces,
+  inspect Pod resources and isolate observed neighbours. Selection and filters
+  survive reloads and can be shared in the URL. The inventory remains available
+  for keyboard use and browsers without WebGL; scene limits are explicit.
+- **Trace-backed Pod connections.** The new `GET /api/v1/infra/pod-connections`
+  endpoint reports caller request counts, errors and p95 latency, scoped to the
+  authorized project and time window. Only recorded Pod identities connect
+  replicas. Unresolved destination addresses use a globe and remain explicitly
+  unlocated. Animated particles illustrate direction; their speed is not a
+  request-rate measurement. No collector or application changes are required.
+
+
 ## [0.17.0] — 2026-09-15
 
 ### Added

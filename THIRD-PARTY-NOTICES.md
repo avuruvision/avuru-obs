@@ -296,4 +296,5 @@ the host at load time rather than bundled.
 | source-map-js@1.2.1 | BSD-3-Clause |
 | styled-jsx@5.1.6 | MIT |
 | tailwind-merge@3.6.0 | MIT |
+| three@0.180.0 | MIT |
 | tslib@2.8.1 | 0BSD |

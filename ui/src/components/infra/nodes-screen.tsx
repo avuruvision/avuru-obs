@@ -1,16 +1,20 @@
 "use client";
 
 import { useMemo } from "react";
-import { Search, Server } from "lucide-react";
+import dynamic from "next/dynamic";
+import { Box, List, Search, Server } from "lucide-react";
 import { useTimeRange } from "@/hooks/use-time-range";
 import { useURLState } from "@/hooks/use-url-state";
 import { useNodesData, usePodsData } from "@/hooks/use-infra-data";
 import { CenteredSpinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Select } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { NodesTable } from "./nodes-table";
 import { PodsPanel } from "./pods-panel";
+
+const ClusterXRay = dynamic(() => import("./xray/screen"), { ssr: false, loading: () => <CenteredSpinner /> });
 
 const ALL_NAMESPACES = "__all__";
 
@@ -24,6 +28,7 @@ const ALL_NAMESPACES = "__all__";
 export function NodesScreen() {
   const { time } = useTimeRange();
   const { get, setMany } = useURLState();
+  const xray = get("view") === "xray";
   const node = get("node") ?? undefined;
   const nodeQuery = get("nodeq") ?? "";
   const podQuery = get("podq") ?? "";
@@ -61,7 +66,10 @@ export function NodesScreen() {
     });
   }, [podList, podQuery, namespace]);
 
+  const xrayPods = useMemo(() => visiblePods.filter(p => !nodeQuery || visibleNodes.some(n => n.name === p.node)), [visiblePods, nodeQuery, visibleNodes]);
+
   if (nodes.isLoading) return <CenteredSpinner />;
+  if (nodes.isError) return <Card className="space-y-3 p-6"><p role="alert">Node metrics could not be loaded.</p><Button onClick={() => nodes.refetch()}>Retry node metrics</Button></Card>;
 
   // Nothing collected at all — a setup problem, and the only case that should
   // explain how to get data. A filter matching nothing is handled below.
@@ -77,12 +85,19 @@ export function NodesScreen() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><h1 className="text-2xl font-medium">Infrastructure</h1><p className="mt-1 text-xs text-base-content/65">Explore observed node resources and Pod placement.</p></div>
+        <div role="group" aria-label="Infrastructure view" className="flex gap-1 rounded-lg border border-neutral bg-base-200 p-1">
+          <Button size="sm" variant={xray ? "ghost" : "primary"} aria-pressed={!xray} onClick={() => setMany({ view: undefined, isolate: undefined })}><List className="h-3.5 w-3.5" />Inventory</Button>
+          <Button size="sm" variant={xray ? "primary" : "ghost"} aria-pressed={xray} onClick={() => setMany({ view: "xray" })}><Box className="h-3.5 w-3.5" />Cluster X-Ray</Button>
+        </div>
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-base-content/55">
           {visibleNodes.length === nodeList.length
             ? `${nodeList.length} nodes`
             : `${visibleNodes.length} of ${nodeList.length} nodes`}{" "}
-          · click a node to scope the pods below.
+          {xray ? "· logical placement from observed telemetry." : "· click a node to scope the pods below."}
         </p>
         <div className="flex items-center gap-1.5 rounded-lg border border-neutral bg-base-200 px-2">
           <Search className="h-3.5 w-3.5 text-base-content/50" aria-hidden />
@@ -98,7 +113,7 @@ export function NodesScreen() {
         </div>
       </div>
 
-      {visibleNodes.length ? (
+      {!xray && (visibleNodes.length ? (
         <NodesTable
           nodes={visibleNodes}
           selected={node}
@@ -108,7 +123,7 @@ export function NodesScreen() {
         <Card className="p-6 text-center text-sm text-base-content/60">
           No nodes match “{nodeQuery}”.
         </Card>
-      )}
+      ))}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-base-content/80">
@@ -120,7 +135,7 @@ export function NodesScreen() {
           )}
         </h2>
         <div className="flex flex-wrap items-center gap-2">
-          {namespaces.length > 1 && (
+          {(namespaces.length > 1 || namespace) && (
             <Select
               value={namespace ?? ALL_NAMESPACES}
               ariaLabel="Filter pods by namespace"
@@ -128,6 +143,7 @@ export function NodesScreen() {
               onChange={(v) => setMany({ ns: v === ALL_NAMESPACES ? undefined : v })}
               options={[
                 { value: ALL_NAMESPACES, label: "All namespaces" },
+                ...(namespace && !namespaces.includes(namespace) ? [{ value: namespace, label: `${namespace} (outside this window)` }] : []),
                 ...namespaces.map((ns) => ({ value: ns, label: ns })),
               ]}
             />
@@ -147,11 +163,14 @@ export function NodesScreen() {
         </div>
       </div>
 
-      <PodsPanel
+      {xray ? <ClusterXRay nodes={visibleNodes} allNodes={nodeList}
+        pods={xrayPods}
+        loading={pods.isLoading} podsError={pods.isError} /> : pods.isError ?
+        <Card className="space-y-3 p-6"><p role="alert">Pod metrics could not be loaded.</p><Button onClick={() => pods.refetch()}>Retry Pod metrics</Button></Card> : <PodsPanel
         pods={visiblePods}
         node={node}
         filtered={visiblePods.length !== podList.length || Boolean(podQuery || namespace)}
-      />
+      />}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { queryKeys, type TimeParams } from "@/lib/query-keys";
-import type { NodesResponse, PodsResponse, ZonesResponse } from "@/lib/api-types";
+import type { NodesResponse, PodsResponse, ZonesResponse, PodConnectionsResponse } from "@/lib/api-types";
 
 // Node utilization (kubeletstats via the sensor): latest CPU/memory/network
 // per node plus short series for sparklines.
@@ -37,5 +37,14 @@ export function useZoneTraffic(time: TimeParams) {
   return useQuery({
     queryKey: queryKeys.zoneTraffic(project, time),
     queryFn: () => apiGet<ZonesResponse>("/api/v1/network/zones", { ...time }, { project }),
+  });
+}
+
+// Invoked only by the lazy X-Ray view, so the inventory never pays for this read.
+export function usePodConnections(time: TimeParams, node?: string) {
+  const { project } = useProject();
+  return useQuery({
+    queryKey: queryKeys.podConnections(project, time, node),
+    queryFn: () => apiGet<PodConnectionsResponse>("/api/v1/infra/pod-connections", { ...time, node }, { project }),
   });
 }
