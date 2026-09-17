@@ -472,6 +472,9 @@ func TestSearchLogsParamParsing(t *testing.T) {
 	if q.Service != "checkout" || q.Query != "boom" || q.MinSeverity != "ERROR" || q.Limit != 7 {
 		t.Errorf("log filters not parsed: %+v", q)
 	}
+	if q.MatchNone || len(q.Sources) != 0 {
+		t.Errorf("legacy single-service search was replaced by an empty composed query: %+v", q)
+	}
 	if q.Tenant != storage.DefaultTenant {
 		t.Errorf("tenant = %q, want default", q.Tenant)
 	}
