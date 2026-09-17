@@ -107,8 +107,9 @@ export const queryKeys = {
   logs: (
     p: string,
     t: TimeParams,
-    filters: Record<string, string | number | undefined>,
+    filters: Record<string, string | number | readonly string[] | undefined>,
   ) => [p, "logs", "search", { ...t, ...filters }] as const,
+  logServices: (p: string, t: TimeParams) => [p, "logs", "services", t] as const,
   serviceLogs: (
     p: string,
     t: TimeParams,

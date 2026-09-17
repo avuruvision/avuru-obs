@@ -48,14 +48,18 @@ function redirectedOn401(res: Response): boolean {
 
 export async function apiGet<T>(
   path: string,
-  params?: Record<string, string | number | undefined>,
+  params?: Record<string, string | number | readonly string[] | undefined>,
   opts?: { project?: string },
 ): Promise<T> {
   // path is already "/api/v1/..."; an absolute apiBase wins, "" stays same-origin.
   const url = new URL(apiBase() + path, window.location.origin);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
+      if (Array.isArray(v)) {
+        for (const item of v) if (item !== "") url.searchParams.append(k, item);
+      } else if (v !== undefined && v !== "") {
+        url.searchParams.set(k, String(v));
+      }
     }
   }
   const headers: Record<string, string> = { Accept: "application/json" };

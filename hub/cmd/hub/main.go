@@ -383,6 +383,7 @@ func run() error {
 		OIDCSettings:                    oidcSettings,
 		OIDCMapping:                     oidcMapping,
 		IngestInternalToken:             envOr("AVURUOBS_INGEST_INTERNAL_TOKEN", ""),
+		LogResolutionSecret:             envOr("AVURUOBS_LOG_RESOLUTION_SECRET", envOr("AVURUOBS_CLICKHOUSE_PASSWORD", "avuru")),
 		StorageConnection:               storageConnection(),
 		CollectionRuntimeControlEnabled: collectionRuntimeControlEnabled,
 		CollectionApplier:               collectionApplier(collectionRuntimeControlEnabled),

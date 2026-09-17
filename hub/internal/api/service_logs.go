@@ -30,7 +30,7 @@ func (a *API) handleServiceLogs(w http.ResponseWriter, r *http.Request) error {
 	if strings.TrimSpace(service) == "" {
 		return badRequest("service must not be empty")
 	}
-	wanted, err := parseLogSources(r.URL.Query().Get("source"))
+	wanted, err := parseLogSources(r.URL.Query()["source"]...)
 	if err != nil {
 		return err
 	}
@@ -79,9 +79,11 @@ func (a *API) handleServiceLogs(w http.ResponseWriter, r *http.Request) error {
 		desc = a.workloadLogSources(r, namespace, workload, q.Get("waypoint"), service)
 	}
 
+	sources := desc.sources(wanted)
 	page, err := store.SearchLogs(r.Context(), storage.LogQuery{
 		Tenant: tenant, Tenants: tenants, Range: tr,
-		Sources:     desc.sources(wanted),
+		Sources:     sources,
+		MatchNone:   len(sources) == 0,
 		MinSeverity: q.Get("severity"),
 		Query:       q.Get("q"),
 		Limit:       limit,

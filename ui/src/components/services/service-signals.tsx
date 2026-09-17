@@ -103,7 +103,7 @@ function ServiceLogs({ service }: { service: string }) {
       links={(s) => (
         <>
           <Link
-            href={`/logs?service=${encodeURIComponent(service)}`}
+            href={`/logs?services=${encodeURIComponent(service)}`}
             className="text-primary hover:underline"
           >
             open in Logs

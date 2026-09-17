@@ -65,10 +65,10 @@ export function WorkloadLogs({
         }
         links={() => (
           <Link
-            href={`/logs?service=${encodeURIComponent(name)}`}
+            href={`/mesh?view=logs&workloads=${encodeURIComponent(`${namespace}/${name}`)}`}
             className="text-primary hover:underline"
           >
-            open the app lines in Logs
+            open in the mesh log explorer
           </Link>
         )}
       />

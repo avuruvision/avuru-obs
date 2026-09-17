@@ -813,6 +813,7 @@ export interface LogRecord {
   timestamp: string;
   severity: string;
   service: string;
+  source?: "application" | "ztunnel" | "waypoint" | "other";
   body: string;
   traceId?: string;
   spanId?: string;
@@ -822,6 +823,21 @@ export interface LogRecord {
 export interface LogsResponse {
   logs: LogRecord[];
   nextCursor?: string;
+  resolutions?: LogResolution[];
+  resolutionToken?: string;
+}
+
+export interface LogResolution {
+  service?: string;
+  namespace?: string;
+  workload?: string;
+  proxiesUnavailable?: string;
+  proxiesFallback?: string;
+}
+
+export interface LogServicesResponse {
+  services: string[];
+  workloads: string[];
 }
 
 export interface MetricPoint {

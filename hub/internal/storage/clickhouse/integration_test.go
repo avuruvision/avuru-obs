@@ -326,6 +326,86 @@ func TestLogsIntegration(t *testing.T) {
 	})
 }
 
+func TestLogPaginationUsesServiceAsATiebreaker(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+	ts := time.Now().UTC().Truncate(time.Second).Add(-time.Minute)
+	insertLogs(t, store, []testLog{
+		{ts, "same-trace", "same-span", "INFO", 9, "alpha", "alpha line"},
+		{ts, "same-trace", "same-span", "INFO", 9, "beta", "beta line"},
+	})
+	range_ := storage.TimeRange{Start: ts.Add(-time.Minute), End: ts.Add(time.Minute)}
+	first, err := store.SearchLogs(ctx, storage.LogQuery{Tenant: "default", Range: range_, Limit: 1})
+	if err != nil || len(first.Logs) != 1 || first.NextCursor == nil {
+		t.Fatalf("first page = %+v, %v", first, err)
+	}
+	second, err := store.SearchLogs(ctx, storage.LogQuery{Tenant: "default", Range: range_, Limit: 1, Cursor: first.NextCursor})
+	if err != nil || len(second.Logs) != 1 {
+		t.Fatalf("second page = %+v, %v", second, err)
+	}
+	if first.Logs[0].Service == second.Logs[0].Service {
+		t.Fatalf("pagination repeated %q", first.Logs[0].Service)
+	}
+}
+
+func TestLegacyLogCursorKeepsLegacyOrdering(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+	ts := time.Now().UTC().Truncate(time.Second).Add(-time.Minute)
+	insertLogs(t, store, []testLog{
+		{ts, "trace-z", "span", "INFO", 9, "alpha", "first"},
+		{ts, "trace-y", "span", "INFO", 9, "zulu", "second"},
+		{ts, "trace-x", "span", "INFO", 9, "beta", "third"},
+	})
+	range_ := storage.TimeRange{Start: ts.Add(-time.Minute), End: ts.Add(time.Minute)}
+	legacy := &storage.LogCursor{Timestamp: ts, TraceID: "trace-z", SpanID: "span", Legacy: true}
+	second, err := store.SearchLogs(ctx, storage.LogQuery{Tenant: "default", Range: range_, Limit: 1, Cursor: legacy})
+	if err != nil || len(second.Logs) != 1 || second.Logs[0].TraceID != "trace-y" || second.NextCursor == nil || !second.NextCursor.Legacy {
+		t.Fatalf("legacy second page = %+v, %v", second, err)
+	}
+	third, err := store.SearchLogs(ctx, storage.LogQuery{Tenant: "default", Range: range_, Limit: 1, Cursor: second.NextCursor})
+	if err != nil || len(third.Logs) != 1 || third.Logs[0].TraceID != "trace-x" {
+		t.Fatalf("legacy third page = %+v, %v", third, err)
+	}
+}
+
+func TestLogSourceCategoriesFilterAndClassify(t *testing.T) {
+	store := startClickHouse(t)
+	ctx := context.Background()
+	base := time.Now().UTC().Truncate(time.Minute).Add(-time.Minute)
+	insertLogs(t, store, []testLog{
+		{base, "", "", "INFO", 9, "checkout", "app"},
+		{base, "", "", "INFO", 9, "ztunnel", "proxy checkout"},
+		{base, "", "", "INFO", 9, "global-waypoint", "proxy"},
+		{base, "", "", "INFO", 9, "", "unknown"},
+	})
+	page, err := store.SearchLogs(ctx, storage.LogQuery{
+		Tenant:           "default",
+		Range:            storage.TimeRange{Start: base.Add(-time.Minute), End: base.Add(time.Minute)},
+		SourceCategories: []string{"ztunnel", "other"},
+	})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(page.Logs) != 2 || page.Logs[0].Source == "application" || page.Logs[1].Source == "application" {
+		t.Fatalf("classified logs = %+v", page.Logs)
+	}
+	page, err = store.SearchLogs(ctx, storage.LogQuery{
+		Tenant: "default",
+		Range:  storage.TimeRange{Start: base.Add(-time.Minute), End: base.Add(time.Minute)},
+		Sources: []storage.LogSource{
+			{Category: "application", Services: []string{"checkout"}},
+			{Category: "ztunnel", Services: []string{"ztunnel"}, BodyAll: [][]string{{"checkout"}}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("composed search: %v", err)
+	}
+	if len(page.Logs) != 2 || page.Logs[0].Source == page.Logs[1].Source {
+		t.Fatalf("composed sources = %+v", page.Logs)
+	}
+}
+
 func TestStoreIntegration(t *testing.T) {
 	store := startClickHouse(t)
 	ctx := context.Background()
