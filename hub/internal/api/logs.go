@@ -110,6 +110,8 @@ func (a *API) handleSearchLogs(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	hasSourceFilter := strings.TrimSpace(strings.Join(q["source"], ",")) != ""
+	hasComposedSelection := (len(services) > 0 || len(workloads) > 0) &&
+		(len(workloads) > 0 || len(services) > 1 || hasSourceFilter)
 	logQuery := storage.LogQuery{
 		Tenant:      tenant,
 		Tenants:     tenants,
@@ -125,7 +127,7 @@ func (a *API) handleSearchLogs(w http.ResponseWriter, r *http.Request) error {
 	if len(q["resolution"]) > 1 {
 		return badRequest("invalid log resolution token")
 	}
-	if cursor != nil && resolutionToken == "" && (len(workloads) > 0 || len(services) > 1 || hasSourceFilter) {
+	if cursor != nil && resolutionToken == "" && hasComposedSelection {
 		return badRequest("resolution token is required for multiservice pagination")
 	}
 	resolutionScope := makeLogResolutionScope(tenant, tenants, services, workloads, wanted, tr.Start, tr.End)
@@ -183,7 +185,7 @@ func (a *API) handleSearchLogs(w http.ResponseWriter, r *http.Request) error {
 	} else if hasSourceFilter {
 		logQuery.SourceCategories = wantedSourceCategories(wanted)
 	}
-	if (len(services) > 0 || len(workloads) > 0) && resolutionToken == "" {
+	if hasComposedSelection && resolutionToken == "" {
 		resolutionToken, resolutions, err = encodeLogResolutionToken(a.logResolutionKey, resolutionScope, resolutions, time.Now())
 		if err != nil {
 			return badRequest("%s", err.Error())
