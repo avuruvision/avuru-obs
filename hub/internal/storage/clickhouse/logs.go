@@ -21,7 +21,7 @@ var severityFloor = map[string]uint8{
 const logColumns = `Timestamp, SeverityText, ServiceName, Body, TraceId, SpanId, LogAttributes`
 
 // SearchLogs returns log records newest-first with keyset pagination
-// (Timestamp + TraceId + SpanId tiebreaker).
+// (Timestamp + ServiceName + TraceId + SpanId tiebreaker).
 func (s *Store) SearchLogs(ctx context.Context, q storage.LogQuery) (storage.LogPage, error) {
 	limit := q.Limit
 	if limit <= 0 || limit > 500 {
@@ -53,13 +53,27 @@ WHERE Tenant IN (?)
 		args = append(args, q.Query)
 	}
 	query, args = logTagFilters(query, q.Tags, args)
+	legacyOrder := q.Cursor != nil && q.Cursor.Legacy
 	if q.Cursor != nil {
-		query += ` AND (Timestamp, TraceId, SpanId) < (?, ?, ?)`
-		args = append(args, q.Cursor.Timestamp, q.Cursor.TraceID, q.Cursor.SpanID)
+		if legacyOrder {
+			// Cursor emitted before service became a tiebreaker. Keep accepting
+			// it so old shared URLs and in-flight scrolls survive an upgrade.
+			query += ` AND (Timestamp, TraceId, SpanId) < (?, ?, ?)`
+			args = append(args, q.Cursor.Timestamp, q.Cursor.TraceID, q.Cursor.SpanID)
+		} else {
+			query += ` AND (Timestamp, ServiceName, TraceId, SpanId) < (?, ?, ?, ?)`
+			args = append(args, q.Cursor.Timestamp, q.Cursor.Service, q.Cursor.TraceID, q.Cursor.SpanID)
+		}
 	}
-	query += `
+	if legacyOrder {
+		query += `
 ORDER BY Timestamp DESC, TraceId DESC, SpanId DESC
 LIMIT ?`
+	} else {
+		query += `
+ORDER BY Timestamp DESC, ServiceName DESC, TraceId DESC, SpanId DESC
+LIMIT ?`
+	}
 	args = append(args, limit+1) // one extra row to detect the next page
 
 	rows, err := s.conn.Query(ctx, query, args...)
@@ -74,6 +88,7 @@ LIMIT ?`
 		if err := rows.Scan(&r.Timestamp, &r.Severity, &r.Service, &r.Body, &r.TraceID, &r.SpanID, &r.Attributes); err != nil {
 			return storage.LogPage{}, fmt.Errorf("scanning log row: %w", err)
 		}
+		r.Source = classifyLogSource(r, q)
 		page.Logs = append(page.Logs, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -83,7 +98,7 @@ LIMIT ?`
 	if len(page.Logs) > limit {
 		page.Logs = page.Logs[:limit]
 		last := page.Logs[limit-1]
-		page.NextCursor = &storage.LogCursor{Timestamp: last.Timestamp, TraceID: last.TraceID, SpanID: last.SpanID}
+		page.NextCursor = &storage.LogCursor{Timestamp: last.Timestamp, Service: last.Service, TraceID: last.TraceID, SpanID: last.SpanID, Legacy: legacyOrder}
 	}
 	return page, nil
 }
@@ -95,9 +110,12 @@ LIMIT ?`
 // ServiceName after the time bucket, so each branch prunes to its own
 // service's granules before the body is scanned.
 func logSourceFilter(q storage.LogQuery) (string, []any) {
+	if q.MatchNone {
+		return ` AND 0`, nil
+	}
 	if len(q.Sources) == 0 {
 		if q.Service == "" {
-			return "", nil
+			return logCategoryFilter(q.SourceCategories), nil
 		}
 		return ` AND ServiceName = ?`, []any{q.Service}
 	}
@@ -116,6 +134,74 @@ func logSourceFilter(q storage.LogQuery) (string, []any) {
 		branches = append(branches, "("+branch+")")
 	}
 	return ` AND (` + strings.Join(branches, " OR ") + `)`, args
+}
+
+func logCategoryFilter(categories []string) string {
+	if len(categories) == 0 || len(categories) == 4 {
+		return ""
+	}
+	var branches []string
+	for _, category := range categories {
+		switch category {
+		case "application":
+			branches = append(branches, `(ServiceName != '' AND ServiceName != 'ztunnel' AND NOT startsWith(ServiceName, 'ztunnel-') AND ServiceName != 'waypoint' AND NOT startsWith(ServiceName, 'waypoint-') AND NOT endsWith(ServiceName, '-waypoint'))`)
+		case "ztunnel":
+			branches = append(branches, `(ServiceName = 'ztunnel' OR startsWith(ServiceName, 'ztunnel-'))`)
+		case "waypoint":
+			branches = append(branches, `(ServiceName = 'waypoint' OR startsWith(ServiceName, 'waypoint-') OR endsWith(ServiceName, '-waypoint'))`)
+		case "other":
+			branches = append(branches, `ServiceName = ''`)
+		}
+	}
+	if len(branches) == 0 {
+		return ` AND 0`
+	}
+	return ` AND (` + strings.Join(branches, " OR ") + `)`
+}
+
+func classifyLogSource(r storage.LogRecord, q storage.LogQuery) string {
+	for _, src := range q.Sources {
+		if sourceMatchesRecord(src, r) {
+			return src.Category
+		}
+	}
+	name := strings.ToLower(r.Service)
+	switch {
+	case name == "":
+		return "other"
+	case name == "ztunnel" || strings.HasPrefix(name, "ztunnel-"):
+		return "ztunnel"
+	case name == "waypoint" || strings.HasPrefix(name, "waypoint-") || strings.HasSuffix(name, "-waypoint"):
+		return "waypoint"
+	default:
+		return "application"
+	}
+}
+
+func sourceMatchesRecord(src storage.LogSource, r storage.LogRecord) bool {
+	service := false
+	for _, name := range src.Services {
+		if r.Service == name {
+			service = true
+			break
+		}
+	}
+	if !service {
+		return false
+	}
+	for _, needles := range src.BodyAll {
+		found := false
+		for _, needle := range needles {
+			if strings.Contains(r.Body, needle) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 // logTagFilters is tagFilters for the log table, where a record's own
@@ -158,6 +244,7 @@ ORDER BY Timestamp ASC`
 		if err := rows.Scan(&r.Timestamp, &r.Severity, &r.Service, &r.Body, &r.TraceID, &r.SpanID, &r.Attributes); err != nil {
 			return nil, fmt.Errorf("scanning log row: %w", err)
 		}
+		r.Source = classifyLogSource(r, storage.LogQuery{})
 		out = append(out, r)
 	}
 	return out, rows.Err()

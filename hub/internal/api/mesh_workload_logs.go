@@ -19,6 +19,7 @@ const (
 	logSourceApp      = "app"
 	logSourceZtunnel  = "ztunnel"
 	logSourceWaypoint = "waypoint"
+	logSourceOther    = "other"
 )
 
 // ztunnelServiceNames is how the sensor files the node proxy's lines: the
@@ -65,7 +66,7 @@ type meshWorkloadLogsResponse struct {
 // hub knows the pods behind a workload and the waypoint it is bound to.
 func (a *API) handleMeshWorkloadLogs(w http.ResponseWriter, r *http.Request) error {
 	namespace, name := r.PathValue("namespace"), r.PathValue("name")
-	wanted, err := parseLogSources(r.URL.Query().Get("source"))
+	wanted, err := parseLogSources(r.URL.Query()["source"]...)
 	if err != nil {
 		return err
 	}
@@ -91,9 +92,11 @@ func (a *API) handleMeshWorkloadLogs(w http.ResponseWriter, r *http.Request) err
 	}
 
 	desc := a.workloadLogSources(r, namespace, name, r.URL.Query().Get("waypoint"))
+	sources := desc.sources(wanted)
 	page, err := store.SearchLogs(r.Context(), storage.LogQuery{
 		Tenant: tenant, Tenants: tenants, Range: tr,
-		Sources:     desc.sources(wanted),
+		Sources:     sources,
+		MatchNone:   len(sources) == 0,
 		MinSeverity: r.URL.Query().Get("severity"),
 		Query:       r.URL.Query().Get("q"),
 		Limit:       limit,
@@ -114,8 +117,9 @@ func (a *API) handleMeshWorkloadLogs(w http.ResponseWriter, r *http.Request) err
 }
 
 // parseLogSources reads the source= list; empty means all three.
-func parseLogSources(raw string) (map[string]bool, error) {
-	all := map[string]bool{logSourceApp: true, logSourceZtunnel: true, logSourceWaypoint: true}
+func parseLogSources(rawValues ...string) (map[string]bool, error) {
+	all := map[string]bool{logSourceApp: true, logSourceZtunnel: true, logSourceWaypoint: true, logSourceOther: true}
+	raw := strings.Join(rawValues, ",")
 	if strings.TrimSpace(raw) == "" {
 		return all, nil
 	}
@@ -123,7 +127,7 @@ func parseLogSources(raw string) (map[string]bool, error) {
 	for _, s := range strings.Split(raw, ",") {
 		s = strings.TrimSpace(s)
 		if !all[s] {
-			return nil, badRequest("source must be a comma list of %s, %s and %s", logSourceApp, logSourceZtunnel, logSourceWaypoint)
+			return nil, badRequest("source must be a comma list of %s, %s, %s and %s", logSourceApp, logSourceZtunnel, logSourceWaypoint, logSourceOther)
 		}
 		out[s] = true
 	}
@@ -141,13 +145,13 @@ type workloadLogSources struct {
 func (s workloadLogSources) sources(wanted map[string]bool) []storage.LogSource {
 	var out []storage.LogSource
 	if wanted[logSourceApp] && len(s.App) > 0 {
-		out = append(out, storage.LogSource{Services: s.App})
+		out = append(out, storage.LogSource{Category: "application", Services: s.App})
 	}
 	if wanted[logSourceZtunnel] && len(s.Ztunnel) > 0 {
-		out = append(out, storage.LogSource{Services: s.Ztunnel, BodyAll: s.bodyAll})
+		out = append(out, storage.LogSource{Category: logSourceZtunnel, Services: s.Ztunnel, BodyAll: s.bodyAll})
 	}
 	if wanted[logSourceWaypoint] && len(s.Waypoint) > 0 {
-		out = append(out, storage.LogSource{Services: s.Waypoint, BodyAll: s.bodyAll})
+		out = append(out, storage.LogSource{Category: logSourceWaypoint, Services: s.Waypoint, BodyAll: s.bodyAll})
 	}
 	return out
 }
@@ -173,10 +177,7 @@ func (a *API) workloadLogSources(r *http.Request, namespace, name, wantWaypoint 
 	host := name + "." + namespace + ".svc"
 	fallback := func(why string) workloadLogSources {
 		desc.Fallback = why
-		desc.bodyAll = [][]string{
-			{host, `workload="` + name + `-`},
-			{`namespace="` + namespace + `"`, host},
-		}
+		desc.bodyAll = fallbackLogBodyAll(namespace, name)
 		desc.Needles = append(desc.Needles, host)
 		if ns, wp, ok := strings.Cut(wantWaypoint, "/"); ok && ns != "" && wp != "" {
 			desc.Waypoint = []string{wp, wp + "." + ns}
@@ -223,6 +224,14 @@ func (a *API) workloadLogSources(r *http.Request, namespace, name, wantWaypoint 
 		desc.Waypoint = []string{wl.Waypoint, wl.Waypoint + "." + wl.WaypointNamespace}
 	}
 	return desc
+}
+
+func fallbackLogBodyAll(namespace, name string) [][]string {
+	host := name + "." + namespace + ".svc"
+	return [][]string{
+		{host, `workload="` + name + `-`},
+		{`namespace="` + namespace + `"`, host},
+	}
 }
 
 // appNames is the workload's own two spellings plus any extra name the app's

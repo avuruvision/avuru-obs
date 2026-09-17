@@ -708,11 +708,15 @@ type Heatmap struct {
 }
 
 // LogCursor is a keyset-pagination cursor for logs: full-precision timestamp
-// plus a (TraceId,SpanId) tiebreaker to avoid skips/duplicates.
+// plus a (Service,TraceId,SpanId) tiebreaker to avoid skips/duplicates.
 type LogCursor struct {
 	Timestamp time.Time
+	Service   string
 	TraceID   string
 	SpanID    string
+	// Legacy keeps a cursor received in the former three-part ordering on that
+	// ordering until the pagination chain is exhausted.
+	Legacy bool
 }
 
 // LogSource is one branch of a composed log read: records from any of
@@ -721,6 +725,7 @@ type LogCursor struct {
 // needles are matched exactly — pod and Service names are lowercase by the
 // API server's own rule, and the exact match is the cheap one.
 type LogSource struct {
+	Category string
 	Services []string
 	BodyAll  [][]string
 }
@@ -734,9 +739,17 @@ type LogQuery struct {
 	// Sources, when set, replace Service: the page is the union of the
 	// sources, still one stream in one order under one cursor — which is why
 	// they are one query and not several.
-	Sources     []LogSource
-	MinSeverity string // "", or a severity name (e.g. "ERROR") — matches >= its number
-	Query       string // full-text substring on Body (case-insensitive)
+	Sources []LogSource
+	// MatchNone distinguishes an unavailable requested source from an absent
+	// source filter. It prevents a proxy-only request from silently widening to
+	// every log when no proxy can be resolved.
+	MatchNone bool
+	// SourceCategories filters an unscoped search by the user-facing source
+	// families. Subject-scoped searches express the same choice through
+	// Sources, whose body needles tie proxy lines to the selected workloads.
+	SourceCategories []string
+	MinSeverity      string // "", or a severity name (e.g. "ERROR") — matches >= its number
+	Query            string // full-text substring on Body (case-insensitive)
 	// Tags are equality filters. Keys under the business-tag prefix
 	// (avuru.tag.*) match the emitting workload's resource attributes; any
 	// other key matches the record's own log attributes.
@@ -750,6 +763,7 @@ type LogRecord struct {
 	Timestamp  time.Time
 	Severity   string
 	Service    string
+	Source     string
 	Body       string
 	TraceID    string
 	SpanID     string

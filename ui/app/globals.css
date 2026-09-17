@@ -55,7 +55,7 @@
 }
 
 /* ========================================
-   Explorer — Dark: forest surfaces and lime accents
+   Explorer — Dark: slate surfaces and soft blue accents
    ======================================== */
 @plugin "daisyui/theme" {
   name: "dark";
@@ -63,35 +63,34 @@
   prefersdark: true;
   color-scheme: "dark";
 
-  /* Base — midnight navy, pearl text */
-  --color-base-100: #10271f;
-  --color-base-200: #163328;
-  --color-base-300: #1e3e30;
-  --color-base-content: #e3eedb;
+  /* Long-session surfaces: neutral slate, with 4.5:1+ text contrast. */
+  --color-base-100: #111827;
+  --color-base-200: #1e293b;
+  --color-base-300: #273449;
+  --color-base-content: #e2e8f0;
 
-  /* Lime actions on forest surfaces. */
-  --color-primary: #c0ed93;
-  --color-primary-content: #10271f;
+  --color-primary: #93c5fd;
+  --color-primary-content: #111827;
 
-  --color-secondary: #355a40;
-  --color-secondary-content: #e3eedb;
+  --color-secondary: #475569;
+  --color-secondary-content: #e2e8f0;
 
-  --color-accent: #c0ed93;
-  --color-accent-content: #10271f;
+  --color-accent: #93c5fd;
+  --color-accent-content: #111827;
 
   /* Neutral — visible-but-discreet card borders */
-  --color-neutral: #385244;
-  --color-neutral-content: #e3eedb;
+  --color-neutral: #475569;
+  --color-neutral-content: #e2e8f0;
 
   /* Semantics — saturated for navy backdrop (NOT valife's desaturated set) */
   --color-info: #60a5fa;
-  --color-info-content: #10271f;
+  --color-info-content: #111827;
   --color-success: #34d399;
-  --color-success-content: #10271f;
+  --color-success-content: #111827;
   --color-warning: #fbbf24;
-  --color-warning-content: #10271f;
+  --color-warning-content: #111827;
   --color-error: #ff8f8f;
-  --color-error-content: #10271f;
+  --color-error-content: #111827;
 
   --radius-selector: 0.5rem;
   --radius-field: 0.5rem;
@@ -152,7 +151,7 @@
   --series-3: #199e70;
   --series-4: #c98500;
   --series-5: #d55181;
-  --series-6: #008300;
+  --series-6: #38bdf8;
   --series-7: #9085e9;
   --series-8: #e66767;
   --series-other: #64748b; /* slate-500 */
@@ -201,6 +200,7 @@ body {
 h1 { letter-spacing: -0.035em; }
 :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
 .explorer-canvas { --color-primary: #c0ed93; --color-base-100: #14372b; --color-base-200: #14372b; --color-base-content: #e3eedb; --color-neutral: #648363; --color-success: #78ca8b; --color-warning: #efbc83; --color-error: #ff8f8f; background: var(--color-base-100); color: var(--color-base-content); background-image: radial-gradient(var(--color-neutral) 0.5px, transparent 0.5px); background-size: 22px 22px; }
+[data-theme="dark"] .explorer-canvas { --color-primary: #93c5fd; --color-base-100: #111827; --color-base-200: #1e293b; --color-base-content: #e2e8f0; --color-neutral: #475569; --color-success: #34d399; --color-warning: #fbbf24; --color-error: #ff8f8f; }
 .explorer-map-grid { display: grid; grid-template-columns: minmax(0, 1fr) 19rem; }
 .explorer-map-grid > * { min-width: 0; }
 @media (max-width: 1100px) { .explorer-map-grid { grid-template-columns: minmax(0, 1fr); } }
@@ -209,6 +209,7 @@ h1 { letter-spacing: -0.035em; }
 
 /* X-Ray keeps a dark semantic scene surface in either application theme. */
 .xray-surface { --color-primary: #c0ed93; --color-primary-content: #10271f; --color-base-100: #0c1510; --color-base-200: #16221a; --color-base-300: #24392a; --color-base-content: #e3eedb; --color-neutral: #36503e; --color-error: #ff8f8f; --color-warning: #efbc83; --xray-node: #6bc8c1; --xray-hardware: #a69acb; background: var(--color-base-100); color: var(--color-base-content); }
+[data-theme="dark"] .xray-surface { --color-primary: #93c5fd; --color-primary-content: #111827; --color-base-100: #111827; --color-base-200: #1e293b; --color-base-300: #273449; --color-base-content: #e2e8f0; --color-neutral: #475569; --color-error: #ff8f8f; --color-warning: #fbbf24; --xray-node: #7dd3fc; --xray-hardware: #c4b5fd; }
 .xray-viewport { position: relative; height: 580px; min-width: 0; overflow: hidden; }
 .xray-viewport canvas { width: 100%; height: 100%; touch-action: none; }
 .xray-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }

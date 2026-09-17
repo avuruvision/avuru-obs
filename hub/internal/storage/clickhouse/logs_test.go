@@ -48,3 +48,34 @@ func TestLogSourceFilterFallsBackToTheServiceFilter(t *testing.T) {
 		t.Errorf("no filter rendered %q %v", sql, args)
 	}
 }
+
+func TestLogSourceFilterCanExplicitlyMatchNothing(t *testing.T) {
+	sql, args := logSourceFilter(storage.LogQuery{MatchNone: true})
+	if sql != " AND 0" || len(args) != 0 {
+		t.Errorf("match-none filter = %q %v", sql, args)
+	}
+}
+
+func TestLogSourceFilterSeveralServicesAndCategory(t *testing.T) {
+	q := storage.LogQuery{
+		Sources: []storage.LogSource{
+			{Category: "application", Services: []string{"checkout", "inventory"}},
+			{Category: "ztunnel", Services: []string{"ztunnel"}, BodyAll: [][]string{{"checkout-abc", "inventory-def"}}},
+		},
+		SourceCategories: []string{"application", "ztunnel"},
+	}
+	sql, args := logSourceFilter(q)
+	if strings.Count(sql, "ServiceName IN (?)") != 2 || !strings.Contains(sql, " OR ") {
+		t.Errorf("sql = %s", sql)
+	}
+	if len(args) != 3 {
+		t.Errorf("args = %#v", args)
+	}
+}
+
+func TestLogCategoryFilterWithoutSubjects(t *testing.T) {
+	sql, _ := logSourceFilter(storage.LogQuery{SourceCategories: []string{"ztunnel", "other"}})
+	if !strings.Contains(sql, "startsWith(ServiceName, 'ztunnel-')") || !strings.Contains(sql, "ServiceName = ''") {
+		t.Errorf("sql = %s", sql)
+	}
+}

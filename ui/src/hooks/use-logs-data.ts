@@ -4,32 +4,66 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api";
 import { useProject } from "@/lib/project-context";
 import { queryKeys, type TimeParams } from "@/lib/query-keys";
-import type { LogsResponse, MeshWorkloadLogsResponse } from "@/lib/api-types";
+import type { LogServicesResponse, LogsResponse, MeshWorkloadLogsResponse } from "@/lib/api-types";
 
 export interface LogFilters {
-  service?: string;
+  services?: string[];
+  workloads?: string[];
+  source?: string;
   severity?: string;
   q?: string;
   tags?: string; // "key=value,key2=value2" — the same string the traces screen uses
 }
 
-export function useLogSearch(time: TimeParams, filters: LogFilters) {
+const panelWaiters: Array<() => void> = [];
+let activePanelRequests = 0;
+
+async function withPanelRequestSlot<T>(run: () => Promise<T>): Promise<T> {
+  if (activePanelRequests >= 4) await new Promise<void>((resolve) => panelWaiters.push(resolve));
+  activePanelRequests += 1;
+  try {
+    return await run();
+  } finally {
+    activePanelRequests -= 1;
+    panelWaiters.shift()?.();
+  }
+}
+
+export function useLogSearch(time: TimeParams, filters: LogFilters, enabled = true, panel = false) {
   const { project } = useProject();
   return useInfiniteQuery({
     queryKey: queryKeys.logs(project, time, { ...filters }),
-    queryFn: ({ pageParam }) =>
-      apiGet<LogsResponse>(
+    enabled,
+    queryFn: ({ pageParam }) => {
+      const request = () => apiGet<LogsResponse>(
         "/api/v1/logs",
         {
           ...time,
           ...filters,
+          service: filters.services,
+          workload: filters.workloads,
+          resolution: pageParam.resolutionToken || undefined,
+          services: undefined,
+          workloads: undefined,
           limit: 100,
-          cursor: pageParam || undefined,
+          cursor: pageParam.cursor || undefined,
         },
         { project },
-      ),
-    initialPageParam: "",
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
+      );
+      return panel ? withPanelRequestSlot(request) : request();
+    },
+    initialPageParam: { cursor: "", resolutionToken: "" },
+    getNextPageParam: (last) => last.nextCursor
+      ? { cursor: last.nextCursor, resolutionToken: last.resolutionToken ?? "" }
+      : undefined,
+  });
+}
+
+export function useLogServices(time: TimeParams) {
+  const { project } = useProject();
+  return useQuery({
+    queryKey: queryKeys.logServices(project, time),
+    queryFn: () => apiGet<LogServicesResponse>("/api/v1/logs/services", { ...time }, { project }),
   });
 }
 

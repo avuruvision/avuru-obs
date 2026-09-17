@@ -20,6 +20,7 @@ import { WorkloadDetail } from "./workload-detail";
 import { useMeshNamespaces, useMeshSecurity } from "@/hooks/use-mesh-data";
 import { useCapabilities } from "@/hooks/use-capabilities";
 import { useServiceMapData } from "@/hooks/use-service-map-data";
+import { LogsScreen } from "@/components/logs/logs-screen";
 
 // The mesh's own screen.
 //
@@ -28,7 +29,7 @@ import { useServiceMapData } from "@/hooks/use-service-map-data";
 // right call for the map and the wrong final word: on a cluster where the mesh
 // IS the network, a proxy dropping requests or a control plane that has stopped
 // pushing config is the outage.
-type MeshView = "proxies" | "graph" | "security" | "namespaces" | "config" | "workloads";
+type MeshView = "proxies" | "graph" | "security" | "logs" | "namespaces" | "config" | "workloads";
 // Security is a base view: the observed half comes from the proxies' own
 // scrape, which the mesh module runs. Without the config module the tab still
 // says what was seen — and says, in so many words, that nothing was declared.
@@ -53,14 +54,19 @@ export function MeshScreen() {
   const workload = get("wl") ?? "";
   const { data: caps } = useCapabilities();
   const configOn = caps?.modules.includes("mesh-config") ?? false;
+  const logsOn = caps?.modules.includes("logs") ?? false;
   const requested = get("view");
   const view: MeshView =
-    requested === "graph" || requested === "security"
+    requested === "graph" || requested === "security" || (requested === "logs" && logsOn)
       ? requested
       : configOn && CONFIG_VIEWS.some((v) => v.value === requested)
         ? (requested as MeshView)
         : "proxies";
-  const views = configOn ? [...BASE_VIEWS, ...CONFIG_VIEWS] : BASE_VIEWS;
+  const views = [
+    ...BASE_VIEWS,
+    ...(logsOn ? [{ value: "logs" as const, label: "Logs" }] : []),
+    ...(configOn ? CONFIG_VIEWS : []),
+  ];
 
   const proxies = useMeshProxies(time);
   const controlPlane = useMeshControlPlane(time);
@@ -74,7 +80,7 @@ export function MeshScreen() {
 
   const list = useMemo(() => proxies.data?.proxies ?? [], [proxies.data]);
 
-  if (proxies.isLoading) return <CenteredSpinner />;
+  if (view !== "logs" && proxies.isLoading) return <CenteredSpinner />;
 
   if (selected) {
     const proxy = list.find((p) => p.name === selected);
@@ -108,7 +114,7 @@ export function MeshScreen() {
 
   return (
     <div className="flex flex-col gap-4">
-      <ControlPlaneCard data={controlPlane.data} loading={controlPlane.isLoading} />
+      {view !== "logs" && <ControlPlaneCard data={controlPlane.data} loading={controlPlane.isLoading} />}
       <Tabs items={views} value={view} onChange={(v) => setMany({ view: v === "proxies" ? undefined : v })} />
       {view === "graph" ? (
         <MeshGraph
@@ -119,6 +125,8 @@ export function MeshScreen() {
         />
       ) : view === "security" ? (
         <SecurityTab data={security.data} loading={security.isLoading} />
+      ) : view === "logs" ? (
+        <LogsScreen context="mesh" />
       ) : view === "config" ? (
         <ConfigBrowser />
       ) : view === "workloads" ? (

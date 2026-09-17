@@ -23,6 +23,7 @@ type Fake struct {
 	// the service it was asked about and WorkloadCalls how often, so a test
 	// can assert the resolver is skipped when the caller already knows.
 	Workload            storage.ServiceWorkload
+	Workloads           map[string]storage.ServiceWorkload
 	LastWorkloadService string
 	WorkloadCalls       int
 	Edges               []storage.ServiceEdge
@@ -296,6 +297,9 @@ func (f *Fake) ServiceWorkload(_ context.Context, q storage.ServiceQuery, servic
 	f.LastServiceQuery = q
 	f.LastWorkloadService = service
 	f.WorkloadCalls++
+	if w, ok := f.Workloads[service]; ok {
+		return w, nil
+	}
 	return f.Workload, nil
 }
 

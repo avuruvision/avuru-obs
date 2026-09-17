@@ -149,6 +149,11 @@ type Config struct {
 	// not registered and gateway enforcement is simply unused (the drop-in
 	// default). Chart-generated, injected as AVURUOBS_INGEST_INTERNAL_TOKEN.
 	IngestInternalToken string
+	// LogResolutionSecret signs stateless log-pagination resolution tokens.
+	// Every hub replica must receive the same value. cmd/hub derives a
+	// dedicated key from AVURUOBS_LOG_RESOLUTION_SECRET, falling back to the
+	// already shared ClickHouse credential so existing installs need no knob.
+	LogResolutionSecret string
 	// CollectionRuntimeControlEnabled gates GET/PUT/DELETE
 	// /api/v1/collection/overlay and is echoed in GET /api/v1/capabilities
 	// (design/2026-07-27-collection-control-plane.md). Chart-generated,
@@ -216,7 +221,8 @@ type API struct {
 	// election, which is v2).
 	collectionMu sync.Mutex
 	// lastUsed debounces API-token LastUsedAt writes; see auth.TouchWindow.
-	lastUsed auth.LastUsed
+	lastUsed         auth.LastUsed
+	logResolutionKey []byte
 }
 
 // store resolves the current backend or fails with 503.
@@ -234,6 +240,7 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 		active = modules.AllSet()
 	}
 	a := &API{provider: provider, cfg: cfg, modules: active}
+	a.logResolutionKey = deriveLogResolutionKey(cfg.LogResolutionSecret)
 	a.rates = cfg.Rates
 	// 10 registrations per address per hour. Generous for a real client,
 	// which registers once, and enough of a bound that abuse costs rows
@@ -373,6 +380,7 @@ func Register(serveMux *http.ServeMux, provider StoreProvider, cfg Config) {
 
 	if active.Enabled(modules.Logs) {
 		mux.Handle("GET /api/v1/logs", a.secured(auth.RoleViewer, a.handleSearchLogs))
+		mux.Handle("GET /api/v1/logs/services", a.secured(auth.RoleViewer, a.handleLogServices))
 		// One service's logs, composed the way the workload page composes a
 		// workload's. Only the logs module: it answers on an install with no
 		// mesh at all, with the app's own lines and a reason the proxies'

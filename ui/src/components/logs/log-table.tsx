@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
 import { CenteredSpinner, Spinner } from "@/components/ui/spinner";
 import { SeverityBadge } from "./severity-badge";
+import { Badge } from "@/components/ui/badge";
 import { formatTime, utcTooltip } from "@/lib/format";
 import type { LogRecord } from "@/lib/api-types";
 
@@ -138,6 +139,7 @@ export function LogTable({
               <th>Time</th>
               <th>Severity</th>
               <th>Service</th>
+              <th>Source</th>
               <th>Message</th>
               <th className="text-right">Trace</th>
             </tr>
@@ -167,6 +169,11 @@ export function LogTable({
                     <SeverityBadge severity={l.severity} />
                   </td>
                   <td className="whitespace-nowrap font-medium text-primary">{l.service}</td>
+                  <td>
+                    <Badge tone={l.source === "ztunnel" || l.source === "waypoint" ? "info" : "neutral"}>
+                      {l.source === "application" || !l.source ? "Application" : l.source === "other" ? "Other" : l.source}
+                    </Badge>
+                  </td>
                   <td className="font-mono text-xs">
                     <span className="flex items-start gap-1">
                       <span className="min-w-0 break-all">{l.body}</span>
