@@ -21,6 +21,31 @@ When a release is cut, that block is renamed to the version with its date.
   token (`#a8b5c7` dark, `#4f6457` light) rather than an opacity, so labels,
   hints and table captions clear 4.5:1 on every surface in both themes.
 
+### Added
+
+- **One log explorer for Signals → Logs and Service Mesh → Logs.** Pick several
+  services and workloads (namespaces shown, exact names accepted) and choose
+  which sources to read: the applications' own lines, ztunnel's, the
+  waypoints', and everything else under Other — all on by default. Two
+  displays: a merged stream, newest first, with the emitting service and the
+  source on every row; or one panel per service, sharing the filters and the
+  window but paging on its own, at most four loading at once. Selection,
+  sources and display live in the URL. Service and workload pages link into
+  the explorer prefiltered. The mesh tab needs only the logs module.
+- **`GET /api/v1/logs` composes subjects.** Repeat `service` and
+  `workload=namespace/name`; add `source` (`app`, `ztunnel`, `waypoint`,
+  `other`). Subjects combine with OR, then `q`, `severity` and `tags` apply
+  with AND, in one paginated store query. Rows carry `source` next to
+  `service`; `resolutions` say what each subject resolved to, how proxy lines
+  were matched, and why a proxy source is unavailable — never a silently
+  widened search. Later pages echo a signed `resolutionToken`
+  (`AVURUOBS_LOG_RESOLUTION_SECRET`, defaulting to the ClickHouse password) so a
+  cluster refresh cannot change the source set under a cursor. The cursor
+  now breaks ties between services sharing a timestamp; old cursors still
+  read. A single `service` without `source` behaves exactly as before.
+- **`GET /api/v1/logs/services`** suggests log-backed services and the
+  workloads they resolve to, scoped to the project and the window.
+
 ## [0.18.0] — 2026-09-16
 
 ### Added

@@ -419,6 +419,10 @@ test.describe("mesh workloads", () => {
     await expect(logs).toContainText("report generation failed");
     await expect(logs).toContainText("reports-7c9d-x1");
     await expect(page.getByTestId("mesh-workload-log-sources")).toContainText("1 pod matched");
+    // The mesh's own explorer opens on this workload.
+    await expect(
+      page.getByRole("link", { name: "open in the mesh log explorer" }),
+    ).toHaveAttribute("href", "/mesh?view=logs&workloads=shop%2Freports");
 
     // By default only the workload's own lines are asked for: the box carries
     // the workload's name, the proxies' boxes start unchecked, and the default

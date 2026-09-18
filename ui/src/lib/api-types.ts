@@ -832,6 +832,9 @@ export interface LogResolution {
   namespace?: string;
   workload?: string;
   proxiesUnavailable?: string;
+  // How proxy lines were tied to the subject when pods could not be matched
+  // precisely; empty when they were.
+  proxiesMatchedBy?: string;
   proxiesFallback?: string;
 }
 
