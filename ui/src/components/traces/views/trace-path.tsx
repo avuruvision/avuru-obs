@@ -309,7 +309,7 @@ function ServiceCard({
         />
         <span className="truncate font-mono text-xs font-medium">{node.service}</span>
         {node.isEntry && (
-          <span className="shrink-0 rounded bg-base-300 px-1 text-[9px] uppercase text-base-content/50">
+          <span className="shrink-0 rounded bg-base-300 px-1 text-[9px] uppercase text-muted">
             entry
           </span>
         )}
@@ -338,7 +338,7 @@ function ServiceCard({
 
       <button
         onClick={onFocus}
-        className="absolute -bottom-2 right-2 rounded border border-neutral bg-base-100 px-1 text-[9px] text-base-content/50 hover:text-primary"
+        className="absolute -bottom-2 right-2 rounded border border-neutral bg-base-100 px-1 text-[9px] text-muted hover:text-primary"
         aria-label={focused ? `Clear focus on ${node.service}` : `Focus on ${node.service}`}
       >
         {focused ? "clear" : "focus"}

@@ -100,7 +100,7 @@ export function NodesScreen() {
           {xray ? "· logical placement from observed telemetry." : "· click a node to scope the pods below."}
         </p>
         <div className="flex items-center gap-1.5 rounded-lg border border-neutral bg-base-200 px-2">
-          <Search className="h-3.5 w-3.5 text-base-content/50" aria-hidden />
+          <Search className="h-3.5 w-3.5 text-muted" aria-hidden />
           <input
             type="search"
             value={nodeQuery}
@@ -129,7 +129,7 @@ export function NodesScreen() {
         <h2 className="text-sm font-semibold text-base-content/80">
           Pods{node ? ` on ${node}` : ""}
           {visiblePods.length !== podList.length && (
-            <span className="ml-1 font-normal text-base-content/50">
+            <span className="ml-1 font-normal text-muted">
               — {visiblePods.length} of {podList.length}
             </span>
           )}
@@ -149,7 +149,7 @@ export function NodesScreen() {
             />
           )}
           <div className="flex items-center gap-1.5 rounded-lg border border-neutral bg-base-200 px-2">
-            <Search className="h-3.5 w-3.5 text-base-content/50" aria-hidden />
+            <Search className="h-3.5 w-3.5 text-muted" aria-hidden />
             <input
               type="search"
               value={podQuery}

@@ -105,7 +105,7 @@ export function OIDCMappingForm({
         </label>
       </div>
       <label className="flex flex-col gap-1 text-xs text-base-content/60">
-        Projects <span className="text-base-content/40">(one per line — * means every project)</span>
+        Projects <span className="text-muted">(one per line — * means every project)</span>
         <textarea
           className={areaClass}
           value={projects}

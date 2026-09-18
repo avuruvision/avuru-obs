@@ -63,7 +63,7 @@ export function NamespacesTable({ data }: { data: MeshNamespacesResponse }) {
         </div>
       </Card>
       {data.syncedAt && (
-        <p className="text-xs text-base-content/40">
+        <p className="text-xs text-muted">
           Cluster read {formatAgo(data.syncedAt)}
         </p>
       )}

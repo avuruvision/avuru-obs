@@ -57,7 +57,7 @@ export function ServiceEnergyTable({ services }: { services: GreenServiceEnergy[
                   key={s.service}
                   className={cn(
                     "border-b border-neutral/40 last:border-0",
-                    synthetic && "text-base-content/50 italic",
+                    synthetic && "text-muted italic",
                   )}
                 >
                   <td className={cn("font-medium", synthetic ? "" : "text-primary")}>

@@ -10,7 +10,7 @@ const COUNT_ORDER: { key: string; symbol: string; cls: string }[] = [
   { key: "healthy", symbol: "✓", cls: "text-success" },
   { key: "degraded", symbol: "▲", cls: "text-warning" },
   { key: "down", symbol: "✕", cls: "text-error" },
-  { key: "idle", symbol: "◔", cls: "text-base-content/50" },
+  { key: "idle", symbol: "◔", cls: "text-muted" },
 ];
 
 // One group's card: status header, rollup reason, a per-status tally, and the
@@ -38,14 +38,14 @@ export function GroupCard({
                 </span>
               )}
               {group.source === "auto" && (
-                <span className="rounded bg-base-300 px-1 text-[10px] text-base-content/50">auto</span>
+                <span className="rounded bg-base-300 px-1 text-[10px] text-muted">auto</span>
               )}
               {/* Where the tier came from. Worth saying out loud only when the
                   service chose it: an operator reading a T0 lane should know
                   whether ops put it there or the app claimed it. */}
               {group.tierSource === "declared" && (
                 <span
-                  className="rounded bg-base-300 px-1 text-[10px] text-base-content/50"
+                  className="rounded bg-base-300 px-1 text-[10px] text-muted"
                   title="Tier declared by the service itself (avuru.tier). Override it in Settings → Groups."
                 >
                   declared

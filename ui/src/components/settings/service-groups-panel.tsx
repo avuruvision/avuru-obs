@@ -113,7 +113,7 @@ export function ServiceGroupsPanel() {
                 {describeSelector(g.namespaces, g.services)}
               </span>
               {!g.editable && (
-                <span className="text-xs text-base-content/40">
+                <span className="text-xs text-muted">
                   declared in the chart&apos;s <span className="font-mono">serviceGroups</span> values
                 </span>
               )}

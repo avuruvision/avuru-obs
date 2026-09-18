@@ -56,7 +56,7 @@ export function ServiceDependencies({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-primary">Neighbourhood</h2>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-base-content/50">
+          <span className="text-xs text-muted">
             {upstream.length} in · {downstream.length} out
           </span>
           {/* The choice is URL state like everything else on this screen, and

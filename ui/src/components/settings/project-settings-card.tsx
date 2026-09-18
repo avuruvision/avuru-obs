@@ -63,7 +63,7 @@ export function ProjectSettingsCard() {
         <div className="flex flex-col gap-3 border-t border-neutral p-4">
           <div className="text-sm">
             Project id: <span className="font-mono font-semibold">{current.id}</span>{" "}
-            <span className="text-base-content/50">(immutable)</span>
+            <span className="text-muted">(immutable)</span>
           </div>
           {editable ? (
             <ProjectLabelForm key={current.id} project={current} />
@@ -184,7 +184,7 @@ function ProjectMembersCard({ project, all }: { project: Project; all: Project[]
       </CardHeader>
       <div className="flex flex-col gap-3 border-t border-neutral p-4">
         <p className="flex items-start gap-2 text-xs text-base-content/70">
-          <Layers className="mt-0.5 h-3.5 w-3.5 shrink-0 text-base-content/50" aria-hidden />
+          <Layers className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
           With members selected, this project shows the union of their telemetry —
           one screen across clusters. It stores nothing of its own: error triage
           and ingest keys stay on the member projects, and each viewer sees only
@@ -192,7 +192,7 @@ function ProjectMembersCard({ project, all }: { project: Project; all: Project[]
           into an ordinary project.
         </p>
         {candidates.length === 0 && unlisted.length === 0 ? (
-          <p className="text-xs text-base-content/50">
+          <p className="text-xs text-muted">
             No other projects yet. Create one, or add an id below before its
             cluster reports.
           </p>
@@ -202,7 +202,7 @@ function ProjectMembersCard({ project, all }: { project: Project; all: Project[]
               <li key={p.id} className="flex items-center justify-between gap-3 text-sm">
                 <span className="truncate">
                   {p.label || p.id}{" "}
-                  {p.label && <span className="font-mono text-xs text-base-content/50">{p.id}</span>}
+                  {p.label && <span className="font-mono text-xs text-muted">{p.id}</span>}
                 </span>
                 <input
                   type="checkbox"
@@ -216,7 +216,7 @@ function ProjectMembersCard({ project, all }: { project: Project; all: Project[]
             {unlisted.map((id) => (
               <li key={id} className="flex items-center justify-between gap-3 text-sm">
                 <span className="truncate font-mono text-xs">
-                  {id} <span className="text-base-content/50">(no data yet)</span>
+                  {id} <span className="text-muted">(no data yet)</span>
                 </span>
                 <input
                   type="checkbox"
@@ -248,7 +248,7 @@ function ProjectMembersCard({ project, all }: { project: Project; all: Project[]
               Add
             </Button>
           </div>
-          <span className="text-xs text-base-content/50">
+          <span className="text-xs text-muted">
             For a cluster that has not reported yet — it appears here once it does.
           </span>
         </label>
@@ -294,7 +294,7 @@ export function ProjectRetentionSection({ maxDays }: { maxDays: number }) {
   if (isAggregate(current)) {
     return (
       <p className="flex items-start gap-2 border-t border-neutral p-4 text-xs text-base-content/70">
-        <Layers className="mt-0.5 h-3.5 w-3.5 shrink-0 text-base-content/50" aria-hidden />
+        <Layers className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
         An aggregate stores no telemetry of its own — its members do. Set
         retention on each member project instead.
       </p>
@@ -328,7 +328,7 @@ function ProjectRetentionForm({ project, maxDays }: { project: Project; maxDays:
   return (
     <div className="flex flex-col gap-3 border-t border-neutral p-4">
       <p className="flex items-start gap-2 text-xs text-base-content/70">
-        <Timer className="mt-0.5 h-3.5 w-3.5 shrink-0 text-base-content/50" aria-hidden />
+        <Timer className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
         Keep this project&apos;s telemetry for fewer days than the install does —
         a noisy staging project need not hold as much as production. Trimming
         runs hourly in the background and cannot extend beyond the install-wide
@@ -353,7 +353,7 @@ function ProjectRetentionForm({ project, maxDays }: { project: Project; maxDays:
             Save retention
           </Button>
         </div>
-        <span className="text-xs text-base-content/50">
+        <span className="text-xs text-muted">
           0 inherits the install-wide retention shown above.
         </span>
       </label>
@@ -408,7 +408,7 @@ function NewProjectCard() {
               onChange={(e) => setId(e.target.value)}
               placeholder="team-a"
             />
-            <span className="text-xs text-base-content/50">
+            <span className="text-xs text-muted">
               Lowercase letters, digits, and hyphens; starts with a letter. Immutable.
             </span>
           </label>

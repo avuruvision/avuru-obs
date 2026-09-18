@@ -70,7 +70,7 @@ export function PermissionMatrix({ areas }: { areas: PermissionArea[] }) {
           </span>
           <div className="relative">
             <Search
-              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-base-content/40"
+              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted"
               aria-hidden
             />
             <input
@@ -133,7 +133,7 @@ function GroupSection({ group, areas }: { group: string; areas: PermissionArea[]
       <tr className="bg-base-300/40">
         <th
           colSpan={4}
-          className="px-4 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-base-content/50"
+          className="px-4 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted"
           scope="colgroup"
         >
           {group}

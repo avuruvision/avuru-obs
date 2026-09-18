@@ -110,7 +110,7 @@ export function LogTable({
         <button
           type="button"
           onClick={() => downloadLog(text, downloadName)}
-          className="inline-flex shrink-0 items-center gap-1 text-base-content/40 hover:text-base-content"
+          className="inline-flex shrink-0 items-center gap-1 text-muted hover:text-base-content"
         >
           <Download className="h-3.5 w-3.5" aria-hidden />
           <span className="text-xs">Download .log</span>
@@ -122,7 +122,7 @@ export function LogTable({
               setPicked(new Set());
               setAnchor(null);
             }}
-            className="text-xs text-base-content/40 hover:text-base-content"
+            className="text-xs text-muted hover:text-base-content"
           >
             Clear selection
           </button>

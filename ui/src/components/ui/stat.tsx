@@ -18,7 +18,7 @@ export function Stat({
 }) {
   return (
     <div className="bg-base-200 p-3" data-testid={testid}>
-      <p className="text-xs uppercase tracking-wider text-base-content/50">{label}</p>
+      <p className="text-xs uppercase tracking-wider text-muted">{label}</p>
       <p
         data-testid={testid ? `${testid}-value` : undefined}
         className={cn(

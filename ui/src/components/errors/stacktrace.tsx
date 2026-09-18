@@ -3,7 +3,7 @@
 export function Stacktrace({ trace }: { trace: string }) {
   if (!trace) {
     return (
-      <p className="text-sm text-base-content/50">No stack trace was captured for this error.</p>
+      <p className="text-sm text-muted">No stack trace was captured for this error.</p>
     );
   }
   const lines = trace.split("\n");

@@ -59,7 +59,7 @@ function BudgetCard({ budget }: { budget: GreenBudget }) {
         <div className="flex items-baseline justify-between text-xs">
           <span className="font-mono">
             {formatKgCo2e(budget.usedKgCO2e)}
-            <span className="text-base-content/50"> / {formatKgCo2e(budget.monthlyKgCO2e)}</span>
+            <span className="text-muted"> / {formatKgCo2e(budget.monthlyKgCO2e)}</span>
           </span>
           <span className={cn("font-mono", s.line)}>{formatPercent(budget.ratio)}</span>
         </div>

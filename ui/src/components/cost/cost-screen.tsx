@@ -64,7 +64,7 @@ export function CostScreen() {
         <CardHeader>
           <CardTitle>Reserved and idle</CardTitle>
           {!priced && (
-            <span className="text-xs text-base-content/50">
+            <span className="text-xs text-muted">
               no rates configured — set{" "}
               <span className="font-mono">cost.rates</span> to see money
             </span>
@@ -107,7 +107,7 @@ export function CostScreen() {
       <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle>Workloads</CardTitle>
-          <span className="text-xs text-base-content/50">
+          <span className="text-xs text-muted">
             ranked by capacity reserved and not used
           </span>
         </CardHeader>
@@ -137,7 +137,7 @@ export function CostScreen() {
         <Card className="overflow-hidden">
           <CardHeader>
             <CardTitle>Nodes</CardTitle>
-            <span className="text-xs text-base-content/50">
+            <span className="text-xs text-muted">
               allocatable, claimed by requests, actually used
             </span>
           </CardHeader>
@@ -176,7 +176,7 @@ export function CostScreen() {
 function Stat({ label, value, testid }: { label: string; value: string; testid?: string }) {
   return (
     <div className="bg-base-200 p-3" data-testid={testid}>
-      <p className="text-xs uppercase tracking-wider text-base-content/50">{label}</p>
+      <p className="text-xs uppercase tracking-wider text-muted">{label}</p>
       <p className="text-sm font-semibold">{value}</p>
     </div>
   );

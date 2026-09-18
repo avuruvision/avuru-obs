@@ -150,7 +150,7 @@ export function Waterfall({
                       toggle(span.spanId);
                     }
                   }}
-                  className="shrink-0 rounded text-base-content/40 hover:text-base-content"
+                  className="shrink-0 rounded text-muted hover:text-base-content"
                 >
                   {isCollapsed ? (
                     <ChevronRight className="h-3 w-3" />
@@ -171,7 +171,7 @@ export function Waterfall({
                 </span>
               )}
               <span className="shrink-0" title={component.name}>
-                <component.Icon className="h-3 w-3 text-base-content/50" />
+                <component.Icon className="h-3 w-3 text-muted" />
               </span>
               <span
                 className="h-2.5 w-2.5 shrink-0 rounded-sm"
@@ -184,7 +184,7 @@ export function Waterfall({
                 <span className="truncate text-[10px] text-base-content/40">→ {peer}</span>
               )}
               {isCollapsed && descendantCount > 0 && (
-                <span className="shrink-0 rounded bg-base-300 px-1 text-[10px] text-base-content/50">
+                <span className="shrink-0 rounded bg-base-300 px-1 text-[10px] text-muted">
                   +{descendantCount}
                 </span>
               )}

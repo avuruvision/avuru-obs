@@ -77,7 +77,7 @@ export function GreenEmptyState() {
           <pre className="overflow-x-auto rounded-lg bg-base-300 px-3 py-2 text-xs leading-relaxed">
             {HELM_SNIPPET}
           </pre>
-          <p className="mt-2 text-xs text-base-content/50">
+          <p className="mt-2 text-xs text-muted">
             Both are off by default — the signal is hardware-dependent, so green
             never flips on for an existing install on upgrade.
           </p>
@@ -97,7 +97,7 @@ export function GreenEmptyState() {
           <pre className="overflow-x-auto rounded-lg bg-base-300 px-3 py-2 text-xs leading-relaxed">
             {ESTIMATION_HELM_SNIPPET}
           </pre>
-          <p className="mt-2 text-xs text-base-content/50">
+          <p className="mt-2 text-xs text-muted">
             Models power from CPU utilization — every number it produces is
             stamped <span className="italic">estimated</span>, never blended
             with measured data.

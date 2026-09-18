@@ -147,7 +147,7 @@ function DataPlaneBanner({ data }: { data: MeshSecurityResponse }) {
             plaintext at all, which reads as a fully encrypted mesh.
           </p>
           {data.targets && (
-            <p className="mt-2 text-xs text-base-content/50">
+            <p className="mt-2 text-xs text-muted">
               {data.targets.up.toLocaleString()} of {data.targets.total.toLocaleString()} proxy
               targets answering
               {down.length > 0 && (
@@ -189,13 +189,13 @@ function SummaryCard({ data, rows }: { data: MeshSecurityResponse; rows: MeshWor
         )}
         <h2 className="text-sm font-medium">Data plane</h2>
         {data.targets && (
-          <span className="text-xs text-base-content/50">
+          <span className="text-xs text-muted">
             {data.targets.up.toLocaleString()} of {data.targets.total.toLocaleString()} proxy
             targets answering
           </span>
         )}
         {data.lastSeen && (
-          <span className="text-xs text-base-content/50">last seen {formatAgo(data.lastSeen)}</span>
+          <span className="text-xs text-muted">last seen {formatAgo(data.lastSeen)}</span>
         )}
       </div>
       <dl className="mt-3 grid grid-cols-3 gap-4">

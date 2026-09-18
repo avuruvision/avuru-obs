@@ -24,14 +24,14 @@ export function GeneralTab() {
         <Card className="overflow-hidden">
           <CardHeader>
             <CardTitle>Retention</CardTitle>
-            <span className="text-xs text-base-content/50">
+            <span className="text-xs text-muted">
               per-signal TTL, instance-wide
             </span>
           </CardHeader>
           <div className="grid gap-px border-t border-neutral bg-neutral sm:grid-cols-4">
             {status.signals.map((s) => (
               <div key={s.signal} className="bg-base-200 p-3">
-                <p className="text-xs uppercase tracking-wider text-base-content/50">
+                <p className="text-xs uppercase tracking-wider text-muted">
                   {s.signal}
                 </p>
                 <p className="text-sm font-semibold">{s.retentionDays} days</p>

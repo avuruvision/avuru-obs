@@ -18,6 +18,8 @@
   --color-base-200: #f8faf5;
   --color-base-300: #e2eadc;
   --color-base-content: #173c2d;
+  /* Secondary text: labels, hints and descriptions. 5.5:1 on base-100. */
+  --color-base-content-muted: #4f6457;
 
   /* Forest actions on sage surfaces. */
   --color-primary: #1c4b36;
@@ -68,6 +70,8 @@
   --color-base-200: #1e293b;
   --color-base-300: #273449;
   --color-base-content: #e2e8f0;
+  /* Secondary text: 8:1 on the page, 6.7:1 on panels — no opacity tricks. */
+  --color-base-content-muted: #a8b5c7;
 
   --color-primary: #93c5fd;
   --color-primary-content: #111827;
@@ -155,6 +159,12 @@
   --series-7: #9085e9;
   --series-8: #e66767;
   --series-other: #64748b; /* slate-500 */
+}
+
+/* Secondary text utility. daisyUI carries --color-base-content-muted per
+   theme; this hands it to Tailwind as `text-muted` / `bg-muted`. */
+@theme inline {
+  --color-muted: var(--color-base-content-muted);
 }
 
 :root {

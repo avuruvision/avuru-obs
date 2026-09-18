@@ -11,6 +11,16 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Changed
+
+- **Slate dark theme.** The dark theme moves from forest surfaces and lime
+  actions to slate surfaces (`#111827` page, `#1e293b` panels, `#273449`
+  fields) with soft blue actions (`#93c5fd`). The service map canvas and the
+  Cluster X-Ray scene follow the same palette in dark mode; the light theme is
+  unchanged. Green now means one thing only: healthy. Secondary text is a real
+  token (`#a8b5c7` dark, `#4f6457` light) rather than an opacity, so labels,
+  hints and table captions clear 4.5:1 on every surface in both themes.
+
 ## [0.18.0] — 2026-09-16
 
 ### Added

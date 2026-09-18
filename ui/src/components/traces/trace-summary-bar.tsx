@@ -88,7 +88,7 @@ export function TraceSummaryBar({ trace }: { trace: TraceResponse }) {
               <DropdownMenu
                 ariaLabel={`${s} actions`}
                 align="start"
-                triggerClassName="inline-flex items-center border-l border-base-100/60 px-0.5 text-base-content/50 hover:bg-base-300 hover:text-base-content"
+                triggerClassName="inline-flex items-center border-l border-base-100/60 px-0.5 text-muted hover:bg-base-300 hover:text-base-content"
                 trigger={<ChevronDown className="h-3 w-3" aria-hidden />}
                 items={[
                   {

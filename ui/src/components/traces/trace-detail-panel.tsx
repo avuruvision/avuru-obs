@@ -333,14 +333,14 @@ export function TraceDetailPanel({
                   <button
                     aria-label="Expand span detail"
                     onClick={() => setExpanded(true)}
-                    className="text-base-content/50 hover:text-base-content"
+                    className="text-muted hover:text-base-content"
                   >
                     <Maximize2 className="h-4 w-4" />
                   </button>
                   <button
                     aria-label="Close span detail"
                     onClick={() => setMany({ span: undefined })}
-                    className="text-base-content/50 hover:text-base-content"
+                    className="text-muted hover:text-base-content"
                   >
                     <X className="h-4 w-4" />
                   </button>

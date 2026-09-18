@@ -178,7 +178,7 @@ export default function LoginPage() {
               )}
 
               {showLocal && showOIDC && (
-                <div className="flex items-center gap-3 text-[10px] font-medium uppercase tracking-wide text-base-content/40">
+                <div className="flex items-center gap-3 text-[10px] font-medium uppercase tracking-wide text-muted">
                   <span className="h-px flex-1 bg-neutral" />
                   or
                   <span className="h-px flex-1 bg-neutral" />
@@ -199,7 +199,7 @@ export default function LoginPage() {
               {config?.demoEnabled && (
                 <>
                   {(showLocal || showOIDC) && (
-                    <div className="flex items-center gap-3 text-[10px] font-medium uppercase tracking-wide text-base-content/40">
+                    <div className="flex items-center gap-3 text-[10px] font-medium uppercase tracking-wide text-muted">
                       <span className="h-px flex-1 bg-neutral" />
                       or
                       <span className="h-px flex-1 bg-neutral" />

@@ -86,7 +86,7 @@ export function NodesTable({
                   <td className="text-right font-mono text-xs">
                     {formatBytes(n.memoryUsageBytes)}
                     {memTotal > n.memoryUsageBytes && (
-                      <span className="text-base-content/40"> / {formatBytes(memTotal)}</span>
+                      <span className="text-muted"> / {formatBytes(memTotal)}</span>
                     )}
                   </td>
                   <td className="text-right">

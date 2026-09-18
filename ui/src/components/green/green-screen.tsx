@@ -127,7 +127,7 @@ function HubUnreachable({ what }: { what: string }) {
 function StatTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="bg-base-200 p-3">
-      <p className="text-xs uppercase tracking-wider text-base-content/50">{label}</p>
+      <p className="text-xs uppercase tracking-wider text-muted">{label}</p>
       <p className="font-mono text-sm font-semibold">{value}</p>
     </div>
   );
@@ -158,7 +158,7 @@ function FactorsLine({ factors }: { factors: GreenFactors }) {
 function MethodologyDetails({ factors, totals }: { factors: GreenFactors; totals: GreenTotals }) {
   return (
     <details className="relative">
-      <summary className="flex cursor-pointer list-none items-center gap-1 text-xs text-base-content/50 hover:text-base-content">
+      <summary className="flex cursor-pointer list-none items-center gap-1 text-xs text-muted hover:text-base-content">
         <Info className="h-3.5 w-3.5" aria-hidden /> Methodology
       </summary>
       <div className="absolute right-0 z-20 mt-2 w-80 rounded-lg border border-neutral bg-base-100 p-3 text-xs leading-relaxed [box-shadow:var(--shadow-card-hover)]">
@@ -170,7 +170,7 @@ function MethodologyDetails({ factors, totals }: { factors: GreenFactors; totals
           <Row k="Factor dataset" v={factors.dataset} />
           <Row k="Coverage" v={formatPercent(totals.coverage)} />
         </dl>
-        <p className="mt-2 border-t border-neutral/50 pt-2 text-base-content/50">
+        <p className="mt-2 border-t border-neutral/50 pt-2 text-muted">
           {formatWh(totals.unattributedWh)} could not be mapped to a workload and
           is reported separately as <span className="italic">(unattributed)</span>.
           Intensity uses static annual averages, not hour-by-hour grid data.

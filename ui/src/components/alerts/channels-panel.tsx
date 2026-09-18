@@ -73,7 +73,7 @@ export function ChannelsPanel() {
                 <Badge tone={c.source === "ui" ? "primary" : "neutral"}>
                   {c.source === "ui" ? "ui" : "config"}
                 </Badge>
-                {c.hasAuth && <span className="text-xs text-base-content/40">(signed)</span>}
+                {c.hasAuth && <span className="text-xs text-muted">(signed)</span>}
                 {c.shadowed && (
                   <Badge tone="warning" title="A UI channel with the same name wins at delivery time">
                     shadowed
@@ -106,7 +106,7 @@ export function ChannelsPanel() {
               </div>
               <span className="truncate text-xs text-base-content/55">{c.url}</span>
               {c.source === "config" && (
-                <span className="text-xs text-base-content/40">edited in config (ConfigMap)</span>
+                <span className="text-xs text-muted">edited in config (ConfigMap)</span>
               )}
               {testResult?.name === c.name && (
                 <span className={testResult.ok ? "text-xs text-success" : "text-xs text-error"}>

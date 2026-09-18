@@ -77,7 +77,7 @@ export function LogsScreen({ context = "signals" }: { context?: "signals" | "mes
     <div className="flex flex-col gap-4" data-testid={`${context}-log-explorer`}>
       <div className="flex flex-wrap items-start gap-2">
         <div className="flex items-center gap-1.5 rounded-lg border border-neutral bg-base-200 px-2">
-          <Search className="h-3.5 w-3.5 text-base-content/50" aria-hidden />
+          <Search className="h-3.5 w-3.5 text-muted" aria-hidden />
           <input
             key={filters.q ?? ""}
             type="search"

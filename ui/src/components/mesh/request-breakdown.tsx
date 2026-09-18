@@ -53,7 +53,7 @@ function FlagsCard({ data }: { data: MeshWorkloadRequests }) {
     <Card className="overflow-hidden">
       <div className="border-b border-neutral px-4 py-2 text-xs text-base-content/55">
         Response flags
-        {data.reporter && <span className="ml-1.5 text-base-content/40">reported by {data.reporter}</span>}
+        {data.reporter && <span className="ml-1.5 text-muted">reported by {data.reporter}</span>}
       </div>
       {data.responseFlags.length === 0 ? (
         <p className="px-4 py-3 text-xs text-base-content/55">
@@ -77,7 +77,7 @@ function FlagsCard({ data }: { data: MeshWorkloadRequests }) {
                 <td className="font-mono">{f.flag}</td>
                 <td>
                   {f.meaning ?? (
-                    <span className="text-base-content/40">not known to this product</span>
+                    <span className="text-muted">not known to this product</span>
                   )}
                 </td>
                 <td className="text-right tabular-nums">{f.requests.toLocaleString()}</td>

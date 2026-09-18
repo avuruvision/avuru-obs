@@ -34,7 +34,7 @@ export function Tabs<T extends string>({
             "-mb-px border-b-2 px-0.5 pb-2 text-xs font-semibold uppercase tracking-wider transition-colors",
             item.value === value
               ? "border-primary text-primary"
-              : "border-transparent text-base-content/50 hover:text-base-content",
+              : "border-transparent text-muted hover:text-base-content",
           )}
         >
           {item.label}

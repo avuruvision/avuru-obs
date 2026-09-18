@@ -200,7 +200,7 @@ export function CollectionControlCard() {
       <CardHeader>
         <CardTitle>Collection control</CardTitle>
         {data.updatedBy && (
-          <span className="text-xs text-base-content/50">
+          <span className="text-xs text-muted">
             changed by {data.updatedBy}
             {data.updatedAt ? ` · ${formatAgo(data.updatedAt)}` : ""}
           </span>

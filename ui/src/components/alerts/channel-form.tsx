@@ -67,7 +67,7 @@ export function ChannelForm({
       </div>
       <label className="flex flex-col gap-1 text-xs text-base-content/60">
         Signing secret{" "}
-        {initial?.hasAuth && <span className="text-base-content/40">(leave blank to keep the current one)</span>}
+        {initial?.hasAuth && <span className="text-muted">(leave blank to keep the current one)</span>}
         <input
           className={inputClass}
           type="password"

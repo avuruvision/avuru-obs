@@ -58,7 +58,7 @@ export function RatesPanel() {
       <Card>
         <CardHeader>
           <CardTitle>Currency and compute</CardTitle>
-          <span className="text-xs text-base-content/50">
+          <span className="text-xs text-muted">
             what a core-hour and a GiB-hour cost
           </span>
         </CardHeader>
@@ -108,7 +108,7 @@ export function RatesPanel() {
       <Card>
         <CardHeader>
           <CardTitle>Model prices</CardTitle>
-          <span className="text-xs text-base-content/50">
+          <span className="text-xs text-muted">
             per million tokens, the way providers publish them
           </span>
           {canAdminister && (

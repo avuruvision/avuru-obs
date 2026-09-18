@@ -105,7 +105,7 @@ export function HealthScreen() {
           <span className="font-semibold">
             Overall: {data ? statusLabel(data.overall) : "—"}
           </span>
-          <span className="text-base-content/50">· {groups.length} groups</span>
+          <span className="text-muted">· {groups.length} groups</span>
           <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs text-base-content/70">
             <input
               type="checkbox"

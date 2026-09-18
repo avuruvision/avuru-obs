@@ -229,7 +229,7 @@ function NodeCard({
           className={cn(
             "truncate text-xs font-medium",
             solid ? "font-mono" : "font-mono text-base-content/70",
-            node.kind === "empty" || node.kind === "more" ? "font-sans text-base-content/50" : "",
+            node.kind === "empty" || node.kind === "more" ? "font-sans text-muted" : "",
           )}
         >
           {node.kind === "derived" ? virtualLabel(node.name) : node.name}
@@ -255,7 +255,7 @@ function NodeCard({
       ) : (
         <span
           className={cn(
-            "text-[10px] leading-tight text-base-content/40",
+            "text-[10px] leading-tight text-muted",
             // A placeholder's note is the teaching, so it wraps rather than
             // truncating; a real node's is short by construction.
             node.kind === "derived" ? "truncate" : "",

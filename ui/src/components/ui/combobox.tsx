@@ -122,7 +122,7 @@ export function Combobox({
             className="z-50 overflow-auto rounded-lg border border-neutral bg-base-100 py-1 [box-shadow:var(--shadow-card-hover)]"
           >
             {loading && matches.length === 0 && (
-              <li className="px-3 py-1.5 text-sm text-base-content/50">Loading…</li>
+              <li className="px-3 py-1.5 text-sm text-muted">Loading…</li>
             )}
             {matches.map((o, i) => (
               <li

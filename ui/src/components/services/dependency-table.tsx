@@ -35,14 +35,14 @@ export function DependencyTable({
           <Icon className="h-3.5 w-3.5 text-base-content/40" aria-hidden />
           {title}
         </CardTitle>
-        <span className="text-xs text-base-content/50">{edges.length}</span>
+        <span className="text-xs text-muted">{edges.length}</span>
       </CardHeader>
       {edges.length === 0 ? (
         <p className="px-4 pb-4 text-xs text-base-content/45">{emptyHint}</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="text-left text-base-content/50">
+            <thead className="text-left text-muted">
               <tr className="border-b border-neutral">
                 <th className="px-4 py-2 font-medium">Service</th>
                 <th className="px-4 py-2 text-right font-medium">Rate</th>
@@ -66,7 +66,7 @@ export function DependencyTable({
                         // trace's parent chain over a proxy to see it. Saying so
                         // is the difference between a fact and a guess.
                         <span
-                          className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] text-base-content/40"
+                          className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] text-muted"
                           title={`recovered across ${e.viaTransport.join(", ")}`}
                         >
                           <Waypoints className="h-3 w-3" aria-hidden />
