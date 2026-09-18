@@ -15,17 +15,25 @@ export interface LogFilters {
   tags?: string; // "key=value,key2=value2" — the same string the traces screen uses
 }
 
+// At most four panel requests in flight at once. A finished request hands its
+// slot straight to the next waiter rather than freeing it: freeing first would
+// let a newcomer take the slot before the waiter wakes, and five would fly.
+const PANEL_REQUEST_SLOTS = 4;
 const panelWaiters: Array<() => void> = [];
 let activePanelRequests = 0;
 
 async function withPanelRequestSlot<T>(run: () => Promise<T>): Promise<T> {
-  if (activePanelRequests >= 4) await new Promise<void>((resolve) => panelWaiters.push(resolve));
-  activePanelRequests += 1;
+  if (activePanelRequests >= PANEL_REQUEST_SLOTS) {
+    await new Promise<void>((resolve) => panelWaiters.push(resolve));
+  } else {
+    activePanelRequests += 1;
+  }
   try {
     return await run();
   } finally {
-    activePanelRequests -= 1;
-    panelWaiters.shift()?.();
+    const next = panelWaiters.shift();
+    if (next) next();
+    else activePanelRequests -= 1;
   }
 }
 

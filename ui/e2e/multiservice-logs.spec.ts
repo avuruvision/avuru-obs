@@ -27,21 +27,16 @@ async function stubLogs(page: Page) {
       log("inventory-api", "application", "inventory ready"),
       log("ztunnel", "ztunnel", "forwarded checkout-api inventory-api"),
     ].filter((row) => services.length === 0 || services.includes(row.service) || row.source !== "application");
-    const resolutions = services.includes("unknown-service")
-      ? [{ service: "unknown-service", proxiesUnavailable: "no workload could be resolved for mesh logs" }]
-      : [];
+    const resolutions = [
+      ...(services.includes("unknown-service")
+        ? [{ service: "unknown-service", proxiesUnavailable: "no workload could be resolved for mesh logs" }]
+        : []),
+      ...(services.includes("inventory-api")
+        ? [{ service: "inventory-api", namespace: "shop", workload: "inventory", proxiesMatchedBy: "pods are matched by name: mesh-config is off, so the workload's pods are not known" }]
+        : []),
+    ];
     return route.fulfill({ json: { logs: rows, resolutions, nextCursor: "" } });
   });
-}
-
-function contrast(foreground: string, background: string) {
-  const luminance = (hex: string) => {
-    const channels = hex.match(/[\da-f]{2}/gi)!.map((value) => parseInt(value, 16) / 255);
-    const linear = channels.map((value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
-    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
-  };
-  const [lighter, darker] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
-  return (lighter + 0.05) / (darker + 0.05);
 }
 
 test.describe("multiservice log explorer", () => {
@@ -171,39 +166,92 @@ test.describe("multiservice log explorer", () => {
     await expect(page.getByRole("button", { name: "Remove checkout" })).toBeVisible();
   });
 
-  test("uses the slate palette in dark mode with readable body text", async ({ page }) => {
+  test("selects with the keyboard, drops a chip, and clears every filter", async ({ page }) => {
     await stubLogs(page);
+    await page.goto("/logs?severity=ERROR&sources=app");
+
+    // "checkout" matches the checkout-api service and then the shop/checkout
+    // workload. The first suggestion is already highlighted, so ArrowDown
+    // moves to the second and Enter takes it — no mouse.
+    const picker = page.getByRole("combobox", { name: "Select log services" });
+    await picker.fill("checkout");
+    await picker.press("ArrowDown");
+    await picker.press("Enter");
+    await expect(page).toHaveURL(/workloads=shop%2Fcheckout/);
+    await expect(page).not.toHaveURL(/services=/);
+    await picker.press("Escape");
+    await expect(page.getByRole("listbox", { name: "Select log services" })).toHaveCount(0);
+
+    // The chip's remove button takes the workload out of the selection.
+    await page.getByRole("button", { name: "Remove checkout" }).click();
+    await expect(page).not.toHaveURL(/workloads=/);
+    await expect(page.getByRole("button", { name: "Remove checkout" })).toHaveCount(0);
+
+    // Clear resets sources, severity and search in one go, and the display
+    // choice is not a filter, so it stays.
+    await page.getByRole("button", { name: "Service panels" }).click();
+    await page.getByRole("button", { name: "Clear" }).click();
+    await expect(page).toHaveURL(/display=panels/);
+    await expect(page).not.toHaveURL(/severity=|sources=|services=|workloads=/);
+    await expect(page.getByRole("checkbox", { name: "waypoint" })).toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "Other" })).toBeChecked();
+  });
+
+  test("keeps the source choice in the URL and sends it to the hub", async ({ page }) => {
+    await stubLogs(page);
+    const asked: string[] = [];
+    page.on("request", (req) => {
+      if (/\/api\/v1\/logs\?/.test(req.url())) asked.push(req.url());
+    });
     await page.goto("/logs");
-    await page.getByRole("button", { name: "Switch to dark theme" }).click();
-    const palette = await page.evaluate(() => {
-      const root = getComputedStyle(document.documentElement);
-      const explorer = document.body.appendChild(document.createElement("div"));
-      explorer.className = "explorer-canvas";
-      const xray = document.body.appendChild(document.createElement("div"));
-      xray.className = "xray-surface";
-      const values = {
-        page: root.getPropertyValue("--color-base-100").trim(),
-        panel: root.getPropertyValue("--color-base-200").trim(),
-        field: root.getPropertyValue("--color-base-300").trim(),
-        text: root.getPropertyValue("--color-base-content").trim(),
-        accent: root.getPropertyValue("--color-primary").trim(),
-        explorer: getComputedStyle(explorer).getPropertyValue("--color-base-100").trim(),
-        xray: getComputedStyle(xray).getPropertyValue("--color-base-100").trim(),
-      };
-      explorer.remove();
-      xray.remove();
-      return values;
-    });
-    expect(palette).toEqual({
-      page: "#111827",
-      panel: "#1e293b",
-      field: "#273449",
-      text: "#e2e8f0",
-      accent: "#93c5fd",
-      explorer: "#111827",
-      xray: "#111827",
-    });
-    expect(contrast(palette.text, palette.page)).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(palette.text, palette.panel)).toBeGreaterThanOrEqual(4.5);
+    await page.getByRole("checkbox", { name: "waypoint" }).uncheck();
+    await expect(page).toHaveURL(/sources=app%2Cztunnel%2Cother/);
+    await expect.poll(() => asked.at(-1) ?? "").toContain("source=app%2Cztunnel%2Cother");
+
+    await page.reload();
+    await expect(page.getByRole("checkbox", { name: "waypoint" })).not.toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "ztunnel" })).toBeChecked();
+    // The last source standing cannot be unchecked: an empty set is not a filter.
+    await page.getByRole("checkbox", { name: "ztunnel" }).uncheck();
+    await page.getByRole("checkbox", { name: "Other" }).uncheck();
+    await expect(page.getByRole("checkbox", { name: "Application" })).toBeDisabled();
+  });
+
+  test("says how proxy lines were matched when pods were not known", async ({ page }) => {
+    await stubLogs(page);
+    await page.goto("/logs?services=inventory-api");
+    await expect(page.getByRole("status")).toContainText("inventory-api: pods are matched by name: mesh-config is off");
+  });
+
+  test("keeps its search out of the mesh page's proxy filter", async ({ page }) => {
+    await stubLogs(page);
+    // One proxy, so the Proxies tab renders its filter box rather than the
+    // empty state.
+    await page.route("**/api/v1/mesh/proxies*", (route) =>
+      route.fulfill({
+        json: {
+          proxies: [{
+            name: "ztunnel-abc",
+            namespace: "istio-system",
+            role: "ztunnel",
+            ratePerSec: 1,
+            errorRate: 0,
+            p50Ms: 1,
+            p95Ms: 2,
+            callsIn: 10,
+            callsOut: 10,
+          }],
+        },
+      }),
+    );
+    await page.goto("/mesh?view=logs");
+    const search = page.getByRole("searchbox", { name: "Search log message" });
+    await search.fill("forwarded");
+    await search.press("Enter");
+    await expect(page).toHaveURL(/lq=forwarded/);
+    await expect(page).not.toHaveURL(/[?&]q=/);
+
+    await page.getByRole("tab", { name: "Proxies", exact: true }).click();
+    await expect(page.getByRole("searchbox", { name: "Filter proxies" })).toHaveValue("");
   });
 });

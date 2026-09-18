@@ -95,10 +95,15 @@ test.describe("service logs tab", () => {
     await expect.poll(() => page.url()).toContain("src=app%2Cztunnel");
     await expect.poll(() => asked.at(-1)).toContain("source=app%2Cztunnel");
 
-    // A resolved workload is reachable from here.
+    // A resolved workload is reachable from here, and so is the explorer,
+    // opened on this service.
     await expect(
       sources.getByRole("link", { name: "open the workload" }),
     ).toHaveAttribute("href", /wl=shop%2Fpayments&wltab=logs/);
+    await expect(sources.getByRole("link", { name: "open in Logs" })).toHaveAttribute(
+      "href",
+      `/logs?services=${SERVICE}`,
+    );
   });
 
   test("says why the proxies are not on offer instead of hiding the gap", async ({ page }) => {

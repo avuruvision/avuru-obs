@@ -29,11 +29,19 @@ const SOURCE_OPTIONS = [
   { value: "other", label: "Other" },
 ] as const;
 const ALL_SOURCES = SOURCE_OPTIONS.map((source) => source.value);
+// The URL keys for the text filters. The mesh page already spends `q` on its
+// proxy list, so there the explorer's own filters are prefixed — two controls
+// writing one key would fight (the convention sourced-logs.tsx follows).
+const URL_KEYS = {
+  signals: { q: "q", severity: "severity", tags: "tags" },
+  mesh: { q: "lq", severity: "lsev", tags: "ltags" },
+} as const;
 const csv = (value?: string) => [...new Set((value ?? "").split(",").map((part) => part.trim()).filter(Boolean))];
 
 export function LogsScreen({ context = "signals" }: { context?: "signals" | "mesh" }) {
   const { time } = useTimeRange();
   const { get, setMany } = useURLState();
+  const keys = URL_KEYS[context];
   const suggestions = useLogServices(time);
   const services = csv(get("services") ?? get("service"));
   const workloads = csv(get("workloads"));
@@ -56,9 +64,9 @@ export function LogsScreen({ context = "signals" }: { context?: "signals" | "mes
     services,
     workloads,
     source: enabledSources.join(","),
-    severity: get("severity"),
-    q: get("q"),
-    tags: get("tags"),
+    severity: get(keys.severity),
+    q: get(keys.q),
+    tags: get(keys.tags),
   };
   const hasFilters = targets.length > 0 || Boolean(filters.severity || filters.q || filters.tags || explicitSources.length);
   const setTargets = (values: string[]) => setMany({
@@ -85,7 +93,7 @@ export function LogsScreen({ context = "signals" }: { context?: "signals" | "mes
             placeholder="Search message…"
             aria-label="Search log message"
             onKeyDown={(event) => {
-              if (event.key === "Enter") setMany({ q: event.currentTarget.value || undefined });
+              if (event.key === "Enter") setMany({ [keys.q]: event.currentTarget.value || undefined });
             }}
             className="h-9 w-64 bg-transparent text-sm outline-none placeholder:text-base-content/40"
           />
@@ -99,13 +107,13 @@ export function LogsScreen({ context = "signals" }: { context?: "signals" | "mes
           allowCustom={(text) => ({ value: `service:${text}`, label: text })}
           className="w-80"
         />
-        <Select ariaLabel="Minimum severity" className="w-44" value={filters.severity ?? ""} onChange={(value) => setMany({ severity: value || undefined })} options={SEVERITY_OPTIONS} />
+        <Select ariaLabel="Minimum severity" className="w-44" value={filters.severity ?? ""} onChange={(value) => setMany({ [keys.severity]: value || undefined })} options={SEVERITY_OPTIONS} />
         <div className="inline-flex h-9 rounded-lg border border-neutral bg-base-200 p-1" aria-label="Log display">
           <DisplayButton active={display === "merged"} label="Merged stream" onClick={() => setMany({ display: undefined })}><Rows3 className="h-3.5 w-3.5" aria-hidden /></DisplayButton>
           <DisplayButton active={display === "panels"} label="Service panels" onClick={() => setMany({ display: "panels" })}><Columns2 className="h-3.5 w-3.5" aria-hidden /></DisplayButton>
         </div>
         {hasFilters && (
-          <Button variant="ghost" size="sm" onClick={() => setMany({ services: undefined, workloads: undefined, service: undefined, sources: undefined, severity: undefined, q: undefined, tags: undefined })}>
+          <Button variant="ghost" size="sm" onClick={() => setMany({ services: undefined, workloads: undefined, service: undefined, sources: undefined, [keys.severity]: undefined, [keys.q]: undefined, [keys.tags]: undefined })}>
             <FilterX className="h-3.5 w-3.5" /> Clear
           </Button>
         )}
@@ -122,7 +130,7 @@ export function LogsScreen({ context = "signals" }: { context?: "signals" | "mes
             </label>
           );
         })}
-        <TagChips value={filters.tags} onChange={(next) => setMany({ tags: next })} />
+        <TagChips value={filters.tags} onChange={(next) => setMany({ [keys.tags]: next })} />
       </div>
 
       {display === "merged" ? <MergedLogs time={time} filters={filters} /> : <ServicePanels time={time} filters={filters} services={services} workloads={workloads} />}
@@ -182,7 +190,7 @@ function ResolutionNotices({ resolutions, sources }: { resolutions?: LogResoluti
   if (!sources?.split(",").some((source) => source === "ztunnel" || source === "waypoint")) return null;
   const notices = [...new Set((resolutions ?? []).flatMap((resolution) => {
     const subject = resolution.service || [resolution.namespace, resolution.workload].filter(Boolean).join("/");
-    return [resolution.proxiesUnavailable, resolution.proxiesFallback]
+    return [resolution.proxiesUnavailable, resolution.proxiesMatchedBy, resolution.proxiesFallback]
       .filter(Boolean)
       .map((message) => `${subject}: ${message}`);
   }))];

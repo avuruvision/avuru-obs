@@ -32,6 +32,7 @@ type logResolutionTokenResolution struct {
 	Namespace          string                           `json:"n,omitempty"`
 	Workload           string                           `json:"w,omitempty"`
 	ProxiesUnavailable string                           `json:"u,omitempty"`
+	ProxiesMatchedBy   string                           `json:"m,omitempty"`
 	ProxiesFallback    string                           `json:"f,omitempty"`
 	Branches           []logResolutionTokenSourceBranch `json:"b"`
 }
@@ -163,7 +164,7 @@ func compactLogResolutions(resolutions []logResolutionDTO) []logResolutionDTO {
 func tokenResolutions(resolutions []logResolutionDTO) []logResolutionTokenResolution {
 	out := make([]logResolutionTokenResolution, 0, len(resolutions))
 	for _, resolution := range resolutions {
-		tokenResolution := logResolutionTokenResolution{Service: resolution.Service, Namespace: resolution.Namespace, Workload: resolution.Workload, ProxiesUnavailable: resolution.ProxiesUnavailable, ProxiesFallback: resolution.ProxiesFallback, Branches: make([]logResolutionTokenSourceBranch, 0, len(resolution.SourceBranches))}
+		tokenResolution := logResolutionTokenResolution{Service: resolution.Service, Namespace: resolution.Namespace, Workload: resolution.Workload, ProxiesUnavailable: resolution.ProxiesUnavailable, ProxiesMatchedBy: resolution.ProxiesMatchedBy, ProxiesFallback: resolution.ProxiesFallback, Branches: make([]logResolutionTokenSourceBranch, 0, len(resolution.SourceBranches))}
 		for _, branch := range resolution.SourceBranches {
 			tokenResolution.Branches = append(tokenResolution.Branches, logResolutionTokenSourceBranch(branch))
 		}
@@ -175,7 +176,7 @@ func tokenResolutions(resolutions []logResolutionDTO) []logResolutionTokenResolu
 func dtoResolutions(resolutions []logResolutionTokenResolution) []logResolutionDTO {
 	out := make([]logResolutionDTO, 0, len(resolutions))
 	for _, resolution := range resolutions {
-		dto := logResolutionDTO{Service: resolution.Service, Namespace: resolution.Namespace, Workload: resolution.Workload, ProxiesUnavailable: resolution.ProxiesUnavailable, ProxiesFallback: resolution.ProxiesFallback, SourceBranches: make([]logSourceBranchDTO, 0, len(resolution.Branches))}
+		dto := logResolutionDTO{Service: resolution.Service, Namespace: resolution.Namespace, Workload: resolution.Workload, ProxiesUnavailable: resolution.ProxiesUnavailable, ProxiesMatchedBy: resolution.ProxiesMatchedBy, ProxiesFallback: resolution.ProxiesFallback, SourceBranches: make([]logSourceBranchDTO, 0, len(resolution.Branches))}
 		for _, branch := range resolution.Branches {
 			dto.SourceBranches = append(dto.SourceBranches, logSourceBranchDTO(branch))
 		}

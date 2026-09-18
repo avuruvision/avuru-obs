@@ -106,7 +106,7 @@ export function MultiCombobox({
             return (
               <span key={value} className="inline-flex items-center gap-1 rounded-md bg-primary/15 px-2 py-1 text-xs text-primary">
                 <span>{option.label}</span>
-                {option.description && <span className="text-base-content/50">{option.description}</span>}
+                {option.description && <span className="text-muted">{option.description}</span>}
                 <button type="button" aria-label={`Remove ${option.label}`} onClick={() => toggle(value)}>
                   <X className="h-3 w-3" aria-hidden />
                 </button>
@@ -141,7 +141,7 @@ export function MultiCombobox({
                 {selectedSet.has(option.value) && <Check className="h-3 w-3" aria-hidden />}
               </span>
               <span className="min-w-0 flex-1 truncate">{option.label}</span>
-              {option.description && <span className="text-xs text-base-content/50">{option.description}</span>}
+              {option.description && <span className="text-xs text-muted">{option.description}</span>}
             </li>
           ))}
           {text.trim() && allowCustom && !matches.some((option) => option.label === text.trim()) && (

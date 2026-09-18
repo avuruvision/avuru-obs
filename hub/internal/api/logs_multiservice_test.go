@@ -282,3 +282,147 @@ func TestSearchLogsRejectsResolutionTokenForDifferentSelection(t *testing.T) {
 func containsString(values []string, want string) bool {
 	return strings.Contains("|"+strings.Join(values, "|")+"|", "|"+want+"|")
 }
+
+// A subject whose pods could not be matched precisely says how its proxy
+// lines were tied to it — on the first page and on every later one, because
+// the reason rides the resolution token beside the branches it explains.
+func TestSearchLogsSaysHowProxiesWereMatchedOnEveryPage(t *testing.T) {
+	fake := &storagetest.Fake{
+		Workloads: map[string]storage.ServiceWorkload{"checkout-service": {Namespace: "shop", Workload: "checkout"}},
+		LogPage:   storage.LogPage{NextCursor: &storage.LogCursor{Timestamp: time.Unix(0, 42).UTC(), Service: "checkout"}},
+	}
+	// mesh-config off: the pods are not known, so the proxies are matched by name.
+	cfg := Config{Modules: modules.Set{modules.Core: true, modules.Logs: true, modules.Mesh: true}}
+	mux := http.NewServeMux()
+	Register(mux, func() storage.Store { return fake }, cfg)
+	const query = "start=2026-09-17T10:00:00Z&end=2026-09-17T11:00:00Z&service=checkout-service&service=inventory&source=app,ztunnel"
+	first := get(t, mux, "/api/v1/logs?"+query)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first status %d: %s", first.Code, first.Body.String())
+	}
+	var page multiLogsResponse
+	if err := json.NewDecoder(first.Body).Decode(&page); err != nil {
+		t.Fatalf("decode first response: %v", err)
+	}
+	if len(page.Resolutions) != 2 || !strings.Contains(page.Resolutions[0].ProxiesMatchedBy, "mesh-config is off") {
+		t.Fatalf("resolutions = %+v, want the first to say pods are matched by name", page.Resolutions)
+	}
+	if page.Resolutions[0].ProxiesFallback != "" {
+		t.Errorf("a by-name match is not a pagination compaction: %+v", page.Resolutions[0])
+	}
+	// The second service never resolved: no reason to give about its proxies
+	// beyond the one it already carries.
+	if page.Resolutions[1].ProxiesMatchedBy != "" || page.Resolutions[1].ProxiesUnavailable == "" {
+		t.Errorf("unresolved service = %+v, want proxiesUnavailable alone", page.Resolutions[1])
+	}
+	rec := get(t, mux, "/api/v1/logs?"+query+"&cursor="+page.NextCursor+"&resolution="+page.ResolutionToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second status %d: %s", rec.Code, rec.Body.String())
+	}
+	var second multiLogsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&second); err != nil {
+		t.Fatalf("decode second response: %v", err)
+	}
+	if len(second.Resolutions) != 2 || second.Resolutions[0].ProxiesMatchedBy != page.Resolutions[0].ProxiesMatchedBy {
+		t.Errorf("later page lost the reason: %+v", second.Resolutions)
+	}
+}
+
+// One name in two namespaces is two subjects. Selected as workloads, each is
+// tied to its own namespace and neither's needles name the other; asked for by
+// the bare service name, the hub says the name is ambiguous rather than
+// picking one.
+func TestSearchLogsKeepsHomonymWorkloadsApart(t *testing.T) {
+	cfg := Config{Modules: modules.AllSet(), MeshConfigReader: stubReader{snap: serviceSnapshot()}}
+
+	fake := &storagetest.Fake{}
+	rec := meshGet(t, fake, cfg, "/api/v1/logs?workload=shop%2Ftwin&workload=quiet%2Ftwin&source=ztunnel")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp multiLogsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Resolutions) != 2 || resp.Resolutions[0].Namespace != "shop" || resp.Resolutions[1].Namespace != "quiet" {
+		t.Fatalf("resolutions = %+v, want shop/twin then quiet/twin", resp.Resolutions)
+	}
+	if len(fake.LastLogQuery.Sources) != 2 {
+		t.Fatalf("%d source branches, want one ztunnel branch per workload: %+v", len(fake.LastLogQuery.Sources), fake.LastLogQuery.Sources)
+	}
+	for i, host := range []string{"twin.shop.svc", "twin.quiet.svc"} {
+		needles := strings.Join(flattenNeedles(fake.LastLogQuery.Sources[i].BodyAll), "|")
+		other := []string{"twin.quiet.svc", "twin.shop.svc"}[i]
+		if !strings.Contains(needles, host) || strings.Contains(needles, other) {
+			t.Errorf("branch %d needles %q: want %s, not %s", i, needles, host, other)
+		}
+	}
+
+	fake = &storagetest.Fake{}
+	rec = meshGet(t, fake, cfg, "/api/v1/logs?service=twin&source=app,ztunnel")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	resp = multiLogsResponse{}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Resolutions) != 1 || !strings.Contains(resp.Resolutions[0].ProxiesUnavailable, "named twin") || resp.Resolutions[0].Workload != "" {
+		t.Errorf("ambiguous name resolved anyway: %+v", resp.Resolutions)
+	}
+	if n := len(fake.LastLogQuery.Sources); n != 1 {
+		t.Errorf("%d source branches, want only the app's", n)
+	}
+}
+
+func flattenNeedles(bodyAll [][]string) []string {
+	var out []string
+	for _, group := range bodyAll {
+		out = append(out, group...)
+	}
+	return out
+}
+
+// Both new reads stay inside the project the request names: the composed
+// search and the suggestion list each carry the tenant to the store.
+func TestSearchLogsAndSuggestionsStayInTheRequestedProject(t *testing.T) {
+	fake := &storagetest.Fake{Presence: []storage.ServicePresence{{Name: "checkout", LogRecords: 1}}}
+	mux := newMux(fake)
+	for _, path := range []string{
+		"/api/v1/logs?service=checkout&service=inventory&source=app",
+		"/api/v1/logs/services",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("X-Avuru-Tenant", "prod-eu")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status %d: %s", path, rec.Code, rec.Body.String())
+		}
+	}
+	if fake.LastLogQuery.Tenant != "prod-eu" {
+		t.Errorf("composed search tenant = %q, want prod-eu", fake.LastLogQuery.Tenant)
+	}
+	if fake.LastServiceQuery.Tenant != "prod-eu" {
+		t.Errorf("suggestions tenant = %q, want prod-eu", fake.LastServiceQuery.Tenant)
+	}
+}
+
+// Tags and severity are ANDed onto the composed stream exactly as they are
+// onto a single service's: the subjects widen the search, the filters narrow
+// the whole of it.
+func TestSearchLogsAppliesTagsAndSeverityToTheComposedStream(t *testing.T) {
+	fake := &storagetest.Fake{}
+	rec := meshGet(t, fake, Config{Modules: modules.AllSet()},
+		"/api/v1/logs?service=checkout&service=inventory&tags=avuru.tag.team%3Dpayments,level%3Dwarn&severity=WARN&source=app")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	q := fake.LastLogQuery
+	if q.Tags["avuru.tag.team"] != "payments" || q.Tags["level"] != "warn" || q.MinSeverity != "WARN" {
+		t.Errorf("filters did not reach the composed query: %+v", q)
+	}
+	if q.MatchNone || len(q.Sources) != 2 {
+		t.Errorf("subjects did not compose: %+v", q)
+	}
+}

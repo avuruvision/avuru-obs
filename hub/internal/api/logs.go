@@ -63,7 +63,14 @@ type logResolutionDTO struct {
 	Namespace          string `json:"namespace,omitempty"`
 	Workload           string `json:"workload,omitempty"`
 	ProxiesUnavailable string `json:"proxiesUnavailable,omitempty"`
-	ProxiesFallback    string `json:"proxiesFallback,omitempty"`
+	// ProxiesMatchedBy says how the proxy lines were tied to the subject when
+	// the precise pod set was not available: the descriptor's fallback rung
+	// (mesh-config off, cluster unread, pod list cut, no pod in the snapshot).
+	// Empty when pods were matched precisely.
+	ProxiesMatchedBy string `json:"proxiesMatchedBy,omitempty"`
+	// ProxiesFallback is set when pagination had to compact a large pod set
+	// into the stable workload needles; distinct from ProxiesMatchedBy.
+	ProxiesFallback string `json:"proxiesFallback,omitempty"`
 	// SourceBranches is the exact resolved store query held behind the opaque
 	// ResolutionToken. A non-nil empty slice means "match nothing".
 	SourceBranches []logSourceBranchDTO `json:"-"`
@@ -155,16 +162,15 @@ func (a *API) handleSearchLogs(w http.ResponseWriter, r *http.Request) error {
 			}
 			namespace, workload, why := "", "", ""
 			namespace, workload, why = a.resolveServiceWorkload(r, store, sq, service)
-			var branches []storage.LogSource
+			var desc workloadLogSources
 			if workload == "" {
-				desc := workloadLogSources{meshLogSourcesDTO: meshLogSourcesDTO{App: []string{service}, ProxiesUnavailable: why}}
-				branches = desc.sources(wanted)
+				desc = workloadLogSources{meshLogSourcesDTO: meshLogSourcesDTO{App: []string{service}, ProxiesUnavailable: why}}
 			} else {
-				desc := a.workloadLogSources(r, namespace, workload, "", service)
-				branches = desc.sources(wanted)
+				desc = a.workloadLogSources(r, namespace, workload, "", service)
 			}
+			branches := desc.sources(wanted)
 			logQuery.Sources = append(logQuery.Sources, branches...)
-			resolutions = append(resolutions, logResolutionDTO{Service: service, Namespace: namespace, Workload: workload, ProxiesUnavailable: why, SourceBranches: sourceBranchDTOs(branches)})
+			resolutions = append(resolutions, logResolutionDTO{Service: service, Namespace: namespace, Workload: workload, ProxiesUnavailable: why, ProxiesMatchedBy: desc.Fallback, SourceBranches: sourceBranchDTOs(branches)})
 		}
 		for _, selected := range workloads {
 			namespace, workload, ok := strings.Cut(selected, "/")
@@ -179,7 +185,7 @@ func (a *API) handleSearchLogs(w http.ResponseWriter, r *http.Request) error {
 			desc := a.workloadLogSources(r, namespace, workload, "")
 			branches := desc.sources(wanted)
 			logQuery.Sources = append(logQuery.Sources, branches...)
-			resolutions = append(resolutions, logResolutionDTO{Namespace: namespace, Workload: workload, SourceBranches: sourceBranchDTOs(branches)})
+			resolutions = append(resolutions, logResolutionDTO{Namespace: namespace, Workload: workload, ProxiesMatchedBy: desc.Fallback, SourceBranches: sourceBranchDTOs(branches)})
 		}
 		logQuery.MatchNone = len(logQuery.Sources) == 0
 	} else if hasSourceFilter {
