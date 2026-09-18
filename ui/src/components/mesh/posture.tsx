@@ -27,7 +27,7 @@ export function MtlsLock({
     // did not read, so the cell says "default" rather than guessing a mode.
     return (
       <span
-        className="text-base-content/40"
+        className="text-muted"
         title="No policy applies; the mesh default governs, and it was not read"
       >
         default

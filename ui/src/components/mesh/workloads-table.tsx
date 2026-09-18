@@ -153,7 +153,7 @@ export function WorkloadsTable() {
         </Card>
       )}
       {data.syncedAt && (
-        <p className="text-xs text-base-content/40">Cluster read {formatAgo(data.syncedAt)}</p>
+        <p className="text-xs text-muted">Cluster read {formatAgo(data.syncedAt)}</p>
       )}
     </div>
   );
@@ -170,7 +170,7 @@ function WorkloadRow({ w, onSelect }: { w: Row; onSelect: () => void }) {
           {/* A button, not a link: the page is a query-param state of this
               screen, and the row must stay reachable by keyboard. */}
           <button type="button" className="text-left font-medium hover:text-primary hover:underline">
-            <span className="text-base-content/50">{w.namespace}/</span>
+            <span className="text-muted">{w.namespace}/</span>
             {w.name}
           </button>
           <Badge className="text-[10px]">{w.kind}</Badge>

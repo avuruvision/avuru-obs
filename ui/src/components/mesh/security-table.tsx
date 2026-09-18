@@ -184,7 +184,7 @@ function DeclaredCell({ row }: { row: MeshWorkloadPosture }) {
     <td className={row.declaredMode === "DISABLE" ? "text-warning" : "text-base-content/70"}>
       {row.declaredMode}
       {row.declaredScope && (
-        <span className="ml-1 text-xs text-base-content/40">{row.declaredScope}</span>
+        <span className="ml-1 text-xs text-muted">{row.declaredScope}</span>
       )}
     </td>
   );

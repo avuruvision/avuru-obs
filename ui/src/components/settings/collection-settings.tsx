@@ -51,7 +51,7 @@ export function CollectionSettings() {
         <CardHeader>
           <CardTitle>Sensors</CardTitle>
           {data && (
-            <span className="text-xs text-base-content/50">
+            <span className="text-xs text-muted">
               {data.sensors.length} node{data.sensors.length === 1 ? "" : "s"} reporting in the
               last {Math.round(data.windowSeconds / 60)}m
             </span>
@@ -85,7 +85,7 @@ export function CollectionSettings() {
             {data.sensors.map((s) => (
               <li key={s.node} className="flex flex-wrap items-center gap-2 p-3">
                 <span className="min-w-40 font-mono text-sm font-medium">{s.node}</span>
-                <span className="text-xs text-base-content/50">
+                <span className="text-xs text-muted">
                   last seen {formatAgo(s.lastSeen)}
                 </span>
                 <span className="ml-auto flex flex-wrap gap-1.5">
@@ -104,7 +104,7 @@ export function CollectionSettings() {
       <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle>Deactivating collection</CardTitle>
-          <span className="text-xs text-base-content/50">
+          <span className="text-xs text-muted">
             {runtimeControl
               ? "label opt-outs stay operator-run — the hub has no cluster-wide label RBAC"
               : "applied via Helm — enable runtime switches with collection.runtimeControl.enabled=true"}

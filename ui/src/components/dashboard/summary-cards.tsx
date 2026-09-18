@@ -120,7 +120,7 @@ export function SummaryCards({
                     <div className="flex items-center gap-1.5">
                       <span className="truncate text-sm font-semibold">{t.title}</span>
                       {t.auto && (
-                        <span className="rounded bg-base-300 px-1 text-[10px] text-base-content/50">
+                        <span className="rounded bg-base-300 px-1 text-[10px] text-muted">
                           auto
                         </span>
                       )}

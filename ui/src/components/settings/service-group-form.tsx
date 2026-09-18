@@ -104,7 +104,7 @@ export function ServiceGroupForm({
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs text-base-content/60">
-          Namespaces <span className="text-base-content/40">(one per line)</span>
+          Namespaces <span className="text-muted">(one per line)</span>
           <textarea
             className={areaClass}
             value={namespaces}
@@ -114,7 +114,7 @@ export function ServiceGroupForm({
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-base-content/60">
-          Services <span className="text-base-content/40">(one per line)</span>
+          Services <span className="text-muted">(one per line)</span>
           <textarea
             className={areaClass}
             value={services}

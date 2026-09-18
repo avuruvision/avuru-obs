@@ -109,7 +109,7 @@ function GroupRows({
             <span className="font-semibold text-base-content/80">
               {group.service}
             </span>
-            <span className="ml-2 font-mono text-base-content/50">
+            <span className="ml-2 font-mono text-muted">
               {formatRate(group.count / windowSec)}
             </span>
           </td>

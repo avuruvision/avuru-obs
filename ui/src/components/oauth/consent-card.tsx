@@ -127,7 +127,7 @@ export function ConsentCard() {
               </option>
             ))}
           </select>
-          <span className="text-base-content/50">
+          <span className="text-muted">
             Access is limited to this one project, and to what you can already read in it.
           </span>
         </label>

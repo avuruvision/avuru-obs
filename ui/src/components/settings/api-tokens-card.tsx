@@ -53,7 +53,7 @@ export function ApiTokensCard() {
             API tokens
           </span>
         </CardTitle>
-        <span className="text-xs text-base-content/50">
+        <span className="text-xs text-muted">
           scripts and CI against the Hub API
         </span>
       </CardHeader>
@@ -122,7 +122,7 @@ function TokenRow({ t }: { t: ApiToken }) {
             </Badge>
           )}
         </span>
-        <span className="text-xs text-base-content/50">
+        <span className="text-xs text-muted">
           <span className="font-mono">{t.prefix}…</span> · created{" "}
           {fmtDate(t.createdAt)} ·{" "}
           {t.lastUsedAt ? `last used ${fmtDate(t.lastUsedAt)}` : "never used"} ·{" "}

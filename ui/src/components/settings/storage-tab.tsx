@@ -98,7 +98,7 @@ function ConnectionCard({ c }: { c: StorageConnection }) {
       >
         {rows.map(([label, value]) => (
           <div key={label} className="flex flex-col gap-1 bg-base-200 p-4">
-            <dt className="text-xs text-base-content/50">{label}</dt>
+            <dt className="text-xs text-muted">{label}</dt>
             <dd className="truncate font-mono text-sm" title={value}>
               {value}
             </dd>

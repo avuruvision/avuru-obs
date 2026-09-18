@@ -262,7 +262,7 @@ function OIDCMappingRow({
         </span>
       )}
       {!r.editable && (
-        <span className="text-xs text-base-content/40">
+        <span className="text-xs text-muted">
           declared in the chart&apos;s{" "}
           <span className="font-mono">auth.oidc.mapping</span> values
         </span>

@@ -24,7 +24,7 @@ export function HistoryTimeline({ history }: { history: AlertHistoryEntry[] }) {
                 )}
                 aria-hidden
               />
-              <span className="text-xs font-medium uppercase text-base-content/50">
+              <span className="text-xs font-medium uppercase text-muted">
                 {h.kind}
               </span>
               <span className="truncate font-mono">{h.target}</span>

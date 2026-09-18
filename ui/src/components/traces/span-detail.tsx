@@ -46,7 +46,7 @@ function AttrTable({ title, attrs }: { title: string; attrs?: Record<string, str
   if (!entries.length) return null;
   return (
     <div>
-      <h4 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-base-content/50">
+      <h4 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
         {title}
       </h4>
       {/* Key column is capped at 45% so long keys can never crush the values. */}
@@ -141,8 +141,8 @@ export function SpanDetail({ span }: { span: Span }) {
           <component.Icon className="mr-1 h-3 w-3" />
           {component.name}
         </Badge>
-        {peer && <span className="text-base-content/50">→ {peer}</span>}
-        <span className="inline-flex items-center gap-1 font-mono text-base-content/50">
+        {peer && <span className="text-muted">→ {peer}</span>}
+        <span className="inline-flex items-center gap-1 font-mono text-muted">
           span {span.spanId}
           <CopyButton value={span.spanId} ariaLabel="Copy span id" iconClass="h-3 w-3" />
         </span>
@@ -202,7 +202,7 @@ export function SpanDetail({ span }: { span: Span }) {
       <AttrTable title="Resource" attrs={span.resourceAttributes} />
       {span.events && span.events.length > 0 && (
         <div>
-          <h4 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-base-content/50">
+          <h4 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
             Events
           </h4>
           {span.events.map((ev, i) => (

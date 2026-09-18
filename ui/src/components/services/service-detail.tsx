@@ -229,7 +229,7 @@ function BackLink() {
     <button
       type="button"
       onClick={() => setMany({ service: undefined, view: undefined })}
-      className="inline-flex items-center gap-1 text-xs text-base-content/50 hover:text-primary"
+      className="inline-flex items-center gap-1 text-xs text-muted hover:text-primary"
     >
       <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> All services
     </button>
@@ -247,7 +247,7 @@ function Stat({
 }) {
   return (
     <Card className="flex flex-col gap-1 p-3">
-      <span className="text-[11px] uppercase tracking-wide text-base-content/50">{label}</span>
+      <span className="text-[11px] uppercase tracking-wide text-muted">{label}</span>
       <span
         className={`font-mono text-lg ${tone === "error" ? "text-error" : "text-base-content"}`}
       >

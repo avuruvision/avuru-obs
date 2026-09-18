@@ -56,21 +56,21 @@ export function AccountTab() {
       <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle>Account</CardTitle>
-          <span className="text-xs text-base-content/50">your identity on this instance</span>
+          <span className="text-xs text-muted">your identity on this instance</span>
         </CardHeader>
         <dl className="grid gap-px border-t border-neutral bg-neutral sm:grid-cols-3">
           <div className="bg-base-200 p-3">
-            <dt className="text-xs uppercase tracking-wider text-base-content/50">Email</dt>
+            <dt className="text-xs uppercase tracking-wider text-muted">Email</dt>
             <dd className="truncate font-mono text-sm" data-testid="account-email">
               {me.user.email || "—"}
             </dd>
           </div>
           <div className="bg-base-200 p-3">
-            <dt className="text-xs uppercase tracking-wider text-base-content/50">Name</dt>
+            <dt className="text-xs uppercase tracking-wider text-muted">Name</dt>
             <dd className="truncate text-sm">{me.user.name || "—"}</dd>
           </div>
           <div className="bg-base-200 p-3">
-            <dt className="text-xs uppercase tracking-wider text-base-content/50">Sign-in</dt>
+            <dt className="text-xs uppercase tracking-wider text-muted">Sign-in</dt>
             <dd className="text-sm" data-testid="account-origin">
               {originLabel(me.user.origin)}
             </dd>
@@ -118,7 +118,7 @@ function PasswordNote({ kind }: { kind: string }) {
         className="flex items-start gap-2 border-t border-neutral p-4 text-sm text-base-content/70"
         data-testid={testId}
       >
-        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-base-content/50" aria-hidden />
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-muted" aria-hidden />
         {text}
       </p>
     </Card>

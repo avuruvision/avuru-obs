@@ -133,9 +133,9 @@ export function TraceList({
                       <td colSpan={7} className="py-1.5 text-xs">
                         <span className="inline-flex items-center gap-2">
                           {isCollapsed ? (
-                            <ChevronRight className="h-3.5 w-3.5 text-base-content/50" />
+                            <ChevronRight className="h-3.5 w-3.5 text-muted" />
                           ) : (
-                            <ChevronDown className="h-3.5 w-3.5 text-base-content/50" />
+                            <ChevronDown className="h-3.5 w-3.5 text-muted" />
                           )}
                           <span
                             className="h-2 w-2 shrink-0 rounded-full"
@@ -144,7 +144,7 @@ export function TraceList({
                           <span className="font-semibold text-base-content/80">
                             {g.service}
                           </span>
-                          <span className="font-mono text-base-content/50">
+                          <span className="font-mono text-muted">
                             · {g.items.length} trace{g.items.length === 1 ? "" : "s"}
                             {g.errors > 0 && ` · ${g.errors} err`}
                           </span>

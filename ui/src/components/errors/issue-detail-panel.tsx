@@ -57,7 +57,7 @@ export function IssueDetailPanel({
         <button
           onClick={onClose}
           aria-label="Close issue detail"
-          className="rounded-lg p-1 text-base-content/50 hover:bg-base-300 hover:text-base-content"
+          className="rounded-lg p-1 text-muted hover:bg-base-300 hover:text-base-content"
         >
           <X className="h-4 w-4" />
         </button>
@@ -108,14 +108,14 @@ export function IssueDetailPanel({
           </div>
 
           <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-base-content/50">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
               Occurrences
             </h3>
             {histogram.data ? <OccurrenceHistogram points={histogram.data.points} /> : null}
           </section>
 
           <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-base-content/50">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
               Latest stack trace
             </h3>
             <Stacktrace trace={latest?.stacktrace ?? ""} />

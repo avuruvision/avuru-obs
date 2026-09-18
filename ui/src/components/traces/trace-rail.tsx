@@ -49,7 +49,7 @@ export function TraceRail({
         >
           <ChevronRight className="h-4 w-4" />
         </button>
-        <span className="mt-2 text-[10px] uppercase tracking-wider text-base-content/50 [writing-mode:vertical-rl]">
+        <span className="mt-2 text-[10px] uppercase tracking-wider text-muted [writing-mode:vertical-rl]">
           Traces · {traces.length}
         </span>
       </div>
@@ -65,7 +65,7 @@ export function TraceRail({
         <button
           aria-label="Collapse trace list"
           onClick={() => setCollapsed(true)}
-          className="text-base-content/50 hover:text-base-content"
+          className="text-muted hover:text-base-content"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
@@ -130,7 +130,7 @@ export function TraceRail({
                     style={{ width: `${Math.max((t.durationMs / maxDur) * 100, 2)}%` }}
                   />
                 </div>
-                <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-base-content/50">
+                <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-muted">
                   <span className="flex min-w-0 items-center gap-1">
                     <span
                       className="h-2 w-2 shrink-0 rounded-sm"
@@ -154,7 +154,7 @@ export function TraceRail({
                     "absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 transition-opacity",
                     isCmp
                       ? "text-primary opacity-100"
-                      : "text-base-content/40 opacity-0 hover:text-base-content group-hover/row:opacity-100",
+                      : "text-muted opacity-0 hover:text-base-content group-hover/row:opacity-100",
                   )}
                 >
                   <GitCompare className="h-3.5 w-3.5" />

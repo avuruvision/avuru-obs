@@ -33,7 +33,7 @@ export function ConnectedAppsCard() {
             Connected applications
           </span>
         </CardTitle>
-        <span className="text-xs text-base-content/50">read your estate as you</span>
+        <span className="text-xs text-muted">read your estate as you</span>
       </CardHeader>
 
       <div className="flex flex-col gap-3 border-t border-neutral p-4">
@@ -54,7 +54,7 @@ export function ConnectedAppsCard() {
             >
               <div className="flex min-w-0 flex-col">
                 <span className="truncate text-sm">{g.clientName}</span>
-                <span className="text-[11px] text-base-content/50">
+                <span className="text-[11px] text-muted">
                   project <span className="font-mono">{g.project}</span> ·{" "}
                   <span className="font-mono">{g.scopes}</span>
                 </span>

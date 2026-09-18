@@ -143,7 +143,7 @@ export function CreateTokenForm() {
             </span>
           )}
         </div>
-        <p className="text-xs text-base-content/50" data-testid="api-token-expiry-preview">
+        <p className="text-xs text-muted" data-testid="api-token-expiry-preview">
           {!daysValid ? (
             <span className="text-error">
               Enter a whole number of days between 1 and {MAX_DAYS}.

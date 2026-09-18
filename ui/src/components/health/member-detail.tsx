@@ -39,18 +39,18 @@ export function MemberDetail({
           <span className="truncate font-mono text-sm font-semibold">{member.service}</span>
           {member.tier && <span className="rounded bg-base-300 px-1 text-[10px] text-base-content/60">{member.tier}</span>}
         </div>
-        <button type="button" onClick={onClose} className="text-base-content/50 hover:text-base-content" aria-label="Close">
+        <button type="button" onClick={onClose} className="text-muted hover:text-base-content" aria-label="Close">
           <X className="h-4 w-4" />
         </button>
       </div>
 
       <div className="flex items-center gap-2 text-xs">
-        <span className="text-base-content/50">Base</span>
+        <span className="text-muted">Base</span>
         <Badge tone={statusTone(member.baseStatus)}>{statusLabel(member.baseStatus)}</Badge>
         {propagated && (
           <>
             <span className="text-base-content/40">→</span>
-            <span className="text-base-content/50">Effective</span>
+            <span className="text-muted">Effective</span>
             <Badge tone={statusTone(member.effectiveStatus)}>{statusLabel(member.effectiveStatus)}</Badge>
           </>
         )}
@@ -75,7 +75,7 @@ export function MemberDetail({
 
       {member.dependencies && member.dependencies.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs text-base-content/50">Critical dependencies</span>
+          <span className="text-xs text-muted">Critical dependencies</span>
           <div className="flex flex-wrap gap-1.5">
             {member.dependencies.map((d) => (
               <span

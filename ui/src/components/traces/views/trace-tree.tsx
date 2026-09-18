@@ -176,7 +176,7 @@ function SpanCard({
           title={`status: ${status.label}`}
         />
         <span className="shrink-0" title={component.name}>
-          <component.Icon className="h-3 w-3 text-base-content/50" />
+          <component.Icon className="h-3 w-3 text-muted" />
         </span>
         <span className="min-w-0 truncate font-mono text-xs" title={span.operation}>
           {span.operation}

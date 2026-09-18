@@ -13,7 +13,7 @@ import { useResolveSpan, type TraceFilters } from "@/hooks/use-traces-data";
 const INPUT =
   "h-9 w-full rounded-lg border border-neutral bg-base-100 px-3 text-sm outline-none placeholder:text-base-content/40 focus:border-primary";
 const LABEL =
-  "mb-1 block text-[10px] font-semibold uppercase tracking-wider text-base-content/50";
+  "mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted";
 
 function Field({
   label,
@@ -220,7 +220,7 @@ export function TraceFilterPanel({
             className="accent-primary"
           />
           Show auxiliary requests
-          <span className="text-base-content/40">(health checks, /actuator, metrics, control-plane)</span>
+          <span className="text-muted">(health checks, /actuator, metrics, control-plane)</span>
         </label>
         {hasFilters && (
           <Button variant="ghost" size="sm" onClick={onClear}>

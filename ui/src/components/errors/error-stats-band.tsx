@@ -65,18 +65,18 @@ export function ErrorStatsBand({
 
       <div className="flex flex-wrap gap-4 p-3">
         <section className="min-w-64 flex-1">
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-base-content/50">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
             Events over the window
           </h3>
           <OccurrenceHistogram points={stats.histogram} testid="errors-histogram" />
         </section>
 
         <section className="min-w-56">
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-base-content/50">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
             Top services
           </h3>
           {stats.topServices.length === 0 ? (
-            <p className="text-xs text-base-content/50">No service produced an error here.</p>
+            <p className="text-xs text-muted">No service produced an error here.</p>
           ) : (
             <ul className="flex flex-col gap-1">
               {stats.topServices.map((s) => {

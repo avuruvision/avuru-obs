@@ -43,7 +43,7 @@ export function ControlPlaneCard({
             {/* The proxy table above is unaffected, and saying so stops this
                 card reading as "the whole screen is broken". */}
             {data?.state === "unrecognised" && (
-              <p className="mt-2 text-xs text-base-content/50">
+              <p className="mt-2 text-xs text-muted">
                 The proxies above are still measured — they come from your own
                 traces, not from the control plane.
               </p>
@@ -68,11 +68,11 @@ export function ControlPlaneCard({
         <h2 className="text-sm font-medium">
           Control plane
           {data.kind && (
-            <span className="ml-1.5 font-normal text-base-content/50">{data.kind}</span>
+            <span className="ml-1.5 font-normal text-muted">{data.kind}</span>
           )}
         </h2>
         {data.lastSeen && (
-          <span className="text-xs text-base-content/50">
+          <span className="text-xs text-muted">
             last seen {formatAgo(data.lastSeen)}
           </span>
         )}

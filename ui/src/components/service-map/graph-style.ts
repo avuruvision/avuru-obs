@@ -8,13 +8,13 @@ export function themeColors(surface?: Element | null) {
   const v = (name: string, fallback: string) =>
     cs.getPropertyValue(name).trim() || fallback;
   return {
-    primary: v("--color-primary", "#c0ed93"),
+    primary: v("--color-primary", "#93c5fd"),
     error: v("--color-error", "#f87171"),
     warning: v("--color-warning", "#f59e0b"),
     success: v("--color-success", "#34d399"),
-    base100: v("--color-base-100", "#14372b"),
-    text: v("--color-base-content", "#e3eedb"),
-    neutral: v("--color-neutral", "#33415580"),
+    base100: v("--color-base-100", "#111827"),
+    text: v("--color-base-content", "#e2e8f0"),
+    neutral: v("--color-neutral", "#475569"),
   };
 }
 

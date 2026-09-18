@@ -19,7 +19,7 @@ export function IssueList({
     // container and pin the header to a box that never scrolls.
     <div className="rounded-lg border border-neutral">
       <table className="w-full text-sm">
-        <thead className="sticky top-0 z-10 bg-base-200 text-xs uppercase tracking-wider text-base-content/50">
+        <thead className="sticky top-0 z-10 bg-base-200 text-xs uppercase tracking-wider text-muted">
           <tr>
             <th className="px-3 py-2 text-left font-semibold">Error</th>
             <th className="px-3 py-2 text-left font-semibold">Service</th>
@@ -43,7 +43,7 @@ export function IssueList({
                   <span className="truncate font-medium">{issue.type}</span>
                   <Badge tone="neutral">{issue.source}</Badge>
                 </div>
-                <div className="truncate text-xs text-base-content/50">{issue.message}</div>
+                <div className="truncate text-xs text-muted">{issue.message}</div>
               </td>
               <td className="px-3 py-2 text-base-content/70">{issue.service}</td>
               <td className="px-3 py-2 text-right tabular-nums">{issue.count.toLocaleString()}</td>

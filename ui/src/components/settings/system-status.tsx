@@ -41,7 +41,7 @@ export function SystemStatus() {
         <CardHeader>
           <CardTitle>Components</CardTitle>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-base-content/50">
+            <span className="text-xs text-muted">
               hub {data.version}
             </span>
             <Badge tone={tone(data.overall)}>
@@ -74,7 +74,7 @@ function ComponentTile({ c }: { c: ComponentHealth }) {
         <Badge tone={tone(c.status)}>{c.status}</Badge>
       </div>
       {c.detail && (
-        <span className="text-xs text-base-content/50">{c.detail}</span>
+        <span className="text-xs text-muted">{c.detail}</span>
       )}
     </div>
   );

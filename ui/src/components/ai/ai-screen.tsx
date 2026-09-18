@@ -59,7 +59,7 @@ export function AIScreen() {
         <CardHeader>
           <CardTitle>Model calls</CardTitle>
           {!priced && (
-            <span className="text-xs text-base-content/50">
+            <span className="text-xs text-muted">
               no prices configured — set{" "}
               <span className="font-mono">ai.prices</span> to see money
             </span>
@@ -101,7 +101,7 @@ export function AIScreen() {
       <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle>By model</CardTitle>
-          <span className="text-xs text-base-content/50">
+          <span className="text-xs text-muted">
             busiest first · latency is the whole call, not time to first token
           </span>
         </CardHeader>
@@ -169,7 +169,7 @@ export function AIScreen() {
       <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle>Who is calling</CardTitle>
-          <span className="text-xs text-base-content/50">
+          <span className="text-xs text-muted">
             the same calls, with an owner
           </span>
         </CardHeader>
@@ -236,7 +236,7 @@ function ToolsCard({
     <Card>
       <CardHeader>
         <CardTitle>Tools</CardTitle>
-        <span className="text-xs text-base-content/50">
+        <span className="text-xs text-muted">
           what the agents ran, and how long it took
         </span>
       </CardHeader>
@@ -380,7 +380,7 @@ function Coverage({ total, unpriced }: { total: AIUsage; unpriced: string[] }) {
       data-testid="ai-coverage"
     >
       <TriangleAlert
-        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-base-content/40"
+        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted"
         aria-hidden
       />
       <span>{notes.join("; ")}.</span>
@@ -484,7 +484,7 @@ function Stat({
 }) {
   return (
     <div className="bg-base-200 p-3" data-testid={testid}>
-      <p className="text-xs uppercase tracking-wider text-base-content/50">
+      <p className="text-xs uppercase tracking-wider text-muted">
         {label}
       </p>
       <p className="text-sm font-semibold">{value}</p>

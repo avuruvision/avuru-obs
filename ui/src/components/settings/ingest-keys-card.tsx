@@ -51,7 +51,7 @@ export function IngestKeysCard() {
             Ingest API keys
           </span>
         </CardTitle>
-        <span className="text-xs text-base-content/50">
+        <span className="text-xs text-muted">
           authenticate <span className="font-mono">{project}</span> telemetry
         </span>
       </CardHeader>
@@ -102,7 +102,7 @@ function KeyRow({ k, project }: { k: IngestKey; project: string }) {
     <li className="flex flex-wrap items-center justify-between gap-2 p-3">
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="truncate text-sm font-medium">{k.name}</span>
-        <span className="text-xs text-base-content/50">
+        <span className="text-xs text-muted">
           <span className="font-mono">{k.prefix}…</span> · created{" "}
           {fmtDate(k.createdAt)}
           {k.createdBy ? ` by ${k.createdBy}` : ""}

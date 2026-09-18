@@ -40,7 +40,7 @@ export function SpanDetailOverlay({ span, onClose }: { span: Span; onClose: () =
           <button
             aria-label="Close expanded span detail"
             onClick={onClose}
-            className="text-base-content/50 hover:text-base-content"
+            className="text-muted hover:text-base-content"
           >
             <X className="h-4 w-4" />
           </button>

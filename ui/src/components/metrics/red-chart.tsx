@@ -28,8 +28,8 @@ export function RedChart({
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between">
-        <span className="text-[11px] uppercase tracking-wide text-base-content/50">{title}</span>
-        <span className="font-mono text-[11px] text-base-content/40">max {format(max)}</span>
+        <span className="text-[11px] uppercase tracking-wide text-muted">{title}</span>
+        <span className="font-mono text-[11px] text-muted">max {format(max)}</span>
       </div>
       <svg
         width="100%"

@@ -74,7 +74,7 @@ export function ErrorsScreen() {
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5 rounded-lg border border-neutral bg-base-200 px-2">
-            <Search className="h-3.5 w-3.5 text-base-content/50" aria-hidden />
+            <Search className="h-3.5 w-3.5 text-muted" aria-hidden />
             <input
               type="search"
               defaultValue={filters.q ?? ""}
@@ -151,7 +151,7 @@ export function ErrorsScreen() {
               {truncated ? (
                 <p
                   data-testid="issues-footer"
-                  className="px-3 py-2 text-xs text-base-content/50"
+                  className="px-3 py-2 text-xs text-muted"
                 >
                   Showing {issues.length.toLocaleString()} of{" "}
                   {stats?.issues.toLocaleString()} issues — narrow the filters to

@@ -148,7 +148,7 @@ export function SpansTable({
               </td>
               <td>
                 <span className="flex items-center gap-1 text-xs text-base-content/70">
-                  <component.Icon className="h-3 w-3 shrink-0 text-base-content/50" />
+                  <component.Icon className="h-3 w-3 shrink-0 text-muted" />
                   {component.name}
                 </span>
               </td>

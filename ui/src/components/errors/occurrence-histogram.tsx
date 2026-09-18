@@ -11,7 +11,7 @@ export function OccurrenceHistogram({
   testid?: string;
 }) {
   if (points.length === 0) {
-    return <p className="text-xs text-base-content/50">No occurrences in this window.</p>;
+    return <p className="text-xs text-muted">No occurrences in this window.</p>;
   }
   const max = Math.max(...points.map((p) => p.count), 1);
   return (

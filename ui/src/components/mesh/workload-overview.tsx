@@ -239,7 +239,7 @@ export function ConfigRefRow({
         <Link href={`/mesh?${qs}`} className="font-mono hover:text-primary hover:underline">
           {namespace}/{name}
         </Link>
-        <span className="text-xs text-base-content/50">{note}</span>
+        <span className="text-xs text-muted">{note}</span>
       </div>
       {findings?.length ? (
         <div className="mt-2 flex flex-col gap-2">

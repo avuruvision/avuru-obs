@@ -19,7 +19,7 @@ function classify(n: DiffNode): Change {
   const delta = n.bMs - n.aMs;
   // Significant only if it moved by >10% and >1ms.
   const significant = Math.abs(delta) > 1 && Math.abs(delta) > n.aMs * 0.1;
-  if (!significant) return { label: "≈", cls: "text-base-content/50", delta };
+  if (!significant) return { label: "≈", cls: "text-muted", delta };
   return delta > 0
     ? { label: "slower", cls: "text-error", delta }
     : { label: "faster", cls: "text-success", delta };

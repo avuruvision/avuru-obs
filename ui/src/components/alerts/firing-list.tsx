@@ -25,8 +25,8 @@ export function FiringList({ firing }: { firing: FiringAlert[] }) {
             <li key={`${a.rule}:${a.target}`} className="flex items-center gap-3 px-4 py-2.5 text-sm">
               <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", statusDotClass(a.status))} aria-hidden />
               <span className="font-mono">{a.target}</span>
-              <span className="text-base-content/50">· rule {a.rule}</span>
-              <span className="ml-auto text-xs text-base-content/50">since {formatAgo(a.since)}</span>
+              <span className="text-muted">· rule {a.rule}</span>
+              <span className="ml-auto text-xs text-muted">since {formatAgo(a.since)}</span>
             </li>
           ))}
         </ul>

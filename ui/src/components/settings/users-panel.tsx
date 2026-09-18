@@ -110,7 +110,7 @@ export function UsersPanel() {
         <div className="overflow-x-auto border-t border-neutral">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wider text-base-content/40">
+              <tr className="text-left text-xs uppercase tracking-wider text-muted">
                 <th className="px-4 py-2 font-semibold">Email</th>
                 <th className="px-4 py-2 font-semibold">Name</th>
                 <th className="px-4 py-2 font-semibold">Grants</th>
@@ -411,7 +411,7 @@ function ResetPasswordForm({
           required
         />
       </label>
-      <p className="text-xs text-base-content/50">
+      <p className="text-xs text-muted">
         Signs this user out everywhere — their existing sessions are revoked.
       </p>
       <div className="flex items-center gap-2">

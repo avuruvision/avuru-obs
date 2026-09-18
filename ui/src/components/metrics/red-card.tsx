@@ -15,7 +15,7 @@ export function RedCard({ series }: { series: RedSeries }) {
         <h3 className="truncate text-sm font-semibold text-primary">{series.service}</h3>
         <Link
           href={`/traces?service=${encodeURIComponent(series.service)}`}
-          className="text-xs text-base-content/50 hover:text-primary hover:underline"
+          className="text-xs text-muted hover:text-primary hover:underline"
         >
           traces →
         </Link>

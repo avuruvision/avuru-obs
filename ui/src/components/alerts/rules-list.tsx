@@ -28,8 +28,8 @@ export function RulesList({ rules }: { rules: AlertRule[] }) {
               <div className="flex items-center gap-2">
                 <span className="font-medium">{r.name}</span>
                 <Badge tone="neutral">when {r.when}</Badge>
-                {r.forSec > 0 && <span className="text-xs text-base-content/50">for {r.forSec}s</span>}
-                <span className="ml-auto text-xs text-base-content/50">→ {r.channel}</span>
+                {r.forSec > 0 && <span className="text-xs text-muted">for {r.forSec}s</span>}
+                <span className="ml-auto text-xs text-muted">→ {r.channel}</span>
               </div>
               <span className="text-xs text-base-content/55">{targets(r)}</span>
             </li>

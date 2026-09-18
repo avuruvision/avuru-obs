@@ -25,7 +25,7 @@ export function NodeEnergyTable({ nodes }: { nodes: GreenNodeEnergy[] }) {
             const absent = n.quality === "absent";
             return (
               <tr key={n.node} className="border-b border-neutral/40 last:border-0">
-                <td className={cn("font-medium", absent && "text-base-content/50")}>{n.node}</td>
+                <td className={cn("font-medium", absent && "text-muted")}>{n.node}</td>
                 <td className="text-right font-mono text-xs">{formatWh(n.wh)}</td>
                 <td className="text-right">
                   <NodeQuality node={n} />
@@ -46,7 +46,7 @@ function NodeQuality({ node }: { node: GreenNodeEnergy }) {
   const share = node.wh > 0 ? (node.estimatedWh ?? 0) / node.wh : 0;
   if (share > 0) return <QualityBadge estimatedShare={share} />;
   if (node.quality === "measured" || node.quality === "absent") {
-    return <span className="text-xs text-base-content/50">{node.quality}</span>;
+    return <span className="text-xs text-muted">{node.quality}</span>;
   }
   return <span className="text-xs text-base-content/35">—</span>;
 }

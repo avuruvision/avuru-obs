@@ -89,7 +89,7 @@ export function Select({
         <span className="truncate">{selected?.label}</span>
         <ChevronDown
           className={cn(
-            "h-3.5 w-3.5 shrink-0 text-base-content/50 transition-transform",
+            "h-3.5 w-3.5 shrink-0 text-muted transition-transform",
             open && "rotate-180",
           )}
         />
@@ -123,7 +123,7 @@ export function Select({
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate">{o.label}</span>
                     {o.hint && (
-                      <span className="truncate text-xs text-base-content/50">{o.hint}</span>
+                      <span className="truncate text-xs text-muted">{o.hint}</span>
                     )}
                   </span>
                   {isSel && <Check className="h-3.5 w-3.5 shrink-0" />}

@@ -224,7 +224,7 @@ export function ProxyDetail({
             format={formatMs}
             series={[
               { label: "p95", values: points.map((p) => p.p95Ms), className: "text-warning" },
-              { label: "p50", values: points.map((p) => p.p50Ms), className: "text-base-content/50" },
+              { label: "p50", values: points.map((p) => p.p50Ms), className: "text-muted" },
             ]}
           />
         </div>

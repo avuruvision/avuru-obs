@@ -31,7 +31,7 @@ export function XRayCanvas({ model, settings, onSelect, onInventory }: {
     <div className="xray-viewport" data-testid="xray-viewport">
       <div ref={host} className="absolute inset-0" />
       <div className="pointer-events-none absolute left-5 top-5 z-10 text-[10px] tracking-widest text-base-content/80">
-        CLUSTER X-RAY <span className="text-base-content/50">/ LOGICAL PLACEMENT</span>
+        CLUSTER X-RAY <span className="text-muted">/ LOGICAL PLACEMENT</span>
         <p className="mt-2 tracking-normal text-base-content/65">{model.nodes.length} nodes · {model.pods.length} pods · {model.flows.length} connections</p>
       </div>
       {status !== "ready" && <div role="status" className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-base-100/95 p-8 text-center">

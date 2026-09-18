@@ -32,7 +32,7 @@ export function Heatmap({
       <CardHeader>
         <CardTitle>Latency & errors heatmap</CardTitle>
         {data && (
-          <span className="text-xs text-base-content/50">
+          <span className="text-xs text-muted">
             {data.timeBucketSec}s buckets · click a cell to filter by duration
           </span>
         )}
@@ -44,7 +44,7 @@ export function Heatmap({
           <div className="flex gap-2">
             {/* duration axis */}
             <div
-              className="grid shrink-0 text-right font-mono text-[9px] text-base-content/40"
+              className="grid shrink-0 text-right font-mono text-[9px] text-muted"
               style={{ gridTemplateRows: `repeat(${grid.rows}, 10px)` }}
             >
               {data.durationBoundsMs.map((b, i) =>

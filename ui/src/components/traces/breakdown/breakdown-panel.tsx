@@ -137,7 +137,7 @@ export function BreakdownPanel({
             />
           </div>
           {total && total.count > 0 && (
-            <span className="font-mono text-xs text-base-content/50">
+            <span className="font-mono text-xs text-muted">
               {total.count.toLocaleString()} spans
               {data && data.groupCount > rows.length
                 ? ` across ${data.groupCount.toLocaleString()} values`
@@ -145,7 +145,7 @@ export function BreakdownPanel({
             </span>
           )}
         </CardHeader>
-        <p className="px-4 pb-2 text-xs text-base-content/50">{SCOPE_HELP[scope]}</p>
+        <p className="px-4 pb-2 text-xs text-muted">{SCOPE_HELP[scope]}</p>
 
         <div className="px-4 pb-4">
           {isLoading ? (
@@ -177,7 +177,7 @@ export function BreakdownPanel({
                       <span className="truncate text-base-content/80" title={d.label}>
                         {d.label}
                       </span>
-                      <span className="ml-auto shrink-0 font-mono text-base-content/50">
+                      <span className="ml-auto shrink-0 font-mono text-muted">
                         {formatPercent(weightTotal > 0 ? weightOf(d) / weightTotal : 0)}
                       </span>
                     </li>
@@ -193,14 +193,14 @@ export function BreakdownPanel({
         <Card>
           <CardHeader>
             <CardTitle>Exact numbers</CardTitle>
-            <span className="text-xs text-base-content/50">
+            <span className="text-xs text-muted">
               top {Math.min(data.groups.length, TABLE_ROWS)}
               {canDrill ? " · click a row for its traces" : ""}
             </span>
           </CardHeader>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead className="text-left text-base-content/50">
+              <thead className="text-left text-muted">
                 <tr className="border-b border-neutral">
                   <th className="px-4 py-2 font-medium">Value</th>
                   <th className="px-4 py-2 text-right font-medium">Spans</th>
@@ -254,7 +254,7 @@ export function BreakdownPanel({
                   </tr>
                 ))}
                 {data.other && (
-                  <tr className="border-b border-neutral/50 text-base-content/50">
+                  <tr className="border-b border-neutral/50 text-muted">
                     <td className="px-4 py-1.5 font-mono italic">
                       everything else ({(data.groupCount - data.groups.length).toLocaleString()}{" "}
                       values)
