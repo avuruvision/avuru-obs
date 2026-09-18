@@ -11,6 +11,8 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.19.0] — 2026-09-18
+
 ### Changed
 
 - **Slate dark theme.** The dark theme moves from forest surfaces and lime
