@@ -19,6 +19,9 @@ type Fake struct {
 	// signal other than entry spans.
 	Presence []storage.ServicePresence
 	Labels   []storage.ServiceLabel
+	// LabelsErr makes ServiceLabels fail, for the readers that must fail
+	// closed rather than answer without it.
+	LabelsErr error
 	// Workload is what ServiceWorkload returns; LastWorkloadService records
 	// the service it was asked about and WorkloadCalls how often, so a test
 	// can assert the resolver is skipped when the caller already knows.
@@ -290,6 +293,9 @@ func (f *Fake) ServicePresence(_ context.Context, q storage.ServiceQuery, signal
 
 func (f *Fake) ServiceLabels(_ context.Context, q storage.ServiceQuery) ([]storage.ServiceLabel, error) {
 	f.LastServiceQuery = q
+	if f.LabelsErr != nil {
+		return nil, f.LabelsErr
+	}
 	return f.Labels, nil
 }
 

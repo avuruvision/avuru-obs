@@ -118,13 +118,17 @@ type meshWorkloadsResponse struct {
 
 // handleMeshWorkloads lists workloads as the CLUSTER runs them, joined to what
 // telemetry saw. Scoping is the namespaces route's, exactly: the roster is
-// cluster-wide, the telemetry decoration is project-scoped and best-effort.
+// the cluster as this caller may see it (meshSnapshot), the telemetry
+// decoration is project-scoped and best-effort.
 func (a *API) handleMeshWorkloads(w http.ResponseWriter, r *http.Request) error {
 	mode := r.URL.Query().Get("mode")
 	if !validWorkloadMode(mode) {
 		return badRequest("mode must be one of ambient, sidecar, %s or %s", workloadModeNone, workloadModeDeclaredOnly)
 	}
-	snap := a.meshConfig().Snapshot(r.Context())
+	snap, err := a.meshSnapshot(r)
+	if err != nil {
+		return err
+	}
 	resp := meshWorkloadsResponse{
 		State:         string(snap.State),
 		Reason:        snap.Reason,

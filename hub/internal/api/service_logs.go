@@ -130,7 +130,10 @@ func (a *API) resolveServiceWorkload(r *http.Request, store storage.Store, q sto
 	if !a.modules.Enabled(modules.MeshConfig) {
 		return "", "", noAttr + ", and mesh-config is off, so the Service behind this name is not known either"
 	}
-	snap := a.meshConfig().Snapshot(r.Context())
+	snap, err := a.meshSnapshot(r)
+	if err != nil {
+		return "", "", noAttr + ", and the cluster view could not be scoped to this project"
+	}
 	if snap.State != meshconfig.StateOK {
 		return "", "", noAttr + ", and the cluster was not read — " + snap.Reason
 	}

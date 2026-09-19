@@ -188,7 +188,10 @@ func (a *API) workloadLogSources(r *http.Request, namespace, name, wantWaypoint 
 	if !a.modules.Enabled(modules.MeshConfig) {
 		return fallback("pods are matched by name: mesh-config is off, so the workload's pods are not known")
 	}
-	snap := a.meshConfig().Snapshot(r.Context())
+	snap, err := a.meshSnapshot(r)
+	if err != nil {
+		return fallback("pods are matched by name: the cluster view could not be scoped to this project")
+	}
 	switch {
 	case snap.State != meshconfig.StateOK:
 		return fallback("pods are matched by name: the cluster was not read — " + snap.Reason)

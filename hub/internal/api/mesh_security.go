@@ -235,7 +235,11 @@ func (a *API) declaredMTLS(r *http.Request) declaredMTLS {
 	if !a.modules.Enabled(modules.MeshConfig) {
 		return newSnapshotDeclared(meshconfig.NoopReader{}.Snapshot(r.Context()))
 	}
-	return newSnapshotDeclared(a.meshConfig().Snapshot(r.Context()))
+	snap, err := a.meshSnapshot(r)
+	if err != nil {
+		return newSnapshotDeclared(meshconfig.NoopReader{}.Snapshot(r.Context()))
+	}
+	return newSnapshotDeclared(snap)
 }
 
 // tracedWorkloads is the trace-derived half the security rows borrow: which

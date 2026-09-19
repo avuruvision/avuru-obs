@@ -88,7 +88,10 @@ type meshKindSyncDTO struct {
 // already does the same job — never in the storage or config packages, which
 // must each stay answerable on their own.
 func (a *API) handleMeshNamespaces(w http.ResponseWriter, r *http.Request) error {
-	snap := a.meshConfig().Snapshot(r.Context())
+	snap, err := a.meshSnapshot(r)
+	if err != nil {
+		return err
+	}
 
 	resp := meshNamespacesResponse{
 		State:         string(snap.State),

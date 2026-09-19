@@ -50,7 +50,10 @@ type meshConfigResponse struct {
 // handleMeshConfig lists configuration objects, optionally narrowed, and
 // returns one object whole when `name` is given.
 func (a *API) handleMeshConfig(w http.ResponseWriter, r *http.Request) error {
-	snap := a.meshConfig().Snapshot(r.Context())
+	snap, err := a.meshSnapshot(r)
+	if err != nil {
+		return err
+	}
 	resp := meshConfigResponse{
 		State:        string(snap.State),
 		Reason:       snap.Reason,
