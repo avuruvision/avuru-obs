@@ -11,6 +11,8 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.19.1] — 2026-09-19
+
 ### Fixed
 
 - **Service Mesh shows a project-scoped account only its own projects'
