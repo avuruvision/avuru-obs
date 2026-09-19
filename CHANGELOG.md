@@ -11,6 +11,25 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Service Mesh shows a project-scoped account only its own projects'
+  namespaces.** The mesh screen's namespace list, workload list, configuration
+  browser, workload detail and waypoint detail are built from the cluster's own
+  record, which Kubernetes keeps with no notion of a project. Every other screen
+  narrows what it shows to the request's project; these five routes did not, so
+  an account granted one project — the shared demo viewer, say — could read every
+  namespace, workload and policy on the cluster. The cluster's record is now
+  narrowed to the namespaces the caller's projects reach, derived the same way
+  the service map derives them from that project's telemetry in the selected
+  window; a workload or waypoint outside that view is absent (404), not
+  "bound to nothing". An identity that may see every project (a `*` grant, or
+  an install running without authentication) still sees the cluster whole,
+  because the row that matters most to an operator is the namespace whose
+  telemetry never arrived. If the project's namespaces cannot be resolved, the
+  routes answer with an error rather than with the cluster or with an empty
+  list that would read as "no mesh".
+
 ## [0.19.0] — 2026-09-18
 
 ### Changed

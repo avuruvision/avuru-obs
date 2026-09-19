@@ -87,7 +87,10 @@ type meshWorkloadResponse struct {
 // the policies that cover it with THEIR findings, and its pods.
 func (a *API) handleMeshWorkload(w http.ResponseWriter, r *http.Request) error {
 	namespace, name := r.PathValue("namespace"), r.PathValue("name")
-	snap := a.meshConfig().Snapshot(r.Context())
+	snap, err := a.meshSnapshot(r)
+	if err != nil {
+		return err
+	}
 	resp := meshWorkloadResponse{
 		State:         string(snap.State),
 		Reason:        snap.Reason,
