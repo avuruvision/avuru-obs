@@ -11,6 +11,28 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+### Added
+
+- **An absolute time range, on every screen.** Beside the 15m/1h/6h/24h
+  presets, the global picker takes a start and an end (local time, to the
+  minute). The window rides the URL as `?range=custom&from=…&to=…`, so a
+  pasted link opens on the same minutes, and it follows you from page to page
+  the way a preset does.
+- **Log panels you fold, widen and follow.** In Signals → Logs, each service
+  panel has its own controls: collapse or expand it (or all of them at once),
+  span it across the full width, and follow it — the panel then tails the
+  newest lines every five seconds, pinned to the top, until you stop it.
+  Following is per panel, so one service can be live while the others hold
+  still; it is not offered over an absolute window, which has nothing to tail.
+
+### Changed
+
+- **Log panels scroll inside their own box.** A panel no longer grows the page
+  as it loads: its lines scroll under a sticky header inside a capped box,
+  the next page loads as you reach its bottom, and a Back to top button
+  appears once you are deep in. The line count in the panel's header says how
+  much is loaded and whether there is more.
+
 ## [0.19.0] — 2026-09-18
 
 ### Changed

@@ -254,4 +254,85 @@ test.describe("multiservice log explorer", () => {
     await page.getByRole("tab", { name: "Proxies", exact: true }).click();
     await expect(page.getByRole("searchbox", { name: "Filter proxies" })).toHaveValue("");
   });
+
+  test("folds, widens and follows each panel on its own", async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.route("**/api/v1/logs/services*", (route) => route.fulfill({ json: { services: [], workloads: [] } }));
+    const firstPages: Record<string, number> = {};
+    await page.route(/\/api\/v1\/logs(?:\?.*)?$/, (route) => {
+      const url = new URL(route.request().url());
+      const service = url.searchParams.get("service") ?? "";
+      if (!url.searchParams.has("cursor")) firstPages[service] = (firstPages[service] ?? 0) + 1;
+      return route.fulfill({ json: { logs: [log(service, "application", `${service} ready`)], resolutions: [], nextCursor: "" } });
+    });
+    await page.goto("/logs?services=checkout-api%2Cinventory-api&display=panels");
+    const checkout = page.getByRole("region", { name: "Logs for checkout-api" });
+    const inventory = page.getByRole("region", { name: "Logs for inventory-api" });
+    await expect(checkout.getByText("checkout-api ready")).toBeVisible();
+
+    // Folding one panel leaves the other open; the layout is not a filter, so
+    // the URL does not change.
+    await checkout.getByRole("button", { name: "Collapse checkout-api" }).click();
+    await expect(checkout.getByText("checkout-api ready")).toBeHidden();
+    await expect(inventory.getByText("inventory-api ready")).toBeVisible();
+    await expect(page).toHaveURL(/services=checkout-api%2Cinventory-api&display=panels$/);
+    await checkout.getByRole("button", { name: "Expand checkout-api" }).click();
+    await expect(checkout.getByText("checkout-api ready")).toBeVisible();
+
+    await page.getByRole("button", { name: "Collapse all" }).click();
+    await expect(checkout.getByText("checkout-api ready")).toBeHidden();
+    await expect(inventory.getByText("inventory-api ready")).toBeHidden();
+    await page.getByRole("button", { name: "Expand all" }).click();
+    await expect(inventory.getByText("inventory-api ready")).toBeVisible();
+
+    // A widened panel spans the row; the other keeps its half.
+    const widen = checkout.getByRole("button", { name: "Widen checkout-api" });
+    await widen.click();
+    await expect(checkout.getByRole("button", { name: "Narrow checkout-api" })).toHaveAttribute("aria-pressed", "true");
+    const wide = await checkout.boundingBox();
+    const half = await inventory.boundingBox();
+    expect(wide!.width).toBeGreaterThan(half!.width * 1.5);
+
+    // Following polls the newest page of one panel, and only that one.
+    const before = firstPages["inventory-api"];
+    await checkout.getByRole("button", { name: "Follow" }).click();
+    await expect(checkout.getByRole("button", { name: "Follow" })).toHaveAttribute("aria-pressed", "true");
+    await expect(checkout.getByRole("status")).toContainText("Live");
+    await expect.poll(() => firstPages["checkout-api"], { timeout: 30_000 }).toBeGreaterThanOrEqual(3);
+    expect(firstPages["inventory-api"]).toBe(before);
+    await checkout.getByRole("button", { name: "Follow" }).click();
+    await expect(checkout.getByRole("status")).toHaveCount(0);
+  });
+
+  test("scrolls a long panel inside its own box", async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.route("**/api/v1/logs/services*", (route) => route.fulfill({ json: { services: [], workloads: [] } }));
+    await page.route(/\/api\/v1\/logs(?:\?.*)?$/, (route) => {
+      const second = new URL(route.request().url()).searchParams.has("cursor");
+      const offset = second ? 100 : 0;
+      return route.fulfill({
+        json: {
+          logs: Array.from({ length: 100 }, (_, i) => log("checkout-api", "application", `checkout line ${offset + i + 1}`)),
+          resolutions: [],
+          nextCursor: second ? "" : "next-page",
+        },
+      });
+    });
+    await page.goto("/logs?services=checkout-api&display=panels");
+    const checkout = page.getByRole("region", { name: "Logs for checkout-api" });
+    await expect(checkout.getByText("checkout line 1", { exact: true })).toBeVisible();
+
+    // The panel is capped: the page does not grow with the lines.
+    const box = checkout.getByTestId("log-scroll");
+    expect(await box.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    expect((await checkout.boundingBox())!.height).toBeLessThan(900);
+
+    // Scrolling to the bottom of the box loads the next page and offers the
+    // way back up.
+    await box.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await expect(checkout.getByText("checkout line 200", { exact: true })).toBeAttached();
+    await checkout.getByRole("button", { name: "Back to top" }).click();
+    await expect.poll(() => box.evaluate((el) => el.scrollTop)).toBeLessThan(5);
+    await expect(checkout).toContainText("200 lines");
+  });
 });

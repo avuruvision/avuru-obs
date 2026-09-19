@@ -5,7 +5,11 @@ import { usePathname } from "next/navigation";
 import {
   DEFAULT_PRESET,
   TIME_RANGE_KEY,
+  parseSelection,
+  selectionFromParams,
+  serializeSelection,
   useTimeRange,
+  writeSelection,
 } from "@/hooks/use-time-range";
 
 // Keeps the global time range sticky across navigation, mirroring
@@ -15,25 +19,34 @@ import {
 // picker is Suspense-wrapped and not a reliable effect host).
 export function TimeRangeSync({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { preset } = useTimeRange();
+  const { selection } = useTimeRange();
 
-  // A shared link's ?range= must stick: mirror the resolved preset into
-  // localStorage so the next in-app navigation stays on the same range.
+  // A shared link's ?range= must stick: mirror what the URL says into
+  // localStorage so the next in-app navigation stays on the same range. Only
+  // what the URL says: on a fresh page load the first commit still holds the
+  // server snapshot (the default), and mirroring that would wipe the stored
+  // range before the client snapshot could read it.
   useEffect(() => {
-    if (localStorage.getItem(TIME_RANGE_KEY) !== preset) {
-      localStorage.setItem(TIME_RANGE_KEY, preset);
+    const fromURL = selectionFromParams(new URLSearchParams(window.location.search));
+    if (!fromURL) return;
+    const serialized = serializeSelection(fromURL);
+    if (localStorage.getItem(TIME_RANGE_KEY) !== serialized) {
+      localStorage.setItem(TIME_RANGE_KEY, serialized);
     }
-  }, [preset]);
+  }, [selection]);
 
-  // Re-materialize ?range= after navigations, keeping links shareable
-  // (default is deliberately unmarked).
+  // Re-materialize ?range= (and an absolute window's ?from=/?to=) after
+  // navigations, keeping links shareable (default is deliberately unmarked).
   useEffect(() => {
-    if (preset === DEFAULT_PRESET) return;
+    if (selection === DEFAULT_PRESET) return;
+    const sel = parseSelection(selection);
+    if (!sel) return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("range") === preset) return;
-    params.set("range", preset);
+    const current = selectionFromParams(params);
+    if (current && serializeSelection(current) === selection) return;
+    writeSelection(params, sel);
     window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
-  }, [pathname, preset]);
+  }, [pathname, selection]);
 
   return children;
 }

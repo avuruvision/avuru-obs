@@ -3,7 +3,6 @@
 import { useMemo } from "react";
 import { Columns2, FilterX, Rows3, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { MultiCombobox, type MultiComboboxOption } from "@/components/ui/multi-combobox";
 import { Select } from "@/components/ui/select";
 import { TagChips } from "@/components/filters/tag-chips";
@@ -11,9 +10,10 @@ import { useLogSearch, useLogServices, type LogFilters } from "@/hooks/use-logs-
 import { useTimeRange } from "@/hooks/use-time-range";
 import { useURLState } from "@/hooks/use-url-state";
 import { cn } from "@/lib/cn";
-import type { LogResolution } from "@/lib/api-types";
 import { type TimeParams } from "@/lib/query-keys";
 import { LogTable } from "./log-table";
+import { ServicePanels } from "./log-panels";
+import { ResolutionNotices } from "./resolution-notices";
 
 export const SEVERITY_OPTIONS = [
   { value: "", label: "All severities" },
@@ -39,7 +39,7 @@ const URL_KEYS = {
 const csv = (value?: string) => [...new Set((value ?? "").split(",").map((part) => part.trim()).filter(Boolean))];
 
 export function LogsScreen({ context = "signals" }: { context?: "signals" | "mesh" }) {
-  const { time } = useTimeRange();
+  const { time, custom, windowMs } = useTimeRange();
   const { get, setMany } = useURLState();
   const keys = URL_KEYS[context];
   const suggestions = useLogServices(time);
@@ -133,7 +133,7 @@ export function LogsScreen({ context = "signals" }: { context?: "signals" | "mes
         <TagChips value={filters.tags} onChange={(next) => setMany({ [keys.tags]: next })} />
       </div>
 
-      {display === "merged" ? <MergedLogs time={time} filters={filters} /> : <ServicePanels time={time} filters={filters} services={services} workloads={workloads} />}
+      {display === "merged" ? <MergedLogs time={time} filters={filters} /> : <ServicePanels time={time} filters={filters} services={services} workloads={workloads} liveWindowMs={custom ? null : windowMs} />}
     </div>
   );
 }
@@ -152,52 +152,6 @@ function MergedLogs({ time, filters }: { time: TimeParams; filters: LogFilters }
     <div className="flex flex-col gap-3">
       <ResolutionNotices resolutions={search.data?.pages[0]?.resolutions} sources={filters.source} />
       <LogTable pages={search.data?.pages.map((page) => page.logs)} isLoading={search.isLoading} hasNextPage={Boolean(search.hasNextPage)} isFetchingNextPage={search.isFetchingNextPage} fetchNextPage={() => search.fetchNextPage()} autoLoad />
-    </div>
-  );
-}
-
-function ServicePanels({ time, filters, services, workloads }: { time: TimeParams; filters: LogFilters; services: string[]; workloads: string[] }) {
-  const subjects = [
-    ...services.map((value) => ({ kind: "service" as const, value, label: value })),
-    ...workloads.map((value) => ({ kind: "workload" as const, value, label: value })),
-  ];
-  if (subjects.length === 0) return <Card className="p-8 text-center text-sm text-base-content/60">Choose one or more services to open panels</Card>;
-  return (
-    <div className="grid gap-4 xl:grid-cols-2">
-      {subjects.map((subject) => <LogPanel key={`${subject.kind}:${subject.value}`} subject={subject} time={time} filters={filters} />)}
-    </div>
-  );
-}
-
-function LogPanel({ subject, time, filters }: { subject: { kind: "service" | "workload"; value: string; label: string }; time: TimeParams; filters: LogFilters }) {
-  const search = useLogSearch(time, {
-    ...filters,
-    services: subject.kind === "service" ? [subject.value] : [],
-    workloads: subject.kind === "workload" ? [subject.value] : [],
-  }, true, true);
-  return (
-    <section aria-label={`Logs for ${subject.label}`} className="min-w-0 rounded-xl border border-neutral bg-base-200 p-3">
-      <h2 className="mb-3 truncate font-mono text-sm font-semibold">{subject.label}</h2>
-      <ResolutionNotices resolutions={search.data?.pages[0]?.resolutions} sources={filters.source} />
-      {search.isError ? <p className="p-4 text-sm text-error">Unable to load this panel.</p> : (
-        <LogTable pages={search.data?.pages.map((page) => page.logs)} isLoading={search.isLoading} hasNextPage={Boolean(search.hasNextPage)} isFetchingNextPage={search.isFetchingNextPage} fetchNextPage={() => search.fetchNextPage()} autoLoad downloadName={subject.label.replace("/", "-")} />
-      )}
-    </section>
-  );
-}
-
-function ResolutionNotices({ resolutions, sources }: { resolutions?: LogResolution[]; sources?: string }) {
-  if (!sources?.split(",").some((source) => source === "ztunnel" || source === "waypoint")) return null;
-  const notices = [...new Set((resolutions ?? []).flatMap((resolution) => {
-    const subject = resolution.service || [resolution.namespace, resolution.workload].filter(Boolean).join("/");
-    return [resolution.proxiesUnavailable, resolution.proxiesMatchedBy, resolution.proxiesFallback]
-      .filter(Boolean)
-      .map((message) => `${subject}: ${message}`);
-  }))];
-  if (notices.length === 0) return null;
-  return (
-    <div role="status" className="mb-3 rounded-lg border border-warning/50 bg-warning/10 px-3 py-2 text-xs text-base-content/75">
-      {notices.map((notice) => <p key={notice}>{notice}</p>)}
     </div>
   );
 }
