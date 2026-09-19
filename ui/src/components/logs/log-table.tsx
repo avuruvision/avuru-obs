@@ -2,15 +2,19 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download } from "lucide-react";
+import { ArrowUp, Download } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
 import { CenteredSpinner, Spinner } from "@/components/ui/spinner";
 import { SeverityBadge } from "./severity-badge";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/cn";
 import { formatTime, utcTooltip } from "@/lib/format";
 import type { LogRecord } from "@/lib/api-types";
+
+// How far down a bounded table has to be before "Back to top" is offered.
+const BACK_TO_TOP_AFTER_PX = 320;
 
 // A paste-friendly one-line rendering of a log record for the copy button.
 function logLine(l: LogRecord): string {
@@ -31,6 +35,9 @@ export function LogTable({
   fetchNextPage,
   autoLoad = false,
   downloadName = "logs",
+  bounded = false,
+  heightClass = "max-h-[65vh]",
+  pinTop = false,
 }: {
   pages?: LogRecord[][];
   isLoading: boolean;
@@ -42,8 +49,20 @@ export function LogTable({
   autoLoad?: boolean;
   // Basename of the downloaded file — the subject these lines are about.
   downloadName?: string;
+  // Scroll inside the table rather than growing the page: a capped box with
+  // a sticky header and a way back up. What a panel beside other panels
+  // wants; the merged stream keeps the page's own scroll.
+  bounded?: boolean;
+  // The cap of a bounded table, as a Tailwind max-height class.
+  heightClass?: string;
+  // Keep the newest lines in view: every time the rows change, a bounded
+  // table scrolls back to its top. What following means for a list that
+  // reads newest-first.
+  pinTop?: boolean;
 }) {
   const sentinel = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  const [scrolled, setScrolled] = useState(false);
   // Which rows are picked, and the last one clicked so shift can extend from
   // it. Component state, not URL state: a selection is a gesture in progress,
   // and it should not survive a reload or be shared by a pasted link.
@@ -55,12 +74,18 @@ export function LogTable({
     const el = sentinel.current;
     const obs = new IntersectionObserver((entries) => {
       if (entries.some((e) => e.isIntersecting)) fetchNextPage();
-    });
+    }, { root: bounded ? scroller.current : null });
     obs.observe(el);
     return () => obs.disconnect();
-  }, [autoLoad, hasNextPage, isFetchingNextPage, fetchNextPage]);
+  }, [autoLoad, bounded, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const logs = useMemo(() => pages?.flat() ?? [], [pages]);
+
+  useEffect(() => {
+    if (pinTop && scroller.current) scroller.current.scrollTop = 0;
+  }, [pinTop, logs]);
+
+  const backToTop = () => scroller.current?.scrollTo({ top: 0, behavior: "smooth" });
   // What the copy and download controls act on: the picked rows when any are
   // picked, otherwise everything loaded. Both say their count out loud,
   // because "Copy" over a list that grows as you scroll is a lie about what
@@ -129,9 +154,15 @@ export function LogTable({
         )}
       </div>
 
-      <Card className="overflow-hidden">
+      <div className="relative">
+      <Card
+        ref={scroller}
+        data-testid="log-scroll"
+        onScroll={bounded ? (e) => setScrolled(e.currentTarget.scrollTop > BACK_TO_TOP_AFTER_PX) : undefined}
+        className={cn("overflow-hidden", bounded && cn("overflow-y-auto overscroll-contain", heightClass))}
+      >
         <table className="table-dense w-full text-sm">
-          <thead>
+          <thead className={cn(bounded && "sticky top-0 z-10 bg-base-200")}>
             <tr className="border-b border-neutral text-left">
               <th className="w-8">
                 <span className="sr-only">Select</span>
@@ -214,6 +245,16 @@ export function LogTable({
           </div>
         )}
       </Card>
+      {bounded && scrolled && (
+        <button
+          type="button"
+          onClick={backToTop}
+          className="absolute bottom-3 right-4 inline-flex items-center gap-1 rounded-full border border-neutral bg-base-100 px-3 py-1 text-xs text-base-content/75 shadow hover:text-base-content"
+        >
+          <ArrowUp className="h-3 w-3" aria-hidden /> Back to top
+        </button>
+      )}
+      </div>
     </div>
   );
 }

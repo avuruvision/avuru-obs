@@ -37,16 +37,32 @@ async function withPanelRequestSlot<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-export function useLogSearch(time: TimeParams, filters: LogFilters, enabled = true, panel = false) {
+// How often a followed panel asks for its newest page.
+export const FOLLOW_INTERVAL_MS = 5_000;
+
+// A window of the given length ending now — computed when the request goes
+// out, not when the component rendered, so a followed panel keeps up.
+function liveWindow(windowMs: number): TimeParams {
+  const end = new Date();
+  return { start: new Date(end.getTime() - windowMs).toISOString(), end: end.toISOString() };
+}
+
+// followWindowMs, when set, turns the search into a tail: one page, the newest
+// lines of a window that length ending now, refetched every few seconds. The
+// key carries the length rather than the ends, so the ticks land on one cache
+// entry instead of minting a new query each time.
+export function useLogSearch(time: TimeParams, filters: LogFilters, enabled = true, panel = false, followWindowMs?: number) {
   const { project } = useProject();
+  const follow = followWindowMs !== undefined && followWindowMs > 0;
   return useInfiniteQuery({
-    queryKey: queryKeys.logs(project, time, { ...filters }),
+    queryKey: queryKeys.logs(project, time, { ...filters, ...(follow ? { follow: followWindowMs } : {}) }),
     enabled,
+    refetchInterval: follow ? FOLLOW_INTERVAL_MS : false,
     queryFn: ({ pageParam }) => {
       const request = () => apiGet<LogsResponse>(
         "/api/v1/logs",
         {
-          ...time,
+          ...(follow ? liveWindow(followWindowMs) : time),
           ...filters,
           service: filters.services,
           workload: filters.workloads,
@@ -61,7 +77,9 @@ export function useLogSearch(time: TimeParams, filters: LogFilters, enabled = tr
       return panel ? withPanelRequestSlot(request) : request();
     },
     initialPageParam: { cursor: "", resolutionToken: "" },
-    getNextPageParam: (last) => last.nextCursor
+    // A tail has no older pages: every tick would refetch them all, and the
+    // newest hundred is what following means.
+    getNextPageParam: (last) => last.nextCursor && !follow
       ? { cursor: last.nextCursor, resolutionToken: last.resolutionToken ?? "" }
       : undefined,
   });
