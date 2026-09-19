@@ -103,6 +103,15 @@ rather than assumed.
 Objects are stripped on ingest — `managedFields` and
 `last-applied-configuration` — which are routinely larger than the object.
 
+**No tenant column means the API layer draws the project line.** The snapshot
+is the cluster whole, and it is served whole only to an identity that may see
+every project (a `*` grant, or authentication off). Any other identity gets it
+narrowed (`Snapshot.Narrow`, applied by the API's `meshSnapshot`) to the
+namespaces its projects' telemetry reached in the window — the same derivation
+the service map uses — and a store failure on that lookup is an error, never
+the cluster. Added after the shared demo viewer was found reading every
+namespace and policy through these routes (v0.19.1).
+
 ### Validation as a pure package
 
 `hub/internal/meshconfig/validate` takes a snapshot struct and returns findings.

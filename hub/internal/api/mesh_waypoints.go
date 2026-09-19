@@ -44,7 +44,10 @@ type meshWaypointResponse struct {
 // look the same on the wire.
 func (a *API) handleMeshWaypoint(w http.ResponseWriter, r *http.Request) error {
 	namespace, name := r.PathValue("namespace"), r.PathValue("name")
-	snap := a.meshConfig().Snapshot(r.Context())
+	snap, err := a.meshSnapshot(r)
+	if err != nil {
+		return err
+	}
 	resp := meshWaypointResponse{
 		State:      string(snap.State),
 		Reason:     snap.Reason,
