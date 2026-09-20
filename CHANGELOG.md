@@ -30,6 +30,29 @@ When a release is cut, that block is renamed to the version with its date.
   routes answer with an error rather than with the cluster or with an empty
   list that would read as "no mesh".
 
+### Security
+
+- **Security floors raised in the gateway and node-agent collector builds.**
+  `golang.org/x/crypto` moves from v0.55.0 to v0.57.0 in both distros, for
+  CVE-2026-56855 and CVE-2026-78662 (MEDIUM — `x/crypto/ssh`, a malicious peer
+  deadlocks the whole connection through an undecided or an established
+  channel; fixed in v0.56.0). Both landed on v0.55.0, the version the previous
+  floor pinned to answer CVE-2026-56854. Neither distro exposes an SSH surface,
+  so this closes a scan finding rather than a reachable hole — and no collector
+  line carries the fix yet, so the floors stay until one does.
+
+  The gateway also floors the otel-go SDK line: `otel/sdk` and the `otlptrace`
+  exporters for CVE-2026-81870 (LOW — the tracer provider logs its exporter
+  configuration, collector endpoints included, when internal logging is turned
+  on; fixed in v1.45.0), and `otlploggrpc` for CVE-2026-81871 (MEDIUM — the
+  gRPC log exporter ignores TLS certificates configured only through the
+  environment, bypassing a private CA or mutual TLS; fixed in v0.21.0). The
+  `otel/log` module is still 0.x and its API moved with that fix, so the other
+  log exporters on this line (`otlploghttp`, `stdoutlog`) and the collector's
+  zap bridge move to their matching releases in the same pass — sibling
+  otel-go modules stay on one release train. The node agent's 0.159.0 line
+  resolves v1.45.0 / v0.21.0 by itself and needs no floor.
+
 ## [0.19.0] — 2026-09-18
 
 ### Changed

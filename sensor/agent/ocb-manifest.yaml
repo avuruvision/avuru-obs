@@ -60,11 +60,16 @@ extensions:
 
 replaces:
   # Security floor: CVE-2026-56854 (CRITICAL — golang.org/x/crypto/ssh
-  # authentication bypass, source-address restrictions not enforced). NO
-  # collector release carries the fix: 0.159.0 resolves v0.54.0 and the fix is
-  # in v0.55.0. This is the entire reason the node agent has a distro of its
-  # own. Drop it when a collector line ships v0.55.0+ by itself.
-  - golang.org/x/crypto => golang.org/x/crypto v0.55.0
+  # authentication bypass, source-address restrictions not enforced), and since
+  # 2026-09-20 CVE-2026-56855 / CVE-2026-78662 (MEDIUM — golang.org/x/crypto/ssh,
+  # a malicious peer deadlocks the whole connection through an undecided or an
+  # established channel), which land on v0.55.0 — the version this floor used
+  # to pin. NO collector release carries the fix: 0.159.0 resolves v0.54.0, the
+  # fix for the current pair is v0.56.0, and the floor pins v0.57.0, the newest
+  # release at the time of writing. This is the entire reason the node agent
+  # has a distro of its own. Drop it when a collector line ships v0.56.0+ by
+  # itself.
+  - golang.org/x/crypto => golang.org/x/crypto v0.57.0
   # Security floor: CVE-2026-56864 / CVE-2026-56865 (HIGH — golang.org/x/mod,
   # a malicious GOSUMDB serving arbitrary module content, and a tlog tile
   # verification bypass). The 0.159.0 line resolves v0.38.0; the fix is v0.40.0.
