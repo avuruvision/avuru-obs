@@ -11,7 +11,7 @@
 **Base state:** `feature/green-tdp-estimation` (PR #70) merged into `main` at `043b919`. This plan runs in a fresh worktree branched directly from `origin/main` — not from the feature branch — so it never touches that branch's separate, still-uncommitted TDP-estimation WIP (`ci.yml`, `Makefile`, its own plan doc, `sensor/tdp-estimator/model_test.go` in the *original* checkout, which live elsewhere and are untouched by this worktree).
 
 **Out of scope (do not touch):**
-- `design/*.md`, `docs/superpowers/plans/*.md`, `docs/superpowers/specs/*.md`, `CHANGELOG.md` — these are dated records of what was true when written (e.g. CHANGELOG.md:275 documents the `AVURUOPS_PROJECTS` env var as it existed in a past release; `docs/superpowers/plans/2026-07-30-green-tdp-estimation.md` is now merged into `main` as part of that history too). Rewriting them falsifies history.
+- `design/*.md`, `docs/agent/plans/*.md`, `docs/agent/specs/*.md`, `CHANGELOG.md` — these are dated records of what was true when written (e.g. CHANGELOG.md:275 documents the `AVURUOPS_PROJECTS` env var as it existed in a past release; `docs/agent/plans/2026-07-30-green-tdp-estimation.md` is now merged into `main` as part of that history too). Rewriting them falsifies history.
 - `.claude/settings.local.json` — untracked by git (confirmed via `git ls-files`), not part of the codebase.
 - `.claude/worktrees/**` — other in-progress sessions' isolated worktrees (`auth-ingest-keys`, `launch-readiness`, `projects-phase1-crud`, `ui-brand`, `ux-overhaul`). Never touch another worktree's checkout.
 - `deploy/helm/avuruops/values.yaml`'s `image.repository: avuruops/hub|ui|gateway` defaults will mechanically become `avuruobs/hub|ui|gateway` in Task 2 below (pure substring rename) — these still won't match the *actually published* image names (`avuru-obs-hub`, etc.), same as before this rename. That mismatch is pre-existing (already worked around via explicit `--set` in `e2e-helm.sh` and `values-*.yaml`) and is not something this plan fixes.
@@ -482,7 +482,7 @@ git commit -m "docs: rename avuruops -> avuruobs in convention docs"
 
 ```bash
 grep -rlI "avuruops\|AVURUOPS" --exclude-dir=.git --exclude-dir=.claude . \
-  | grep -vE "^\./design/|^\./docs/superpowers/plans/|^\./docs/superpowers/specs/|^\./CHANGELOG.md$"
+  | grep -vE "^\./design/|^\./docs/agent/plans/|^\./docs/agent/specs/|^\./CHANGELOG.md$"
 ```
 Expected: empty output (nothing printed). If something prints, it's a file this plan missed — add a step to rename it before proceeding.
 

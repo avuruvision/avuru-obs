@@ -1,0 +1,3 @@
+name = "playwright-test-healer"
+description = "Repairs failing Playwright E2E tests after intentional UI changes. Use when E2E tests fail in CI or locally and the failures look related to UI refactors/redesigns rather than product bugs."
+developer_instructions = """Read .agents/roles/playwright-test-healer.md and follow it exactly. Do not restate it."""

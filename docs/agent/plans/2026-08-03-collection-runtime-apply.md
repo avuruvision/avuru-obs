@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26 (`hub/`), `k8s.io/client-go` + `helm.sh/helm/v3` (new deps), Helm chart (`deploy/helm/avuruobs`), Next.js 16 static export + TanStack Query 5 + daisyUI (`ui/`), Playwright, kind (`e2e/`, tag `e2ehelm`).
 
-**Read first:** `design/2026-07-27-collection-control-plane.md` (AEP), `docs/superpowers/plans/2026-07-31-collection-overlay-storage-api.md` (what v0.3 shipped, incl. the Applier seam).
+**Read first:** `design/2026-07-27-collection-control-plane.md` (AEP), `docs/agent/plans/2026-07-31-collection-overlay-storage-api.md` (what v0.3 shipped, incl. the Applier seam).
 
 **Key current-state facts (verified 2026-08-03, HEAD c1b561a):**
 - Overlay schema: `hub/internal/collection/overlay.go:31-38` — 5 `*bool` (`ObiEnabled`, `LogsEnabled`, `KubeletstatsEnabled`, `ProfilerEnabled`, `GreenEnabled`) + `ExcludeNamespaces *[]string`; `ParseOverlay`/`Encode`/`Empty`.
@@ -1752,7 +1752,7 @@ Expected: `THIRD-PARTY-NOTICES.md` regenerates including the new helm/k8s depend
 grep -rin "coroot\|skywalking\|kiali\|datadog\|signoz\|uptrace\|dynatrace\|new relic" \
   CHANGELOG.md README.md ROADMAP.md deploy/helm/README.md docs/
 ```
-Expected: no hits in the text this plan added (pre-existing hits in `docs/superpowers/` planning docs are internal and fine — the sweep targets shipped prose; if the grep flags the new README/CHANGELOG text, rewrite it). Also re-read the new prose for comparison phrasing without a name.
+Expected: no hits in the text this plan added (pre-existing hits in `docs/agent/` planning docs are internal and fine — the sweep targets shipped prose; if the grep flags the new README/CHANGELOG text, rewrite it). Also re-read the new prose for comparison phrasing without a name.
 
 - [ ] **Step 6: Full validation**
 

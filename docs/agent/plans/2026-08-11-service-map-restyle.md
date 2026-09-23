@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.23 + ClickHouse (hub), Next.js static export + TypeScript strict + TanStack Query + cytoscape/fcose + Tailwind v4/daisyUI (ui), Playwright (e2e).
 
-**Spec:** [`docs/superpowers/specs/2026-08-10-service-map-restyle-design.md`](../specs/2026-08-10-service-map-restyle-design.md)
+**Spec:** [`docs/agent/specs/2026-08-10-service-map-restyle-design.md`](../specs/2026-08-10-service-map-restyle-design.md)
 
 **Branch:** `feature/service-map-restyle` (worktree `.claude/worktrees/service-map-restyle`). All paths below are repo-relative — run every command from the worktree root.
 
@@ -76,7 +76,7 @@ Both are decided; **Task 0 records them in the spec file** so the spec and the c
 ## Task 0: Record the amendments in the spec
 
 **Files:**
-- Modify: `docs/superpowers/specs/2026-08-10-service-map-restyle-design.md`
+- Modify: `docs/agent/specs/2026-08-10-service-map-restyle-design.md`
 
 - [ ] **Step 1: Amend the hover-focus bullet**
 
@@ -124,7 +124,7 @@ dodge a conditional hook; `enabled` is the same guard with less structure.)
 - [ ] **Step 3: Commit**
 
 ```bash
-git add docs/superpowers/specs/2026-08-10-service-map-restyle-design.md
+git add docs/agent/specs/2026-08-10-service-map-restyle-design.md
 git commit -m "docs(design): amend service map spec - mid-line arrows, enabled-flag gating"
 ```
 

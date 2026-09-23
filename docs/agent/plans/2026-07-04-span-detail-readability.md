@@ -8,7 +8,7 @@
 
 **Tech Stack:** Next.js 16 (static export), React, Tailwind/daisyUI, lucide-react icons, Playwright e2e, docker compose seeded stack.
 
-**Spec:** `docs/superpowers/specs/2026-07-04-span-detail-readability-design.md`
+**Spec:** `docs/agent/specs/2026-07-04-span-detail-readability-design.md`
 
 ---
 

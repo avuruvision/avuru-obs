@@ -32,7 +32,7 @@ light up — no SDK, no sidecars, no YAML archaeology.
 
 > **Status: v0.16.0 released** (2026-09-07); `main` is under active development
 > toward v0.17. See [CHANGELOG.md](CHANGELOG.md) for what shipped,
-> [ROADMAP.md](ROADMAP.md) for where it's headed and
+> [docs/agent/roadmap.md](docs/agent/roadmap.md) for where it's headed and
 > [`agent_docs/architecture.md`](agent_docs/architecture.md) for the living
 > architecture.
 
@@ -323,7 +323,7 @@ Detailed, honest comparisons live on the docs site:
 | [AI_POLICY.md](AI_POLICY.md) | Using AI tools when contributing |
 | [COMMIT-SIGNING-SETUP.md](COMMIT-SIGNING-SETUP.md) | Required signed-commit setup |
 | [design/](design/README.md) | Enhancement-proposal (AEP) process |
-| [RELEASING.md](RELEASING.md) · [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md) | Release process, direction, history |
+| [RELEASING.md](RELEASING.md) · [docs/agent/roadmap.md](docs/agent/roadmap.md) · [CHANGELOG.md](CHANGELOG.md) | Release process, direction, history |
 
 New here? Look for **good first issue** labels, and open an issue or
 [discussion](CONTRIBUTING.md) before non-trivial work.

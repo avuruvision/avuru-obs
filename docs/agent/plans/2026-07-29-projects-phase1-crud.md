@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26 (stdlib `net/http.ServeMux`, `clickhouse-go`), ClickHouse; Next.js 16 static export, React 19, TanStack Query v5, Tailwind/daisyUI; Playwright e2e.
 
-**Source spec:** `docs/superpowers/specs/2026-07-28-project-management-design.md` (Phase 1 = §5–§7). This plan implements only Phase 1; Phases 2 (ingest keys) and 3 (member aggregates) are separate.
+**Source spec:** `docs/agent/specs/2026-07-28-project-management-design.md` (Phase 1 = §5–§7). This plan implements only Phase 1; Phases 2 (ingest keys) and 3 (member aggregates) are separate.
 
 ---
 

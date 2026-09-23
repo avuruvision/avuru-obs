@@ -1,0 +1,5 @@
+[mcp_servers.avuruobs]
+url = "https://demo.avuruobs.io/mcp"
+
+[mcp_servers.avuruobs.http_headers]
+Authorization = "Bearer avurut_nji_D4QA5xMsRYPOzTZxO3fIuItmZPTL"

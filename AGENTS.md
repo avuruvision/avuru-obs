@@ -48,7 +48,7 @@ doesn't exist: the Hub and the UI.
 **Governance & meta** (repo root): `CONTRIBUTING.md` (workflow), `GOVERNANCE.md`
 (decisions, maintainers), `MAINTAINERS.md`, `AI_POLICY.md` (AI use — note: **no
 AI commit trailers**, this guide is the source of truth), `SECURITY.md`,
-`STYLE_GUIDE.md` (→ `agent_docs/*_style.md`), `RELEASING.md` + `ROADMAP.md` +
+`STYLE_GUIDE.md` (→ `agent_docs/*_style.md`), `RELEASING.md` + `docs/agent/roadmap.md` +
 `CHANGELOG.md` (release/direction), `design/` (Avuru Enhancement Proposals). CI:
 `.github/workflows/ci.yml` mirrors `make check` + helm lint; `release.yml` cuts
 releases on `vX.Y.Z` tags.
@@ -89,7 +89,7 @@ releases on `vX.Y.Z` tags.
 
 ## No competitor names (user-facing text)
 
-`CHANGELOG.md`, release notes/tag messages, `README.md`, `ROADMAP.md`, UI
+`CHANGELOG.md`, release notes/tag messages, `README.md`, `docs/agent/roadmap.md`, UI
 strings, and the docs site describe what avuru-obs does — never how it
 compares. **"X-style", "X-like", "à la X" count as naming a competitor**, and
 `release.yml` copies the changelog section into the GitHub release verbatim,
@@ -103,7 +103,7 @@ so a comparison written here ships to users.
   is planned", ClickHouse) — that's a fact about our stack, not a comparison.
   Code comments and `agent_docs/` may cite prior art for rationale.
 - The **only** place comparisons belong is the docs site's dedicated Compare
-  section (see `.claude/skills/docs-align`).
+  section (see `.agents/skills/docs-align`).
 
 Before shipping user-facing text, sweep it (scoped to shipped prose — UI
 source is excluded on purpose: its hits are prior-art comments, which are
@@ -111,7 +111,7 @@ allowed and would drown the signal):
 
 ```bash
 grep -rin "coroot\|skywalking\|kiali\|datadog\|signoz\|uptrace\|dynatrace\|new relic" \
-  CHANGELOG.md README.md ROADMAP.md deploy/helm/README.md docs/
+  CHANGELOG.md README.md deploy/helm/README.md docs/
 ```
 
 Then re-read your own new prose for "X-style"/"X-like" — grep won't catch a
@@ -197,3 +197,10 @@ Branch naming: milestone branches use `feature/<milestone>` (e.g.
 ---
 
 _Need more detail? Check `agent_docs/` or the component's own README/build.md._
+
+## Checks
+
+- lint: make check
+- unit: make -C hub test
+- e2e: make e2e
+- protected-branch: main

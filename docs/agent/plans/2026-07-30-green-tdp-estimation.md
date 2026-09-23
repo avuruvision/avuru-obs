@@ -10,7 +10,7 @@
 
 **Base documents:**
 - AEP: [design/2026-07-28-green-tdp-estimation.md](../../../design/2026-07-28-green-tdp-estimation.md)
-- Design spec: [docs/superpowers/specs/2026-07-30-green-tdp-estimation-design.md](../specs/2026-07-30-green-tdp-estimation-design.md)
+- Design spec: [docs/agent/specs/2026-07-30-green-tdp-estimation-design.md](../specs/2026-07-30-green-tdp-estimation-design.md)
 
 ---
 
