@@ -46,7 +46,7 @@ process and the branch/version model.
 
 - [ ] On `main`, version bumped to the next `-SNAPSHOT`
       (`make version-set V=X.(Y+1).0-SNAPSHOT`) and committed/merged.
-- [ ] [ROADMAP.md](ROADMAP.md) updated if the release closed or moved a milestone.
+- [ ] [docs/agent/roadmap.md](docs/agent/roadmap.md) updated if the release closed or moved a milestone.
 - [ ] Release announced (discussions / channels) if applicable.
 
 ## Failure recovery
