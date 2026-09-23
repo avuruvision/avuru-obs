@@ -395,7 +395,41 @@ service-related logs through workload identity, supports log copy/download and
 extracts severity from container log bodies. See the changelog for scope and
 upgrade behavior.
 
-## Beyond v0.17 (directional)
+## v0.18 — look inside the cluster — SHIPPED (v0.18.0)
+
+Infrastructure gains Cluster X-Ray: an interactive isometric view of Nodes,
+translucent Pods and a logical infrastructure layer beside the inventory. Orbit,
+zoom, separate or hide layers, filter namespaces, inspect a Pod's CPU, memory
+and placement, and follow the connections the traces recorded —
+`GET /api/v1/infra/pod-connections` reports caller request counts, errors and
+p95 latency, only between recorded Pod identities, with unresolved addresses
+kept explicitly unlocated. The renderer loads on demand, the scene states its
+limits, and the inventory stays for keyboards and browsers without WebGL.
+
+## v0.19 — several services' logs as one stream — SHIPPED (v0.19.0, v0.19.1)
+
+One log explorer for Signals → Logs and Service Mesh → Logs: pick services and
+workloads, choose which sources to read (the applications' own lines, ztunnel's,
+the waypoints', everything else), and follow them merged newest-first or as one
+panel per service. Selection, sources and display live in the URL;
+`GET /api/v1/logs` composes the subjects in one paginated query under a signed
+pagination token, and `GET /api/v1/logs/services` suggests them. The dark theme
+moves to slate with readable secondary text. v0.19.1 narrowed the mesh screens
+to the namespaces the caller's projects reach.
+
+## v0.20 — typed decisions, on paper — SHIPPED (v0.20.0)
+
+No product change. A design note
+([design/2026-09-22-typed-decisions-jev.md](design/2026-09-22-typed-decisions-jev.md))
+ranks where a classifier that answers with a calibrated probability rather than
+text would fit — the severity a rule could not read, errors a fingerprint kept
+apart, alerts to triage — and what each would cost the promise that nothing
+leaves the cluster: at most an opt-in, batch, born-OFF module sending structured
+or already-scrubbed payloads, never the ingest path. `tools/jev-eval` measures
+the first case, log-severity backfill, from a laptop against a copy of the log
+table. The note stays a draft until that measurement runs.
+
+## Beyond v0.20 (directional)
 
 - **The proxies from the scrape, not from spans.** On an ambient cluster
   ztunnel emits no span, so the Proxies tab has no row for it even while its
@@ -412,7 +446,10 @@ upgrade behavior.
   outbound network call in a product whose whole promise is that nothing leaves
   the cluster, and that is a release-level decision, not a corner of one — the
   same reason v0.11's AI module prices from rates you declare rather than from
-  a pricing API.
+  a pricing API. v0.20's design note takes the *decision* half — how urgent,
+  and is it a symptom of an upstream alert already firing — onto paper as a
+  typed decision over structured metadata, with nothing generated; the
+  summary half stays out.
 - **Scripted multi-step check journeys**, if demand appears — v0.9 ships
   single-request checks deliberately.
 - **Deeper profiling:** off-CPU and memory profiles as the upstream OTel eBPF
