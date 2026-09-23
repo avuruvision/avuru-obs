@@ -1,0 +1,24 @@
+{"id": "6dceb10e1cc6", "body": "2026-09-22 10:00:01.123 INFO [main] c.a.o.Application - Started Application in 4.2 seconds", "label": "INFO"}
+{"id": "13ac672c6e80", "body": "{\"level\":\"error\",\"ts\":1758535201.5,\"msg\":\"failed to persist order\",\"order_id\":\"o-4411\"}", "label": "ERROR"}
+{"id": "3846a0425cea", "body": "level=warn msg=\"connection pool near capacity\" used=94 max=100", "label": "WARN"}
+{"id": "da92b22b2d10", "body": "[DEBUG] cache miss for key user:8812", "label": "DEBUG"}
+{"id": "2b4ebb96db62", "body": "{\"level\":50,\"time\":1758535201500,\"pid\":12,\"msg\":\"unhandled rejection\"}", "label": "ERROR"}
+{"id": "3ec4c21aee47", "body": "2026-09-22T10:00:02Z FATAL database unreachable after 5 attempts, exiting", "label": "FATAL"}
+{"id": "dc20d0df78ad", "body": "TRACE enter handleRequest(id=1)", "label": "TRACE"}
+{"id": "64145562ad6f", "body": "INFO: GET /api/v1/orders 200 12ms", "label": "INFO"}
+{"id": "d07146737705", "body": "lvl=eror msg=\"checksum mismatch\" file=part-0007", "label": "ERROR"}
+{"id": "0ecca4a57586", "body": "{\"severity\":\"WARNING\",\"message\":\"retrying upstream call\",\"attempt\":2}", "label": "WARN"}
+{"id": "0dc023bedae4", "body": "2026-09-22 10:00:03 |ERROR| payment gateway timeout after 30s", "label": "ERROR"}
+{"id": "a8eed269cf8d", "body": "PANIC: runtime error: invalid memory address or nil pointer dereference", "label": "FATAL"}
+{"id": "d2cbe031277a", "body": "level=info msg=\"reconciled 12 pods\" ns=avuru-services", "label": "INFO"}
+{"id": "1e075407d0cc", "body": "DEBUG sql: SELECT 1", "label": "DEBUG"}
+{"id": "78d461d9f65d", "body": "WARN  disk usage at 91% on /var/lib/clickhouse", "label": "WARN"}
+{"id": "1fd72e5cea42", "body": "CRITICAL: out of memory, killing worker 3", "label": "FATAL"}
+{"id": "65be25a6147a", "body": "E0922 10:00:04.112233   1 reflector.go:150] failed to list *v1.Pod: connection refused", "label": null}
+{"id": "bd55f616680a", "body": "Traceback (most recent call last):\n  File \"app.py\", line 12, in <module>\n    main()\nKeyError: 'user'", "label": null}
+{"id": "2bf1cb901b47", "body": "10.0.0.7 - - [22/Sep/2026:10:00:05 +0000] \"GET /health HTTP/1.1\" 200 2 \"-\" \"kube-probe/1.31\"", "label": null}
+{"id": "2501463b826c", "body": "Started GET \"/orders/17\" for 10.0.0.9 at 2026-09-22 10:00:06 +0000", "label": null}
+{"id": "d05698a8caf9", "body": "failed to connect to redis at cache:6379, retrying in 2s", "label": null}
+{"id": "b3443928661e", "body": "panic: send on closed channel\n\ngoroutine 1 [running]:", "label": null}
+{"id": "96c16557c054", "body": "Listening on http://0.0.0.0:8080", "label": null}
+{"id": "53215435ddf5", "body": "unexpected EOF while reading frame; dropping connection", "label": null}
