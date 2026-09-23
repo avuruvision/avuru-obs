@@ -11,6 +11,28 @@ When a release is cut, that block is renamed to the version with its date.
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-09-23
+
+### Added
+
+- **A design note on typed decisions, and the harness that will judge it.**
+  Every decision avuru-obs makes today is a rule: the severity a log line is
+  given when its own text says nothing, the fingerprint that folds two errors
+  into one issue, the state machine that fires an alert. The note at
+  [`design/2026-09-22-typed-decisions-jev.md`](design/2026-09-22-typed-decisions-jev.md)
+  ranks where a hosted classifier that answers with a calibrated probability
+  rather than with text would fit, and what each use would cost the promise
+  that nothing leaves the cluster: at most an opt-in, batch module sending
+  structured or already-scrubbed payloads, never the ingest path. It names
+  log-severity backfill — the lines the sensor's parsers leave at severity 0,
+  which then vanish from the log floor and from error issues — as the one case
+  worth measuring first. `tools/jev-eval` is that measurement, run from a
+  laptop against a copy of the log table and never from the hub: accuracy
+  against the lines the sensor already labels, how many severity-0 lines come
+  back at each confidence floor, latency, and cost per million lines. The note
+  stays a draft until that run happens. Nothing in the hub, gateway, sensor or
+  chart changes.
+
 ## [0.19.1] — 2026-09-19
 
 ### Fixed
